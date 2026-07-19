@@ -7,6 +7,15 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
 <meta name="description" content="A browser-based 8-bit chiptune music editor — compose looping tracks with the Web Audio API, no plugins.">
 <meta name="color-scheme" content="dark">
+
+<!-- PWA: installable on Android (and elsewhere) as a standalone/fullscreen app -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#131316">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Music Studio">
 <style>
   :root {
     --lead: #2ff3ff; --harmony: #ff2fb0; --bass: #ffb347; --rhythm: #39ff6a;
@@ -573,6 +582,7 @@
       <ul>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (tracks, tempo, length, meter, mix, waveforms, pan &amp; markers). Work also autosaves to this browser.</li>
         <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
+        <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
@@ -701,6 +711,7 @@
         <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
         <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
         <button id="export" class="icon-btn" title="Export code">⤓</button>
+        <button id="fullscreen-btn" class="icon-btn" title="Enter fullscreen" aria-pressed="false">⛶</button>
       </div>
     </div>
 
@@ -2987,6 +2998,31 @@ document.getElementById('export').addEventListener('click', () => {
   box.focus();
   box.select();
 });
+
+// ---------- Fullscreen ----------
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+function syncFullscreenUI() {
+  const on = !!document.fullscreenElement;
+  fullscreenBtn.title = on ? 'Exit fullscreen' : 'Enter fullscreen';
+  fullscreenBtn.setAttribute('aria-pressed', String(on));
+}
+if (document.fullscreenEnabled) {
+  fullscreenBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  });
+  document.addEventListener('fullscreenchange', syncFullscreenUI);
+} else {
+  fullscreenBtn.disabled = true;
+  fullscreenBtn.title = 'Fullscreen not supported in this browser';
+}
+
+// ---------- PWA: register the service worker (offline + installable) ----------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* offline support is optional */ });
+  });
+}
 
 // Add a drop shadow to the sticky top bar once the page has scrolled under it,
 // and publish its height so the sticky inspector can sit just below it (the bar

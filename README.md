@@ -20,6 +20,10 @@ game, whose soundtrack ships here as the **demo song**.
 - **Loop** range, zoom, multi-select, copy/paste, undo/redo
 - **Song library** — load examples or your own saved songs (see below)
 - **Export** the current song as `TRACKS` / `RHYTHM_TRACK` JS to drop into a game
+- **Installable PWA** — works offline once loaded, and can be added to the
+  home screen as a standalone/fullscreen app (Android and other browsers
+  that support the install prompt); a **⛶** toolbar button also toggles
+  plain browser fullscreen
 
 ## Run it locally
 
@@ -64,11 +68,25 @@ The site is fully static. A ready-to-use workflow lives at
 The workflow publishes the whole folder, so the examples load from the same
 origin. (`.nojekyll` is included so Pages serves the files as-is.)
 
+## Installing on Android
+
+This is a [Progressive Web App](https://web.dev/progressive-web-apps/): open
+the site in Chrome on Android, then use the browser menu's **Add to Home
+screen** / **Install app** option (Chrome may also prompt automatically). The
+installed app opens without browser chrome and keeps working offline once
+it's been loaded once, since `sw.js` precaches the app shell and the bundled
+example songs. `manifest.webmanifest` requests fullscreen display where the
+browser supports it (falling back to a standalone app window otherwise); the
+in-app **⛶** button toggles fullscreen for regular browser tabs too.
+
 ## Layout
 
 ```
-index.html         the editor (self-contained: HTML + CSS + JS + synthesis)
-js/song-data.js    the demo song's note data (TRACKS, RHYTHM_TRACK, TEMPO_BPM)
-songs/             example songs + index.json
-dev-server.js      tiny static server for local use
+index.html            the editor (self-contained: HTML + CSS + JS + synthesis)
+js/song-data.js       the demo song's note data (TRACKS, RHYTHM_TRACK, TEMPO_BPM)
+songs/                example songs + index.json
+manifest.webmanifest  PWA manifest (name, icons, display mode)
+sw.js                 service worker: offline cache for the app shell
+icons/                generated app icons (see manifest.webmanifest)
+dev-server.js         tiny static server for local use
 ```

@@ -28,6 +28,7 @@ Any static file server works (e.g. `python3 -m http.server 8080`) — a server i
 - **`js/song-data.js`** — exports `TRACKS`, `RHYTHM_TRACK`, `TEMPO_BPM`: the demo song's note data, imported by `index.html` as the default song on load. This is the same data shape songs are exported to/from.
 - **`songs/`** — example songs as JSON (`froggy-hop.json`, `cinematic.json`, `techno.json`) plus `index.json`, which lists `{file, name, desc}` entries consumed by the in-app Songs menu. Adding an example song means dropping a `.json` file here and adding an entry to `index.json`.
 - **`dev-server.js`** — a dependency-free static file server (Node `http`/`fs`) used only for local development.
+- **`manifest.webmanifest` / `sw.js` / `icons/`** — PWA support: the manifest (linked from `index.html`'s `<head>`) makes the site installable (Android "Add to Home screen", `display_override: ["fullscreen", "standalone"]`); `sw.js` precaches the app shell (index.html, song-data.js, bundled songs, icons) for offline use and is registered from the bottom of `index.html`'s script. Bump `CACHE_NAME` in `sw.js` when precached files change so installed clients pick up the update. Icons were generated with a one-off Node script (not checked in) using a plain PNG encoder — regenerate similarly if they ever need to change.
 - **`.github/workflows/pages.yml`** — deploys the whole repo root to GitHub Pages via GitHub Actions on push to `main` (`.nojekyll` ensures files are served as-is).
 
 ## Working in `index.html`
