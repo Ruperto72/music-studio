@@ -1206,12 +1206,24 @@ function audible(track) {
 // per-render cleanup sweep here previously deleted the just-created overlays on
 // the first render, making the playhead vanish).
 function render() {
+  if (renderRafId != null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
   renderTimeline();
   renderTracks();
   positionOverlays();
   renderInspector();
   autosave();
   checkpointHistory();
+}
+
+// render() rebuilds the whole grid (every cell of every track), so calling it
+// on every mousemove while dragging a note/hit/marquee can fire many times more
+// often than the browser can actually repaint. scheduleRender() coalesces those
+// into at most one render() per animation frame; the drag's final render() (on
+// mouseup) stays synchronous and cancels any still-pending scheduled one above.
+let renderRafId = null;
+function scheduleRender() {
+  if (renderRafId != null) return;
+  renderRafId = requestAnimationFrame(() => { renderRafId = null; render(); });
 }
 
 // The playhead, grip and loop region/handles are persistent chrome whose content
@@ -1816,7 +1828,7 @@ function startMarquee(e, rollEl, track) {
   const rollRect = rollEl.getBoundingClientRect();
   const startCol = Math.max(0, Math.min(COLS, Math.round((e.clientX - rollRect.left) / colPx)));
   let moved = false;
-  const setRange = (a, b) => { state.marquee = { col0: Math.min(a, b), col1: Math.max(a, b), track }; render(); };
+  const setRange = (a, b) => { state.marquee = { col0: Math.min(a, b), col1: Math.max(a, b), track }; scheduleRender(); };
   setRange(startCol, startCol);
   function onMove(ev) {
     const col = Math.max(0, Math.min(COLS, Math.round((ev.clientX - rollRect.left) / colPx)));
@@ -1977,7 +1989,7 @@ function startResize(e, track, idx) {
     const others = notes.filter((_, i) => i !== idx);
     const maxLen = nextNoteStart(others, note.start) - note.start;
     note.len = quant(Math.min(newLen, Math.max(state.grid, maxLen)));
-    render();
+    scheduleRender();
   }
   function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; render(); }
   window.addEventListener('mousemove', onMove);
@@ -2006,7 +2018,7 @@ function startMoveNote(e, track, idx) {
       n.start = quant(start + deltaCols);
       n.freq = round2(midiToFreq(midi - pitchRowDelta));
     }
-    render();
+    scheduleRender();
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove);
@@ -2037,7 +2049,7 @@ function startMoveHit(e, hit) {
     const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, Math.round((ev.clientX - startX) / gridPx()) * state.grid));
     const deltaRows = Math.max(-minRow, Math.min(RHYTHM_ROWS.length - 1 - maxRow, Math.round((ev.clientY - startY) / RHY_H)));
     for (const { h, start, row } of startPositions) { h.start = quant(start + deltaCols); h.type = RHYTHM_ROWS[row + deltaRows]; }
-    render();
+    scheduleRender();
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove);
