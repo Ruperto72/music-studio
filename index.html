@@ -780,7 +780,7 @@ import { TRACKS, RHYTHM_TRACK, TEMPO_BPM } from './js/song-data.js';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
-const MAX_COLS = 512; // up to 64 bars in 4/4 — the allowed song-length range
+const MAX_COLS = 576; // up to 72 bars in 4/4 — the allowed song-length range
 const seqLength = (seq) => seq.reduce((s, n) => s + n.d, 0);
 
 // ---- Time signature. `num/den` → eighths per bar/beat. 4/4 = 8 per bar (the
