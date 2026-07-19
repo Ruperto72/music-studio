@@ -1,5 +1,7 @@
 # 🎵 Music Studio
 
+Try it: https://ruperto72.github.io/music-studio/
+
 A browser-based **8-bit chiptune editor**. Compose looping tracks the way you
 would in a small studio (Pro Tools–style stacked lanes) — everything is
 synthesised live with the Web Audio API, so there are **no audio files and no
