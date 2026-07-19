@@ -140,6 +140,7 @@
   body.playing .tp-btn.play { background: #23c257; color: #04210f; border-color: #14a544; box-shadow: 0 0 10px rgba(57,255,106,0.5); }
   .tp-btn.stop { color: #ff8f7d; }
   .tp-btn.toggle[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
+  .icon-btn[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
 
   /* Counter LCD */
   #counter-panel .panel-body { flex-direction: column; align-items: stretch; gap: 1px; min-width: 128px; }
@@ -522,7 +523,7 @@
 
       <h3>Tracks &amp; channel strips</h3>
       <ul>
-        <li>Starts with a lane each for <b>Lead</b>, <b>Harmony</b>, <b>Bass</b> and <b>Rhythm</b>.</li>
+        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (below the last lane) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -815,7 +816,7 @@ const trackOf = (id) => state.trackList.find(t => t.id === id);
 const trackName = (id) => { const t = trackOf(id); return t ? t.name : id; };
 const trackColor = (id) => { const t = trackOf(id); return t ? t.color : '#8a8a94'; };
 const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm' : id === 'rhythm'; };
-const DEFAULT_IDS = ['lead', 'harmony', 'bass']; // ids for the game's three tonal tracks (match saved-file keys)
+const DEFAULT_IDS = ['lead', 'harmony', 'bass', 'arp', 'pad']; // ids for the game's tonal tracks (match saved-file keys)
 const RHYTHM_COLOR = '#39ff6a';
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
 const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine']; // selectable per tonal track
@@ -2145,7 +2146,7 @@ function renderInspector() {
   bendField.append(bendLbl, bendInput);
   pitch.appendChild(bendField);
 
-  if (track !== 'bass') {
+  if (state.waveform[track] === 'square') {
     const dutyField = el('div', 'insp-field');
     const dutyLbl = el('span'); dutyLbl.textContent = 'Duty cycle';
     const dutySelect = document.createElement('select');
@@ -3020,7 +3021,7 @@ function syncFullscreenUI() {
 }
 if (document.fullscreenEnabled) {
   fullscreenBtn.addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen().catch(() => {});
   });
   document.addEventListener('fullscreenchange', syncFullscreenUI);
