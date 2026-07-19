@@ -5,13 +5,21 @@ mot README/CLAUDE.md:s funktionslista. Inget av detta är påbörjat i kod
 (inga `TODO`/`FIXME` finns i källan idag) — listan är en avstämning av vad
 som saknas, inte ett facit över buggar.
 
+## Näst på tur (efterfrågat)
+
+- [ ] **MIDI-import/export** — läsa in och skriva `.mid`-filer, inte bara
+  `.json`/kod-exporten. Internt är tonhöjder redan MIDI-nummer
+  (`MIDI_MIN`/`MIDI_MAX`, `midiToFreq`), så det som saknas är själv
+  filformatet (parsning av `.mid` in, och en SMF-writer ut) — ingen
+  ändring av notmodellen borde behövas.
+- [ ] **Ljudfilsexport (WAV/MP3)** — rendera hela låten till en nedladdningsbar
+  ljudfil via `OfflineAudioContext` (samma synteskod som `render()`/uppspelningen
+  redan använder, bara mot en offline-kontext istället för `ctx`). WAV är
+  rakt fram (PCM-header, inga beroenden); MP3 kräver antingen ett
+  encoder-bibliotek eller att man nöjer sig med WAV-only export.
+
 ## Ljud / export
 
-- **Ingen ljudexport.** Man kan exportera som `.json` eller som `TRACKS`/
-  `RHYTHM_TRACK`-kod, men det går inte att rendera låten till en faktisk
-  ljudfil (WAV/MP3) via `OfflineAudioContext`.
-- **Ingen MIDI.** Varken import av `.mid`-filer eller export — trots att
-  interna toner redan är MIDI-nummer (`MIDI_MIN`/`MIDI_MAX`, `midiToFreq`).
 - **Kodexport kräver manuell copy.** `#export`-knappen (index.html:2973)
   fyller bara en dold `<textarea>` och markerar texten — ingen
   "Kopiera"-knapp (`navigator.clipboard`) eller nedladdning av filen direkt.
