@@ -1,0 +1,35 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+Music Studio — a browser-based 8-bit chiptune editor. Everything is synthesised live with the Web Audio API: no audio files, no dependencies, no build step. The entire app is a single self-contained `index.html` (HTML + CSS + JS in one file) plus a small song-data module.
+
+It was extracted from the [Frog vs Toad](https://github.com/Ruperto72/frogger-multiplayer) game; that game's soundtrack ships here as the demo song.
+
+## Commands
+
+```bash
+node dev-server.js        # serve the repo root at http://localhost:8080
+```
+
+Any static file server works (e.g. `python3 -m http.server 8080`) — a server is required because ES modules don't load from `file://`. There is no build, lint, or test command; there are no dependencies to install.
+
+## Architecture
+
+- **`index.html`** — the entire application (~3000 lines) inside a single `<script type="module">`. There is no component framework and no bundler; everything is plain DOM manipulation (`createElement`, `addEventListener`) driven by a central `state` object and a `render()` function that rebuilds the DOM from state. Treat this file as several logical sections rather than a list of functions:
+  - **State & song model** — `state` holds tracks, notes/hits, selection, playhead, loop range, grid, tempo, mix (gain/pan/mute/solo), history stack, etc. Tonal tracks store notes as `{start, dur, ...}`-style objects; the rhythm track stores hits. Helper functions like `toColumnNotes`/`fromColumnNotes` and `toColumnHits`/`fromColumnHits` convert between the internal sequence format and the grid-column representation used for editing.
+  - **Autosave / undo / history** — `autosave()`/`loadAutosaveIfPresent()` persist the current song to `localStorage`; `commitHistory()`/`undo()`/`redo()` maintain an in-memory snapshot stack (`snapshotSong()`/`restoreSnapshot()`).
+  - **Rendering** — `render()` is the single entry point that redraws tracks, timeline, markers, playhead, loop handles, and scrollbar. Track lanes are rebuilt per-render (`renderTracks`, `renderPitchTrack`, `renderRhythmTrack`); there is no virtual DOM or diffing.
+  - **Interaction** — mouse-driven note/hit placement, drag-move, resize, marquee-select, and multi-select are implemented as manual `mousedown`/`mousemove`/`mouseup` state machines (e.g. `startMoveNote`, `startResize`, `startMarquee`, `startScrub`, `startLoopDrag`).
+  - **Audio synthesis** — a Web Audio graph is built per note (`OscillatorNode`/`GainNode`, plus a `WaveShaperNode` for bitcrush via `bitcrushCurve()`, and a duplicate detuned oscillator for chorus). Per-note effects (bend, vibrato, tremolo, duty/pulse-width, arpeggio, portamento, bitcrush, echo, chorus) are applied at playback time from properties on the note object itself, not from separate effect tracks.
+  - **Song I/O** — the 🎵 Songs menu loads examples from `songs/` (network fetch) or user songs from `localStorage`; 💾/📂 in the toolbar export/import a song as a `.json` file. A separate "export as code" path serializes the current song into `TRACKS`/`RHYTHM_TRACK` JS literals (matching `js/song-data.js`'s shape) for embedding back into a game.
+- **`js/song-data.js`** — exports `TRACKS`, `RHYTHM_TRACK`, `TEMPO_BPM`: the demo song's note data, imported by `index.html` as the default song on load. This is the same data shape songs are exported to/from.
+- **`songs/`** — example songs as JSON (`froggy-hop.json`, `cinematic.json`, `techno.json`) plus `index.json`, which lists `{file, name, desc}` entries consumed by the in-app Songs menu. Adding an example song means dropping a `.json` file here and adding an entry to `index.json`.
+- **`dev-server.js`** — a dependency-free static file server (Node `http`/`fs`) used only for local development.
+- **`.github/workflows/pages.yml`** — deploys the whole repo root to GitHub Pages via GitHub Actions on push to `main` (`.nojekyll` ensures files are served as-is).
+
+## Working in `index.html`
+
+Since the whole app lives in one file with no module boundaries beyond `song-data.js`, most changes require understanding how `state` flows into `render()` — mutate `state`, then call `render()` (and usually `autosave()`) rather than patching the DOM directly. Grid/timing math (`snapToGrid`, `quant`, `eighthsPerBar`/`eighthsPerBeat`, `clampCols`) is centralized near the top of the script and used throughout rendering and interaction code — reuse it instead of re-deriving column/pixel conversions locally.
