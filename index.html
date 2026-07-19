@@ -1,0 +1,3017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Music Studio — 8-bit chiptune editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
+<meta name="description" content="A browser-based 8-bit chiptune music editor — compose looping tracks with the Web Audio API, no plugins.">
+<meta name="color-scheme" content="dark">
+<style>
+  :root {
+    --lead: #2ff3ff; --harmony: #ff2fb0; --bass: #ffb347; --rhythm: #39ff6a;
+    --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
+    --strip: #202027; --strip2: #191920; --ink: #e8e8ee; --muted: #9a9aa6;
+    --subgrid: rgba(120, 200, 255, 0.16);
+    --header-w: 176px; --gutter-w: 42px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    padding: 14px; margin: 0;
+  }
+  h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+  #help-panel .panel-body { justify-content: center; }
+  .icon-btn { padding: 6px 9px; font-size: 14px; line-height: 1; min-width: 34px; text-align: center; }
+  .help-fab {
+    width: 30px; height: 30px; padding: 0; border-radius: 50%;
+    font-size: 15px; font-weight: 700; line-height: 1;
+    color: var(--muted); background: #1a1a1f; border: 1px solid #3a3a42;
+  }
+  .help-fab:hover { color: var(--ink); border-color: #55555f; }
+  dialog#help-dialog {
+    background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
+    max-width: 700px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
+  }
+  dialog#help-dialog::backdrop { background: rgba(0,0,0,0.65); }
+  dialog#songs-dialog {
+    background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
+    max-width: 560px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
+  }
+  dialog#songs-dialog::backdrop { background: rgba(0,0,0,0.65); }
+  .songs-body { padding: 4px 20px 18px; overflow-y: auto; max-height: calc(86vh - 60px); }
+  .songs-body h3 { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #8f8f9b; margin: 16px 0 8px; }
+  .songs-note { color: #b7b7c2; font-size: 12px; line-height: 1.55; margin: 10px 0 4px; }
+  .songs-sub { text-transform: none; letter-spacing: 0; color: #6b6b78; font-weight: 400; }
+  .song-list { display: flex; flex-direction: column; gap: 6px; }
+  .song-empty { color: #7a7a86; font-size: 12px; padding: 6px 2px; }
+  .song-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    background: #17171c; border: 1px solid #2c2c34; border-radius: 7px;
+  }
+  .song-item .song-info { flex: 1; min-width: 0; }
+  .song-item .song-title { font-size: 13px; font-weight: 600; color: #e8e8ee; }
+  .song-item .song-desc { font-size: 11px; color: #9a9aa6; margin-top: 1px; }
+  .song-item button { padding: 5px 11px; font-size: 12px; }
+  .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
+  .song-item .song-del:hover { border-color: #a33; }
+  .song-save-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .song-save-row input { flex: 1; min-width: 0; padding: 7px 10px; }
+  .help-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 20px; border-bottom: 1px solid #33333c;
+    background: linear-gradient(#22222a, #1b1b20);
+  }
+  .help-head h2 { margin: 0; font-size: 16px; }
+  .help-head #help-close { padding: 4px 12px; }
+  .help-body { padding: 4px 20px 18px; overflow-y: auto; max-height: calc(86vh - 60px); }
+  .help-body h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #8fbcff;
+    margin: 18px 0 6px; border-bottom: 1px solid #2c2c33; padding-bottom: 4px; font-weight: 700;
+  }
+  .help-body h3:first-child { margin-top: 12px; }
+  .help-body p { color: #c7c7d0; font-size: 12.5px; line-height: 1.6; margin: 0 0 8px; }
+  .help-body ul { margin: 0 0 8px; padding-left: 4px; list-style: none; }
+  .help-body li { color: #c7c7d0; font-size: 12.5px; line-height: 1.55; margin: 4px 0; padding-left: 16px; text-indent: -16px; }
+  .help-body li b { color: #e8e8ee; }
+  .help-body code { background: #111; padding: 1px 5px; border-radius: 3px; font-size: 11.5px; color: #9f9; }
+  .kbd-grid { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; align-items: center; font-size: 12.5px; color: #c7c7d0; margin: 4px 0 4px; }
+  .kbd-grid > span:nth-child(odd) { text-align: right; }
+  kbd {
+    background: #2a2a30; border: 1px solid #454550; border-bottom-width: 2px; border-radius: 4px;
+    padding: 1px 6px; font-family: inherit; font-size: 11px; color: #e8e8ee; white-space: nowrap;
+  }
+
+  /* ---- Pro Tools-style top bar: a row of bezeled panels, each with a small
+         caption, holding clustered controls. ---- */
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+    background: linear-gradient(#1b1b20, #141418);
+    padding: 8px; border-radius: 8px; margin-bottom: 10px;
+    border: 1px solid #34343c;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    position: sticky; top: 0; z-index: 30;
+  }
+  /* Keep the sticky top bar flush with the viewport edge and let it cast a
+     shadow over the scrolling content below it. */
+  .toolbar::before {
+    content: ''; position: absolute; left: 0; right: 0; top: -16px; height: 16px;
+    background: var(--bg);
+  }
+  .toolbar.stuck { box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 6px 14px rgba(0,0,0,0.55); }
+  .toolbar label { font-size: 12px; color: var(--muted); }
+  .panel {
+    display: flex; flex-direction: column; gap: 3px;
+    background: #0d0d10; border: 1px solid #050507; border-radius: 6px;
+    padding: 4px 8px 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .panel-cap {
+    font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #6b6b78; font-weight: 700; padding-left: 1px;
+  }
+  .panel-body { display: flex; gap: 6px; align-items: center; min-height: 34px; }
+
+  button:disabled { opacity: 0.4; cursor: default; }
+  button, input[type=number], select {
+    font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer;
+    background: var(--panel2); color: var(--ink); border: 1px solid #3a3a42; border-radius: 5px;
+  }
+  button:hover:not(:disabled) { border-color: #55555f; }
+  input[type=number] { width: 62px; cursor: text; text-align: center; padding: 6px 4px; }
+  input[type=checkbox] { cursor: pointer; }
+
+  /* Transport */
+  .tp-btn {
+    width: 38px; height: 30px; padding: 0; font-size: 15px; line-height: 1;
+    border-radius: 5px; background: #24242c; border: 1px solid #101014;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); color: #d8d8e2;
+  }
+  .tp-btn.play { color: #7dffa8; font-size: 13px; }
+  body.playing .tp-btn.play { background: #23c257; color: #04210f; border-color: #14a544; box-shadow: 0 0 10px rgba(57,255,106,0.5); }
+  .tp-btn.stop { color: #ff8f7d; }
+  .tp-btn.toggle[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
+
+  /* Counter LCD */
+  #counter-panel .panel-body { flex-direction: column; align-items: stretch; gap: 1px; min-width: 128px; }
+  .lcd {
+    font-family: "Menlo", "Consolas", monospace; font-size: 26px; font-weight: 700;
+    letter-spacing: 1px; color: #4dff9b; text-align: center; line-height: 1;
+    background: #041008; border: 1px solid #04240f; border-radius: 4px; padding: 3px 6px;
+    text-shadow: 0 0 6px rgba(77,255,155,0.55); font-variant-numeric: tabular-nums;
+  }
+  .lcd .sep-dot { color: #1f7a45; margin: 0 3px; }
+  .lcd-sub { display: flex; justify-content: center; font-size: 10px; color: #3ea86a;
+    font-family: "Menlo", "Consolas", monospace; font-variant-numeric: tabular-nums; }
+  .unit { font-size: 10px; color: var(--muted); }
+
+  /* Segmented control clusters */
+  .segmented { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid #101014; background: #0a0a0d; }
+  .segmented button {
+    border: none; border-radius: 0; border-right: 1px solid #101014;
+    background: #22222a; padding: 6px 9px; font-size: 13px; line-height: 1;
+  }
+  .segmented button:last-child { border-right: none; }
+  .segmented button.active { background: #3a6bd6; color: #fff; }
+  .segmented.tool-group button.active { background: #3a6bd6; outline: none; }
+  #zoom-level, #len-bars { font-size: 11px; color: var(--muted); min-width: 40px; text-align: center;
+    background: #101014; padding: 6px 4px; align-self: stretch; display: flex; align-items: center; justify-content: center; }
+  #len-bars { min-width: 54px; }
+
+  .mv-ico { font-size: 13px; }
+
+  body[data-tool="pen"] .cell { cursor: crosshair; }
+  body[data-tool="eraser"] .note, body[data-tool="eraser"] .hit { cursor: not-allowed; }
+  body[data-tool="grab"] .note, body[data-tool="grab"] .hit { cursor: grab; }
+
+  .editor-layout { display: flex; gap: 10px; align-items: flex-start; }
+  .rolls-column { flex: 1; min-width: 0; }
+
+  /* ---- The DAW surface: one horizontally-scrolling area holding the timeline
+         and every track lane, so headers pin to the left and lanes scroll as one. ---- */
+  .daw {
+    position: relative; overflow-x: auto; background: var(--panel);
+    border-radius: 8px 8px 0 0; border: 1px solid #2c2c33; border-bottom: none; padding-bottom: 4px;
+    scrollbar-width: none; /* hidden — replaced by #hscroll, which starts under the grid */
+  }
+  .daw::-webkit-scrollbar { height: 0; display: none; }
+
+  /* Custom horizontal scrollbar whose track begins at the note grid (after the
+     channel-strip headers + note gutter) instead of spanning the full width. */
+  #hscroll {
+    position: relative; height: 16px; background: var(--panel);
+    border-left: 1px solid #2c2c33; border-right: 1px solid #2c2c33;
+  }
+  #hscroll.hidden { display: none; }
+  #hscroll-track {
+    position: absolute; left: calc(var(--header-w) + var(--gutter-w)); right: 6px; top: 3px;
+    height: 10px; background: #17171b; border-radius: 5px;
+  }
+  #hscroll-thumb {
+    position: absolute; top: 0; left: 0; height: 10px; min-width: 30px; border-radius: 5px;
+    background: #4a4a55; cursor: grab; touch-action: none;
+  }
+  #hscroll-thumb:hover { background: #5a5a66; }
+  #hscroll-thumb.dragging { cursor: grabbing; background: #6a6a77; }
+
+  /* Docked below .daw, outside its horizontally-scrolling region, so it can
+     never scroll out of view. Holds Master volume + Tempo + Length, and can be
+     collapsed to a slim bar. */
+  #master-track {
+    background: var(--panel); border: 1px solid #2c2c33; border-radius: 0 0 8px 8px;
+    display: flex; align-items: center; gap: 12px; padding: 6px 10px;
+  }
+  #master-collapse {
+    flex: 0 0 auto; background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0;
+    border-radius: 5px; padding: 4px 9px; cursor: pointer; font-size: 12px; line-height: 1;
+  }
+  #master-collapse:hover { border-color: #55555f; }
+  .mstrip-body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+  .mstrip-cell { display: flex; align-items: center; gap: 8px; }
+  .mstrip-cap { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: #6b6b78; font-weight: 700; }
+  .mstrip-row { display: flex; align-items: center; gap: 6px; }
+  #master-track .th-vol { display: flex; align-items: center; gap: 6px; }
+  #master-vol { width: 120px; cursor: pointer; accent-color: #cfcfe0; }
+  #master-vol-val { color: var(--muted); font-size: 11px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  .mstrip-collapsed-label { color: var(--muted); font-size: 11px; }
+  #master-track.collapsed .mstrip-body { display: none; }
+  #master-track:not(.collapsed) .mstrip-collapsed-label { display: none; }
+
+  .timeline { display: flex; height: 22px; width: max-content; }
+  .tl-corner {
+    position: sticky; left: 0; z-index: 7; flex: 0 0 auto;
+    width: calc(var(--header-w) + var(--gutter-w));
+    background: var(--strip2); border-right: 1px solid #34343c;
+    border-bottom: 1px solid #34343c;
+    display: flex; align-items: center; padding-left: 10px;
+    font-size: 10px; color: var(--muted); letter-spacing: 0.5px;
+  }
+  .tl-ruler { display: grid; }
+  .ruler-cell {
+    border-right: 1px solid var(--grid); background: #26262c; cursor: pointer;
+    border-bottom: 1px solid #34343c; position: relative;
+  }
+  .ruler-cell.bar-start { border-left: 1px solid var(--bar); }
+  .ruler-cell .barnum {
+    position: absolute; left: 3px; top: 3px; font-size: 9px; color: #8f8f9b; pointer-events: none;
+  }
+
+  .track { display: flex; width: max-content; border-bottom: 1px solid #101014; }
+  .track-header {
+    position: sticky; left: 0; z-index: 6; flex: 0 0 auto; width: var(--header-w);
+    background: linear-gradient(var(--strip), var(--strip2));
+    border-right: 1px solid #34343c;
+    padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;
+    border-left: 4px solid #555;
+    cursor: pointer;
+  }
+  .track.active .track-header { background: linear-gradient(#2b2b34, #23232b); }
+  .track.active .track-header::after {
+    content: ''; position: absolute; inset: 0; border: 1px solid rgba(255,255,255,0.35);
+    pointer-events: none;
+  }
+  .th-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .th-name { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
+  .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
+  .th-wave {
+    margin-top: 3px; font-size: 10px; color: #cfcfd8; background: #26262d;
+    border: 1px solid #3a3a44; border-radius: 4px; padding: 1px 4px; cursor: pointer; max-width: 84px;
+  }
+  .th-pan { display: flex; align-items: center; gap: 6px; }
+  .th-pan input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
+  .th-pan .pan-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  /* VU / level meter (per channel + master). The green→yellow→red gradient fills
+     the whole track (so colour marks absolute level); a dark mask hides the
+     un-lit portion from the right, its width driven by JS. */
+  .vu {
+    position: relative; height: 7px; width: 100%; border: 1px solid #050509; border-radius: 3px; overflow: hidden;
+    background: linear-gradient(90deg, #2ecb5a 0%, #2ecb5a 60%, #ffd23b 80%, #ff5b4a 100%);
+  }
+  .vu-mask { position: absolute; right: 0; top: 0; bottom: 0; width: 100%; background: #0b0b0f; }
+  .vu-master { width: 130px; }
+  .track[data-track="lead"]    .th-pan input[type=range] { accent-color: var(--lead); }
+  .track[data-track="harmony"] .th-pan input[type=range] { accent-color: var(--harmony); }
+  .track[data-track="bass"]    .th-pan input[type=range] { accent-color: var(--bass); }
+  .track[data-track="rhythm"]  .th-pan input[type=range] { accent-color: var(--rhythm); }
+  .th-btns { display: flex; gap: 4px; }
+  .th-btns button {
+    width: 22px; height: 20px; padding: 0; font-size: 11px; font-weight: 700;
+    border-radius: 4px; background: #2c2c33; color: #b8b8c2; line-height: 1;
+  }
+  .th-btns button.m.on, .th-btns button.s.on {
+    background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
+  }
+  .th-btns button.x { color: #d88; font-size: 10px; }
+  .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
+  .add-track-row { display: flex; padding: 6px; }
+  .add-track-btn {
+    width: 100%; padding: 7px; font-size: 12px; color: #9a9aa6; background: #17171c;
+    border: 1px dashed #3a3a42; border-radius: 6px; cursor: pointer;
+  }
+  .add-track-btn:hover { color: var(--ink); border-color: #55555f; background: #1d1d24; }
+  .th-vol { display: flex; align-items: center; gap: 6px; }
+  .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
+  .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  .track[data-track="lead"]    .track-header { border-left-color: var(--lead); }
+  .track[data-track="harmony"] .track-header { border-left-color: var(--harmony); }
+  .track[data-track="bass"]    .track-header { border-left-color: var(--bass); }
+  .track[data-track="rhythm"]  .track-header { border-left-color: var(--rhythm); }
+  .track[data-track="lead"]    .th-name { color: var(--lead); }
+  .track[data-track="harmony"] .th-name { color: var(--harmony); }
+  .track[data-track="bass"]    .th-name { color: var(--bass); }
+  .track[data-track="rhythm"]  .th-name { color: var(--rhythm); }
+  .track[data-track="lead"]    .th-vol input[type=range] { accent-color: var(--lead); }
+  .track[data-track="harmony"] .th-vol input[type=range] { accent-color: var(--harmony); }
+  .track[data-track="bass"]    .th-vol input[type=range] { accent-color: var(--bass); }
+  .track[data-track="rhythm"]  .th-vol input[type=range] { accent-color: var(--rhythm); }
+  .track.silent .lane { opacity: 0.32; }
+
+  .gutter {
+    position: sticky; left: var(--header-w); z-index: 6; flex: 0 0 auto;
+    width: var(--gutter-w); display: grid; background: var(--strip2);
+    border-right: 1px solid #34343c;
+  }
+  .gutter .glabel {
+    font-size: 8px; color: #7d7d88; display: flex; align-items: center;
+    justify-content: flex-end; padding-right: 5px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .gutter .glabel.c { color: #b7b7c4; }
+  .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; }
+
+  .lane { display: grid; position: relative; }
+  /* Sub-eighth grid guides for the current resolution (1/16, triplets, …),
+     drawn above the eighth cells but below notes. */
+  .subgrid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 1; }
+  .cell {
+    border-right: 1px solid var(--grid); border-bottom: 1px solid rgba(255,255,255,0.02);
+  }
+  .cell.bar-start { border-left: 1px solid var(--bar); }
+  .cell.black { background: rgba(0,0,0,0.28); }
+  .cell.beat { border-right-color: #34343c; }
+
+  .note {
+    border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2;
+  }
+  .note.lead    { background: var(--lead); }
+  .note.harmony { background: var(--harmony); }
+  .note.bass    { background: var(--bass); }
+  .note.selected { outline: 2px solid #fff; z-index: 3; }
+  .note.multi-selected, .hit.multi-selected { outline: 2px dashed #ffcc00; z-index: 3; }
+  .marquee {
+    position: absolute; top: 0; background: rgba(255, 204, 0, 0.12);
+    border: 1px dashed #ffcc00; pointer-events: none; z-index: 4;
+  }
+  .note .handle {
+    position: absolute; right: 0; top: 0; width: 5px; height: 100%;
+    cursor: ew-resize; background: rgba(0,0,0,0.28);
+  }
+  .note.bend::after { content: "↝"; position: absolute; right: 2px; top: -2px; font-size: 10px; color: #111; }
+  .note.vib::before { content: "~"; position: absolute; left: 2px; top: -3px; font-size: 10px; color: #111; }
+  .note.trem { background-image: repeating-linear-gradient(90deg, rgba(0,0,0,0.25) 0 2px, transparent 2px 4px); }
+  .note.porta::after { content: "⌒"; position: absolute; right: 2px; top: -2px; font-size: 10px; color: #111; }
+  .note.crush { background-image: radial-gradient(circle, rgba(0,0,0,0.45) 1px, transparent 1.3px); background-size: 4px 4px; }
+  .note.echo { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4), -4px 0 3px -1px rgba(255,255,255,0.35); }
+  .note.chorus { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 0 1.5px rgba(255,255,255,0.4); }
+  .note .arp-badge { position: absolute; right: 2px; bottom: -3px; font-size: 9px; color: #111; pointer-events: none; }
+
+  .hit {
+    background: var(--rhythm); border-radius: 3px; cursor: pointer; align-self: center;
+    height: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); z-index: 2;
+  }
+  .hit.snare { background: #ffdf3b; }
+  .hit.hihat { background: #1fae54; }
+  .hit.tom   { background: #ff6a3b; }
+
+  /* top:0/bottom:0 stretches the line across the whole daw (timeline + tracks)
+     automatically, so its visibility never depends on a JS height measurement. */
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b3b; z-index: 5; pointer-events: none; }
+  /* Timeline markers: a labelled flag on the ruler + a faint line down the tracks. */
+  #markers-layer { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; z-index: 5; }
+  .marker-line { position: absolute; top: 22px; bottom: 0; width: 1px; background: rgba(255, 208, 84, 0.45); }
+  .marker-flag {
+    position: absolute; top: 0; height: 22px; display: flex; align-items: center; gap: 3px;
+    padding: 0 6px 0 5px; max-width: 160px; background: #e0ac36; color: #201400;
+    font-size: 10px; font-weight: 700; line-height: 22px; white-space: nowrap; overflow: hidden;
+    border-radius: 0 4px 4px 0; cursor: pointer; pointer-events: auto;
+    box-shadow: 1px 0 2px rgba(0,0,0,0.4); z-index: 6;
+  }
+  .marker-flag:hover { background: #f2bd45; }
+  .marker-flag::before { content: '🚩'; font-size: 9px; }
+  .playhead-grip {
+    position: absolute; top: 0; width: 12px; height: 22px; margin-left: -6px; z-index: 8; cursor: ew-resize;
+  }
+  .playhead-grip::before {
+    content: ''; position: absolute; top: 0; left: 1px;
+    border: 5px solid transparent; border-top-color: #ff3b3b;
+  }
+  .loop-region {
+    position: absolute; top: 0; height: 22px; background: rgba(59, 255, 143, 0.14);
+    border-top: 2px solid #3bff8f; pointer-events: none; z-index: 4;
+  }
+  .loop-handle { position: absolute; top: 0; width: 10px; height: 22px; margin-left: -5px; cursor: ew-resize; z-index: 8; }
+  .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
+
+  .inspector {
+    background: linear-gradient(#1b1b20, #141418); padding: 8px; border-radius: 8px;
+    border: 1px solid #34343c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    font-size: 12px; display: flex; flex-direction: column; gap: 8px; align-items: stretch;
+    width: 244px; flex: 0 0 244px;
+    /* Pin the effect panel so it stays reachable while editing notes far down
+       (bass/rhythm). Sits just below the sticky top bar; scrolls internally if
+       it ever gets taller than the viewport. */
+    position: sticky; top: var(--sticky-top, 110px); align-self: flex-start;
+    max-height: calc(100vh - var(--sticky-top, 110px) - 12px); overflow-y: auto;
+  }
+  .inspector.empty { color: #7a7a86; padding: 16px; font-size: 12px; line-height: 1.6; }
+  .insp-panel {
+    background: #0d0d10; border: 1px solid #050507; border-radius: 6px;
+    padding: 5px 8px 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .insp-cap { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #6b6b78; font-weight: 700; }
+  .insp-head { display: flex; align-items: center; gap: 8px; }
+  .insp-badge { font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: 4px; color: #04140a; }
+  .insp-note {
+    font-family: "Menlo", "Consolas", monospace; color: #4dff9b; background: #041008;
+    border: 1px solid #04240f; border-radius: 4px; padding: 3px 7px; font-size: 12px;
+    text-shadow: 0 0 6px rgba(77,255,155,0.4); flex: 1; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .insp-sub { font-size: 10px; color: var(--muted); text-align: center; }
+  .fx-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .fx-toggle {
+    flex: 1 1 auto; min-width: 62px; text-align: center; padding: 7px 8px; border-radius: 5px;
+    background: #22222a; border: 1px solid #101014; color: #b8b8c2; font-size: 11px; cursor: pointer;
+  }
+  .fx-toggle:hover { border-color: #55555f; }
+  .fx-toggle.on { background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4); }
+  .insp-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .insp-field > span { color: var(--muted); font-size: 11px; }
+  .insp-field input[type=text] { width: 84px; text-align: center; }
+  .insp-field select { padding: 6px 6px; }
+  .arp-presets { display: flex; gap: 5px; }
+  .arp-presets button { flex: 1; font-size: 11px; padding: 6px 4px; }
+  .insp-field input[type=range] { flex: 1; min-width: 0; margin: 0 8px; cursor: pointer; }
+  .insp-velval { min-width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .insp-del { background: #3a1414; border-color: #5a1e1e; color: #ff9a9a; }
+  .insp-del:hover { border-color: #a33; }
+  textarea {
+    width: 100%; height: 260px; margin-top: 10px; background: #111; color: #9f9;
+    font-family: monospace; font-size: 12px; border: 1px solid #444; border-radius: 6px; padding: 8px;
+  }
+
+  /* ---------- Mobile / touch responsive ---------- */
+  #more-toggle { display: none; align-items: center; font-size: 12px; font-weight: 700; padding: 8px 12px; }
+  #more-toggle[aria-expanded="true"] { background: #3a6bd6; color: #fff; }
+  #rotate-hint { display: none; }
+  #rotate-hint.dismissed { display: none !important; }
+  #insp-close { display: none; }
+
+  @media (max-width: 760px) {
+    body { padding: 8px; }
+    .toolbar { gap: 6px; padding: 6px; }
+    .panel { padding: 3px 6px 5px; }
+    .panel-cap { font-size: 7px; }
+    .panel-body { min-height: 30px; gap: 5px; }
+    /* Collapse the non-essential panels behind the More toggle. */
+    #more-toggle { display: inline-flex; margin-left: auto; }
+    #help-panel { margin-left: 6px; }
+    .tb-extra { display: none; }
+    .toolbar.show-extra .tb-extra { display: flex; }
+    /* Inspector becomes a bottom sheet that only appears when a note is selected. */
+    .editor-layout { flex-direction: column; }
+    .inspector {
+      position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; flex: none;
+      max-height: 48vh; border-radius: 12px 12px 0 0; z-index: 45;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.55);
+    }
+    .inspector.empty { display: none; }
+    body.has-sel #insp-close {
+      display: block; position: fixed; right: 12px; bottom: calc(48vh + 8px); z-index: 46;
+      background: #24242c; border: 1px solid #454550; color: #e8e8ee; padding: 8px 14px; border-radius: 20px;
+    }
+    #rotate-hint {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: #24242c; color: #cfcfe0; font-size: 12px; padding: 7px 10px;
+      border-radius: 6px; margin-bottom: 8px;
+    }
+    #rotate-hint button { background: none; border: none; color: #9a9aa6; padding: 2px 8px; font-size: 13px; }
+  }
+  @media (max-width: 760px) and (orientation: landscape) {
+    #rotate-hint { display: none; }
+  }
+
+  /* Bigger hit areas on touch devices (independent of width — tablets too). */
+  @media (pointer: coarse) {
+    .tp-btn { width: 46px; height: 40px; font-size: 17px; }
+    .segmented button { padding: 10px 13px; font-size: 15px; }
+    .th-btns button { width: 32px; height: 28px; font-size: 13px; }
+    .th-vol input[type=range] { height: 28px; }
+    .help-fab { width: 38px; height: 38px; font-size: 17px; }
+    .icon-btn { min-height: 38px; min-width: 40px; }
+    button { min-height: 34px; }
+  }
+</style>
+</head>
+<body>
+
+  <dialog id="help-dialog">
+    <div class="help-head">
+      <h2>🎛️ Music Studio — Help</h2>
+      <button id="help-close">Close ✕</button>
+    </div>
+    <div class="help-body">
+      <h3>Overview</h3>
+      <p>
+        A browser tool for composing 8-bit chiptune loops — everything is synthesised with the
+        Web Audio API, no audio files. Instruments are laid out as separate <b>tracks</b> stacked
+        vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
+        red playhead run across every lane at once. Open <b>🎵 Songs</b> to load an example or one of
+        your saved songs; your own songs are stored in this browser.
+      </p>
+
+      <h3>Tracks &amp; channel strips</h3>
+      <ul>
+        <li>Starts with a lane each for <b>Lead</b>, <b>Harmony</b>, <b>Bass</b> and <b>Rhythm</b>.</li>
+        <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
+        <li><b>＋ Add track</b> (below the last lane) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
+        <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
+      </ul>
+
+      <h3>Tools</h3>
+      <ul>
+        <li><b>✏️ Pen</b> — click an empty cell to add a note/hit.</li>
+        <li><b>🧽 Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
+        <li><b>✋ Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
+        <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
+        <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
+      </ul>
+
+      <h3>Selecting several notes</h3>
+      <ul>
+        <li><b>Shift+click</b> each note/hit to add or remove it from the selection (any tool).</li>
+        <li>With <b>Grab</b>, drag across empty space to marquee-select everything whose start falls in the range.</li>
+        <li>A selection moves together; <b>Delete</b> removes it; <b>Ctrl/Cmd+C&nbsp;/&nbsp;V</b> copies &amp; pastes it at the playhead.</li>
+      </ul>
+
+      <h3>Note effects</h3>
+      <p>
+        Select a single note to edit vibrato, tremolo, bend, duty cycle, arpeggio, portamento,
+        bitcrush, echo and chorus in the inspector on the right.
+      </p>
+
+      <h3>Bottom bar (Tempo · Length · Master)</h3>
+      <p>
+        The strip under the tracks holds <b>Tempo</b>, <b>Length</b> and the <b>🔊 Master</b> volume.
+        The <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions).
+        <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b> appends an empty bar,
+        <b>−</b> removes the last bar (dropping any notes/hits past the new end); the length is saved
+        with your file and exported so the game loops it.
+      </p>
+
+      <h3>Mixing</h3>
+      <ul>
+        <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
+        <li>The <b>waveform</b> picker (Square / Triangle / Saw / Sine) and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
+        <li><b>🔊 Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
+        <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
+      </ul>
+
+      <h3>Transport &amp; timeline</h3>
+      <ul>
+        <li>Transport: return-to-start, stop, play, and a loop on/off toggle; the LCD shows Bars&nbsp;|&nbsp;Beats and Min:Sec.</li>
+        <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
+        <li>The green band is the loop range — drag its ends, or "Full range" to reset it.</li>
+        <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
+        <li><b>🚩</b> adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
+      </ul>
+
+      <h3>Saving &amp; exporting</h3>
+      <ul>
+        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (tracks, tempo, length, meter, mix, waveforms, pan &amp; markers). Work also autosaves to this browser.</li>
+        <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
+      </ul>
+
+      <h3>Keyboard shortcuts</h3>
+      <div class="kbd-grid">
+        <span><kbd>Space</kbd></span><span>Play / stop</span>
+        <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span>Pen / Eraser / Grab</span>
+        <span><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>Delete the selection</span>
+        <span><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></span><span>Nudge the selection</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>C</kbd> / <kbd>V</kbd></span><span>Copy / paste</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd></span><span>Undo (notes/hits/tempo/length)</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl/Cmd</kbd>+<kbd>Y</kbd></span><span>Redo</span>
+        <span><kbd>Esc</kbd></span><span>Deselect (or close this dialog)</span>
+      </div>
+      <p style="color:#8a8a95; font-size:11.5px;">Shortcuts are ignored while typing in a field.</p>
+    </div>
+  </dialog>
+
+  <dialog id="songs-dialog">
+    <div class="help-head">
+      <h2>🎵 Song library</h2>
+      <button id="songs-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note">Examples load from this site. Your own songs are saved in this browser (nothing is uploaded). Loading a song replaces what's currently in the editor — save first if you want to keep it.</p>
+      <section>
+        <h3>Examples</h3>
+        <div id="songs-examples" class="song-list"><div class="song-empty">Loading…</div></div>
+      </section>
+      <section>
+        <h3>My songs <span class="songs-sub">(this browser)</span></h3>
+        <div class="song-save-row">
+          <input id="song-name" type="text" placeholder="Name this song…" maxlength="60">
+          <button id="song-save-local">💾 Save current</button>
+        </div>
+        <div id="songs-local" class="song-list"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
+
+  <div class="toolbar">
+    <!-- Transport -->
+    <div class="panel" id="transport-panel">
+      <div class="panel-cap">Transport</div>
+      <div class="panel-body">
+        <button class="tp-btn" id="rtz" title="Return to start">⏮</button>
+        <button class="tp-btn stop" id="stop" title="Stop">■</button>
+        <button class="tp-btn play" id="play" title="Play (Space)">▶</button>
+        <button class="tp-btn toggle" id="loop-btn" title="Loop on/off" aria-pressed="true">↺</button>
+        <input id="loop" type="checkbox" checked hidden>
+      </div>
+    </div>
+
+    <!-- Counters -->
+    <div class="panel" id="counter-panel">
+      <div class="panel-cap">Bars | Beats</div>
+      <div class="panel-body">
+        <div class="lcd" id="lcd-bars" title="Bars | Beats | Subdivision">001<span class="sep-dot">|</span>1<span class="sep-dot">|</span>1</div>
+        <div class="lcd-sub">
+          <span id="lcd-time" title="Min:Sec">0:00.0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit tools -->
+    <div class="panel" id="tools-panel">
+      <div class="panel-cap">Tools</div>
+      <div class="panel-body">
+        <div class="segmented tool-group">
+          <button data-tool="pen" class="active" title="Pen (1): click an empty cell to add a note/hit">✏️</button>
+          <button data-tool="eraser" title="Eraser (2): click a note/hit to remove it">🧽</button>
+          <button data-tool="grab" title="Grab (3): drag a note/hit to move it, drag its right edge to resize">✋</button>
+        </div>
+        <div class="segmented history-group">
+          <button id="undo-btn" title="Undo (Ctrl+Z)" disabled>↶</button>
+          <button id="redo-btn" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled>↷</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid resolution (note snap) -->
+    <div class="panel" id="grid-panel">
+      <div class="panel-cap">Grid</div>
+      <div class="panel-body">
+        <select id="grid-select" title="Snap resolution for placing/moving notes">
+          <option value="1/4">1/4</option>
+          <option value="1/8" selected>1/8</option>
+          <option value="1/16">1/16</option>
+          <option value="1/8T">1/8 T</option>
+          <option value="1/16T">1/16 T</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- More toggle (mobile only) -->
+    <button id="more-toggle" class="panel" aria-expanded="false" title="More controls">⋯ More</button>
+
+    <!-- Loop / zoom -->
+    <div class="panel tb-extra" id="view-panel">
+      <div class="panel-cap">Loop &amp; Zoom</div>
+      <div class="panel-body">
+        <button id="loop-reset" title="Reset the loop range to the full song">Full range</button>
+        <button id="add-marker" title="Add a marker at the playhead">🚩</button>
+        <div class="segmented zoom-group">
+          <button id="zoom-out" title="Zoom out">🔍−</button>
+          <span id="zoom-level">100%</span>
+          <button id="zoom-in" title="Zoom in">🔍+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- File -->
+    <div class="panel tb-extra" id="songs-panel">
+      <div class="panel-cap">Songs</div>
+      <div class="panel-body">
+        <button id="songs-btn" title="Open the song library (examples + your saved songs)">🎵 Songs</button>
+      </div>
+    </div>
+
+    <div class="panel tb-extra" id="file-panel">
+      <div class="panel-cap">Session</div>
+      <div class="panel-body file-group">
+        <button id="reset" class="icon-btn" title="Reset to the demo song">↺</button>
+        <button id="save-file" class="icon-btn" title="Download as .json file">💾</button>
+        <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
+        <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
+        <button id="export" class="icon-btn" title="Export code">⤓</button>
+      </div>
+    </div>
+
+    <!-- Help (discreet ? in a panel, far right) -->
+    <div class="panel" id="help-panel">
+      <div class="panel-cap">Help</div>
+      <div class="panel-body">
+        <button id="help-btn" class="help-fab" title="Show help" aria-label="Help">?</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="editor-layout">
+    <div class="rolls-column">
+      <div class="daw" id="daw">
+        <div class="timeline" id="timeline"></div>
+        <div id="tracks"></div>
+      </div>
+      <div id="hscroll"><div id="hscroll-track"><div id="hscroll-thumb"></div></div></div>
+      <div id="master-track">
+        <button id="master-collapse" title="Hide this bar" aria-label="Toggle bottom bar" aria-expanded="true">▾</button>
+        <div class="mstrip-body">
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Master</span>
+            <div class="th-vol">
+              <span class="mv-ico">🔊</span>
+              <input id="master-vol" type="range" min="0" max="1" step="0.02" title="Master preview volume (editor only)">
+              <span id="master-vol-val" class="vol-val"></span>
+            </div>
+          </div>
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Output</span>
+            <div class="vu vu-master" title="Master output level"><div class="vu-mask" id="master-vu"></div></div>
+          </div>
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Tempo</span>
+            <div class="mstrip-row">
+              <input id="tempo" type="number" min="40" max="300" step="1">
+              <span class="unit">BPM</span>
+            </div>
+          </div>
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Meter</span>
+            <select id="time-sig" title="Time signature (bar grouping)"></select>
+          </div>
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Length</span>
+            <div class="segmented">
+              <button id="len-minus" title="Remove the last bar (shorten the song)">−</button>
+              <span id="len-bars">32 bars</span>
+              <button id="len-plus" title="Add a bar (lengthen the song)">+</button>
+            </div>
+          </div>
+        </div>
+        <span class="mstrip-collapsed-label">Tempo · Length · Master</span>
+      </div>
+    </div>
+    <div class="inspector empty" id="inspector">No note selected.</div>
+  </div>
+  <button id="insp-close" title="Close editor panel">✕ Done</button>
+
+  <textarea id="exportBox" style="display:none" readonly></textarea>
+
+<script type="module">
+import { TRACKS, RHYTHM_TRACK, TEMPO_BPM } from './js/song-data.js';
+
+// ---- Song length in columns (eighth-notes), derived from the loaded song. ----
+let COLS = 64;
+const MAX_COLS = 512; // up to 64 bars in 4/4 — the allowed song-length range
+const seqLength = (seq) => seq.reduce((s, n) => s + n.d, 0);
+
+// ---- Time signature. `num/den` → eighths per bar/beat. 4/4 = 8 per bar (the
+// game's meter). The whole grid (bar lines, bar numbers, length, counter) is
+// derived from these, so changing the meter re-groups the bars. ----
+const TIME_SIGS = [
+  { id: '4/4', num: 4, den: 4 }, { id: '3/4', num: 3, den: 4 }, { id: '2/4', num: 2, den: 4 },
+  { id: '5/4', num: 5, den: 4 }, { id: '6/8', num: 6, den: 8 }, { id: '7/8', num: 7, den: 8 },
+  { id: '12/8', num: 12, den: 8 }
+];
+const DEFAULT_TS = { num: 4, den: 4 };
+function eighthsPerBar()  { return state.timeSig.num * 8 / state.timeSig.den; }
+function eighthsPerBeat() { return 8 / state.timeSig.den; }
+const tsId = (ts) => `${ts.num}/${ts.den}`;
+
+const MIDI_MIN = 33, MIDI_MAX = 96;
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// Tracks are dynamic: the user can add, rename and remove tonal tracks. The
+// ordered descriptors live in state.trackList ({ id, name, color, kind }); the
+// per-track data/mix maps (state.tracks/gains/waveform/pan/mute/solo) are keyed
+// by id. PITCH_TRACKS/ALL_TRACKS are id lists rebuilt from trackList so the many
+// `for (const t of ALL_TRACKS)` loops keep working unchanged. Rhythm is a single
+// special track (a drum kit) that's always present and last.
+let PITCH_TRACKS = ['lead', 'harmony', 'bass'];
+let ALL_TRACKS = ['lead', 'harmony', 'bass', 'rhythm'];
+function refreshTrackArrays() {
+  PITCH_TRACKS = state.trackList.filter(t => t.kind === 'tone').map(t => t.id);
+  ALL_TRACKS = state.trackList.map(t => t.id);
+}
+const trackOf = (id) => state.trackList.find(t => t.id === id);
+const trackName = (id) => { const t = trackOf(id); return t ? t.name : id; };
+const trackColor = (id) => { const t = trackOf(id); return t ? t.color : '#8a8a94'; };
+const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm' : id === 'rhythm'; };
+const DEFAULT_IDS = ['lead', 'harmony', 'bass']; // ids for the game's three tonal tracks (match saved-file keys)
+const RHYTHM_COLOR = '#39ff6a';
+const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
+const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', kit: 'Kit' };
+const RHYTHM_ROWS = ['kick', 'snare', 'hihat', 'tom'];
+const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', tom: 'Tom' };
+
+const ROW_H = 11;       // px per semitone in a pitch lane
+const RHY_H = 17;       // px per rhythm row
+const TL_H = 22;        // timeline height
+const MIN_SPAN = 15;    // minimum pitch-window span (semitones) so lanes have room to draw
+
+const ZOOM_LEVELS = [8, 12, 16, 24, 32];
+let zoomIndex = ZOOM_LEVELS.indexOf(16);
+let colPx = ZOOM_LEVELS[zoomIndex];
+
+// Grid resolution (note snap). `eighths` = eighth-notes per grid step, so 1 =
+// 1/8 (the default). 1/16 is half an eighth; the triplet steps split a beat
+// (two eighths) into 3 or 6. All steps are integer multiples of 1/6 of an
+// eighth, so every snapped position lands on one shared fine lattice (MICRO)
+// — that keeps starts/lengths exact instead of accumulating float drift.
+const GRID_STEPS = [
+  { id: '1/4',   eighths: 2     },
+  { id: '1/8',   eighths: 1     },
+  { id: '1/16',  eighths: 0.5   },
+  { id: '1/8T',  eighths: 2 / 3 },
+  { id: '1/16T', eighths: 1 / 3 }
+];
+const DEFAULT_GRID = 1;
+const MICRO = 1 / 6;                                   // finest common lattice unit (eighths)
+const quant = (x) => Math.round(x / MICRO) * MICRO;    // re-lattice to kill float drift
+const snapToGrid = (x) => quant(Math.round(x / state.grid) * state.grid);
+const gridPx = () => state.grid * colPx;               // px per grid step at the current zoom
+
+const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const midiToName = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+const freqToMidi  = (f) => Math.round(12 * Math.log2(f / 440) + 69);
+const round2 = (n) => Math.round(n * 100) / 100;
+const round4 = (n) => Math.round(n * 1e4) / 1e4; // note lengths can be triplet fractions (e.g. 0.3333)
+const EPS = 1e-4;                                 // tolerance when comparing fractional grid positions
+const panLabel = (p) => { const v = Math.round(p * 100); return v === 0 ? 'C' : (v < 0 ? 'L' + (-v) : 'R' + v); };
+const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+// --- Sequential {f,d,...} format (audio.js) <-> column-based editor notes. ---
+function toColumnNotes(seq) {
+  const notes = [];
+  let col = 0;
+  for (const n of seq) {
+    if (n.f) notes.push({
+      start: col, len: n.d, freq: n.f, vel: n.vel ?? 1,
+      bend: n.bend ?? null, vib: !!n.vib, trem: !!n.trem,
+      duty: n.duty ?? null, arp: n.arp ?? null,
+      porta: !!n.porta, crush: !!n.crush, echo: !!n.echo, chorus: !!n.chorus
+    });
+    col += n.d;
+  }
+  return notes;
+}
+function toColumnHits(seq) {
+  const hits = [];
+  let col = 0;
+  for (const n of seq) { hits.push({ start: col, type: n.type }); col += n.d; }
+  return hits;
+}
+function fromColumnNotes(notes) {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  const out = [];
+  let col = 0;
+  for (const n of sorted) {
+    if (n.start - col > EPS) out.push({ f: 0, d: round4(n.start - col) });
+    out.push({
+      f: round2(n.freq), d: round4(n.len),
+      ...(n.vel != null && n.vel < 1 ? { vel: round2(n.vel) } : {}),
+      ...(n.bend ? { bend: round2(n.bend) } : {}),
+      ...(n.vib ? { vib: true } : {}),
+      ...(n.trem ? { trem: true } : {}),
+      ...(n.duty ? { duty: n.duty } : {}),
+      ...(n.arp && n.arp.length ? { arp: n.arp } : {}),
+      ...(n.porta ? { porta: true } : {}),
+      ...(n.crush ? { crush: true } : {}),
+      ...(n.echo ? { echo: true } : {}),
+      ...(n.chorus ? { chorus: true } : {})
+    });
+    col = n.start + n.len;
+  }
+  if (COLS - col > EPS) out.push({ f: 0, d: round4(COLS - col) });
+  return out;
+}
+function fromColumnHits(hits) {
+  const sorted = [...hits].sort((a, b) => a.start - b.start);
+  if (sorted.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const next = i + 1 < sorted.length ? sorted[i + 1].start : sorted[0].start + COLS;
+    out.push({ type: sorted[i].type, d: round4(next - sorted[i].start) });
+  }
+  return out;
+}
+
+// Round to a whole bar in the current meter, clamped to the allowed range.
+const clampCols = (c) => { const bar = eighthsPerBar(); return Math.max(bar, Math.min(MAX_COLS, Math.round(c / bar) * bar)); };
+// Build the full editor state for the game's song: the track list plus every
+// per-track map (notes/gain/waveform/pan/mute/solo), derived from the exported
+// TRACKS + RHYTHM_TRACK. Also sets COLS. Used at startup and by Reset.
+function gameDefaults() {
+  const trackList = [];
+  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
+  TRACKS.forEach((t, i) => {
+    const id = DEFAULT_IDS[i] || ('t' + i);
+    trackList.push({ id, name: t.name, color: TRACK_PALETTE[i % TRACK_PALETTE.length], kind: 'tone' });
+    tracks[id] = toColumnNotes(t.notes);
+    gains[id] = t.mix; waveform[id] = t.osc; pan[id] = t.pan; mute[id] = false; solo[id] = false;
+  });
+  trackList.push({ id: 'rhythm', name: RHYTHM_TRACK.name, color: RHYTHM_COLOR, kind: 'rhythm' });
+  tracks.rhythm = toColumnHits(RHYTHM_TRACK.hits);
+  gains.rhythm = RHYTHM_TRACK.mix; waveform.rhythm = 'kit'; pan.rhythm = RHYTHM_TRACK.pan; mute.rhythm = false; solo.rhythm = false;
+  // The game's song is in 4/4 (8 eighths per bar); round up to a whole 4/4 bar.
+  const max = Math.max(...TRACKS.map(t => seqLength(t.notes)), seqLength(RHYTHM_TRACK.hits));
+  COLS = Math.max(8, Math.min(MAX_COLS, Math.ceil(max / 8) * 8));
+  return { trackList, tracks, gains, waveform, pan, mute, solo };
+}
+
+// Song length to use when a saved draft/file predates the explicit `cols` field:
+// round the last note/hit end up to a whole bar (min 1 bar) in the current meter.
+function derivedColsFromTracks(tracks) {
+  const bar = eighthsPerBar();
+  let max = bar;
+  for (const t of PITCH_TRACKS) for (const n of tracks[t] || []) max = Math.max(max, n.start + n.len);
+  for (const h of tracks.rhythm || []) max = Math.max(max, h.start + 1);
+  return Math.max(bar, Math.ceil(max / bar) * bar);
+}
+function colsFromSaved(data, tracks) {
+  // Clamp to the allowed range so a corrupt/hand-edited file with a huge `cols`
+  // can't build a giant grid and hang the browser.
+  const raw = (typeof data.cols === 'number' && data.cols >= 8) ? data.cols : derivedColsFromTracks(tracks);
+  return clampCols(raw);
+}
+
+// ---------- Autosave (localStorage) ----------
+const AUTOSAVE_KEY = 'frogger-music-editor-autosave';
+let autosaveTimer = null;
+function autosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks
+      }));
+    } catch { /* best-effort */ }
+  }, 400);
+}
+function loadAutosaveIfPresent() {
+  let raw;
+  try { raw = localStorage.getItem(AUTOSAVE_KEY); } catch { return null; }
+  if (!raw) return null;
+  let data;
+  try { data = JSON.parse(raw); } catch { return null; }
+  const t = data && data.tracks;
+  if (!t || typeof t !== 'object' || !Array.isArray(t.rhythm)) return null;
+  return data;
+}
+
+const _gd = gameDefaults();
+const state = {
+  trackList: _gd.trackList,  // ordered track descriptors ({ id, name, color, kind })
+  tracks: _gd.tracks,        // id -> notes/hits
+  gains: _gd.gains,          // id -> relative volume (the game's MIX)
+  waveform: _gd.waveform,    // id -> oscillator (the game's VOICES)
+  pan: _gd.pan,              // id -> stereo pan (VOICES)
+  mute: _gd.mute,
+  solo: _gd.solo,
+  tempo: TEMPO_BPM,
+  masterVol: 0.45,           // editor preview master level (not part of the game)
+  activeTrack: 'lead',
+  tool: 'pen',
+  grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
+  timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
+  markers: [],               // [{ col, name }] editor-only timeline markers
+  selected: null,            // { track, index } — single note, drives the inspector
+  multiSelected: new Set(),  // marquee-selected group in state.activeTrack
+  playhead: 0,
+  loopStart: 0, loopEnd: COLS,
+  marquee: null              // { col0, col1, track } while marquee-selecting
+};
+
+// Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
+// loaded file into state. Absent per-channel gains keep their current value;
+// absent mute/solo default to off. UI/audio sync is left to the caller.
+function applySavedMix(data) {
+  if (data.gains && typeof data.gains === 'object') {
+    for (const ch of ALL_TRACKS) if (typeof data.gains[ch] === 'number') state.gains[ch] = data.gains[ch];
+  }
+  if (data.waveform && typeof data.waveform === 'object') {
+    for (const ch of PITCH_TRACKS) if (WAVEFORMS.includes(data.waveform[ch])) state.waveform[ch] = data.waveform[ch];
+  }
+  if (data.pan && typeof data.pan === 'object') {
+    for (const ch of ALL_TRACKS) if (typeof data.pan[ch] === 'number') state.pan[ch] = Math.max(-1, Math.min(1, data.pan[ch]));
+  }
+  if (typeof data.masterVol === 'number') state.masterVol = data.masterVol;
+  if (typeof data.grid === 'number' && data.grid > 0) state.grid = quant(data.grid);
+  restoreTimeSig(data);
+  state.markers = Array.isArray(data.markers)
+    ? data.markers.filter(m => m && typeof m.col === 'number').map(m => ({ col: m.col, name: String(m.name || '') }))
+    : [];
+  for (const key of ['mute', 'solo']) {
+    const src = (data[key] && typeof data[key] === 'object') ? data[key] : {};
+    for (const ch of ALL_TRACKS) state[key][ch] = !!src[ch];
+  }
+}
+// Restore the meter (validated against the known list). Called before COLS is
+// computed on load so bar rounding uses the right eighths-per-bar.
+function restoreTimeSig(data) {
+  const ts = data.timeSig;
+  if (ts && typeof ts === 'object' && TIME_SIGS.some(s => s.num === ts.num && s.den === ts.den)) {
+    state.timeSig = { num: ts.num, den: ts.den };
+  }
+}
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// Rebuild the track list and per-track maps from saved data, tolerating old
+// files that had no trackList (derive it from the track data keys). Rhythm is
+// forced to exist exactly once, last. Mix values are seeded to defaults here and
+// overridden by applySavedMix. Refreshes PITCH_TRACKS/ALL_TRACKS.
+function restoreTrackList(data) {
+  const src = (data.tracks && typeof data.tracks === 'object') ? data.tracks : {};
+  let list = [];
+  if (Array.isArray(data.trackList) && data.trackList.length) {
+    list = data.trackList
+      .filter(t => t && typeof t.id === 'string')
+      .map((t, i) => ({
+        id: t.id,
+        name: String(t.name || t.id),
+        color: (typeof t.color === 'string' && t.color) || TRACK_PALETTE[i % TRACK_PALETTE.length],
+        kind: t.kind === 'rhythm' ? 'rhythm' : 'tone'
+      }));
+  }
+  if (!list.length) { // old file: infer tonal tracks from the data keys
+    const tonal = Object.keys(src).filter(k => k !== 'rhythm');
+    list = tonal.map((id, i) => ({ id, name: cap(id), color: TRACK_PALETTE[i % TRACK_PALETTE.length], kind: 'tone' }));
+  }
+  list = list.filter(t => t.kind !== 'rhythm');
+  list.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
+  state.trackList = list;
+  refreshTrackArrays();
+  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
+  for (const t of state.trackList) {
+    tracks[t.id] = Array.isArray(src[t.id]) ? src[t.id] : [];
+    gains[t.id] = 0.9; waveform[t.id] = t.kind === 'rhythm' ? 'kit' : 'square'; pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
+  }
+  state.tracks = tracks; state.gains = gains; state.waveform = waveform; state.pan = pan; state.mute = mute; state.solo = solo;
+}
+
+const autosaveDraft = loadAutosaveIfPresent();
+if (autosaveDraft && confirm('Found an unsaved draft from a previous session. Restore it?\n\n(Cancel discards it and loads the game\'s current song instead.)')) {
+  state.tempo = typeof autosaveDraft.tempo === 'number' ? autosaveDraft.tempo : TEMPO_BPM;
+  restoreTimeSig(autosaveDraft);
+  restoreTrackList(autosaveDraft);
+  COLS = colsFromSaved(autosaveDraft, state.tracks);
+  state.loopEnd = COLS;
+  applySavedMix(autosaveDraft);
+} else if (autosaveDraft) {
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ }
+}
+refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS with the (possibly restored) track list
+
+// ---------- Undo/redo ----------
+const HISTORY_LIMIT = 100;
+const undoStack = [];
+const redoStack = [];
+let historyTimer = null;
+const snapshotSong = () => JSON.stringify({
+  tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
+  gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo
+});
+let lastCommitted = snapshotSong();
+function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
+function commitHistory() {
+  clearTimeout(historyTimer);
+  historyTimer = null;
+  const s = snapshotSong();
+  if (s === lastCommitted) return;
+  undoStack.push(lastCommitted);
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  lastCommitted = s;
+  updateHistoryButtons();
+}
+function restoreSnapshot(s) {
+  const data = JSON.parse(s);
+  state.tracks = data.tracks;
+  if (Array.isArray(data.trackList)) {
+    state.trackList = data.trackList;
+    refreshTrackArrays();
+    for (const map of ['gains', 'waveform', 'pan', 'mute', 'solo']) if (data[map]) state[map] = data[map];
+    if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
+    for (const t of state.trackList) ensureChannelNodes(t.id);
+    applyGains(); applyPan();
+  }
+  state.tempo = data.tempo;
+  tempoInput.value = state.tempo;
+  if (typeof data.cols === 'number' && data.cols >= 8) {
+    COLS = data.cols;
+    state.loopStart = Math.min(state.loopStart, COLS - 1);
+    state.loopEnd = Math.min(state.loopEnd, COLS);
+    if (state.loopEnd <= state.loopStart) state.loopEnd = COLS;
+    state.playhead = Math.min(state.playhead, COLS - 1);
+    visualPlayhead = state.playhead;
+    updateLengthUI();
+  }
+  state.selected = null;
+  state.multiSelected.clear();
+  render();
+}
+function undo() {
+  commitHistory();
+  if (undoStack.length === 0) return;
+  redoStack.push(lastCommitted);
+  lastCommitted = undoStack.pop();
+  restoreSnapshot(lastCommitted);
+  updateHistoryButtons();
+}
+function redo() {
+  commitHistory();
+  if (redoStack.length === 0) return;
+  undoStack.push(lastCommitted);
+  lastCommitted = redoStack.pop();
+  restoreSnapshot(lastCommitted);
+  updateHistoryButtons();
+}
+function updateHistoryButtons() {
+  document.getElementById('undo-btn').disabled = undoStack.length === 0;
+  document.getElementById('redo-btn').disabled = redoStack.length === 0;
+}
+
+// ---------- Element refs / layout constants ----------
+const daw = document.getElementById('daw');
+const timelineEl = document.getElementById('timeline');
+const tracksEl = document.getElementById('tracks');
+const masterTrackEl = document.getElementById('master-track');
+const inspector = document.getElementById('inspector');
+const HEADER_W = 176, GUTTER_W = 42;
+const LANE_ORIGIN = HEADER_W + GUTTER_W; // x (within .daw content) where lane columns begin
+
+let playheadEl = null, playheadGrip = null, loopEls = null, rulerGridEl = null, markersLayer = null;
+let visualPlayhead = 0;
+const laneRolls = [];       // [{ track, rollEl }] for the current render — used by marquee/positioning
+let interacting = false;    // freezes pitch-window auto-fit during a drag so lanes don't jump
+
+// Pitch auto-fit window per pitch track. Cached; frozen while `interacting`.
+const winCache = {};
+function pitchWindow(track) {
+  if (interacting && winCache[track]) return winCache[track];
+  const notes = state.tracks[track];
+  let lo, hi;
+  if (!notes.length) { lo = 57; hi = 79; }
+  else {
+    lo = Infinity; hi = -Infinity;
+    for (const n of notes) { const m = freqToMidi(n.freq); if (m < lo) lo = m; if (m > hi) hi = m; }
+  }
+  lo -= 3; hi += 3;
+  const span = hi - lo;
+  if (span < MIN_SPAN) { const g = Math.ceil((MIN_SPAN - span) / 2); lo -= g; hi += g; }
+  lo = Math.max(MIDI_MIN, lo); hi = Math.min(MIDI_MAX, hi);
+  if (hi - lo < MIN_SPAN) { if (lo <= MIDI_MIN) hi = Math.min(MIDI_MAX, lo + MIN_SPAN); else lo = Math.max(MIDI_MIN, hi - MIN_SPAN); }
+  const w = { min: lo, max: hi };
+  winCache[track] = w;
+  return w;
+}
+
+function clearOverlaps(notes, start, len, exceptIdx = -1) {
+  const end = start + len;
+  return notes.filter((n, i) => {
+    if (i === exceptIdx) return true;
+    const nEnd = n.start + n.len;
+    return nEnd <= start || n.start >= end;
+  });
+}
+
+// ---------- Mute/solo audibility ----------
+function anySolo() { return ALL_TRACKS.some(t => state.solo[t]); }
+function audible(track) {
+  if (state.mute[track]) return false;
+  return anySolo() ? state.solo[track] : true;
+}
+
+// ---------- Rendering ----------
+// The playhead/grip/loop overlays are built once by createOverlays() and only
+// repositioned here — render() must NOT recreate or remove them (a stale
+// per-render cleanup sweep here previously deleted the just-created overlays on
+// the first render, making the playhead vanish).
+function render() {
+  renderTimeline();
+  renderTracks();
+  positionOverlays();
+  renderInspector();
+  autosave();
+  checkpointHistory();
+}
+
+// The playhead, grip and loop region/handles are persistent chrome whose content
+// never changes — only their position. Create them once (as .daw children, so the
+// timeline/tracks innerHTML clears never touch them) and just reposition on render.
+function createOverlays() {
+  playheadEl = el('div', 'playhead');
+  playheadGrip = el('div', 'playhead-grip');
+  playheadGrip.addEventListener('mousedown', (e) => startScrub(e));
+  const region = el('div', 'loop-region');
+  const startHandle = el('div', 'loop-handle');
+  const endHandle = el('div', 'loop-handle');
+  startHandle.addEventListener('mousedown', (e) => startLoopDrag(e, 'start'));
+  endHandle.addEventListener('mousedown', (e) => startLoopDrag(e, 'end'));
+  loopEls = { region, startHandle, endHandle };
+  markersLayer = el('div'); markersLayer.id = 'markers-layer';
+  daw.append(region, startHandle, endHandle, markersLayer, playheadEl, playheadGrip);
+}
+
+// Rebuild the marker flags/lines (called from renderTimeline). Markers live in
+// content coordinates so they scroll and zoom with the grid. Clicking a flag
+// renames it (empty name deletes).
+function renderMarkers() {
+  if (!markersLayer) return;
+  markersLayer.innerHTML = '';
+  markersLayer.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+  for (const mk of state.markers) {
+    const x = LANE_ORIGIN + mk.col * colPx;
+    const line = el('div', 'marker-line'); line.style.left = x + 'px';
+    const flag = el('div', 'marker-flag'); flag.style.left = x + 'px';
+    flag.textContent = mk.name || 'Marker';
+    flag.title = `${mk.name || 'Marker'} — click to rename (empty deletes)`;
+    flag.addEventListener('mousedown', (e) => e.stopPropagation());
+    flag.addEventListener('click', (e) => { e.stopPropagation(); renameMarker(mk); });
+    markersLayer.append(line, flag);
+  }
+}
+function renameMarker(mk) {
+  const name = prompt('Marker name (leave empty to delete):', mk.name || '');
+  if (name === null) return;
+  if (name.trim() === '') state.markers = state.markers.filter(m => m !== mk);
+  else mk.name = name.trim();
+  render(); autosave();
+}
+function addMarkerAtPlayhead() {
+  const col = Math.max(0, Math.min(COLS, Math.round(state.playhead)));
+  const n = state.markers.length + 1;
+  state.markers.push({ col, name: 'Marker ' + n });
+  render(); autosave();
+}
+
+function renderTimeline() {
+  timelineEl.innerHTML = '';
+  const corner = el('div', 'tl-corner');
+  corner.textContent = 'BARS';
+  timelineEl.appendChild(corner);
+  const ruler = el('div', 'tl-ruler');
+  ruler.style.gridTemplateColumns = `repeat(${COLS}, ${colPx}px)`;
+  const bar = eighthsPerBar();
+  for (let c = 0; c < COLS; c++) {
+    const rc = el('div', 'ruler-cell' + (c % bar === 0 ? ' bar-start' : ''));
+    rc.style.gridColumn = c + 1;
+    if (c % bar === 0) { const bn = el('span', 'barnum'); bn.textContent = (c / bar) + 1; rc.appendChild(bn); }
+    rc.addEventListener('mousedown', (e) => startScrub(e));
+    ruler.appendChild(rc);
+  }
+  timelineEl.appendChild(ruler);
+  rulerGridEl = ruler;
+  renderMarkers();
+}
+
+function renderTracks() {
+  tracksEl.innerHTML = '';
+  laneRolls.length = 0;
+  for (const t of state.trackList) {
+    if (t.kind === 'rhythm') renderRhythmTrack();
+    else renderPitchTrack(t.id);
+  }
+  renderAddTrack();
+}
+// A slim "＋ Add track" strip under the last track.
+function renderAddTrack() {
+  const row = el('div', 'add-track-row');
+  const btn = el('button', 'add-track-btn');
+  btn.textContent = '＋ Add track';
+  btn.title = 'Add a new tonal track';
+  btn.addEventListener('click', addTrack);
+  row.appendChild(btn);
+  tracksEl.appendChild(row);
+}
+
+// ---------- Add / rename / remove tracks ----------
+let trackSeq = 0;
+const nextTrackId = () => 'trk' + Date.now().toString(36) + (trackSeq++);
+// If the audio graph is already live, wire up a channel for a freshly added
+// track so it previews/plays without needing a full teardown.
+function ensureChannelNodes(id) {
+  if (!ctx || !masterGain || chanGain[id]) return;
+  chanPan[id] = ctx.createStereoPanner();
+  chanPan[id].pan.value = state.pan[id] || 0;
+  chanPan[id].connect(masterGain);
+  chanGain[id] = ctx.createGain();
+  chanGain[id].gain.value = audible(id) ? state.gains[id] : 0;
+  chanGain[id].connect(chanPan[id]);
+  chanAnalyser[id] = ctx.createAnalyser();
+  chanAnalyser[id].fftSize = 256;
+  chanGain[id].connect(chanAnalyser[id]);
+}
+function addTrack() {
+  const id = nextTrackId();
+  const tonalCount = state.trackList.filter(t => t.kind === 'tone').length;
+  const desc = { id, name: 'Track ' + (tonalCount + 1), color: TRACK_PALETTE[tonalCount % TRACK_PALETTE.length], kind: 'tone' };
+  const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm'); // keep rhythm last
+  state.trackList.splice(rIdx < 0 ? state.trackList.length : rIdx, 0, desc);
+  state.tracks[id] = [];
+  state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
+  refreshTrackArrays();
+  ensureChannelNodes(id);
+  state.activeTrack = id;
+  render(); autosave();
+}
+function renameTrack(id) {
+  const t = trackOf(id);
+  if (!t) return;
+  const name = prompt('Track name:', t.name);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (trimmed) { t.name = trimmed; render(); autosave(); }
+}
+function removeTrack(id) {
+  const t = trackOf(id);
+  if (!t || t.kind === 'rhythm') return; // rhythm can't be removed
+  const n = (state.tracks[id] || []).length;
+  if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
+  state.trackList = state.trackList.filter(x => x.id !== id);
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo]) delete map[id];
+  for (const nodes of [chanGain, chanPan, chanAnalyser]) {
+    if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
+  }
+  delete vuLevel[id]; delete vuMeters[id];
+  refreshTrackArrays();
+  if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
+  if (state.selected && state.selected.track === id) state.selected = null;
+  state.multiSelected.clear();
+  render(); autosave();
+}
+
+function buildHeader(track) {
+  const header = el('div', 'track-header');
+  header.style.borderLeftColor = trackColor(track);
+  const top = el('div', 'th-top');
+  const nameWrap = el('div');
+  const name = el('span', 'th-name'); name.textContent = trackName(track);
+  name.style.color = trackColor(track);
+  name.title = 'Double-click to rename';
+  name.addEventListener('mousedown', (e) => e.stopPropagation());
+  name.addEventListener('dblclick', (e) => { e.stopPropagation(); renameTrack(track); });
+  nameWrap.append(name);
+  if (track === 'rhythm') {
+    const osc = el('span', 'th-osc'); osc.textContent = WAVE_LABEL.kit;
+    nameWrap.append(osc);
+  } else {
+    // Waveform (oscillator) picker — affects the editor preview AND the game
+    // via the exported VOICES config.
+    const wave = el('select', 'th-wave');
+    wave.title = 'Waveform (VOICES ' + track + ')';
+    for (const w of WAVEFORMS) {
+      const opt = document.createElement('option');
+      opt.value = w; opt.textContent = WAVE_LABEL[w];
+      if (state.waveform[track] === w) opt.selected = true;
+      wave.append(opt);
+    }
+    wave.addEventListener('mousedown', (e) => e.stopPropagation());
+    wave.addEventListener('change', (e) => {
+      e.stopPropagation();
+      state.waveform[track] = wave.value;
+      const n = state.tracks[track][0];
+      if (n) previewNote(track, n);
+      autosave();
+    });
+    nameWrap.append(wave);
+  }
+  const btns = el('div', 'th-btns');
+  for (const [cls, key, label] of [['m', 'mute', 'M'], ['s', 'solo', 'S']]) {
+    const btn = el('button', cls + (state[key][track] ? ' on' : ''));
+    btn.textContent = label;
+    btn.title = key[0].toUpperCase() + key.slice(1);
+    // Swallow mousedown too: otherwise the header's own mousedown (setActive ->
+    // render) rebuilds this button before the click completes, dropping the click.
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
+    btns.append(btn);
+  }
+  if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
+    const rm = el('button', 'x'); rm.textContent = '✕'; rm.title = 'Remove this track';
+    rm.addEventListener('mousedown', (e) => e.stopPropagation());
+    rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
+    btns.append(rm);
+  }
+  top.append(nameWrap, btns);
+
+  const vol = el('div', 'th-vol');
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 0; slider.max = 2; slider.step = 0.05; slider.value = state.gains[track];
+  slider.title = 'Channel volume (mix)'; slider.style.accentColor = trackColor(track);
+  const val = el('span', 'vol-val'); val.textContent = Number(state.gains[track]).toFixed(2);
+  slider.addEventListener('mousedown', (e) => e.stopPropagation());
+  slider.addEventListener('input', () => {
+    state.gains[track] = parseFloat(slider.value);
+    val.textContent = state.gains[track].toFixed(2);
+    applyGains(); autosave();
+  });
+  vol.append(slider, val);
+
+  // Stereo pan (VOICES) — affects the editor preview AND the game.
+  const panRow = el('div', 'th-pan');
+  const panSlider = document.createElement('input');
+  panSlider.type = 'range'; panSlider.min = -1; panSlider.max = 1; panSlider.step = 0.1; panSlider.value = state.pan[track];
+  panSlider.title = 'Stereo pan'; panSlider.style.accentColor = trackColor(track);
+  const panVal = el('span', 'pan-val'); panVal.textContent = panLabel(state.pan[track]);
+  panSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+  panSlider.addEventListener('dblclick', (e) => { e.stopPropagation(); panSlider.value = 0; panSlider.dispatchEvent(new Event('input')); });
+  panSlider.addEventListener('input', () => {
+    state.pan[track] = parseFloat(panSlider.value);
+    panVal.textContent = panLabel(state.pan[track]);
+    applyPan(); autosave();
+  });
+  panRow.append(panSlider, panVal);
+
+  // Live level meter (VU) — updated by the meter RAF while audio is running.
+  const vu = el('div', 'vu');
+  const vuMask = el('div', 'vu-mask');
+  vu.appendChild(vuMask);
+  vuMeters[track] = vuMask;
+
+  header.append(top, vol, panRow, vu);
+  header.addEventListener('mousedown', () => setActive(track, true));
+  return header;
+}
+
+function buildGutterCell(text, cls) {
+  const g = el('div', 'glabel' + (cls ? ' ' + cls : ''));
+  g.textContent = text;
+  return g;
+}
+
+// Resolve a pointer event inside a lane to a snapped column (eighths, possibly
+// sub-eighth) and the MIDI pitch of the row it fell on.
+function laneCoords(e, rollEl, rowH, midiTop) {
+  const rect = rollEl.getBoundingClientRect();
+  const col = Math.max(0, Math.min(COLS - state.grid, snapToGrid((e.clientX - rect.left) / colPx)));
+  const rowIndex = Math.max(0, Math.floor((e.clientY - rect.top) / rowH));
+  return { col, midi: midiTop - rowIndex };
+}
+
+// Vertical guide lines at the current grid resolution, layered above the eighth
+// cells but below notes. Skipped at 1/8 (the eighth cell borders already mark it).
+function addSubgrid(rollEl, heightPx) {
+  if (Math.abs(state.grid - 1) < EPS) return;
+  const sub = el('div', 'subgrid');
+  const gpx = gridPx();
+  sub.style.height = heightPx + 'px';
+  sub.style.backgroundImage =
+    `repeating-linear-gradient(90deg, var(--subgrid) 0, var(--subgrid) 1px, transparent 1px, transparent ${gpx}px)`;
+  rollEl.appendChild(sub);
+}
+
+function renderPitchTrack(track) {
+  const win = pitchWindow(track);
+  const pitchCount = win.max - win.min + 1;
+  const active = state.activeTrack === track;
+  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent'));
+  row.dataset.track = track;
+  row.appendChild(buildHeader(track));
+
+  const gutter = el('div', 'gutter');
+  gutter.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
+  for (let p = 0; p < pitchCount; p++) {
+    const midi = win.max - p;
+    const isC = midi % 12 === 0;
+    const isBlack = NOTE_NAMES[((midi % 12) + 12) % 12].includes('#');
+    gutter.appendChild(buildGutterCell(isBlack ? '' : midiToName(midi), isC ? 'c' : ''));
+  }
+  row.appendChild(gutter);
+
+  const rollEl = el('div', 'lane');
+  rollEl.style.gridTemplateColumns = `repeat(${COLS}, ${colPx}px)`;
+  rollEl.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
+  rollEl.dataset.track = track;
+
+  const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
+  for (let p = 0; p < pitchCount; p++) {
+    const midi = win.max - p;
+    const isBlack = NOTE_NAMES[((midi % 12) + 12) % 12].includes('#');
+    for (let c = 0; c < COLS; c++) {
+      const cell = el('div', 'cell' + (c % epb === 0 ? ' bar-start' : (c % ebeat === 0 ? ' beat' : '')) + (isBlack ? ' black' : ''));
+      cell.style.gridRow = p + 1;
+      cell.style.gridColumn = c + 1;
+      rollEl.appendChild(cell);
+    }
+  }
+  addSubgrid(rollEl, pitchCount * ROW_H);
+  // Placement/marquee are handled at the lane level so a click anywhere resolves
+  // to a snapped (possibly sub-eighth) column, not just a whole-cell index.
+  rollEl.addEventListener('click', (e) => {
+    if (state.tool !== 'pen') return;
+    setActive(track);
+    const { col, midi } = laneCoords(e, rollEl, ROW_H, win.max);
+    onCellClick(track, midi, col);
+  });
+  rollEl.addEventListener('mousedown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+
+  state.tracks[track].forEach((note, idx) => {
+    const midi = freqToMidi(note.freq);
+    const p = Math.max(0, Math.min(pitchCount - 1, win.max - midi));
+    const div = el('div');
+    const isSelected = state.selected && state.selected.track === track && state.selected.index === idx;
+    div.className = 'note ' + track +
+      (note.bend ? ' bend' : '') + (note.vib ? ' vib' : '') + (note.trem ? ' trem' : '') +
+      (note.porta ? ' porta' : '') + (note.crush ? ' crush' : '') +
+      (note.echo ? ' echo' : '') + (note.chorus ? ' chorus' : '') +
+      (isSelected ? ' selected' : '') + (state.multiSelected.has(note) ? ' multi-selected' : '');
+    div.style.background = trackColor(track);
+    div.style.position = 'absolute';
+    div.style.left = (note.start * colPx) + 'px';
+    div.style.width = Math.max(3, note.len * colPx) + 'px';
+    div.style.top = (p * ROW_H) + 'px';
+    div.style.height = ROW_H + 'px';
+    // Velocity shown as brightness — quieter notes look dimmer.
+    div.style.opacity = (0.4 + 0.6 * (note.vel != null ? note.vel : 1)).toFixed(2);
+    div.addEventListener('mousedown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveNote(e, track, idx); });
+    div.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.shiftKey) { toggleMultiSelect(track, note); return; } // Shift+click adds/removes from the selection (any tool)
+      setActive(track);
+      if (state.tool === 'eraser') {
+        if (state.multiSelected.size > 1 && state.multiSelected.has(note)) deleteSelection();
+        else deleteNote(track, idx);
+      } else if (state.tool === 'pen') selectNote(track, idx);
+    });
+    if (note.arp && note.arp.length) { const badge = el('span', 'arp-badge'); badge.textContent = '♪'; div.appendChild(badge); }
+    if (state.tool === 'grab') {
+      const handle = el('div', 'handle');
+      handle.addEventListener('mousedown', (e) => { setActive(track); startResize(e, track, idx); });
+      div.appendChild(handle);
+    }
+    rollEl.appendChild(div);
+  });
+
+  renderMarquee(rollEl, track, pitchCount * ROW_H);
+  row.appendChild(rollEl);
+  tracksEl.appendChild(row);
+  laneRolls.push({ track, rollEl });
+}
+
+function renderRhythmTrack() {
+  const track = 'rhythm';
+  const active = state.activeTrack === track;
+  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent'));
+  row.dataset.track = track;
+  row.appendChild(buildHeader(track));
+
+  const gutter = el('div', 'gutter');
+  gutter.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
+  for (const type of RHYTHM_ROWS) gutter.appendChild(buildGutterCell(RHYTHM_LABELS[type], 'rhy'));
+  row.appendChild(gutter);
+
+  const rollEl = el('div', 'lane');
+  rollEl.style.gridTemplateColumns = `repeat(${COLS}, ${colPx}px)`;
+  rollEl.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
+  rollEl.dataset.track = track;
+
+  const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
+  RHYTHM_ROWS.forEach((type, r) => {
+    for (let c = 0; c < COLS; c++) {
+      const cell = el('div', 'cell' + (c % epb === 0 ? ' bar-start' : (c % ebeat === 0 ? ' beat' : '')));
+      cell.style.gridRow = r + 1;
+      cell.style.gridColumn = c + 1;
+      rollEl.appendChild(cell);
+    }
+  });
+  addSubgrid(rollEl, RHYTHM_ROWS.length * RHY_H);
+  rollEl.addEventListener('click', (e) => {
+    if (state.tool !== 'pen') return;
+    setActive(track);
+    const rect = rollEl.getBoundingClientRect();
+    const col = Math.max(0, Math.min(COLS - state.grid, snapToGrid((e.clientX - rect.left) / colPx)));
+    const row = Math.max(0, Math.min(RHYTHM_ROWS.length - 1, Math.floor((e.clientY - rect.top) / RHY_H)));
+    onRhythmCellClick(row, col);
+  });
+  rollEl.addEventListener('mousedown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+
+  for (const hit of state.tracks.rhythm) {
+    const r = RHYTHM_ROWS.indexOf(hit.type);
+    const div = el('div', 'hit' + (hit.type !== 'kick' ? ' ' + hit.type : '') + (state.multiSelected.has(hit) ? ' multi-selected' : ''));
+    div.style.position = 'absolute';
+    div.style.left = (hit.start * colPx) + 'px';
+    div.style.width = Math.max(6, gridPx()) + 'px';
+    div.style.top = (r * RHY_H + (RHY_H - 12) / 2) + 'px';
+    div.addEventListener('mousedown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, hit); });
+    div.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.shiftKey) { toggleMultiSelect(track, hit); return; } // Shift+click adds/removes from the selection (any tool)
+      setActive(track);
+      if (state.tool === 'eraser') {
+        if (state.multiSelected.size > 1 && state.multiSelected.has(hit)) deleteSelection();
+        else removeHit(hit);
+      }
+    });
+    rollEl.appendChild(div);
+  }
+
+  renderMarquee(rollEl, track, RHYTHM_ROWS.length * RHY_H);
+  row.appendChild(rollEl);
+  tracksEl.appendChild(row);
+  laneRolls.push({ track, rollEl });
+}
+
+// Master has no notes of its own, so it's a header-only strip (no gutter/lane)
+// docked under Rhythm, rebuilt fresh from state.masterVol on every render.
+function renderMarquee(rollEl, track, heightPx) {
+  if (!state.marquee || state.marquee.track !== track) return;
+  const { col0, col1 } = state.marquee;
+  const m = el('div', 'marquee');
+  m.style.left = (col0 * colPx) + 'px';
+  m.style.width = ((col1 - col0) * colPx) + 'px';
+  m.style.height = heightPx + 'px';
+  rollEl.appendChild(m);
+}
+
+// ---------- Playhead + loop overlay positioning ----------
+function positionOverlays() {
+  updatePlayheadPositions();
+  updateLoopPositions();
+  updateHScroll();
+}
+
+// ---------- Custom horizontal scrollbar (track starts at the note grid) ----------
+const hscrollEl = document.getElementById('hscroll');
+const hscrollTrack = document.getElementById('hscroll-track');
+const hscrollThumb = document.getElementById('hscroll-thumb');
+function updateHScroll() {
+  const maxScroll = daw.scrollWidth - daw.clientWidth;
+  if (maxScroll <= 1) { hscrollEl.classList.add('hidden'); return; }
+  hscrollEl.classList.remove('hidden');
+  const trackW = hscrollTrack.clientWidth;
+  const thumbW = Math.max(30, Math.round(trackW * (daw.clientWidth / daw.scrollWidth)));
+  const left = Math.round((trackW - thumbW) * (daw.scrollLeft / maxScroll));
+  hscrollThumb.style.width = thumbW + 'px';
+  hscrollThumb.style.left = left + 'px';
+}
+daw.addEventListener('scroll', updateHScroll, { passive: true });
+window.addEventListener('resize', updateHScroll);
+hscrollThumb.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const trackW = hscrollTrack.clientWidth;
+  const thumbW = hscrollThumb.offsetWidth;
+  const maxScroll = daw.scrollWidth - daw.clientWidth;
+  const range = trackW - thumbW;
+  const startX = e.clientX;
+  const startLeft = parseFloat(hscrollThumb.style.left) || 0;
+  hscrollThumb.classList.add('dragging');
+  // window-level listeners so the drag keeps tracking when the cursor leaves the
+  // thumb (the codebase's other drags do the same).
+  const onMove = (ev) => {
+    const newLeft = Math.max(0, Math.min(range, startLeft + (ev.clientX - startX)));
+    daw.scrollLeft = range > 0 ? maxScroll * (newLeft / range) : 0;
+  };
+  const onUp = () => {
+    hscrollThumb.classList.remove('dragging');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+});
+// Click on the track (outside the thumb) pages the view toward the click.
+hscrollTrack.addEventListener('pointerdown', (e) => {
+  if (e.target === hscrollThumb) return;
+  const rect = hscrollTrack.getBoundingClientRect();
+  const maxScroll = daw.scrollWidth - daw.clientWidth;
+  const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  daw.scrollLeft = maxScroll * frac;
+});
+function updatePlayheadPositions() {
+  const left = (LANE_ORIGIN + visualPlayhead * colPx) + 'px';
+  if (playheadEl) playheadEl.style.left = left;
+  if (playheadGrip) playheadGrip.style.left = left;
+  updateCounter();
+}
+
+// Pro Tools-style Bars|Beats|Sub + Min:Sec counter, driven by the playhead.
+const lcdBars = document.getElementById('lcd-bars');
+const lcdTime = document.getElementById('lcd-time');
+function updateCounter() {
+  if (!lcdBars) return;
+  const col = Math.max(0, Math.min(COLS, visualPlayhead));
+  const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
+  const posInBar = ((col % epb) + epb) % epb;
+  const bar = Math.floor(col / epb) + 1;
+  const beat = Math.floor(posInBar / ebeat) + 1;      // beat within the bar
+  const sub = Math.floor(posInBar % ebeat) + 1;       // eighth-note subdivision within the beat
+  lcdBars.innerHTML = String(bar).padStart(3, '0') +
+    '<span class="sep-dot">|</span>' + beat + '<span class="sep-dot">|</span>' + sub;
+  const sec = col * (60 / state.tempo / 2);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  lcdTime.textContent = m + ':' + String(Math.floor(s)).padStart(2, '0') + '.' + Math.floor((s % 1) * 10);
+}
+function updateLoopPositions() {
+  if (!loopEls) return;
+  const left = LANE_ORIGIN + state.loopStart * colPx;
+  const width = (state.loopEnd - state.loopStart) * colPx;
+  loopEls.region.style.left = left + 'px';
+  loopEls.region.style.width = width + 'px';
+  loopEls.startHandle.style.left = left + 'px';
+  loopEls.endHandle.style.left = (left + width) + 'px';
+}
+
+// Pass a cached rect (captured once at gesture start) to avoid a layout read on
+// every mousemove; falls back to a fresh measurement for one-off calls.
+function colFromClientX(clientX, rect = rulerGridEl.getBoundingClientRect()) {
+  return (clientX - rect.left) / colPx;
+}
+
+function seekTo(col) {
+  col = Math.max(0, Math.min(COLS - 1, Math.round(col)));
+  state.playhead = col;
+  visualPlayhead = col;
+  updatePlayheadPositions();
+  if (playing) { ensureCtx(); startPlaybackFrom(col); }
+}
+function startScrub(e) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const rect = rulerGridEl.getBoundingClientRect();
+  const seek = (ev) => seekTo(colFromClientX(ev.clientX, rect));
+  seek(e);
+  const onMove = (ev) => seek(ev);
+  const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+function startLoopDrag(e, which) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const rect = rulerGridEl.getBoundingClientRect();
+  function move(ev) {
+    const col = Math.max(0, Math.min(COLS, Math.round(colFromClientX(ev.clientX, rect))));
+    if (which === 'start') state.loopStart = Math.min(col, state.loopEnd - 1);
+    else state.loopEnd = Math.max(col, state.loopStart + 1);
+    updateLoopPositions();
+  }
+  move(e);
+  function up() { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); interacting = false; }
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+}
+
+// ---------- Editing ----------
+function setActive(track, forceRender) {
+  if (state.activeTrack === track) { if (forceRender) render(); return; }
+  state.activeTrack = track;
+  state.multiSelected.clear();
+  render();
+}
+
+function onCellClick(track, midi, col) {
+  const notes = state.tracks[track];
+  const len = state.grid;
+  const cleared = clearOverlaps(notes, col, len);
+  cleared.push({
+    start: col, len, freq: round2(midiToFreq(midi)), vel: 1,
+    bend: null, vib: false, trem: false, duty: null, arp: null,
+    porta: false, crush: false, echo: false, chorus: false
+  });
+  state.tracks[track] = cleared;
+  state.selected = { track, index: cleared.length - 1 };
+  previewNote(track, cleared[cleared.length - 1]);
+  render();
+}
+function onRhythmCellClick(row, col) {
+  const type = RHYTHM_ROWS[row];
+  const hits = state.tracks.rhythm.filter(h => h.start !== col);
+  hits.push({ start: col, type });
+  state.tracks.rhythm = hits;
+  previewHit(type);
+  render();
+}
+function removeHit(hit) { state.tracks.rhythm = state.tracks.rhythm.filter(h => h !== hit); render(); }
+function selectNote(track, idx) { state.selected = { track, index: idx }; state.multiSelected.clear(); previewNote(track, state.tracks[track][idx]); render(); }
+function deleteNote(track, idx) {
+  state.tracks[track] = state.tracks[track].filter((_, i) => i !== idx);
+  if (state.selected && state.selected.track === track && state.selected.index === idx) state.selected = null;
+  render();
+}
+
+// ---------- Multi-select / marquee ----------
+function startMarquee(e, rollEl, track) {
+  e.preventDefault();
+  interacting = true;
+  const rollRect = rollEl.getBoundingClientRect();
+  const startCol = Math.max(0, Math.min(COLS, Math.round((e.clientX - rollRect.left) / colPx)));
+  let moved = false;
+  const setRange = (a, b) => { state.marquee = { col0: Math.min(a, b), col1: Math.max(a, b), track }; render(); };
+  setRange(startCol, startCol);
+  function onMove(ev) {
+    const col = Math.max(0, Math.min(COLS, Math.round((ev.clientX - rollRect.left) / colPx)));
+    if (col !== startCol) moved = true;
+    setRange(startCol, col);
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    interacting = false;
+    const range = state.marquee;
+    state.marquee = null;
+    if (!moved) { clearSelection(); return; }
+    selectRange(range.col0, range.col1);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+function selectRange(lo, hi) {
+  state.multiSelected.clear();
+  const items = state.tracks[state.activeTrack];
+  for (const item of items) if (item.start >= lo && item.start < hi) state.multiSelected.add(item);
+  state.selected = null;
+  render();
+}
+// Shift+click: toggle a single note/hit in/out of the multi-selection so notes
+// can be picked one by one (in addition to the marquee drag). Handles the active
+// track switch itself (one render), and folds the current single selection into
+// the group so shift+click extends an existing selection instead of replacing it.
+function toggleMultiSelect(track, item) {
+  if (state.activeTrack !== track) {
+    state.activeTrack = track;
+    state.multiSelected.clear();
+  } else if (state.selected && state.selected.track === track) {
+    const selNote = state.tracks[track][state.selected.index];
+    if (selNote) state.multiSelected.add(selNote);
+  }
+  if (state.multiSelected.has(item)) state.multiSelected.delete(item);
+  else state.multiSelected.add(item);
+  state.selected = null;
+  render();
+}
+
+let clipboard = null;
+function clearSelection() {
+  if (state.multiSelected.size === 0 && !state.selected) return;
+  state.multiSelected.clear();
+  state.selected = null;
+  render();
+}
+function deleteSelection() {
+  if (state.multiSelected.size > 0) {
+    state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(n => !state.multiSelected.has(n));
+    state.multiSelected.clear();
+    render();
+  } else if (state.selected) {
+    deleteNote(state.selected.track, state.selected.index);
+  }
+}
+function nudgeSelection(dCol, dRow) {
+  if (state.multiSelected.size > 0) {
+    const sel = [...state.multiSelected];
+    if (state.activeTrack === 'rhythm') {
+      const minStart = Math.min(...sel.map(h => h.start));
+      const maxStart = Math.max(...sel.map(h => h.start));
+      const rows = sel.map(h => RHYTHM_ROWS.indexOf(h.type));
+      const dc = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, dCol));
+      const dr = Math.max(Math.max(...rows) - (RHYTHM_ROWS.length - 1), Math.min(Math.min(...rows), dRow));
+      sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
+      const selSet = state.multiSelected;
+      state.tracks.rhythm = state.tracks.rhythm.filter(h => selSet.has(h) || !sel.some(s => s.start === h.start));
+    } else {
+      const notes = state.tracks[state.activeTrack];
+      const minStart = Math.min(...sel.map(n => n.start));
+      const maxEnd   = Math.max(...sel.map(n => n.start + n.len));
+      const midis    = sel.map(n => freqToMidi(n.freq));
+      const dc = Math.max(-minStart, Math.min(COLS - maxEnd, dCol));
+      const dr = Math.max(MIDI_MIN - Math.min(...midis), Math.min(MIDI_MAX - Math.max(...midis), dRow));
+      sel.forEach((n, i) => { n.start = quant(n.start + dc); if (dr) n.freq = round2(midiToFreq(midis[i] + dr)); });
+      const selSet = state.multiSelected;
+      let rest = notes.filter(n => !selSet.has(n));
+      for (const n of sel) rest = rest.filter(o => o.start + o.len <= n.start || o.start >= n.start + n.len);
+      state.tracks[state.activeTrack] = [...rest, ...sel];
+    }
+    render();
+    return;
+  }
+  if (!state.selected) return;
+  const { track, index } = state.selected;
+  const notes = state.tracks[track];
+  const note = notes[index];
+  note.start = quant(Math.max(0, Math.min(COLS - note.len, note.start + dCol)));
+  if (dRow) {
+    const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
+    note.freq = round2(midiToFreq(midi));
+  }
+  const cleared = clearOverlaps(notes, note.start, note.len, notes.indexOf(note));
+  state.tracks[track] = cleared;
+  state.selected = { track, index: cleared.indexOf(note) };
+  render();
+}
+function copySelection() {
+  let items, track;
+  if (state.multiSelected.size > 0) { items = [...state.multiSelected]; track = state.activeTrack; }
+  else if (state.selected) { items = [state.tracks[state.selected.track][state.selected.index]]; track = state.selected.track; }
+  else return;
+  const minStart = Math.min(...items.map(n => n.start));
+  clipboard = { track, items: items.map(n => ({ ...n, start: n.start - minStart, arp: n.arp ? [...n.arp] : null })) };
+}
+function pasteClipboard() {
+  if (!clipboard) return;
+  const clipIsRhythm = clipboard.track === 'rhythm';
+  if (clipIsRhythm !== (state.activeTrack === 'rhythm')) return;
+  const anchor = state.playhead;
+  if (state.activeTrack === 'rhythm') {
+    const seen = new Set();
+    const pasted = [];
+    for (const it of clipboard.items) {
+      const start = quant(Math.max(0, Math.min(COLS - state.grid, it.start + anchor)));
+      if (seen.has(start)) continue;
+      seen.add(start);
+      pasted.push({ start, type: it.type });
+    }
+    state.tracks.rhythm = [...state.tracks.rhythm.filter(h => !seen.has(h.start)), ...pasted];
+    state.multiSelected = new Set(pasted);
+  } else {
+    let notes = state.tracks[state.activeTrack];
+    const pasted = [];
+    for (const it of clipboard.items) {
+      const newStart = quant(Math.max(0, Math.min(COLS - it.len, it.start + anchor)));
+      notes = clearOverlaps(notes, newStart, it.len);
+      const newNote = { ...it, start: newStart, arp: it.arp ? [...it.arp] : null };
+      notes.push(newNote);
+      pasted.push(newNote);
+    }
+    state.tracks[state.activeTrack] = notes;
+    state.multiSelected = new Set(pasted);
+  }
+  state.selected = null;
+  render();
+}
+
+function nextNoteStart(notes, afterCol) {
+  let min = COLS;
+  for (const n of notes) if (n.start > afterCol && n.start < min) min = n.start;
+  return min;
+}
+function startResize(e, track, idx) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const notes = state.tracks[track];
+  const note = notes[idx];
+  const startX = e.clientX;
+  const startLen = note.len;
+  function onMove(ev) {
+    const deltaGrid = Math.round((ev.clientX - startX) / gridPx()) * state.grid;
+    const newLen = Math.max(state.grid, startLen + deltaGrid);
+    const others = notes.filter((_, i) => i !== idx);
+    const maxLen = nextNoteStart(others, note.start) - note.start;
+    note.len = quant(Math.min(newLen, Math.max(state.grid, maxLen)));
+    render();
+  }
+  function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; render(); }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+function startMoveNote(e, track, idx) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const notes = state.tracks[track];
+  const note = notes[idx];
+  const group = (state.multiSelected.size > 1 && state.multiSelected.has(note)) ? [...state.multiSelected] : [note];
+  const startPositions = group.map(n => ({ n, start: n.start, midi: freqToMidi(n.freq) }));
+  const minStart = Math.min(...startPositions.map(p => p.start));
+  const maxEnd   = Math.max(...startPositions.map(p => p.start + p.n.len));
+  const minMidi  = Math.min(...startPositions.map(p => p.midi));
+  const maxMidi  = Math.max(...startPositions.map(p => p.midi));
+  const startX = e.clientX, startY = e.clientY;
+  let moved = false;
+  function onMove(ev) {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    if (!moved) return;
+    const deltaCols = Math.max(-minStart, Math.min(COLS - maxEnd, Math.round(dx / gridPx()) * state.grid));
+    const pitchRowDelta = Math.max(maxMidi - MIDI_MAX, Math.min(minMidi - MIDI_MIN, Math.round(dy / ROW_H)));
+    for (const { n, start, midi } of startPositions) {
+      n.start = quant(start + deltaCols);
+      n.freq = round2(midiToFreq(midi - pitchRowDelta));
+    }
+    render();
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    interacting = false;
+    if (!moved) { selectNote(track, idx); return; }
+    const groupSet = new Set(group);
+    let rest = notes.filter(n => !groupSet.has(n));
+    for (const n of group) rest = rest.filter(o => o.start + o.len <= n.start || o.start >= n.start + n.len);
+    state.tracks[track] = [...rest, ...group];
+    state.selected = { track, index: state.tracks[track].indexOf(note) };
+    render();
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+function startMoveHit(e, hit) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const group = (state.multiSelected.size > 1 && state.multiSelected.has(hit)) ? [...state.multiSelected] : [hit];
+  const startPositions = group.map(h => ({ h, start: h.start, row: RHYTHM_ROWS.indexOf(h.type) }));
+  const minStart = Math.min(...startPositions.map(p => p.start));
+  const maxStart = Math.max(...startPositions.map(p => p.start));
+  const minRow   = Math.min(...startPositions.map(p => p.row));
+  const maxRow   = Math.max(...startPositions.map(p => p.row));
+  const startX = e.clientX, startY = e.clientY;
+  function onMove(ev) {
+    const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, Math.round((ev.clientX - startX) / gridPx()) * state.grid));
+    const deltaRows = Math.max(-minRow, Math.min(RHYTHM_ROWS.length - 1 - maxRow, Math.round((ev.clientY - startY) / RHY_H)));
+    for (const { h, start, row } of startPositions) { h.start = quant(start + deltaCols); h.type = RHYTHM_ROWS[row + deltaRows]; }
+    render();
+  }
+  function onUp() {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    interacting = false;
+    const groupSet = new Set(group);
+    state.tracks.rhythm = state.tracks.rhythm.filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
+    render();
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
+// ---------- Inspector ----------
+function renderInspector() {
+  const sel = state.selected;
+  const note = sel && state.tracks[sel.track] && state.tracks[sel.track][sel.index];
+  document.body.classList.toggle('has-sel', !!note); // drives the mobile close button
+  if (!note) {
+    inspector.className = 'inspector empty';
+    inspector.textContent = 'No note selected. Pen a Kick/Snare/Hi-hat/Tom cell in the Rhythm track to add a hit.';
+    return;
+  }
+  const { track, index } = sel;
+  inspector.className = 'inspector';
+  inspector.innerHTML = '';
+
+  const panel = (cap) => {
+    const p = el('div', 'insp-panel');
+    const c = el('div', 'insp-cap'); c.textContent = cap;
+    p.appendChild(c);
+    inspector.appendChild(p);
+    return p;
+  };
+  // Pill toggle button (replaces the old checkboxes) — lights up when active.
+  const addFxToggle = (container, labelText, key, title, extra) => {
+    const btn = el('button', 'fx-toggle' + (note[key] ? ' on' : ''));
+    btn.textContent = labelText;
+    if (title) btn.title = title;
+    btn.addEventListener('click', () => { note[key] = !note[key]; if (extra) extra(note[key]); render(); });
+    container.appendChild(btn);
+    return btn;
+  };
+
+  // --- Header: track badge + note readout ---
+  const head = panel('Selected note');
+  const row = el('div', 'insp-head');
+  const badge = el('span', 'insp-badge');
+  badge.textContent = trackName(track);
+  badge.style.background = trackColor(track);
+  const noteLcd = el('span', 'insp-note');
+  noteLcd.textContent = `${midiToName(freqToMidi(note.freq))} · ${note.freq}Hz`;
+  row.append(badge, noteLcd);
+  head.appendChild(row);
+  const sub = el('div', 'insp-sub');
+  sub.textContent = `length ${note.len}/8th`;
+  head.appendChild(sub);
+
+  // Velocity (loudness/accent) — 10..100%.
+  const velField = el('div', 'insp-field');
+  const velLbl = el('span'); velLbl.textContent = 'Velocity';
+  const velInput = document.createElement('input');
+  velInput.type = 'range'; velInput.min = 0.1; velInput.max = 1; velInput.step = 0.05;
+  velInput.value = note.vel != null ? note.vel : 1;
+  const velVal = el('span', 'insp-velval'); velVal.textContent = Math.round(velInput.value * 100) + '%';
+  velInput.addEventListener('input', () => { velVal.textContent = Math.round(parseFloat(velInput.value) * 100) + '%'; });
+  velInput.addEventListener('change', () => { note.vel = parseFloat(velInput.value); previewNote(track, note); render(); });
+  velField.append(velLbl, velInput, velVal);
+  head.appendChild(velField);
+
+  // --- Modulation ---
+  const mod = panel('Modulation');
+  const modRow = el('div', 'fx-row');
+  addFxToggle(modRow, 'Vibrato', 'vib');
+  addFxToggle(modRow, 'Tremolo', 'trem');
+  addFxToggle(modRow, 'Portamento', 'porta', 'Glides unbroken into the next note in this track, without a new attack.',
+    (on) => { if (on) { note.bend = null; note.arp = null; } });
+  mod.appendChild(modRow);
+
+  // --- Pitch ---
+  const pitch = panel('Pitch');
+  const bendField = el('div', 'insp-field');
+  const bendLbl = el('span'); bendLbl.textContent = 'Bend (semitones)';
+  const bendInput = document.createElement('input');
+  bendInput.type = 'number'; bendInput.min = -24; bendInput.max = 24; bendInput.step = 1;
+  bendInput.value = note.bend ? Math.round(12 * Math.log2(note.bend / note.freq)) : 0;
+  bendInput.addEventListener('change', () => {
+    const semitones = parseInt(bendInput.value, 10) || 0;
+    note.bend = semitones === 0 ? null : round2(note.freq * Math.pow(2, semitones / 12));
+    if (note.bend) { note.arp = null; note.porta = false; }
+    render();
+  });
+  bendField.append(bendLbl, bendInput);
+  pitch.appendChild(bendField);
+
+  if (track !== 'bass') {
+    const dutyField = el('div', 'insp-field');
+    const dutyLbl = el('span'); dutyLbl.textContent = 'Duty cycle';
+    const dutySelect = document.createElement('select');
+    [[null, 'Standard (50%)'], [0.125, '12.5%'], [0.25, '25%'], [0.5, '50%'], [0.75, '75%']].forEach(([v, label]) => {
+      const opt = document.createElement('option');
+      opt.value = v ?? '';
+      opt.textContent = label;
+      if (note.duty === v) opt.selected = true;
+      dutySelect.appendChild(opt);
+    });
+    dutySelect.addEventListener('change', () => { note.duty = dutySelect.value === '' ? null : parseFloat(dutySelect.value); render(); });
+    dutyField.append(dutyLbl, dutySelect);
+    pitch.appendChild(dutyField);
+  }
+
+  const arpField = el('div', 'insp-field');
+  const arpLbl = el('span'); arpLbl.textContent = 'Arpeggio';
+  const arpInput = document.createElement('input');
+  arpInput.type = 'text'; arpInput.placeholder = 'e.g. 4,7';
+  arpInput.title = 'Extra semitones above the root, comma-separated.';
+  arpInput.value = note.arp ? note.arp.join(',') : '';
+  arpInput.addEventListener('change', () => {
+    const parsed = arpInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    note.arp = parsed.length ? parsed : null;
+    if (note.arp) { note.bend = null; note.porta = false; }
+    render();
+  });
+  arpField.append(arpLbl, arpInput);
+  pitch.appendChild(arpField);
+
+  const presets = el('div', 'arp-presets');
+  const arpMajor = document.createElement('button');
+  arpMajor.textContent = 'Major triad';
+  arpMajor.addEventListener('click', () => { note.arp = [4, 7]; note.bend = null; note.porta = false; render(); });
+  const arpMinor = document.createElement('button');
+  arpMinor.textContent = 'Minor triad';
+  arpMinor.addEventListener('click', () => { note.arp = [3, 7]; note.bend = null; note.porta = false; render(); });
+  presets.append(arpMajor, arpMinor);
+  pitch.appendChild(presets);
+
+  // --- Texture / FX ---
+  const fx = panel('Texture / FX');
+  const fxRow = el('div', 'fx-row');
+  addFxToggle(fxRow, 'Bitcrush', 'crush');
+  addFxToggle(fxRow, 'Echo', 'echo');
+  addFxToggle(fxRow, 'Chorus', 'chorus');
+  fx.appendChild(fxRow);
+
+  const del = el('button', 'insp-del');
+  del.textContent = '🗑 Delete note';
+  del.addEventListener('click', () => {
+    state.tracks[track] = state.tracks[track].filter((_, i) => i !== index);
+    state.selected = null;
+    render();
+  });
+  inspector.appendChild(del);
+}
+
+// ---------- Help dialog ----------
+const helpDialog = document.getElementById('help-dialog');
+document.getElementById('help-btn').addEventListener('click', () => helpDialog.showModal());
+document.getElementById('help-close').addEventListener('click', () => helpDialog.close());
+
+// ---------- Mobile UI: More toggle, rotate hint, inspector close ----------
+const toolbar = document.querySelector('.toolbar');
+const moreToggle = document.getElementById('more-toggle');
+moreToggle.addEventListener('click', () => {
+  const open = toolbar.classList.toggle('show-extra');
+  moreToggle.setAttribute('aria-expanded', String(open));
+  moreToggle.textContent = open ? '✕ Less' : '⋯ More';
+});
+document.getElementById('rotate-dismiss').addEventListener('click', () => document.getElementById('rotate-hint').classList.add('dismissed'));
+document.getElementById('insp-close').addEventListener('click', () => clearSelection());
+
+// The installed PWA manifest locks the app to portrait (good for the game, which
+// wants it). The editor is far better in landscape, so allow it to rotate freely
+// here — locking to 'any' overrides the manifest's portrait lock for this page.
+// (No-op / harmless rejection in a regular browser tab, where the lock isn't
+// permitted; the lock is released when this page unloads, so the game stays
+// portrait.)
+try { screen.orientation.lock('any').catch(() => {}); } catch { /* unsupported */ }
+// Release the lock when leaving the editor so the game reverts to the manifest's
+// portrait default.
+window.addEventListener('pagehide', () => { try { screen.orientation.unlock(); } catch { /* ignore */ } });
+
+// Mobile browsers often keep the old zoom scale after an orientation change,
+// leaving the editor zoomed-in and cut off. Momentarily clamp the viewport to
+// maximum-scale=1 to snap it back to fit-to-width, then restore the normal
+// viewport (so pinch-zoom stays available during editing).
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+const VP_BASE = 'width=device-width, initial-scale=1, viewport-fit=cover';
+function refitViewport() {
+  if (!viewportMeta) return;
+  viewportMeta.setAttribute('content', VP_BASE + ', maximum-scale=1, user-scalable=0');
+  setTimeout(() => viewportMeta.setAttribute('content', VP_BASE), 400);
+}
+window.addEventListener('orientationchange', refitViewport);
+
+// ---------- Toolbar ----------
+document.querySelectorAll('.tool-group button[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tool-group button[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tool = btn.dataset.tool;
+    document.body.dataset.tool = state.tool;
+    render();
+  });
+});
+document.body.dataset.tool = state.tool;
+
+// ---------- Keyboard shortcuts ----------
+window.addEventListener('keydown', (e) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (helpDialog.open) { if (e.key === 'Escape') helpDialog.close(); return; }
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (e.repeat) return;
+    document.getElementById(playing ? 'stop' : 'play').click();
+    return;
+  }
+  if (e.key === '1' || e.key === '2' || e.key === '3') {
+    const tool = { 1: 'pen', 2: 'eraser', 3: 'grab' }[e.key];
+    document.querySelector(`.tool-group button[data-tool="${tool}"]`).click();
+    return;
+  }
+  if (e.key === 'Escape') { clearSelection(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); nudgeSelection(-state.grid, 0); return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); nudgeSelection(state.grid, 0); return; }
+  if (e.key === 'ArrowUp')    { e.preventDefault(); nudgeSelection(0, 1); return; }
+  if (e.key === 'ArrowDown')  { e.preventDefault(); nudgeSelection(0, -1); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteClipboard(); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
+});
+
+document.getElementById('undo-btn').addEventListener('click', undo);
+document.getElementById('redo-btn').addEventListener('click', redo);
+
+const tempoInput = document.getElementById('tempo');
+tempoInput.value = state.tempo;
+tempoInput.addEventListener('change', () => { state.tempo = parseInt(tempoInput.value, 10) || TEMPO_BPM; });
+
+// ---------- Bottom bar: master volume (static) + collapse toggle ----------
+const masterVolInput = document.getElementById('master-vol');
+const masterVolVal = document.getElementById('master-vol-val');
+function syncMasterVolUI() { masterVolInput.value = state.masterVol; masterVolVal.textContent = Number(state.masterVol).toFixed(2); }
+masterVolInput.addEventListener('input', () => {
+  state.masterVol = parseFloat(masterVolInput.value);
+  masterVolVal.textContent = state.masterVol.toFixed(2);
+  if (masterGain) masterGain.gain.value = state.masterVol;
+  autosave();
+});
+syncMasterVolUI();
+
+// Collapse the whole bottom bar (Tempo/Length/Master) to a slim strip; remembered.
+const masterCollapseBtn = document.getElementById('master-collapse');
+let masterCollapsed = false;
+try { masterCollapsed = localStorage.getItem('frogger-master-collapsed') === '1'; } catch { /* ignore */ }
+function applyMasterCollapsed() {
+  masterTrackEl.classList.toggle('collapsed', masterCollapsed);
+  masterCollapseBtn.textContent = masterCollapsed ? '▸' : '▾';
+  masterCollapseBtn.title = masterCollapsed ? 'Show Tempo / Length / Master' : 'Hide this bar';
+  masterCollapseBtn.setAttribute('aria-expanded', String(!masterCollapsed));
+}
+masterCollapseBtn.addEventListener('click', () => {
+  masterCollapsed = !masterCollapsed;
+  try { localStorage.setItem('frogger-master-collapsed', masterCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  applyMasterCollapsed();
+});
+applyMasterCollapsed();
+
+function applyZoom() {
+  colPx = ZOOM_LEVELS[zoomIndex];
+  document.getElementById('zoom-level').textContent = Math.round(colPx / 16 * 100) + '%';
+  render();
+}
+document.getElementById('zoom-out').addEventListener('click', () => { zoomIndex = Math.max(0, zoomIndex - 1); applyZoom(); });
+document.getElementById('zoom-in').addEventListener('click', () => { zoomIndex = Math.min(ZOOM_LEVELS.length - 1, zoomIndex + 1); applyZoom(); });
+
+// ---------- Grid resolution (note snap) ----------
+const gridSelect = document.getElementById('grid-select');
+function syncGridUI() {
+  const match = GRID_STEPS.find(g => Math.abs(g.eighths - state.grid) < EPS);
+  if (match) gridSelect.value = match.id;
+}
+gridSelect.addEventListener('change', () => {
+  const opt = GRID_STEPS.find(g => g.id === gridSelect.value);
+  if (opt) { state.grid = opt.eighths; render(); autosave(); }
+});
+syncGridUI();
+
+// ---------- Time signature (meter) ----------
+const timeSigSelect = document.getElementById('time-sig');
+for (const ts of TIME_SIGS) {
+  const opt = document.createElement('option');
+  opt.value = ts.id; opt.textContent = ts.id;
+  timeSigSelect.appendChild(opt);
+}
+function syncTimeSigUI() { timeSigSelect.value = tsId(state.timeSig); }
+timeSigSelect.addEventListener('change', () => {
+  const ts = TIME_SIGS.find(s => s.id === timeSigSelect.value);
+  if (!ts) return;
+  state.timeSig = { num: ts.num, den: ts.den };
+  // Re-round the song length to whole bars in the new meter and keep the
+  // playhead/loop in range; note positions (in eighths) are unchanged.
+  COLS = clampCols(COLS);
+  if (state.loopStart === 0 && state.loopEnd > COLS) state.loopEnd = COLS;
+  state.loopEnd = Math.min(state.loopEnd, COLS);
+  state.loopStart = Math.min(state.loopStart, Math.max(0, COLS - 1));
+  if (state.loopEnd <= state.loopStart) state.loopEnd = COLS;
+  state.playhead = Math.min(state.playhead, COLS - 1); visualPlayhead = state.playhead;
+  state.markers = state.markers.filter(m => m.col <= COLS);
+  updateLengthUI();
+  render(); autosave();
+});
+syncTimeSigUI();
+
+// ---------- Timeline markers ----------
+document.getElementById('add-marker').addEventListener('click', addMarkerAtPlayhead);
+
+// ---------- Song length (whole bars) ----------
+function updateLengthUI() { document.getElementById('len-bars').textContent = round2(COLS / eighthsPerBar()) + ' bars'; }
+// Change the song length. Shrinking drops notes/hits past the new end (and trims
+// notes that straddle it); growing just adds empty bars. The length is encoded on
+// export/save as the trailing rest, so it round-trips.
+function setCols(newCols) {
+  newCols = clampCols(newCols);
+  if (newCols === COLS) return;
+  const wasFullLoop = state.loopStart === 0 && state.loopEnd === COLS;
+  if (newCols < COLS) {
+    for (const t of PITCH_TRACKS) {
+      state.tracks[t] = state.tracks[t]
+        .filter(n => n.start < newCols)
+        .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n));
+    }
+    state.tracks.rhythm = state.tracks.rhythm.filter(h => h.start < newCols);
+  }
+  COLS = newCols;
+  if (wasFullLoop) { state.loopStart = 0; state.loopEnd = COLS; }
+  else { state.loopStart = Math.min(state.loopStart, COLS - 1); state.loopEnd = Math.min(state.loopEnd, COLS); if (state.loopEnd <= state.loopStart) state.loopEnd = COLS; }
+  state.playhead = Math.min(state.playhead, COLS - 1);
+  visualPlayhead = state.playhead;
+  state.selected = null;
+  state.multiSelected.clear();
+  updateLengthUI();
+  render();
+}
+document.getElementById('len-minus').addEventListener('click', () => setCols(COLS - eighthsPerBar()));
+document.getElementById('len-plus').addEventListener('click', () => setCols(COLS + eighthsPerBar()));
+
+document.getElementById('reset').addEventListener('click', () => {
+  stopPlayback();                     // audio graph is keyed by track id — rebuild after reset
+  state.timeSig = { ...DEFAULT_TS };  // game song is 4/4; reset meter first so COLS rounds right
+  syncTimeSigUI();
+  state.markers = [];
+  const gd = gameDefaults();          // rebuilds track list + all per-track maps, recomputes COLS
+  state.trackList = gd.trackList; state.tracks = gd.tracks; state.gains = gd.gains;
+  state.waveform = gd.waveform; state.pan = gd.pan; state.mute = gd.mute; state.solo = gd.solo;
+  refreshTrackArrays();
+  state.activeTrack = 'lead';
+  applyPan();
+  state.masterVol = 0.45;
+  syncMasterVolUI();
+  if (masterGain) masterGain.gain.value = state.masterVol;
+  applyGains();
+  state.loopStart = 0; state.loopEnd = COLS;
+  state.playhead = 0; visualPlayhead = 0;
+  state.selected = null;
+  state.multiSelected.clear();
+  updateLengthUI();
+  render();
+});
+document.getElementById('loop-reset').addEventListener('click', () => {
+  state.loopStart = 0;
+  state.loopEnd = COLS;
+  updateLoopPositions();
+});
+
+// ---------- Save/load file ----------
+// The current editor state serialized as a song (save-file / local-slot format).
+function currentSongData() {
+  return { version: 2, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks };
+}
+document.getElementById('save-file').addEventListener('click', () => {
+  const data = currentSongData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'froggy-hop.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+const loadInput = document.getElementById('load-file-input');
+document.getElementById('load-file').addEventListener('click', () => loadInput.click());
+// Apply a loaded song (from a file, an example, or a local slot) to the editor.
+// Returns false if the data isn't a valid song.
+function applySongData(data) {
+  const t = data && data.tracks;
+  if (!t || typeof t !== 'object' || !Array.isArray(t.rhythm)) return false;
+  stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
+  state.tempo = typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM;
+  tempoInput.value = state.tempo;
+  restoreTimeSig(data);
+  restoreTrackList(data);
+  COLS = colsFromSaved(data, state.tracks);
+  state.loopStart = 0; state.loopEnd = COLS;
+  state.playhead = Math.min(state.playhead, COLS - 1); visualPlayhead = state.playhead;
+  applySavedMix(data);
+  state.activeTrack = state.trackList[0] ? state.trackList[0].id : 'rhythm';
+  syncMasterVolUI();
+  syncGridUI();
+  syncTimeSigUI();
+  if (masterGain) masterGain.gain.value = state.masterVol;
+  applyGains();
+  applyPan();
+  state.selected = null;
+  state.multiSelected.clear();
+  updateLengthUI();
+  render();
+  return true;
+}
+loadInput.addEventListener('change', async () => {
+  const file = loadInput.files[0];
+  loadInput.value = '';
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); }
+  catch (err) { alert('Could not read the file: ' + err.message); return; }
+  if (!applySongData(data)) alert('The file has the wrong format (missing the rhythm track).');
+});
+
+// ---------- Song library: examples (fetched from this site) + local songs ----------
+const SONGS_KEY = 'music-studio-songs';
+const songsDialog = document.getElementById('songs-dialog');
+const examplesEl = document.getElementById('songs-examples');
+const localSongsEl = document.getElementById('songs-local');
+const songNameInput = document.getElementById('song-name');
+
+const readLocalSongs = () => { try { return JSON.parse(localStorage.getItem(SONGS_KEY)) || {}; } catch { return {}; } };
+function writeLocalSongs(obj) {
+  try { localStorage.setItem(SONGS_KEY, JSON.stringify(obj)); }
+  catch { alert('Could not save — this browser\'s storage may be full.'); }
+}
+function songRow({ title, desc, onLoad, onDelete }) {
+  const row = el('div', 'song-item');
+  const info = el('div', 'song-info');
+  const t = el('div', 'song-title'); t.textContent = title; info.appendChild(t);
+  if (desc) { const d = el('div', 'song-desc'); d.textContent = desc; info.appendChild(d); }
+  row.appendChild(info);
+  const load = el('button'); load.textContent = 'Load'; load.addEventListener('click', onLoad); row.appendChild(load);
+  if (onDelete) { const del = el('button', 'song-del'); del.textContent = 'Delete'; del.addEventListener('click', onDelete); row.appendChild(del); }
+  return row;
+}
+function renderLocalSongs() {
+  const songs = readLocalSongs();
+  const names = Object.keys(songs).sort((a, b) => (songs[b].savedAt || 0) - (songs[a].savedAt || 0));
+  localSongsEl.innerHTML = '';
+  if (!names.length) { localSongsEl.innerHTML = '<div class="song-empty">No saved songs yet — name one above and click “Save current”.</div>'; return; }
+  for (const name of names) {
+    localSongsEl.appendChild(songRow({
+      title: name,
+      desc: songs[name].savedAt ? 'Saved ' + new Date(songs[name].savedAt).toLocaleString() : '',
+      onLoad: () => { if (applySongData(songs[name].data)) songsDialog.close(); },
+      onDelete: () => { if (confirm(`Delete “${name}”?`)) { const s = readLocalSongs(); delete s[name]; writeLocalSongs(s); renderLocalSongs(); } }
+    }));
+  }
+}
+async function renderExamples() {
+  examplesEl.innerHTML = '<div class="song-empty">Loading…</div>';
+  let list;
+  try { list = await (await fetch('songs/index.json', { cache: 'no-cache' })).json(); }
+  catch { examplesEl.innerHTML = '<div class="song-empty">Could not load examples (offline?).</div>'; return; }
+  examplesEl.innerHTML = '';
+  for (const entry of list) {
+    examplesEl.appendChild(songRow({
+      title: entry.name, desc: entry.desc,
+      onLoad: async () => {
+        try {
+          const data = await (await fetch('songs/' + entry.file, { cache: 'no-cache' })).json();
+          if (applySongData(data)) songsDialog.close(); else alert('That example is in the wrong format.');
+        } catch { alert('Could not load that example.'); }
+      }
+    }));
+  }
+}
+document.getElementById('songs-btn').addEventListener('click', () => {
+  renderExamples(); renderLocalSongs(); songNameInput.value = '';
+  songsDialog.showModal();
+});
+document.getElementById('songs-close').addEventListener('click', () => songsDialog.close());
+document.getElementById('song-save-local').addEventListener('click', () => {
+  const name = songNameInput.value.trim();
+  if (!name) { songNameInput.focus(); return; }
+  const songs = readLocalSongs();
+  if (songs[name] && !confirm(`Overwrite “${name}”?`)) return;
+  songs[name] = { savedAt: Date.now(), data: currentSongData() };
+  writeLocalSongs(songs);
+  songNameInput.value = '';
+  renderLocalSongs();
+});
+
+// ---------- Playback ----------
+let ctx = null, loopTimer = null, playing = false;
+let masterGain = null;
+let previewGain = null; // always-audible bus for click-to-hear note previews
+let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
+let chanPan = {};    // id -> StereoPannerNode
+let chanAnalyser = {}; // id -> AnalyserNode (VU)
+let masterAnalyser = null;
+
+function ensureCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!masterGain) {
+    masterGain = ctx.createGain();
+    masterGain.gain.value = state.masterVol;
+    masterGain.connect(ctx.destination);
+    for (const ch of ALL_TRACKS) {
+      // Per channel: gain → panner → master, mirroring the game's audio graph.
+      chanPan[ch] = ctx.createStereoPanner();
+      chanPan[ch].connect(masterGain);
+      chanGain[ch] = ctx.createGain();
+      chanGain[ch].connect(chanPan[ch]);
+      // Tap the post-fader signal for the channel's VU meter (silent when muted).
+      chanAnalyser[ch] = ctx.createAnalyser();
+      chanAnalyser[ch].fftSize = 256;
+      chanGain[ch].connect(chanAnalyser[ch]);
+    }
+    applyGains(); // set each channel to its audible gain (respecting mute/solo)
+    applyPan();   // set each channel's stereo pan
+    previewGain = ctx.createGain();
+    previewGain.gain.value = 0.7;
+    previewGain.connect(masterGain);
+    masterAnalyser = ctx.createAnalyser();
+    masterAnalyser.fftSize = 256;
+    masterGain.connect(masterAnalyser);
+    startMeters();
+  }
+  return ctx;
+}
+
+// ---------- VU / level meters ----------
+const vuMeters = {};                    // track -> .vu-mask element (rebuilt each render)
+const masterVuEl = document.getElementById('master-vu');
+const vuLevel = { lead: 0, harmony: 0, bass: 0, rhythm: 0, master: 0 };
+const vuBuf = new Float32Array(128);
+let meterRafId = null;
+function rmsOf(analyser) {
+  if (!analyser) return 0;
+  analyser.getFloatTimeDomainData(vuBuf);
+  let sum = 0;
+  for (let i = 0; i < vuBuf.length; i++) sum += vuBuf[i] * vuBuf[i];
+  return Math.sqrt(sum / vuBuf.length);
+}
+// Set a meter's lit width by moving its dark mask in from the right.
+const setMeter = (maskEl, level) => { if (maskEl) maskEl.style.width = (100 - level * 100).toFixed(1) + '%'; };
+function updateMeters() {
+  const SCALE = 2.4; // map RMS -> 0..1 (chiptune levels are modest post-master)
+  for (const ch of ALL_TRACKS) {
+    const lvl = Math.min(1, rmsOf(chanAnalyser[ch]) * SCALE);
+    vuLevel[ch] = Math.max(lvl, (vuLevel[ch] || 0) * 0.86); // instant attack, gentle decay
+    setMeter(vuMeters[ch], vuLevel[ch]);
+  }
+  const m = Math.min(1, rmsOf(masterAnalyser) * SCALE);
+  vuLevel.master = Math.max(m, vuLevel.master * 0.86);
+  setMeter(masterVuEl, vuLevel.master);
+}
+function startMeters() {
+  if (meterRafId) return;
+  const tick = () => {
+    if (!ctx) { meterRafId = null; return; }
+    updateMeters();
+    meterRafId = requestAnimationFrame(tick);
+  };
+  meterRafId = requestAnimationFrame(tick);
+}
+function stopMeters() {
+  if (meterRafId) { cancelAnimationFrame(meterRafId); meterRafId = null; }
+  for (const ch of ALL_TRACKS) { vuLevel[ch] = 0; setMeter(vuMeters[ch], 0); }
+  vuLevel.master = 0; setMeter(masterVuEl, 0);
+}
+
+// Click-to-hear preview: a short one-shot tone (pitch tracks) or drum hit
+// (rhythm) when you place or select a note. Routed through previewGain so it's
+// audible regardless of mute/solo. No-op if the audio can't start.
+function previewNote(track, note) {
+  if (!note || !note.freq) return;
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const oscType = state.waveform[track] || 'square';
+    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain);
+  } catch { /* audio unavailable */ }
+}
+function previewHit(type) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const at = ctx.currentTime + 0.005;
+    if (type === 'kick') scheduleKick(at);
+    else if (type === 'snare') scheduleSnare(at);
+    else if (type === 'tom') schedulePuka(at);
+    else scheduleHihat(at);
+  } catch { /* audio unavailable */ }
+}
+function applyGains() {
+  for (const ch of ALL_TRACKS) if (chanGain[ch]) chanGain[ch].gain.value = audible(ch) ? state.gains[ch] : 0;
+}
+function applyPan() {
+  for (const ch of ALL_TRACKS) if (chanPan[ch]) chanPan[ch].pan.value = state.pan[ch];
+}
+
+const pulseWaves = new Map();
+function pulseWave(duty) {
+  if (pulseWaves.has(duty)) return pulseWaves.get(duty);
+  const harmonics = 32;
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+  for (let n = 1; n <= harmonics; n++) imag[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
+  const wave = ctx.createPeriodicWave(real, imag);
+  pulseWaves.set(duty, wave);
+  return wave;
+}
+let crushCurve = null;
+function bitcrushCurve() {
+  if (crushCurve) return crushCurve;
+  const n = 1 << 16;
+  const steps = 16;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i * 2) / n - 1; curve[i] = Math.round(x * steps) / steps; }
+  crushCurve = curve;
+  return curve;
+}
+// One echo/delay bus per channel, whose wet return flows back through that
+// channel's gain node — so Mute/Solo (and the volume slider) also silence a
+// track's echo tail, not just its dry signal. (A single shared bus tapped
+// pre-fader would keep ringing after muting an echo-heavy track like the lead.)
+const chanDelays = new Map(); // destGain node -> { delay }
+function ensureDelay(destGain) {
+  let d = chanDelays.get(destGain);
+  if (!d) {
+    const delay = ctx.createDelay(1.0);
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.35;
+    delay.connect(feedback).connect(delay);
+    const wet = ctx.createGain();
+    wet.gain.value = 0.5;
+    delay.connect(wet).connect(destGain); // wet returns through the channel gain
+    d = { delay };
+    chanDelays.set(destGain, d);
+  }
+  d.delay.delayTime.value = (60 / state.tempo / 2) * 1.5;
+  return d.delay;
+}
+function connectVoiceOutput(gain, note, destGain) {
+  let outputNode = gain;
+  if (note.crush) {
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = bitcrushCurve();
+    gain.connect(shaper);
+    outputNode = shaper;
+  }
+  outputNode.connect(destGain);
+  if (note.echo) outputNode.connect(ensureDelay(destGain));
+}
+// Shared voice building blocks used by both scheduleTone and schedulePortamentoTone.
+function addVibrato(osc, freq, startAt, endAt) {
+  const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+  lfo.frequency.value = 5.5;
+  lfoGain.gain.value = freq * 0.02;
+  lfo.connect(lfoGain).connect(osc.frequency);
+  lfo.start(startAt); lfo.stop(endAt);
+}
+function addTremolo(gainNode, startAt, endAt) {
+  const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
+  lfo.frequency.value = 18;
+  lfoGain.gain.value = 0.18;
+  lfo.connect(lfoGain).connect(gainNode.gain);
+  lfo.start(startAt); lfo.stop(endAt);
+}
+function applyEnvelope(gainParam, startAt, dur, peak = 0.5) {
+  gainParam.setValueAtTime(0.0001, startAt);
+  gainParam.exponentialRampToValueAtTime(peak, startAt + 0.015);
+  gainParam.setValueAtTime(peak, startAt + dur * 0.85);
+  gainParam.exponentialRampToValueAtTime(0.0001, startAt + dur);
+}
+const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
+function scheduleTone(note, startAt, dur, oscType, destGain) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  else osc.type = oscType;
+
+  let chorusOsc = null;
+  if (note.arp && note.arp.length) {
+    const freqs = [note.freq, ...note.arp.map(semi => note.freq * Math.pow(2, semi / 12))];
+    const stepSec = 0.03;
+    let t = startAt, i = 0;
+    while (t < startAt + dur) { osc.frequency.setValueAtTime(freqs[i % freqs.length], t); t += stepSec; i++; }
+  } else {
+    osc.frequency.setValueAtTime(note.freq, startAt);
+    if (note.bend) {
+      osc.frequency.setValueAtTime(note.freq, startAt + dur * 0.5);
+      osc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
+    }
+    if (note.vib) addVibrato(osc, note.freq, startAt, startAt + dur);
+    if (note.chorus) {
+      chorusOsc = ctx.createOscillator();
+      if (oscType === 'square' && note.duty) chorusOsc.setPeriodicWave(pulseWave(note.duty));
+      else chorusOsc.type = oscType;
+      osc.detune.value = 8;
+      chorusOsc.detune.value = -8;
+      chorusOsc.frequency.setValueAtTime(note.freq, startAt);
+      if (note.bend) {
+        chorusOsc.frequency.setValueAtTime(note.freq, startAt + dur * 0.5);
+        chorusOsc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
+      }
+    }
+  }
+
+  applyEnvelope(gain.gain, startAt, dur, notePeak(note));
+  if (note.trem) addTremolo(gain, startAt, startAt + dur);
+
+  connectVoiceOutput(gain, note, destGain);
+  osc.connect(gain);
+  osc.start(startAt);
+  osc.stop(startAt + dur);
+  if (chorusOsc) { chorusOsc.connect(gain); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
+}
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const totalDur = (dur + nextDur) * durScale;
+  if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  else osc.type = oscType;
+  osc.frequency.setValueAtTime(note.freq, startAt);
+  const glideStart = startAt + dur * 0.6;
+  const glideEnd = startAt + dur + Math.min(nextDur * 0.3, 0.12);
+  osc.frequency.setValueAtTime(note.freq, glideStart);
+  osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
+  if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
+  applyEnvelope(gain.gain, startAt, totalDur, notePeak(note));
+  if (note.trem) addTremolo(gain, startAt, startAt + totalDur);
+  connectVoiceOutput(gain, note, destGain);
+  osc.connect(gain);
+  osc.start(startAt);
+  osc.stop(startAt + totalDur);
+}
+function scheduleKick(startAt) {
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(150, startAt);
+  osc.frequency.exponentialRampToValueAtTime(50, startAt + 0.09);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.7, startAt + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.12);
+  osc.connect(gain).connect(chanGain.rhythm);
+  osc.start(startAt); osc.stop(startAt + 0.13);
+}
+let noiseBuffer = null;
+function ensureNoiseBuffer() {
+  if (!noiseBuffer) {
+    const len = Math.ceil(ctx.sampleRate * 0.1);
+    noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuffer;
+}
+function scheduleHihat(startAt) {
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = ensureNoiseBuffer();
+  filter.type = 'highpass'; filter.frequency.value = 6000;
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.6, startAt + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
+  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + 0.04);
+}
+function schedulePuka(startAt) {
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(220, startAt);
+  osc.frequency.exponentialRampToValueAtTime(90, startAt + 0.18);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(1, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.28);
+  osc.connect(gain).connect(chanGain.rhythm);
+  osc.start(startAt); osc.stop(startAt + 0.3);
+}
+function scheduleSnare(startAt) {
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
+  src.buffer = ensureNoiseBuffer();
+  filter.type = 'bandpass'; filter.frequency.value = 1800; filter.Q.value = 0.7;
+  noiseGain.gain.setValueAtTime(0.0001, startAt);
+  noiseGain.gain.exponentialRampToValueAtTime(1, startAt + 0.004);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.09);
+  src.connect(filter).connect(noiseGain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + 0.1);
+
+  const osc = ctx.createOscillator(), oscGain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(190, startAt);
+  osc.frequency.exponentialRampToValueAtTime(120, startAt + 0.07);
+  oscGain.gain.setValueAtTime(0.0001, startAt);
+  oscGain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.08);
+  osc.connect(oscGain).connect(chanGain.rhythm);
+  osc.start(startAt); osc.stop(startAt + 0.09);
+}
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain) {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  for (let i = 0; i < sorted.length; i++) {
+    const n = sorted[i];
+    if (n.start < fromCol || n.start >= toCol) continue;
+    const at = startAt + (n.start - fromCol) * eighthSec;
+    if (n.porta) {
+      const next = sorted[i + 1];
+      if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale);
+        i++;
+        continue;
+      }
+    }
+    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain);
+  }
+}
+function playOnce(startAt, eighthSec, fromCol, toCol) {
+  for (const id of PITCH_TRACKS) {
+    if (!audible(id) || !chanGain[id]) continue;
+    const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id]);
+  }
+  if (audible('rhythm')) {
+    const scheduleHit = { kick: scheduleKick, snare: scheduleSnare, tom: schedulePuka, hihat: scheduleHihat };
+    for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
+      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol) * eighthSec);
+    }
+  }
+}
+let rafId = null, playStartCtxTime = 0, playStartCol = 0;
+function startPlaybackFrom(col) {
+  playing = true;
+  clearTimeout(loopTimer);
+  function loop(fromCol) {
+    if (!playing) return;
+    const eighthSec = 60 / state.tempo / 2;
+    const startAt = ctx.currentTime + 0.05;
+    const looping = document.getElementById('loop').checked;
+    const toCol = looping ? state.loopEnd : COLS;
+    playOnce(startAt, eighthSec, fromCol, toCol);
+    playStartCtxTime = startAt;
+    playStartCol = fromCol;
+    const remainingDur = Math.max(0.01, (toCol - fromCol) * eighthSec);
+    loopTimer = setTimeout(() => {
+      if (looping) loop(state.loopStart);
+      else playing = false;
+    }, remainingDur * 1000);
+  }
+  loop(col);
+  if (!rafId) animatePlayhead();
+}
+function animatePlayhead() {
+  function tick() {
+    if (!playing) { rafId = null; document.body.classList.remove('playing'); return; }
+    const eighthSec = 60 / state.tempo / 2;
+    const col = playStartCol + (ctx.currentTime - playStartCtxTime) / eighthSec;
+    visualPlayhead = Math.min(col, COLS - 0.001);
+    updatePlayheadPositions();
+    followPlayhead();
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+// Keep the moving playhead within the visible lane area during playback so the
+// marker never runs off the right edge. The leftmost LANE_ORIGIN px are covered
+// by the sticky headers/gutters, so the usable view starts at scrollLeft + LANE_ORIGIN.
+function followPlayhead() {
+  const x = LANE_ORIGIN + visualPlayhead * colPx;      // playhead position in .daw content coords
+  const viewLeft = daw.scrollLeft + LANE_ORIGIN;
+  const viewRight = daw.scrollLeft + daw.clientWidth;
+  const margin = Math.min(80, colPx * 4);
+  if (x > viewRight - margin) daw.scrollLeft = x - daw.clientWidth + margin;
+  else if (x < viewLeft) daw.scrollLeft = Math.max(0, x - LANE_ORIGIN - margin); // e.g. after a loop wrap back to the start
+}
+document.getElementById('play').addEventListener('click', () => {
+  ensureCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  document.body.classList.add('playing');
+  startPlaybackFrom(state.playhead);
+});
+function stopPlayback() {
+  playing = false;
+  document.body.classList.remove('playing');
+  clearTimeout(loopTimer);
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (ctx) {
+    ctx.close();
+    ctx = null;
+    masterGain = null;
+    previewGain = null;
+    chanGain = {}; chanPan = {}; chanAnalyser = {};
+    masterAnalyser = null;
+    stopMeters();
+    noiseBuffer = null;
+    pulseWaves.clear();
+    crushCurve = null;
+    chanDelays.clear();
+  }
+  visualPlayhead = state.playhead;
+  updatePlayheadPositions();
+}
+document.getElementById('stop').addEventListener('click', stopPlayback);
+
+// Return to start (RTZ) and the loop on/off toggle button.
+document.getElementById('rtz').addEventListener('click', () => { seekTo(0); daw.scrollLeft = 0; });
+const loopChk = document.getElementById('loop');
+const loopBtn = document.getElementById('loop-btn');
+loopBtn.addEventListener('click', () => {
+  loopChk.checked = !loopChk.checked;
+  loopBtn.setAttribute('aria-pressed', String(loopChk.checked));
+});
+
+// ---------- Export ----------
+function formatSeqLine(entry, isRhythm) {
+  if (isRhythm) return `{ type: '${entry.type}', d: ${entry.d} }`;
+  const parts = [`f: ${entry.f}`, `d: ${entry.d}`];
+  if (entry.vel != null) parts.push(`vel: ${entry.vel}`);
+  if (entry.bend) parts.push(`bend: ${entry.bend}`);
+  if (entry.vib) parts.push(`vib: true`);
+  if (entry.trem) parts.push(`trem: true`);
+  if (entry.duty) parts.push(`duty: ${entry.duty}`);
+  if (entry.arp) parts.push(`arp: [${entry.arp.join(', ')}]`);
+  if (entry.porta) parts.push(`porta: true`);
+  if (entry.crush) parts.push(`crush: true`);
+  if (entry.echo) parts.push(`echo: true`);
+  if (entry.chorus) parts.push(`chorus: true`);
+  return `{ ${parts.join(', ')} }`;
+}
+// Multi-line note/hit array literal indented under `indent` spaces.
+function exportNotesArray(seq, isRhythm, indent) {
+  const lines = seq.map(e => indent + '  ' + formatSeqLine(e, isRhythm)).join(',\n');
+  return `[\n${lines}\n${indent}]`;
+}
+const jsStr = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+document.getElementById('export').addEventListener('click', () => {
+  const box = document.getElementById('exportBox');
+  const toneBlocks = state.trackList.filter(t => t.kind === 'tone').map(t => {
+    const notes = exportNotesArray(fromColumnNotes(state.tracks[t.id]), false, '  ');
+    return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
+  }).join(',\n');
+  const tracksCode = `export const TRACKS = [\n${toneBlocks}\n];`;
+  const hits = exportNotesArray(fromColumnHits(state.tracks.rhythm), true, '');
+  const rhythmCode = `export const RHYTHM_TRACK = { name: 'Rhythm', pan: ${round2(state.pan.rhythm)}, mix: ${state.gains.rhythm}, hits: ${hits} };`;
+  box.value =
+    `// Paste over the TRACKS and RHYTHM_TRACK declarations in audio.js.\n` +
+    `// Tempo: ${state.tempo} BPM — also update TEMPO_BPM in audio.js if it changed.\n\n` +
+    `${tracksCode}\n\n${rhythmCode}`;
+  box.style.display = 'block';
+  box.focus();
+  box.select();
+});
+
+// Add a drop shadow to the sticky top bar once the page has scrolled under it,
+// and publish its height so the sticky inspector can sit just below it (the bar
+// wraps to a taller layout on narrow windows, so this is measured, not fixed).
+// toolbarTop is cached (it only changes on resize) so the scroll handler does no
+// layout reads.
+const toolbarEl = document.querySelector('.toolbar');
+let toolbarTop = 0;
+function updateStickyTop() {
+  toolbarTop = toolbarEl.offsetTop;
+  document.documentElement.style.setProperty('--sticky-top', (toolbarEl.offsetHeight + 18) + 'px');
+}
+const updateStuck = () => toolbarEl.classList.toggle('stuck', window.scrollY > toolbarTop);
+window.addEventListener('scroll', updateStuck, { passive: true });
+window.addEventListener('resize', () => { updateStickyTop(); updateStuck(); });
+updateStickyTop();
+updateStuck();
+
+createOverlays();
+updateLengthUI();
+// On touch devices, start more zoomed-in so grid cells are easy to tap.
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+  zoomIndex = Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(24) >= 0 ? ZOOM_LEVELS.indexOf(24) : zoomIndex + 1);
+}
+applyZoom();
+</script>
+</body>
+</html>
