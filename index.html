@@ -1659,9 +1659,29 @@ function renderMarquee(rollEl, track, heightPx) {
 
 // ---------- Playhead + loop overlay positioning ----------
 function positionOverlays() {
-  updatePlayheadPositions();
+  updatePlayheadPositions(); // also updates playhead/marker overlay clipping
   updateLoopPositions();
   updateHScroll();
+}
+
+// The channel-strip header/gutter are pinned to the viewport's left edge via
+// position:sticky, always covering the leftmost LANE_ORIGIN px of .daw's
+// visible area. The playhead and marker lines/flags live in that same
+// content space (a plain `left: Xpx`, not sticky) and would otherwise render
+// either behind those controls (invisible, confusing) or on top of them
+// (visually cutting across the sliders/buttons) whenever their column
+// scrolls into that band. Hiding them there instead — the same way a note at
+// that column would also be scrolled out of view — keeps the header's
+// controls clean and the overlay itself only visible over the actual grid.
+function setOverlayVisible(el, contentX) {
+  if (!el) return;
+  el.style.visibility = (contentX - daw.scrollLeft >= LANE_ORIGIN) ? '' : 'hidden';
+}
+function updateOverlayClipping() {
+  const playheadX = LANE_ORIGIN + visualPlayhead * colPx;
+  setOverlayVisible(playheadEl, playheadX);
+  setOverlayVisible(playheadGrip, playheadX);
+  if (markersLayer) for (const mk of markersLayer.children) setOverlayVisible(mk, parseFloat(mk.style.left) || 0);
 }
 
 // ---------- Custom horizontal scrollbar (track starts at the note grid) ----------
@@ -1679,6 +1699,7 @@ function updateHScroll() {
   hscrollThumb.style.left = left + 'px';
 }
 daw.addEventListener('scroll', updateHScroll, { passive: true });
+daw.addEventListener('scroll', updateOverlayClipping, { passive: true });
 window.addEventListener('resize', updateHScroll);
 hscrollThumb.addEventListener('pointerdown', (e) => {
   e.preventDefault();
@@ -1716,6 +1737,7 @@ function updatePlayheadPositions() {
   if (playheadEl) playheadEl.style.left = left;
   if (playheadGrip) playheadGrip.style.left = left;
   updateCounter();
+  updateOverlayClipping();
 }
 
 // Pro Tools-style Bars|Beats|Sub + Min:Sec counter, driven by the playhead.
