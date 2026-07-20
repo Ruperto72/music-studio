@@ -760,7 +760,7 @@
     <div class="panel" id="counter-panel">
       <div class="panel-cap">Bars | Beats</div>
       <div class="panel-body">
-        <div class="lcd" id="lcd-bars" title="Bars | Beats | Subdivision">001<span class="sep-dot">|</span>1<span class="sep-dot">|</span>1</div>
+        <div class="lcd" id="lcd-bars" title="Bars | Beats | Subdivision"><span id="lcd-bar">001</span><span class="sep-dot">|</span><span id="lcd-beat">1</span><span class="sep-dot">|</span><span id="lcd-sub">1</span></div>
         <div class="lcd-sub">
           <span id="lcd-time" title="Min:Sec">0:00.0</span>
         </div>
@@ -2263,18 +2263,25 @@ function updatePlayheadPositions() {
 }
 
 // Pro Tools-style Bars|Beats|Sub + Min:Sec counter, driven by the playhead.
-const lcdBars = document.getElementById('lcd-bars');
+// This runs every animation frame during playback, so the bar/beat/sub cells
+// are persistent elements updated via textContent — an innerHTML rebuild
+// here would re-parse HTML and recreate the separator spans 60x/second for
+// no reason, since only the numbers ever change.
+const lcdBar = document.getElementById('lcd-bar');
+const lcdBeat = document.getElementById('lcd-beat');
+const lcdSub = document.getElementById('lcd-sub');
 const lcdTime = document.getElementById('lcd-time');
 function updateCounter() {
-  if (!lcdBars) return;
+  if (!lcdBar) return;
   const col = Math.max(0, Math.min(COLS, visualPlayhead));
   const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
   const posInBar = ((col % epb) + epb) % epb;
   const bar = Math.floor(col / epb) + 1;
   const beat = Math.floor(posInBar / ebeat) + 1;      // beat within the bar
   const sub = Math.floor(posInBar % ebeat) + 1;       // eighth-note subdivision within the beat
-  lcdBars.innerHTML = String(bar).padStart(3, '0') +
-    '<span class="sep-dot">|</span>' + beat + '<span class="sep-dot">|</span>' + sub;
+  lcdBar.textContent = String(bar).padStart(3, '0');
+  lcdBeat.textContent = beat;
+  lcdSub.textContent = sub;
   const sec = col * (60 / state.tempo / 2);
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -3255,9 +3262,14 @@ function updateMeters() {
 }
 function startMeters() {
   if (meterRafId) return;
+  let frame = 0;
   const tick = () => {
     if (!ctx) { meterRafId = null; return; }
-    updateMeters();
+    // A level meter doesn't need 60Hz to read as smooth (its own decay
+    // smoothing already blurs frame-to-frame changes) — updating every
+    // other frame halves the per-channel analyser-read cost, which scales
+    // with track count and matters more on weaker mobile CPUs.
+    if ((frame++ & 1) === 0) updateMeters();
     meterRafId = requestAnimationFrame(tick);
   };
   meterRafId = requestAnimationFrame(tick);
@@ -3602,6 +3614,15 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   }
 }
 let rafId = null, playStartCtxTime = 0, playStartCol = 0;
+// Cap how much of the song gets scheduled in one synchronous burst. Without
+// this, "loop" defaulting to the full song range (or just pressing Play with
+// loop off) schedules every remaining note — for a long, dense song that can
+// be thousands of Web Audio nodes created in a single JS call, which is
+// enough to visibly freeze the page for a moment on a weaker mobile CPU.
+// Scheduling in bounded windows instead (re-arming before each one ends —
+// the same mechanism already used for wrapping at a loop point, just applied
+// more often) keeps every burst small regardless of total song length.
+const SCHEDULE_LOOKAHEAD_BARS = 8;
 function startPlaybackFrom(col) {
   playing = true;
   clearTimeout(loopTimer);
@@ -3610,14 +3631,16 @@ function startPlaybackFrom(col) {
     const eighthSec = 60 / state.tempo / 2;
     const startAt = ctx.currentTime + 0.05;
     const looping = document.getElementById('loop').checked;
-    const toCol = looping ? state.loopEnd : COLS;
+    const loopEnd = looping ? state.loopEnd : COLS;
+    const toCol = Math.min(loopEnd, fromCol + SCHEDULE_LOOKAHEAD_BARS * eighthsPerBar());
     scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol);
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;
     const remainingDur = Math.max(0.01, (toCol - fromCol) * eighthSec);
     loopTimer = setTimeout(() => {
-      if (looping) loop(state.loopStart);
+      if (toCol < loopEnd) loop(toCol);
+      else if (looping) loop(state.loopStart);
       else playing = false;
     }, remainingDur * 1000);
   }
