@@ -65,7 +65,7 @@
   .song-item button { padding: 5px 11px; font-size: 12px; }
   .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
   .song-item .song-del:hover { border-color: #a33; }
-  .song-save-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .song-save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   .song-save-row input { flex: 1; min-width: 0; padding: 7px 10px; }
   .help-head {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -142,6 +142,13 @@
   .tp-btn.toggle[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
   .icon-btn[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
 
+  #song-name-display {
+    font-size: 13px; font-weight: 700; color: var(--ink); max-width: 220px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #song-name-display::after { content: ' ✎'; color: var(--muted); font-weight: 400; font-size: 11px; }
+  #song-name-display:hover { border-color: #55555f; color: #fff; }
+
   /* Counter LCD */
   #counter-panel .panel-body { flex-direction: column; align-items: stretch; gap: 1px; min-width: 128px; }
   .lcd {
@@ -215,13 +222,17 @@
      collapsed to a slim bar. */
   #master-track {
     background: var(--panel); border: 1px solid #2c2c33; border-radius: 0 0 8px 8px;
-    display: flex; align-items: center; gap: 12px; padding: 6px 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 6px 10px;
     /* Pinned to the bottom of the viewport (like the toolbar is pinned to the
        top) so Master/Tempo/Length stay reachable without scrolling past every
        track lane first. */
     position: sticky; bottom: 0; z-index: 20;
     box-shadow: 0 -6px 14px rgba(0,0,0,0.45);
   }
+  /* Pushed to the far right when there's room (wraps below otherwise); kept
+     out of the scrolling track list so it's reachable without scrolling past
+     every lane first. */
+  #master-track #add-track-btn { flex: 0 0 auto; margin-left: auto; }
   #master-collapse {
     flex: 0 0 auto; background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0;
     border-radius: 5px; padding: 4px 9px; cursor: pointer; font-size: 12px; line-height: 1;
@@ -566,15 +577,16 @@
         A browser tool for composing 8-bit chiptune loops — everything is synthesised with the
         Web Audio API, no audio files. Instruments are laid out as separate <b>tracks</b> stacked
         vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
-        red playhead run across every lane at once. Open <b>🎵 Songs</b> to load an example or one of
-        your saved songs; your own songs are stored in this browser.
+        red playhead run across every lane at once. The current project's name is shown at the top
+        left (click it to rename) — open <b>🎵</b> in the Session group to load an example, one of
+        your own saved songs, or start a new one; your own songs are stored in this browser.
       </p>
 
       <h3>Tracks &amp; channel strips</h3>
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
-        <li><b>＋ Add track</b> (in the toolbar) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip (hiding its grid) — handy for an overview with many tracks. Remembered per browser.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
@@ -604,11 +616,11 @@
 
       <h3>Bottom bar (Tempo · Length · Master)</h3>
       <p>
-        The strip under the tracks holds <b>Tempo</b>, <b>Length</b> and the <b>🔊 Master</b> volume.
-        The <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions).
-        <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b> appends an empty bar,
-        <b>−</b> removes the last bar (dropping any notes/hits past the new end); the length is saved
-        with your file and exported so the game loops it.
+        The strip under the tracks holds <b>Tempo</b>, <b>Length</b>, the <b>🔊 Master</b> volume and
+        <b>＋ Add track</b>. The <b>▾</b> button collapses it to a slim bar to free up space (remembered
+        between sessions). <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b>
+        appends an empty bar, <b>−</b> removes the last bar (dropping any notes/hits past the new end);
+        the length is saved with your file and exported so the game loops it.
       </p>
 
       <h3>Mixing</h3>
@@ -631,7 +643,8 @@
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (tracks, tempo, length, meter, mix, waveforms, pan &amp; markers). Work also autosaves to this browser.</li>
+        <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name shown top-left is click-to-rename any time.</li>
+        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan &amp; markers). Work also autosaves to this browser.</li>
         <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
@@ -659,6 +672,14 @@
     <div class="songs-body">
       <p class="songs-note">Examples load from this site. Your own songs are saved in this browser (nothing is uploaded). Loading a song replaces what's currently in the editor — save first if you want to keep it.</p>
       <section>
+        <h3>New song</h3>
+        <div class="song-save-row">
+          <input id="new-song-name" type="text" placeholder="Name this song…" maxlength="60">
+          <button id="new-song-starter" title="Melody, Bass and a Rhythm track, all empty">🎼 Starter tracks</button>
+          <button id="new-song-empty" title="Just the Rhythm track — add your own tonal tracks">📄 Empty project</button>
+        </div>
+      </section>
+      <section>
         <h3>Examples</h3>
         <div id="songs-examples" class="song-list"><div class="song-empty">Loading…</div></div>
       </section>
@@ -676,6 +697,15 @@
   <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
   <div class="toolbar">
+    <!-- Current project name — always visible so it's clear which song is
+         loaded; click to rename (see renameSong() in JS). -->
+    <div class="panel" id="song-name-panel">
+      <div class="panel-cap">Song</div>
+      <div class="panel-body">
+        <button id="song-name-display" title="Click to rename this song">Froggy Hop</button>
+      </div>
+    </div>
+
     <!-- Transport -->
     <div class="panel" id="transport-panel">
       <div class="panel-cap">Transport</div>
@@ -746,26 +776,10 @@
       </div>
     </div>
 
-    <!-- File -->
-    <div class="panel tb-extra" id="songs-panel">
-      <div class="panel-cap">Songs</div>
-      <div class="panel-body">
-        <button id="songs-btn" title="Open the song library (examples + your saved songs)">🎵 Songs</button>
-      </div>
-    </div>
-
-    <!-- Tracks (kept out of the scrolling track list so it's reachable without
-         scrolling past every lane first — see #tracks-panel wiring in JS). -->
-    <div class="panel tb-extra" id="tracks-panel">
-      <div class="panel-cap">Tracks</div>
-      <div class="panel-body">
-        <button id="add-track-btn" title="Add a new tonal track">＋ Add track</button>
-      </div>
-    </div>
-
     <div class="panel tb-extra" id="file-panel">
       <div class="panel-cap">Session</div>
       <div class="panel-body file-group">
+        <button id="songs-btn" class="icon-btn" title="Open the song library (examples, your saved songs, new song)">🎵</button>
         <button id="reset" class="icon-btn" title="Reset to the demo song">↺</button>
         <button id="save-file" class="icon-btn" title="Download as .json file">💾</button>
         <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
@@ -827,6 +841,7 @@
           </div>
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Master</span>
+        <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
       </div>
     </div>
     <div class="inspector empty" id="inspector">No note selected.</div>
@@ -1022,7 +1037,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1048,6 +1063,8 @@ const state = {
   mute: _gd.mute,
   solo: _gd.solo,
   tempo: TEMPO_BPM,
+  songName: 'Froggy Hop',    // current project's display name — not song "content", so it's
+                             // not part of undo history (see snapshotSong())
   masterVol: 0.45,           // editor preview master level (not part of the game)
   activeTrack: 'lead',
   tool: 'pen',
@@ -1130,6 +1147,7 @@ function restoreTrackList(data) {
 const autosaveDraft = loadAutosaveIfPresent();
 if (autosaveDraft && confirm('Found an unsaved draft from a previous session. Restore it?\n\n(Cancel discards it and loads the game\'s current song instead.)')) {
   state.tempo = typeof autosaveDraft.tempo === 'number' ? autosaveDraft.tempo : TEMPO_BPM;
+  if (typeof autosaveDraft.songName === 'string' && autosaveDraft.songName) state.songName = autosaveDraft.songName;
   restoreTimeSig(autosaveDraft);
   restoreTrackList(autosaveDraft);
   COLS = colsFromSaved(autosaveDraft, state.tracks);
@@ -1139,6 +1157,21 @@ if (autosaveDraft && confirm('Found an unsaved draft from a previous session. Re
   try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ }
 }
 refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS with the (possibly restored) track list
+
+// ---------- Song name (project title) ----------
+const songNameDisplay = document.getElementById('song-name-display');
+function updateSongNameUI() {
+  songNameDisplay.textContent = state.songName;
+  document.title = 'Music Studio — ' + state.songName;
+}
+function renameSong() {
+  const name = prompt('Song name:', state.songName);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (trimmed) { state.songName = trimmed; updateSongNameUI(); autosave(); }
+}
+songNameDisplay.addEventListener('click', renameSong);
+updateSongNameUI();
 
 // ---------- Undo/redo ----------
 const HISTORY_LIMIT = 100;
@@ -2566,6 +2599,8 @@ document.getElementById('len-plus').addEventListener('click', () => setCols(COLS
 
 document.getElementById('reset').addEventListener('click', () => {
   stopPlayback();                     // audio graph is keyed by track id — rebuild after reset
+  state.songName = 'Froggy Hop';
+  updateSongNameUI();
   state.timeSig = { ...DEFAULT_TS };  // game song is 4/4; reset meter first so COLS rounds right
   syncTimeSigUI();
   state.markers = [];
@@ -2586,6 +2621,61 @@ document.getElementById('reset').addEventListener('click', () => {
   updateLengthUI();
   render();
 });
+
+// ---------- New song (from the Songs dialog: a blank project, named up front) ----------
+// Either just the Rhythm track ("empty project") or Rhythm plus a couple of
+// empty starter tonal tracks — same track-map shape gameDefaults()/addTrack()
+// build, just with no notes yet.
+function newSongTrackList(withStarterTracks) {
+  const trackList = [];
+  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
+  const addTonal = (name, osc) => {
+    const id = nextTrackId();
+    trackList.push({ id, name, color: TRACK_PALETTE[trackList.length % TRACK_PALETTE.length], kind: 'tone' });
+    tracks[id] = []; gains[id] = 0.9; waveform[id] = osc; pan[id] = 0; mute[id] = false; solo[id] = false;
+  };
+  if (withStarterTracks) { addTonal('Melody', 'square'); addTonal('Bass', 'triangle'); }
+  trackList.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
+  tracks.rhythm = []; gains.rhythm = 1.2; waveform.rhythm = 'kit'; pan.rhythm = 0; mute.rhythm = false; solo.rhythm = false;
+  return { trackList, tracks, gains, waveform, pan, mute, solo };
+}
+function createNewSong(withStarterTracks, name) {
+  stopPlayback();
+  state.songName = name;
+  updateSongNameUI();
+  state.timeSig = { ...DEFAULT_TS };
+  syncTimeSigUI();
+  state.markers = [];
+  const nt = newSongTrackList(withStarterTracks);
+  state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
+  state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
+  refreshTrackArrays();
+  state.activeTrack = state.trackList[0].id;
+  for (const t of state.trackList) ensureChannelNodes(t.id);
+  applyPan();
+  state.tempo = 120;
+  tempoInput.value = state.tempo;
+  state.masterVol = 0.45;
+  syncMasterVolUI();
+  if (masterGain) masterGain.gain.value = state.masterVol;
+  applyGains();
+  COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
+  state.loopStart = 0; state.loopEnd = COLS;
+  state.playhead = 0; visualPlayhead = 0;
+  state.selected = null;
+  state.multiSelected.clear();
+  updateLengthUI();
+  render();
+  autosave();
+  songsDialog.close();
+}
+document.getElementById('new-song-starter').addEventListener('click', () => {
+  createNewSong(true, document.getElementById('new-song-name').value.trim() || 'Untitled Song');
+});
+document.getElementById('new-song-empty').addEventListener('click', () => {
+  createNewSong(false, document.getElementById('new-song-name').value.trim() || 'Untitled Song');
+});
+
 document.getElementById('loop-reset').addEventListener('click', () => {
   state.loopStart = 0;
   state.loopEnd = COLS;
@@ -2595,24 +2685,29 @@ document.getElementById('loop-reset').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
+  const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
   const a = document.createElement('a');
-  a.href = url; a.download = 'froggy-hop.json'; a.click();
+  a.href = url; a.download = slug + '.json'; a.click();
   URL.revokeObjectURL(url);
 });
 const loadInput = document.getElementById('load-file-input');
 document.getElementById('load-file').addEventListener('click', () => loadInput.click());
 // Apply a loaded song (from a file, an example, or a local slot) to the editor.
 // Returns false if the data isn't a valid song.
-function applySongData(data) {
+// `name` overrides data.songName — used when the song's name lives outside
+// the file itself (an example's index.json entry, or a local save's slot key).
+function applySongData(data, name) {
   const t = data && data.tracks;
   if (!t || typeof t !== 'object' || !Array.isArray(t.rhythm)) return false;
   stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
+  state.songName = name || (typeof data.songName === 'string' && data.songName) || 'Untitled Song';
+  updateSongNameUI();
   state.tempo = typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM;
   tempoInput.value = state.tempo;
   restoreTimeSig(data);
@@ -2641,7 +2736,9 @@ loadInput.addEventListener('change', async () => {
   let data;
   try { data = JSON.parse(await file.text()); }
   catch (err) { alert('Could not read the file: ' + err.message); return; }
-  if (!applySongData(data)) alert('The file has the wrong format (missing the rhythm track).');
+  // Fall back to the filename (minus extension) if the file predates songName.
+  const fallbackName = file.name.replace(/\.json$/i, '');
+  if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing the rhythm track).');
 });
 
 // ---------- Song library: examples (fetched from this site) + local songs ----------
@@ -2675,7 +2772,7 @@ function renderLocalSongs() {
     localSongsEl.appendChild(songRow({
       title: name,
       desc: songs[name].savedAt ? 'Saved ' + new Date(songs[name].savedAt).toLocaleString() : '',
-      onLoad: () => { if (applySongData(songs[name].data)) songsDialog.close(); },
+      onLoad: () => { if (applySongData(songs[name].data, name)) songsDialog.close(); },
       onDelete: () => { if (confirm(`Delete “${name}”?`)) { const s = readLocalSongs(); delete s[name]; writeLocalSongs(s); renderLocalSongs(); } }
     }));
   }
@@ -2692,7 +2789,7 @@ async function renderExamples() {
       onLoad: async () => {
         try {
           const data = await (await fetch('songs/' + entry.file, { cache: 'no-cache' })).json();
-          if (applySongData(data)) songsDialog.close(); else alert('That example is in the wrong format.');
+          if (applySongData(data, entry.name)) songsDialog.close(); else alert('That example is in the wrong format.');
         } catch { alert('Could not load that example.'); }
       }
     }));
@@ -2700,6 +2797,7 @@ async function renderExamples() {
 }
 document.getElementById('songs-btn').addEventListener('click', () => {
   renderExamples(); renderLocalSongs(); songNameInput.value = '';
+  document.getElementById('new-song-name').value = '';
   songsDialog.showModal();
 });
 document.getElementById('songs-close').addEventListener('click', () => songsDialog.close());
@@ -2708,6 +2806,8 @@ document.getElementById('song-save-local').addEventListener('click', () => {
   if (!name) { songNameInput.focus(); return; }
   const songs = readLocalSongs();
   if (songs[name] && !confirm(`Overwrite “${name}”?`)) return;
+  state.songName = name;
+  updateSongNameUI();
   songs[name] = { savedAt: Date.now(), data: currentSongData() };
   writeLocalSongs(songs);
   songNameInput.value = '';
