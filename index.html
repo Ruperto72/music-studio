@@ -210,6 +210,11 @@
   #master-track {
     background: var(--panel); border: 1px solid #2c2c33; border-radius: 0 0 8px 8px;
     display: flex; align-items: center; gap: 12px; padding: 6px 10px;
+    /* Pinned to the bottom of the viewport (like the toolbar is pinned to the
+       top) so Master/Tempo/Length stay reachable without scrolling past every
+       track lane first. */
+    position: sticky; bottom: 0; z-index: 20;
+    box-shadow: 0 -6px 14px rgba(0,0,0,0.45);
   }
   #master-collapse {
     flex: 0 0 auto; background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0;
@@ -293,12 +298,6 @@
   }
   .th-btns button.x { color: #d88; font-size: 10px; }
   .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
-  .add-track-row { display: flex; padding: 6px; }
-  .add-track-btn {
-    width: 100%; padding: 7px; font-size: 12px; color: #9a9aa6; background: #17171c;
-    border: 1px dashed #3a3a42; border-radius: 6px; cursor: pointer;
-  }
-  .add-track-btn:hover { color: var(--ink); border-color: #55555f; background: #1d1d24; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -525,7 +524,7 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
-        <li><b>＋ Add track</b> (below the last lane) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li><b>＋ Add track</b> (in the toolbar) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -701,6 +700,15 @@
       <div class="panel-cap">Songs</div>
       <div class="panel-body">
         <button id="songs-btn" title="Open the song library (examples + your saved songs)">🎵 Songs</button>
+      </div>
+    </div>
+
+    <!-- Tracks (kept out of the scrolling track list so it's reachable without
+         scrolling past every lane first — see #tracks-panel wiring in JS). -->
+    <div class="panel tb-extra" id="tracks-panel">
+      <div class="panel-cap">Tracks</div>
+      <div class="panel-body">
+        <button id="add-track-btn" title="Add a new tonal track">＋ Add track</button>
       </div>
     </div>
 
@@ -1303,17 +1311,6 @@ function renderTracks() {
     if (t.kind === 'rhythm') renderRhythmTrack();
     else renderPitchTrack(t.id);
   }
-  renderAddTrack();
-}
-// A slim "＋ Add track" strip under the last track.
-function renderAddTrack() {
-  const row = el('div', 'add-track-row');
-  const btn = el('button', 'add-track-btn');
-  btn.textContent = '＋ Add track';
-  btn.title = 'Add a new tonal track';
-  btn.addEventListener('click', addTrack);
-  row.appendChild(btn);
-  tracksEl.appendChild(row);
 }
 
 // ---------- Add / rename / remove tracks ----------
@@ -2285,6 +2282,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
 });
 
+document.getElementById('add-track-btn').addEventListener('click', addTrack);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 
