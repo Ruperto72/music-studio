@@ -679,13 +679,14 @@
         bitcrush, echo and chorus in the inspector on the right.
       </p>
 
-      <h3>Bottom bar (Tempo · Length · Master)</h3>
+      <h3>Bottom bar (Tempo · Length · Grid · Master)</h3>
       <p>
-        The strip under the tracks holds <b>Tempo</b>, <b>Length</b>, the <b>🔊 Master</b> volume and
-        <b>＋ Add track</b>. The <b>▾</b> button collapses it to a slim bar to free up space (remembered
-        between sessions). <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b>
-        appends an empty bar, <b>−</b> removes the last bar (dropping any notes/hits past the new end);
-        the length is saved with your file and exported so the game loops it.
+        The strip under the tracks holds <b>Tempo</b>, <b>Length</b>, <b>Grid</b> (the note snap
+        resolution), the <b>🔊 Master</b> volume and <b>＋ Add track</b>. The <b>▾</b> button collapses
+        it to a slim bar to free up space (remembered between sessions). <b>Length</b> makes the song
+        longer/shorter one bar at a time: <b>+</b> appends an empty bar, <b>−</b> removes the last bar
+        (dropping any notes/hits past the new end); the length is saved with your file and exported so
+        the game loops it.
       </p>
 
       <h3>Mixing</h3>
@@ -801,20 +802,6 @@
       </div>
     </div>
 
-    <!-- Grid resolution (note snap) -->
-    <div class="panel" id="grid-panel">
-      <div class="panel-cap">Grid</div>
-      <div class="panel-body">
-        <select id="grid-select" title="Snap resolution for placing/moving notes">
-          <option value="1/4">1/4</option>
-          <option value="1/8" selected>1/8</option>
-          <option value="1/16">1/16</option>
-          <option value="1/8T">1/8 T</option>
-          <option value="1/16T">1/16 T</option>
-        </select>
-      </div>
-    </div>
-
     <!-- More toggle (mobile only) -->
     <button id="more-toggle" class="panel" aria-expanded="false" title="More controls">⋯ More</button>
 
@@ -896,8 +883,18 @@
               <button id="len-plus" title="Add a bar (lengthen the song)">+</button>
             </div>
           </div>
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Grid</span>
+            <select id="grid-select" title="Snap resolution for placing/moving notes">
+              <option value="1/4">1/4</option>
+              <option value="1/8" selected>1/8</option>
+              <option value="1/16">1/16</option>
+              <option value="1/8T">1/8 T</option>
+              <option value="1/16T">1/16 T</option>
+            </select>
+          </div>
         </div>
-        <span class="mstrip-collapsed-label">Tempo · Length · Master</span>
+        <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
         <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
       </div>
     </div>
