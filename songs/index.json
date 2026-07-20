@@ -13,5 +13,10 @@
     "file": "techno.json",
     "name": "Techno",
     "desc": "A ~2-minute 128 BPM journey — intro, groove, build, drop, breakdown and a bigger second drop, with riser automation and backbeat claps into each drop."
+  },
+  {
+    "file": "neon-drive.json",
+    "name": "Neon Drive",
+    "desc": "An original 80s synth-pop song at 120 BPM — verse, chorus, bridge and a soaring final chorus, with a sequenced arp, lush swelling pad, synth-bass slides and a proper melodic hook."
   }
 ]
