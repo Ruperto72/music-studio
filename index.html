@@ -143,7 +143,7 @@
   .icon-btn[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
 
   #song-name-display {
-    font-size: 13px; font-weight: 700; color: var(--ink); max-width: 220px;
+    font-size: 13px; font-weight: 700; color: var(--ink); flex: 1 1 auto; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #song-name-display::after { content: ' ✎'; color: var(--muted); font-weight: 400; font-size: 11px; }
@@ -504,16 +504,25 @@
   }
   .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
 
+  /* Groups the Song-info panel with the note/effect inspector below it so
+     they scroll and stick together as one right-hand column (see .inspector
+     for why it's pinned). */
+  .inspector-column {
+    display: flex; flex-direction: column; gap: 10px;
+    width: 244px; flex: 0 0 244px;
+    position: sticky; top: var(--sticky-top, 110px); align-self: flex-start;
+    max-height: calc(100vh - var(--sticky-top, 110px) - 12px); overflow-y: auto;
+  }
+  .song-info-details {
+    display: flex; flex-direction: column; gap: 4px; margin-top: 2px;
+    padding-top: 6px; border-top: 1px solid #26262e;
+  }
+  .song-info-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+  .song-info-row span:last-child { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   .inspector {
     background: linear-gradient(#1b1b20, #141418); padding: 8px; border-radius: 8px;
     border: 1px solid #34343c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
     font-size: 12px; display: flex; flex-direction: column; gap: 8px; align-items: stretch;
-    width: 244px; flex: 0 0 244px;
-    /* Pin the effect panel so it stays reachable while editing notes far down
-       (bass/rhythm). Sits just below the sticky top bar; scrolls internally if
-       it ever gets taller than the viewport. */
-    position: sticky; top: var(--sticky-top, 110px); align-self: flex-start;
-    max-height: calc(100vh - var(--sticky-top, 110px) - 12px); overflow-y: auto;
   }
   .inspector.empty { color: #7a7a86; padding: 16px; font-size: 12px; line-height: 1.6; }
   .insp-panel {
@@ -572,6 +581,14 @@
     .toolbar.show-extra .tb-extra { display: flex; }
     /* Inspector becomes a bottom sheet that only appears when a note is selected. */
     .editor-layout { flex-direction: column; }
+    /* .inspector-column's sticky positioning would otherwise become the
+       containing block for .inspector's fixed bottom-sheet below, trapping
+       it inside this column instead of pinning it to the viewport. Reset it
+       to a plain block and move it above the DAW grid (order: -1) so the
+       still-visible Song panel sits where the old toolbar panel used to. */
+    .inspector-column {
+      position: static; width: auto; flex: none; max-height: none; overflow: visible; order: -1;
+    }
     /* The bounded-height/internally-scrolling grid is a desktop refinement —
        keep the whole page scrolling normally here, where screen space is
        already tight and the rotate-hint steers people to landscape instead. */
@@ -691,7 +708,7 @@
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name shown top-left is click-to-rename any time.</li>
+        <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The <b>Song</b> panel above the inspector shows the project name (click-to-rename any time) and, via its <b>▾</b>, tempo/meter/length/track-count at a glance.</li>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
         <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
@@ -745,15 +762,6 @@
   <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
   <div class="toolbar">
-    <!-- Current project name — always visible so it's clear which song is
-         loaded; click to rename (see renameSong() in JS). -->
-    <div class="panel" id="song-name-panel">
-      <div class="panel-cap">Song</div>
-      <div class="panel-body">
-        <button id="song-name-display" title="Click to rename this song">Froggy Hop</button>
-      </div>
-    </div>
-
     <!-- Transport -->
     <div class="panel" id="transport-panel">
       <div class="panel-cap">Transport</div>
@@ -893,7 +901,24 @@
         <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
       </div>
     </div>
-    <div class="inspector empty" id="inspector">No note selected.</div>
+    <div class="inspector-column">
+      <!-- Current project name — always visible so it's clear which song is
+           loaded; click to rename (see renameSong() in JS). ▾ expands details. -->
+      <div class="panel" id="song-info-panel">
+        <div class="panel-cap">Song</div>
+        <div class="panel-body">
+          <button id="song-name-display" title="Click to rename this song">Froggy Hop</button>
+          <button id="song-info-toggle" class="icon-btn" title="Show song details" aria-expanded="false">▾</button>
+        </div>
+        <div class="song-info-details" id="song-info-details" hidden>
+          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
+          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
+          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
+          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
+        </div>
+      </div>
+      <div class="inspector empty" id="inspector">No note selected.</div>
+    </div>
   </div>
   <button id="insp-close" title="Close editor panel">✕ Done</button>
 
@@ -1257,6 +1282,24 @@ function renameSong() {
 songNameDisplay.addEventListener('click', renameSong);
 updateSongNameUI();
 
+// Expandable "Song" panel details (tempo/meter/length/track count) — a
+// read-only at-a-glance summary; the actual controls live in the master bar.
+const songInfoToggle = document.getElementById('song-info-toggle');
+const songInfoDetails = document.getElementById('song-info-details');
+songInfoToggle.addEventListener('mousedown', (e) => e.stopPropagation());
+songInfoToggle.addEventListener('click', () => {
+  const opening = songInfoDetails.hasAttribute('hidden');
+  if (opening) songInfoDetails.removeAttribute('hidden'); else songInfoDetails.setAttribute('hidden', '');
+  songInfoToggle.textContent = opening ? '▴' : '▾';
+  songInfoToggle.setAttribute('aria-expanded', String(opening));
+});
+function updateSongInfo() {
+  document.getElementById('info-tempo').textContent = state.tempo + ' BPM';
+  document.getElementById('info-meter').textContent = tsId(state.timeSig);
+  document.getElementById('info-length').textContent = round2(COLS / eighthsPerBar()) + ' bars';
+  document.getElementById('info-tracks').textContent = state.trackList.length;
+}
+
 // ---------- Undo/redo ----------
 const HISTORY_LIMIT = 100;
 const undoStack = [];
@@ -1392,6 +1435,7 @@ function render() {
   renderTracks();
   positionOverlays();
   renderInspector();
+  updateSongInfo();
   autosave();
   checkpointHistory();
 }
