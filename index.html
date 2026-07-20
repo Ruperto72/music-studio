@@ -22,7 +22,7 @@
     --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
     --strip: #202027; --strip2: #191920; --ink: #e8e8ee; --muted: #9a9aa6;
     --subgrid: rgba(120, 200, 255, 0.16);
-    --header-w: 176px; --gutter-w: 42px;
+    --header-w: 200px; --gutter-w: 42px;
   }
   * { box-sizing: border-box; }
   body {
@@ -288,22 +288,28 @@
     content: ''; position: absolute; inset: 0; border: 1px solid rgba(255,255,255,0.35);
     pointer-events: none;
   }
-  .th-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .th-top { display: flex; align-items: center; gap: 6px; }
   .th-collapse {
     flex: 0 0 auto; width: 18px; height: 18px; padding: 0; font-size: 11px; line-height: 1;
     background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0; border-radius: 4px; cursor: pointer;
   }
   .th-collapse:hover { border-color: #55555f; }
-  /* Collapsed: keep just the name/M/S/X row, hide the volume/pan/meter rows
+  /* Collapsed: keep just name/M/S plus the live VU bar, hide everything else
+     (waveform, automation/envelope tools, volume/pan sliders, remove button)
      and the whole grid lane for that track — a slim strip so many tracks fit
      on screen at once (the lane/gutter aren't even built when collapsed, see
      renderPitchTrack/renderRhythmTrack). */
-  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .vu, .track.collapsed .th-tools { display: none; }
-  .th-name { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
+  .track.collapsed .th-wave-row, .track.collapsed .th-tools,
+  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove { display: none; }
+  .th-name {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2;
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
+  .th-wave-row { margin-top: 2px; }
   .th-wave {
-    margin-top: 3px; font-size: 10px; color: #cfcfd8; background: #26262d;
-    border: 1px solid #3a3a44; border-radius: 4px; padding: 1px 4px; cursor: pointer; max-width: 84px;
+    width: 100%; box-sizing: border-box; font-size: 10px; color: #cfcfd8; background: #26262d;
+    border: 1px solid #3a3a44; border-radius: 4px; padding: 2px 4px; cursor: pointer;
   }
   .th-pan { display: flex; align-items: center; gap: 6px; }
   .th-pan input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
@@ -321,7 +327,7 @@
   .track[data-track="harmony"] .th-pan input[type=range] { accent-color: var(--harmony); }
   .track[data-track="bass"]    .th-pan input[type=range] { accent-color: var(--bass); }
   .track[data-track="rhythm"]  .th-pan input[type=range] { accent-color: var(--rhythm); }
-  .th-btns { display: flex; gap: 4px; }
+  .th-btns { display: flex; gap: 4px; flex: 0 0 auto; }
   .th-btns button {
     width: 22px; height: 20px; padding: 0; font-size: 11px; font-weight: 700;
     border-radius: 4px; background: #2c2c33; color: #b8b8c2; line-height: 1;
@@ -627,7 +633,7 @@
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane with six hit types: Kick, Snare, Hi-hat, Tom, Clap and Crash.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
-        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip (hiding its grid) — handy for an overview with many tracks. Remembered per browser.</li>
+        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores the default shape.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -1329,7 +1335,7 @@ const timelineEl = document.getElementById('timeline');
 const tracksEl = document.getElementById('tracks');
 const masterTrackEl = document.getElementById('master-track');
 const inspector = document.getElementById('inspector');
-const HEADER_W = 176, GUTTER_W = 42;
+const HEADER_W = 200, GUTTER_W = 42;
 const LANE_ORIGIN = HEADER_W + GUTTER_W; // x (within .daw content) where lane columns begin
 
 let playheadEl = null, playheadGrip = null, loopEls = null, rulerGridEl = null, markersLayer = null;
@@ -1803,16 +1809,40 @@ function buildHeader(track) {
   collapseBtn.setAttribute('aria-expanded', String(!collapsed));
   collapseBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTrackCollapsed(track); });
-  const nameWrap = el('div');
+  // Name + Mute/Solo (+ Remove) share the top row — these are what stays
+  // visible in the collapsed view. The waveform picker gets its own row below
+  // (hidden while collapsed) since cramming it in here too was what caused
+  // this row to overflow the header's fixed width.
   const name = el('span', 'th-name'); name.textContent = trackName(track);
   name.style.color = trackColor(track);
   name.title = 'Double-click to rename';
   name.addEventListener('mousedown', (e) => e.stopPropagation());
   name.addEventListener('dblclick', (e) => { e.stopPropagation(); renameTrack(track); });
-  nameWrap.append(name);
+  const btns = el('div', 'th-btns');
+  for (const [cls, key, label] of [['m', 'mute', 'M'], ['s', 'solo', 'S']]) {
+    const btn = el('button', cls + (state[key][track] ? ' on' : ''));
+    btn.textContent = label;
+    btn.title = key[0].toUpperCase() + key.slice(1);
+    // Swallow mousedown too: otherwise the header's own mousedown (setActive ->
+    // render) rebuilds this button before the click completes, dropping the click.
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
+    btns.append(btn);
+  }
+  if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
+    const rm = el('button', 'x th-remove'); rm.textContent = '✕'; rm.title = 'Remove this track';
+    rm.addEventListener('mousedown', (e) => e.stopPropagation());
+    rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
+    btns.append(rm);
+  }
+  top.append(collapseBtn, name, btns);
+
+  // Waveform picker (or the "Kit" label for rhythm) — its own full-width row,
+  // hidden while collapsed.
+  const waveRow = el('div', 'th-wave-row');
   if (track === 'rhythm') {
     const osc = el('span', 'th-osc'); osc.textContent = WAVE_LABEL.kit;
-    nameWrap.append(osc);
+    waveRow.append(osc);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
     // via the exported VOICES config.
@@ -1832,28 +1862,10 @@ function buildHeader(track) {
       if (n) previewNote(track, n);
       autosave();
     });
-    nameWrap.append(wave);
+    waveRow.append(wave);
   }
-  const btns = el('div', 'th-btns');
-  for (const [cls, key, label] of [['m', 'mute', 'M'], ['s', 'solo', 'S']]) {
-    const btn = el('button', cls + (state[key][track] ? ' on' : ''));
-    btn.textContent = label;
-    btn.title = key[0].toUpperCase() + key.slice(1);
-    // Swallow mousedown too: otherwise the header's own mousedown (setActive ->
-    // render) rebuilds this button before the click completes, dropping the click.
-    btn.addEventListener('mousedown', (e) => e.stopPropagation());
-    btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
-    btns.append(btn);
-  }
-  if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
-    const rm = el('button', 'x'); rm.textContent = '✕'; rm.title = 'Remove this track';
-    rm.addEventListener('mousedown', (e) => e.stopPropagation());
-    rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
-    btns.append(rm);
-  }
-  top.append(collapseBtn, nameWrap, btns);
 
-  // A second row for the (less-frequently-used) automation/envelope toggles —
+  // A third row for the (less-frequently-used) automation/envelope toggles —
   // keeping them out of .th-top avoids overflowing the header's fixed width.
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
@@ -1913,7 +1925,7 @@ function buildHeader(track) {
   vu.appendChild(vuMask);
   vuMeters[track] = vuMask;
 
-  header.append(top, tools, vol, panRow, vu);
+  header.append(top, waveRow, tools, vol, panRow, vu);
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }
