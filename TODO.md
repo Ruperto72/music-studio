@@ -26,12 +26,9 @@ ett facit.
 
 - [ ] **Metronom + count-in** — redan listad under "Interaktion / touch"
   ovan; lyfts fram här som en av de mest lågt hängande frukterna.
-- [ ] **ADSR-envelope per instrument** — redan nämnd under
-  "Spårhantering" (inga instrument-presets utöver råa vågformer); enkel
-  attack/release-kontroll ger stor klangvariation för litet arbete.
 - [ ] **EQ/kompression (t.ex. sidokedjad ducking) på mastern** — genuint
   DAW-territorium. Avvägning: drar appen bort från sin identitet som ett
-  lättviktigt, beroendefritt 8-bit-verktyg — lägst prioritet av de tre.
+  lättviktigt, beroendefritt 8-bit-verktyg — lägst prioritet av de två.
 
 ## Ljud / export
 
@@ -41,18 +38,18 @@ ett facit.
 
 ## Rytmspår
 
-- **Fast kit med 4 ljud** (`RHYTHM_ROWS = ['kick','snare','hihat','tom']`,
-  index.html:812) — inget sätt att lägga till fler slagverksljud (t.ex.
-  clap, crash) eller ett andra rytmspår med eget kit.
+- **Bara ett rytmspår med ett fast kit** (nu 6 ljud: kick/snare/hihat/tom/
+  clap/crash) — inget sätt att lägga till egna/ytterligare slagverksljud
+  utöver dessa, eller ett andra rytmspår med eget kit.
 
 ## Spårhantering
 
 - **Ingen omordning av spår.** Man kan lägga till/döpa om/ta bort tonspår,
   men inte flytta ett spår upp/ner i listan.
-- **Inga instrument-presets utöver de 4 råa vågformerna** (square/triangle/
-  saw/sine) — ingen ADSR-envelope eller sparade timbre-recept utöver de
-  per-not-effekter som redan finns (bend, vibrato, tremolo, duty, bitcrush,
-  echo, chorus).
+- **Inga sparade instrument-presets.** Varje spår har nu vågform + ADSR-
+  envelope, men inget bibliotek av namngivna timbre-recept att återanvända
+  mellan spår/låtar — utöver de per-not-effekter som redan finns (bend,
+  vibrato, tremolo, duty, bitcrush, echo, chorus).
 
 ## Interaktion / touch
 

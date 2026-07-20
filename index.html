@@ -298,7 +298,7 @@
      and the whole grid lane for that track — a slim strip so many tracks fit
      on screen at once (the lane/gutter aren't even built when collapsed, see
      renderPitchTrack/renderRhythmTrack). */
-  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .vu { display: none; }
+  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .vu, .track.collapsed .th-tools { display: none; }
   .th-name { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
   .th-wave {
@@ -329,10 +329,15 @@
   .th-btns button.m.on, .th-btns button.s.on {
     background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
   }
-  .th-btns button.auto.on {
+  .th-btns button.x { color: #d88; font-size: 10px; }
+  .th-tools { display: flex; gap: 4px; }
+  .th-tool-btn {
+    flex: 1 1 auto; height: 18px; padding: 0; font-size: 10px; font-weight: 700;
+    border-radius: 4px; background: #2c2c33; color: #b8b8c2; line-height: 1;
+  }
+  .th-tool-btn.on {
     background: #7a4fd1; color: #fff; border-color: #5c3aa8; box-shadow: 0 0 6px rgba(122,79,209,0.4);
   }
-  .th-btns button.x { color: #d88; font-size: 10px; }
   .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
@@ -388,6 +393,11 @@
     border-radius: 50%; background: #1a1a20; border: 2px solid #888; cursor: grab;
   }
   .automation-point:hover { background: #fff; }
+  .adsr-lane-el { display: flex; align-items: center; gap: 18px; padding: 0 14px; }
+  .adsr-field { display: flex; align-items: center; gap: 6px; }
+  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 12px; text-align: center; }
+  .adsr-field input[type=range] { width: 90px; cursor: pointer; }
+  .adsr-val { font-size: 10px; color: var(--muted); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 
   .lane { display: grid; position: relative; }
   /* Sub-eighth grid guides for the current resolution (1/16, triplets, …),
@@ -433,6 +443,8 @@
   .hit.snare { background: #ffdf3b; }
   .hit.hihat { background: #1fae54; }
   .hit.tom   { background: #ff6a3b; }
+  .hit.clap  { background: #ff5ec8; }
+  .hit.crash { background: #d9e8ff; }
 
   /* top:0/bottom:0 stretches the line across the whole daw (timeline + tracks)
      automatically, so its visibility never depends on a JS height measurement.
@@ -612,11 +624,12 @@
 
       <h3>Tracks &amp; channel strips</h3>
       <ul>
-        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
+        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane with six hit types: Kick, Snare, Hi-hat, Tom, Clap and Crash.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip (hiding its grid) — handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
+        <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores the default shape.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -673,7 +686,7 @@
       <h3>Saving &amp; exporting</h3>
       <ul>
         <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name shown top-left is click-to-rename any time.</li>
-        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation &amp; markers). Work also autosaves to this browser.</li>
+        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
         <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
@@ -925,8 +938,14 @@ const RHYTHM_COLOR = '#39ff6a';
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
 const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine']; // selectable per tonal track
 const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', kit: 'Kit' };
-const RHYTHM_ROWS = ['kick', 'snare', 'hihat', 'tom'];
-const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', tom: 'Tom' };
+const RHYTHM_ROWS = ['kick', 'snare', 'hihat', 'tom', 'clap', 'crash'];
+const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', tom: 'Tom', clap: 'Clap', crash: 'Crash' };
+
+// Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
+// absent) — attack/decay/release are fractions of the note's own duration (so they
+// scale naturally with note length instead of needing per-tempo absolute times);
+// sustain is a level (0..1 of the note's peak amplitude).
+const DEFAULT_ADSR = { attack: 0.05, decay: 0.15, sustain: 0.7, release: 0.15 };
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1067,7 +1086,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1102,6 +1121,7 @@ const state = {
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
   markers: [],               // [{ col, name }] editor-only timeline markers
   automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
+  adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
@@ -1140,6 +1160,16 @@ function applySavedMix(data) {
           .map(p => ({ col: Math.max(0, p.col), value: p.value }))
           .sort((a, b) => a.col - b.col);
         if (clean.length) { state.automation[ch] = state.automation[ch] || {}; state.automation[ch][param] = clean; }
+      }
+    }
+  }
+  if (data.adsr && typeof data.adsr === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const a = data.adsr[ch];
+      if (!a || typeof a !== 'object') continue;
+      const keys = ['attack', 'decay', 'sustain', 'release'];
+      if (keys.every(k => typeof a[k] === 'number')) {
+        state.adsr[ch] = { attack: a.attack, decay: a.decay, sustain: a.sustain, release: a.release };
       }
     }
   }
@@ -1189,6 +1219,7 @@ function restoreTrackList(data) {
   }
   state.tracks = tracks; state.gains = gains; state.waveform = waveform; state.pan = pan; state.mute = mute; state.solo = solo;
   state.automation = {};
+  state.adsr = {};
 }
 
 const autosaveDraft = loadAutosaveIfPresent();
@@ -1228,7 +1259,7 @@ let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
-  automation: state.automation
+  automation: state.automation, adsr: state.adsr
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1251,6 +1282,7 @@ function restoreSnapshot(s) {
     refreshTrackArrays();
     for (const map of ['gains', 'waveform', 'pan', 'mute', 'solo']) if (data[map]) state[map] = data[map];
     state.automation = data.automation && typeof data.automation === 'object' ? data.automation : {};
+    state.adsr = data.adsr && typeof data.adsr === 'object' ? data.adsr : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan();
@@ -1341,6 +1373,7 @@ function audible(track) {
   if (state.mute[track]) return false;
   return anySolo() ? state.solo[track] : true;
 }
+function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
 
 // ---------- Rendering ----------
 // The playhead/grip/loop overlays are built once by createOverlays() and only
@@ -1469,6 +1502,7 @@ function renderTracks() {
     if (t.kind === 'rhythm') renderRhythmTrack();
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
+    if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
   }
 }
 
@@ -1516,11 +1550,11 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation]) delete map[id];
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr]) delete map[id];
   for (const nodes of [chanGain, chanPan, chanAnalyser]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
-  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id);
+  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
   if (state.selected && state.selected.track === id) state.selected = null;
@@ -1701,6 +1735,63 @@ function renderAutomationRow(track, param) {
   return row;
 }
 
+// ---------- ADSR envelope panel (tonal tracks only) ----------
+const adsrOpen = new Set(); // track ids with the envelope panel open
+const ADSR_FIELDS = [
+  ['attack', 'A', 0, 0.5, 0.01],
+  ['decay', 'D', 0, 0.5, 0.01],
+  ['sustain', 'S', 0, 1, 0.01],
+  ['release', 'R', 0.02, 0.6, 0.01],
+];
+function setAdsr(track, patch) {
+  const cur = { ...getAdsr(track), ...patch };
+  state.adsr[track] = cur;
+}
+// Same full-width-row trick as renderAutomationRow, but the content is just
+// four sliders (not a column-indexed curve), so the "lane" is a plain flex
+// row rather than something sized off COLS/colPx.
+function renderAdsrRow(track) {
+  const row = el('div', 'track automation-row');
+  row.dataset.track = track;
+  row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+
+  const header = el('div', 'track-header automation-header');
+  const title = el('span', 'automation-title'); title.textContent = 'Envelope';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset to the default envelope';
+  resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; render(); autosave(); });
+  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
+  closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
+  header.append(title, resetBtn, closeBtn);
+
+  const gutter = el('div', 'gutter automation-gutter');
+
+  const lane = el('div', 'lane adsr-lane-el');
+  const adsr = getAdsr(track);
+  for (const [key, label, min, max, step] of ADSR_FIELDS) {
+    const field = el('div', 'adsr-field');
+    const cap = el('span', 'adsr-label'); cap.textContent = label;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = adsr[key];
+    slider.style.accentColor = trackColor(track);
+    slider.title = key.charAt(0).toUpperCase() + key.slice(1);
+    const val = el('span', 'adsr-val'); val.textContent = Math.round(adsr[key] * 100) + '%';
+    slider.addEventListener('mousedown', (e) => e.stopPropagation());
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      val.textContent = Math.round(v * 100) + '%';
+      setAdsr(track, { [key]: v });
+      autosave();
+    });
+    field.append(cap, slider, val);
+    lane.appendChild(field);
+  }
+
+  row.append(header, gutter, lane);
+  return row;
+}
+
 function buildHeader(track) {
   const header = el('div', 'track-header');
   header.style.borderLeftColor = trackColor(track);
@@ -1754,16 +1845,6 @@ function buildHeader(track) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
     btns.append(btn);
   }
-  const autoBtn = el('button', 'auto' + (automationOpen.has(track) ? ' on' : ''));
-  autoBtn.textContent = '〰';
-  autoBtn.title = 'Automation (volume/pan over time)';
-  autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  autoBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (automationOpen.has(track)) automationOpen.delete(track); else automationOpen.set(track, 'gain');
-    render();
-  });
-  btns.append(autoBtn);
   if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
     const rm = el('button', 'x'); rm.textContent = '✕'; rm.title = 'Remove this track';
     rm.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -1771,6 +1852,32 @@ function buildHeader(track) {
     btns.append(rm);
   }
   top.append(collapseBtn, nameWrap, btns);
+
+  // A second row for the (less-frequently-used) automation/envelope toggles —
+  // keeping them out of .th-top avoids overflowing the header's fixed width.
+  const tools = el('div', 'th-tools');
+  const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
+  autoBtn.textContent = '〰 Auto';
+  autoBtn.title = 'Automation (volume/pan over time)';
+  autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  autoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (automationOpen.has(track)) automationOpen.delete(track); else automationOpen.set(track, 'gain');
+    render();
+  });
+  tools.append(autoBtn);
+  if (track !== 'rhythm') { // drum hits use fixed per-type envelopes, not a shared ADSR
+    const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
+    adsrBtn.textContent = 'E Env';
+    adsrBtn.title = 'Envelope (attack/decay/sustain/release)';
+    adsrBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    adsrBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (adsrOpen.has(track)) adsrOpen.delete(track); else adsrOpen.add(track);
+      render();
+    });
+    tools.append(adsrBtn);
+  }
 
   const vol = el('div', 'th-vol');
   const slider = document.createElement('input');
@@ -1806,7 +1913,7 @@ function buildHeader(track) {
   vu.appendChild(vuMask);
   vuMeters[track] = vuMask;
 
-  header.append(top, vol, panRow, vu);
+  header.append(top, tools, vol, panRow, vu);
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }
@@ -2488,7 +2595,7 @@ function renderInspector() {
   document.body.classList.toggle('has-sel', !!note); // drives the mobile close button
   if (!note) {
     inspector.className = 'inspector empty';
-    inspector.textContent = 'No note selected. Pen a Kick/Snare/Hi-hat/Tom cell in the Rhythm track to add a hit.';
+    inspector.textContent = 'No note selected. Pen a Kick/Snare/Hi-hat/Tom/Clap/Crash cell in the Rhythm track to add a hit.';
     return;
   }
   const { track, index } = sel;
@@ -2827,6 +2934,7 @@ document.getElementById('reset').addEventListener('click', () => {
   syncTimeSigUI();
   state.markers = [];
   state.automation = {};
+  state.adsr = {};
   const gd = gameDefaults();          // rebuilds track list + all per-track maps, recomputes COLS
   state.trackList = gd.trackList; state.tracks = gd.tracks; state.gains = gd.gains;
   state.waveform = gd.waveform; state.pan = gd.pan; state.mute = gd.mute; state.solo = gd.solo;
@@ -2870,6 +2978,7 @@ function createNewSong(withStarterTracks, name) {
   syncTimeSigUI();
   state.markers = [];
   state.automation = {};
+  state.adsr = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
@@ -2942,7 +3051,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3160,7 +3269,7 @@ function previewNote(track, note) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const oscType = state.waveform[track] || 'square';
-    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain);
+    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track));
   } catch { /* audio unavailable */ }
 }
 function previewHit(type) {
@@ -3171,6 +3280,8 @@ function previewHit(type) {
     if (type === 'kick') scheduleKick(at);
     else if (type === 'snare') scheduleSnare(at);
     else if (type === 'tom') schedulePuka(at);
+    else if (type === 'clap') scheduleClap(at);
+    else if (type === 'crash') scheduleCrash(at);
     else scheduleHihat(at);
   } catch { /* audio unavailable */ }
 }
@@ -3271,14 +3382,29 @@ function addTremolo(gainNode, startAt, endAt) {
   lfo.connect(lfoGain).connect(gainNode.gain);
   lfo.start(startAt); lfo.stop(endAt);
 }
-function applyEnvelope(gainParam, startAt, dur, peak = 0.5) {
+// Attack/decay/release are fractions of the note's own duration (see DEFAULT_ADSR);
+// sustain is a level. If they'd add up to more than the note's duration (e.g. a very
+// short note with a long attack+decay+release), scale them all down proportionally
+// so the shape still fits — rather than just cutting the envelope off mid-stage.
+function applyAdsrEnvelope(gainParam, startAt, dur, peak, adsr) {
+  let a = Math.max(0.001, adsr.attack * dur);
+  let d = Math.max(0.001, adsr.decay * dur);
+  let r = Math.max(0.001, adsr.release * dur);
+  const totalADR = a + d + r;
+  if (totalADR > dur) { const scale = dur / totalADR; a *= scale; d *= scale; r *= scale; }
+  const sustainLevel = Math.max(0.0001, peak * adsr.sustain);
+  const t1 = startAt + a;
+  const t2 = t1 + d;
+  const t3 = Math.max(t2, startAt + dur - r);
+  const t4 = startAt + dur;
   gainParam.setValueAtTime(0.0001, startAt);
-  gainParam.exponentialRampToValueAtTime(peak, startAt + 0.015);
-  gainParam.setValueAtTime(peak, startAt + dur * 0.85);
-  gainParam.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  gainParam.exponentialRampToValueAtTime(Math.max(0.0001, peak), t1);
+  gainParam.exponentialRampToValueAtTime(sustainLevel, t2);
+  gainParam.setValueAtTime(sustainLevel, t3);
+  gainParam.exponentialRampToValueAtTime(0.0001, t4);
 }
 const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
-function scheduleTone(note, startAt, dur, oscType, destGain) {
+function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
@@ -3311,7 +3437,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain) {
     }
   }
 
-  applyEnvelope(gain.gain, startAt, dur, notePeak(note));
+  applyAdsrEnvelope(gain.gain, startAt, dur, notePeak(note), adsr);
   if (note.trem) addTremolo(gain, startAt, startAt + dur);
 
   connectVoiceOutput(gain, note, destGain);
@@ -3320,7 +3446,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain) {
   osc.stop(startAt + dur);
   if (chorusOsc) { chorusOsc.connect(gain); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
 }
-function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1) {
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   const totalDur = (dur + nextDur) * durScale;
@@ -3332,7 +3458,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   osc.frequency.setValueAtTime(note.freq, glideStart);
   osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
   if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
-  applyEnvelope(gain.gain, startAt, totalDur, notePeak(note));
+  applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), adsr);
   if (note.trem) addTremolo(gain, startAt, startAt + totalDur);
   connectVoiceOutput(gain, note, destGain);
   osc.connect(gain);
@@ -3401,7 +3527,43 @@ function scheduleSnare(startAt) {
   osc.connect(oscGain).connect(chanGain.rhythm);
   osc.start(startAt); osc.stop(startAt + 0.09);
 }
-function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain) {
+// Three quick filtered-noise bursts (a "flam") through a shared bandpass filter.
+function scheduleClap(startAt) {
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass'; filter.frequency.value = 1200; filter.Q.value = 1.2;
+  filter.connect(chanGain.rhythm);
+  for (const t of [0, 0.012, 0.024]) {
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = ensureNoiseBuffer();
+    g.gain.setValueAtTime(0.0001, startAt + t);
+    g.gain.exponentialRampToValueAtTime(0.8, startAt + t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, startAt + t + 0.05);
+    src.connect(g).connect(filter);
+    src.start(startAt + t); src.stop(startAt + t + 0.06);
+  }
+}
+let crashNoiseBuffer = null;
+function ensureCrashNoiseBuffer() {
+  if (!crashNoiseBuffer) {
+    const len = Math.ceil(ctx.sampleRate * 0.9);
+    crashNoiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = crashNoiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return crashNoiseBuffer;
+}
+function scheduleCrash(startAt) {
+  const dur = 0.9;
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = ensureCrashNoiseBuffer();
+  filter.type = 'highpass'; filter.frequency.value = 5000;
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + dur);
+}
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   for (let i = 0; i < sorted.length; i++) {
     const n = sorted[i];
@@ -3410,22 +3572,22 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
     if (n.porta) {
       const next = sorted[i + 1];
       if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
-        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale);
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr);
         i++;
         continue;
       }
     }
-    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain);
+    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr);
   }
 }
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id]);
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id));
   }
   if (audible('rhythm')) {
-    const scheduleHit = { kick: scheduleKick, snare: scheduleSnare, tom: schedulePuka, hihat: scheduleHihat };
+    const scheduleHit = { kick: scheduleKick, snare: scheduleSnare, tom: schedulePuka, hihat: scheduleHihat, clap: scheduleClap, crash: scheduleCrash };
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
       (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol) * eighthSec);
     }
@@ -3498,6 +3660,7 @@ function stopPlayback() {
     masterAnalyser = null;
     stopMeters();
     noiseBuffer = null;
+    crashNoiseBuffer = null;
     pulseWaves.clear();
     crushCurve = null;
     chanDelays.clear();
