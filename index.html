@@ -210,6 +210,11 @@
   #master-track {
     background: var(--panel); border: 1px solid #2c2c33; border-radius: 0 0 8px 8px;
     display: flex; align-items: center; gap: 12px; padding: 6px 10px;
+    /* Pinned to the bottom of the viewport (like the toolbar is pinned to the
+       top) so Master/Tempo/Length stay reachable without scrolling past every
+       track lane first. */
+    position: sticky; bottom: 0; z-index: 20;
+    box-shadow: 0 -6px 14px rgba(0,0,0,0.45);
   }
   #master-collapse {
     flex: 0 0 auto; background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0;
@@ -293,12 +298,6 @@
   }
   .th-btns button.x { color: #d88; font-size: 10px; }
   .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
-  .add-track-row { display: flex; padding: 6px; }
-  .add-track-btn {
-    width: 100%; padding: 7px; font-size: 12px; color: #9a9aa6; background: #17171c;
-    border: 1px dashed #3a3a42; border-radius: 6px; cursor: pointer;
-  }
-  .add-track-btn:hover { color: var(--ink); border-color: #55555f; background: #1d1d24; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -375,22 +374,27 @@
   .hit.tom   { background: #ff6a3b; }
 
   /* top:0/bottom:0 stretches the line across the whole daw (timeline + tracks)
-     automatically, so its visibility never depends on a JS height measurement. */
-  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b3b; z-index: 5; pointer-events: none; }
-  /* Timeline markers: a labelled flag on the ruler + a faint line down the tracks. */
-  #markers-layer { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; z-index: 5; }
+     automatically, so its visibility never depends on a JS height measurement.
+     z-index is above the sticky channel-strip header/gutter (6) and sticky
+     corner (7) — the playhead's `left` is a content-space coordinate that
+     scrolls with the timeline, so without this it gets painted over by those
+     viewport-pinned columns whenever it scrolls under them. */
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b3b; z-index: 9; pointer-events: none; }
+  /* Timeline markers: a labelled flag on the ruler + a faint line down the tracks.
+     Same reasoning as .playhead above — above the sticky header/gutter/corner. */
+  #markers-layer { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; z-index: 9; }
   .marker-line { position: absolute; top: 22px; bottom: 0; width: 1px; background: rgba(255, 208, 84, 0.45); }
   .marker-flag {
     position: absolute; top: 0; height: 22px; display: flex; align-items: center; gap: 3px;
     padding: 0 6px 0 5px; max-width: 160px; background: #e0ac36; color: #201400;
     font-size: 10px; font-weight: 700; line-height: 22px; white-space: nowrap; overflow: hidden;
     border-radius: 0 4px 4px 0; cursor: pointer; pointer-events: auto;
-    box-shadow: 1px 0 2px rgba(0,0,0,0.4); z-index: 6;
+    box-shadow: 1px 0 2px rgba(0,0,0,0.4); z-index: 9;
   }
   .marker-flag:hover { background: #f2bd45; }
   .marker-flag::before { content: '🚩'; font-size: 9px; }
   .playhead-grip {
-    position: absolute; top: 0; width: 12px; height: 22px; margin-left: -6px; z-index: 8; cursor: ew-resize;
+    position: absolute; top: 0; width: 12px; height: 22px; margin-left: -6px; z-index: 10; cursor: ew-resize;
   }
   .playhead-grip::before {
     content: ''; position: absolute; top: 0; left: 1px;
@@ -400,7 +404,7 @@
     position: absolute; top: 0; height: 22px; background: rgba(59, 255, 143, 0.14);
     border-top: 2px solid #3bff8f; pointer-events: none; z-index: 4;
   }
-  .loop-handle { position: absolute; top: 0; width: 10px; height: 22px; margin-left: -5px; cursor: ew-resize; z-index: 8; }
+  .loop-handle { position: absolute; top: 0; width: 10px; height: 22px; margin-left: -5px; cursor: ew-resize; z-index: 10; }
   .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
 
   .inspector {
@@ -525,7 +529,7 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
-        <li><b>＋ Add track</b> (below the last lane) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li><b>＋ Add track</b> (in the toolbar) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -701,6 +705,15 @@
       <div class="panel-cap">Songs</div>
       <div class="panel-body">
         <button id="songs-btn" title="Open the song library (examples + your saved songs)">🎵 Songs</button>
+      </div>
+    </div>
+
+    <!-- Tracks (kept out of the scrolling track list so it's reachable without
+         scrolling past every lane first — see #tracks-panel wiring in JS). -->
+    <div class="panel tb-extra" id="tracks-panel">
+      <div class="panel-cap">Tracks</div>
+      <div class="panel-body">
+        <button id="add-track-btn" title="Add a new tonal track">＋ Add track</button>
       </div>
     </div>
 
@@ -1303,17 +1316,6 @@ function renderTracks() {
     if (t.kind === 'rhythm') renderRhythmTrack();
     else renderPitchTrack(t.id);
   }
-  renderAddTrack();
-}
-// A slim "＋ Add track" strip under the last track.
-function renderAddTrack() {
-  const row = el('div', 'add-track-row');
-  const btn = el('button', 'add-track-btn');
-  btn.textContent = '＋ Add track';
-  btn.title = 'Add a new tonal track';
-  btn.addEventListener('click', addTrack);
-  row.appendChild(btn);
-  tracksEl.appendChild(row);
 }
 
 // ---------- Add / rename / remove tracks ----------
@@ -2285,6 +2287,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
 });
 
+document.getElementById('add-track-btn').addEventListener('click', addTrack);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 
