@@ -2199,6 +2199,7 @@ function positionOverlays() {
 function updateOverlayHeights() {
   const h = daw.scrollHeight + 'px';
   if (markersLayer) markersLayer.style.height = h;
+  if (playheadEl) playheadEl.style.height = h;
   if (playheadGrip) playheadGrip.style.height = h;
   if (loopEls) { loopEls.region.style.height = h; loopEls.startHandle.style.height = h; loopEls.endHandle.style.height = h; }
 }
