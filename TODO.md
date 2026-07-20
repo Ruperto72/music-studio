@@ -32,9 +32,10 @@ ett facit.
 
 ## Ljud / export
 
-- **Kodexport kräver manuell copy.** `#export`-knappen (index.html:2973)
-  fyller bara en dold `<textarea>` och markerar texten — ingen
-  "Kopiera"-knapp (`navigator.clipboard`) eller nedladdning av filen direkt.
+- **Kodexport kräver manuell copy.** `#export`-knappen (index.html:3712)
+  fyller en `<textarea>` (tofflar den synlig/dold vid upprepade klick) och
+  markerar texten — men saknar en "Kopiera"-knapp (`navigator.clipboard`)
+  eller nedladdning av filen direkt.
 
 ## Rytmspår
 
@@ -56,7 +57,7 @@ ett facit.
 - **Not-redigering använder bara mus-events**, inte Pointer Events
   (`mousedown`/`mousemove`/`mouseup` i t.ex. `startMoveNote`, `startResize`,
   `startMarquee`, `startScrub`) — till skillnad från scrollbaren
-  (index.html:1657) som redan är porterad till `pointerdown`/`pointermove`.
+  (index.html:2226) som redan är porterad till `pointerdown`/`pointermove`.
   Fungerar troligen via mobilwebbläsares syntetiska mus-events, men är
   inte lika robust för pekskärm/penna som en riktig pointer-implementation.
 - **Ingen metronom** och inget "count-in" vid inspelning/uppspelning.
