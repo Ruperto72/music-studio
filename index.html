@@ -431,7 +431,11 @@
     content: ''; position: absolute; top: 0; left: 1px;
     border: 5px solid transparent; border-top-color: #ff3b3b;
   }
-  .loop-region-wrap { position: absolute; top: 0; height: 100%; pointer-events: none; z-index: 4; }
+  /* z-index above .timeline (8): the visible part of this is only the 22px-tall
+     sticky ruler-row tint/border (never overlapping track headers below, which
+     are in a different vertical band), so it just needs to beat the ruler
+     cells to actually show on top of them. */
+  .loop-region-wrap { position: absolute; top: 0; height: 100%; pointer-events: none; z-index: 9; }
   .loop-region {
     position: sticky; top: 0; left: 0; width: 100%; height: 22px; background: rgba(59, 255, 143, 0.14);
     border-top: 2px solid #3bff8f; pointer-events: none;
@@ -1764,9 +1768,25 @@ function renderMarquee(rollEl, track, heightPx) {
 
 // ---------- Playhead + loop overlay positioning ----------
 function positionOverlays() {
+  updateOverlayHeights();
   updatePlayheadPositions(); // also updates playhead/marker overlay clipping
   updateLoopPositions();
   updateHScroll();
+}
+
+// #markers-layer/.loop-region-wrap/.loop-handle-wrap/.playhead-grip-wrap all
+// use `height: 100%` so their sticky-positioned children have room to stick
+// through the whole track list — but now that .daw has a bounded max-height
+// (it scrolls the tracks internally), "100%" resolves to .daw's *visible*
+// height, not its full scrollable content height, so those elements used to
+// fall short of the actual bottom of the tracks: a marker's line/flag (or the
+// loop region/handles, or the playhead grip) would stop partway down and
+// vanish once scrolled past that point. Set their height explicitly instead.
+function updateOverlayHeights() {
+  const h = daw.scrollHeight + 'px';
+  if (markersLayer) markersLayer.style.height = h;
+  if (playheadGrip) playheadGrip.style.height = h;
+  if (loopEls) { loopEls.region.style.height = h; loopEls.startHandle.style.height = h; loopEls.endHandle.style.height = h; }
 }
 
 // The channel-strip header/gutter are pinned to the viewport's left edge via
@@ -1805,6 +1825,7 @@ function updateHScroll() {
 }
 daw.addEventListener('scroll', updateHScroll, { passive: true });
 daw.addEventListener('scroll', updateOverlayClipping, { passive: true });
+daw.addEventListener('scroll', updateLoopRegionClip, { passive: true });
 window.addEventListener('resize', updateHScroll);
 hscrollThumb.addEventListener('pointerdown', (e) => {
   e.preventDefault();
@@ -1871,6 +1892,18 @@ function updateLoopPositions() {
   loopEls.region.style.width = width + 'px';
   loopEls.startHandle.style.left = left + 'px';
   loopEls.endHandle.style.left = (left + width) + 'px';
+  updateLoopRegionClip();
+}
+// The region (unlike the single-point playhead/markers) is a *range*, so it
+// can't just be hidden outright when its start scrolls behind the sticky
+// header — most loops (e.g. the "full range" default) start at column 0 and
+// would then never show at all once scrolled even slightly. Clip only the
+// portion that would actually render under the header instead.
+function updateLoopRegionClip() {
+  if (!loopEls) return;
+  const contentLeft = parseFloat(loopEls.region.style.left) || 0;
+  const clipLeft = Math.max(0, LANE_ORIGIN - (contentLeft - daw.scrollLeft));
+  loopEls.region.style.clipPath = clipLeft > 0 ? `inset(0 0 0 ${clipLeft}px)` : '';
 }
 
 // Pass a cached rect (captured once at gesture start) to avoid a layout read on
