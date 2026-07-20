@@ -711,7 +711,7 @@
       <ul>
         <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The <b>Song</b> panel above the inspector shows the project name (click-to-rename any time) and, via its <b>▾</b>, tempo/meter/length/track-count at a glance.</li>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
-        <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
+        <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
 
@@ -824,7 +824,6 @@
       <div class="panel-cap">Session</div>
       <div class="panel-body file-group">
         <button id="songs-btn" class="icon-btn" title="Open the song library (examples, your saved songs, new song)">🎵</button>
-        <button id="reset" class="icon-btn" title="Reset to the demo song">↺</button>
         <button id="save-file" class="icon-btn" title="Download as .json file">💾</button>
         <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
         <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
@@ -2979,33 +2978,6 @@ function setCols(newCols) {
 document.getElementById('len-minus').addEventListener('click', () => setCols(COLS - eighthsPerBar()));
 document.getElementById('len-plus').addEventListener('click', () => setCols(COLS + eighthsPerBar()));
 
-document.getElementById('reset').addEventListener('click', () => {
-  stopPlayback();                     // audio graph is keyed by track id — rebuild after reset
-  state.songName = 'Froggy Hop';
-  updateSongNameUI();
-  state.timeSig = { ...DEFAULT_TS };  // game song is 4/4; reset meter first so COLS rounds right
-  syncTimeSigUI();
-  state.markers = [];
-  state.automation = {};
-  state.adsr = {};
-  const gd = gameDefaults();          // rebuilds track list + all per-track maps, recomputes COLS
-  state.trackList = gd.trackList; state.tracks = gd.tracks; state.gains = gd.gains;
-  state.waveform = gd.waveform; state.pan = gd.pan; state.mute = gd.mute; state.solo = gd.solo;
-  refreshTrackArrays();
-  state.activeTrack = 'lead';
-  applyPan();
-  state.masterVol = 0.45;
-  syncMasterVolUI();
-  if (masterGain) masterGain.gain.value = state.masterVol;
-  applyGains();
-  state.loopStart = 0; state.loopEnd = COLS;
-  state.playhead = 0; visualPlayhead = 0;
-  state.selected = null;
-  state.multiSelected.clear();
-  updateLengthUI();
-  render();
-});
-
 // ---------- New song (from the Songs dialog: a blank project, named up front) ----------
 // Either just the Rhythm track ("empty project") or Rhythm plus a couple of
 // empty starter tonal tracks — same track-map shape gameDefaults()/addTrack()
@@ -3756,6 +3728,7 @@ function exportNotesArray(seq, isRhythm, indent) {
 const jsStr = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 document.getElementById('export').addEventListener('click', () => {
   const box = document.getElementById('exportBox');
+  if (box.style.display === 'block') { box.style.display = 'none'; return; } // click again to close
   const toneBlocks = state.trackList.filter(t => t.kind === 'tone').map(t => {
     const notes = exportNotesArray(fromColumnNotes(state.tracks[t.id]), false, '  ');
     return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
