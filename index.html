@@ -329,6 +329,9 @@
   .th-btns button.m.on, .th-btns button.s.on {
     background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
   }
+  .th-btns button.auto.on {
+    background: #7a4fd1; color: #fff; border-color: #5c3aa8; box-shadow: 0 0 6px rgba(122,79,209,0.4);
+  }
   .th-btns button.x { color: #d88; font-size: 10px; }
   .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
@@ -360,6 +363,31 @@
   }
   .gutter .glabel.c { color: #b7b7c4; }
   .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; }
+
+  /* Automation lane — an extra full-width row under a track, shown while its
+     AUTO panel is toggled open (see renderAutomationRow()). Reuses .track/
+     .track-header/.gutter/.lane so it inherits the same sticky positioning. */
+  .automation-row { background: #1a1a20; }
+  .automation-header { justify-content: flex-start; gap: 8px; padding: 8px; }
+  .automation-title { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .automation-header select {
+    background: #1c1c22; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
+    font-size: 11px; padding: 2px 4px;
+  }
+  .automation-header button {
+    background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
+    font-size: 10px; padding: 2px 6px; cursor: pointer;
+  }
+  .automation-header button:hover { border-color: #55555f; }
+  .automation-gutter { display: flex; flex-direction: column; justify-content: space-between; padding: 4px 0; }
+  .automation-lane-el { position: relative; cursor: crosshair; }
+  .automation-svg { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .automation-zero-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.15); pointer-events: none; }
+  .automation-point {
+    position: absolute; width: 9px; height: 9px; margin-left: -4.5px; margin-top: -4.5px;
+    border-radius: 50%; background: #1a1a20; border: 2px solid #888; cursor: grab;
+  }
+  .automation-point:hover { background: #fff; }
 
   .lane { display: grid; position: relative; }
   /* Sub-eighth grid guides for the current resolution (1/16, triplets, …),
@@ -588,6 +616,7 @@
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip (hiding its grid) — handy for an overview with many tracks. Remembered per browser.</li>
+        <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -636,7 +665,7 @@
       <ul>
         <li>Transport: return-to-start, stop, play, and a loop on/off toggle; the LCD shows Bars&nbsp;|&nbsp;Beats and Min:Sec.</li>
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
-        <li>The green band is the loop range — drag its ends, or "Full range" to reset it.</li>
+        <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>⧉ Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
         <li><b>🚩</b> adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
@@ -644,7 +673,7 @@
       <h3>Saving &amp; exporting</h3>
       <ul>
         <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name shown top-left is click-to-rename any time.</li>
-        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan &amp; markers). Work also autosaves to this browser.</li>
+        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation &amp; markers). Work also autosaves to this browser.</li>
         <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
@@ -767,6 +796,7 @@
       <div class="panel-cap">Loop &amp; Zoom</div>
       <div class="panel-body">
         <button id="loop-reset" title="Reset the loop range to the full song">Full range</button>
+        <button id="repeat-loop" title="Duplicate the loop range's notes/hits into the region right after it — click again to keep stamping forward">⧉ Repeat</button>
         <button id="add-marker" title="Add a marker at the playhead">🚩</button>
         <div class="segmented zoom-group">
           <button id="zoom-out" title="Zoom out">🔍−</button>
@@ -1037,7 +1067,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1071,6 +1101,7 @@ const state = {
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
   markers: [],               // [{ col, name }] editor-only timeline markers
+  automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
@@ -1097,6 +1128,21 @@ function applySavedMix(data) {
   state.markers = Array.isArray(data.markers)
     ? data.markers.filter(m => m && typeof m.col === 'number').map(m => ({ col: m.col, name: String(m.name || '') }))
     : [];
+  if (data.automation && typeof data.automation === 'object') {
+    for (const ch of ALL_TRACKS) {
+      const chAuto = data.automation[ch];
+      if (!chAuto || typeof chAuto !== 'object') continue;
+      for (const param of ['gain', 'pan']) {
+        const pts = chAuto[param];
+        if (!Array.isArray(pts)) continue;
+        const clean = pts
+          .filter(p => p && typeof p.col === 'number' && typeof p.value === 'number')
+          .map(p => ({ col: Math.max(0, p.col), value: p.value }))
+          .sort((a, b) => a.col - b.col);
+        if (clean.length) { state.automation[ch] = state.automation[ch] || {}; state.automation[ch][param] = clean; }
+      }
+    }
+  }
   for (const key of ['mute', 'solo']) {
     const src = (data[key] && typeof data[key] === 'object') ? data[key] : {};
     for (const ch of ALL_TRACKS) state[key][ch] = !!src[ch];
@@ -1142,6 +1188,7 @@ function restoreTrackList(data) {
     gains[t.id] = 0.9; waveform[t.id] = t.kind === 'rhythm' ? 'kit' : 'square'; pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
   }
   state.tracks = tracks; state.gains = gains; state.waveform = waveform; state.pan = pan; state.mute = mute; state.solo = solo;
+  state.automation = {};
 }
 
 const autosaveDraft = loadAutosaveIfPresent();
@@ -1180,7 +1227,8 @@ const redoStack = [];
 let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
-  gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo
+  gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
+  automation: state.automation
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1202,6 +1250,7 @@ function restoreSnapshot(s) {
     state.trackList = data.trackList;
     refreshTrackArrays();
     for (const map of ['gains', 'waveform', 'pan', 'mute', 'solo']) if (data[map]) state[map] = data[map];
+    state.automation = data.automation && typeof data.automation === 'object' ? data.automation : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan();
@@ -1419,6 +1468,7 @@ function renderTracks() {
   for (const t of state.trackList) {
     if (t.kind === 'rhythm') renderRhythmTrack();
     else renderPitchTrack(t.id);
+    if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
   }
 }
 
@@ -1466,11 +1516,11 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo]) delete map[id];
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation]) delete map[id];
   for (const nodes of [chanGain, chanPan, chanAnalyser]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
-  delete vuLevel[id]; delete vuMeters[id];
+  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id);
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
   if (state.selected && state.selected.track === id) state.selected = null;
@@ -1487,6 +1537,168 @@ function toggleTrackCollapsed(track) {
   if (collapsedTracks.has(track)) collapsedTracks.delete(track); else collapsedTracks.add(track);
   try { localStorage.setItem(COLLAPSED_TRACKS_KEY, JSON.stringify([...collapsedTracks])); } catch { /* ignore */ }
   render();
+}
+
+// ---------- Automation (volume/pan curves over time) ----------
+// state.automation[track] = { gain?: [{col, value}], pan?: [{col, value}], ... }
+// each array sorted by col. No entry for a param = that channel's static
+// slider value is used for the whole song (today's behaviour), so this is
+// fully backward compatible with songs saved before automation existed.
+const automationOpen = new Map(); // track id -> currently-shown param ('gain'|'pan'), absent = panel closed
+const AUTOMATION_H = 60;
+const AUTOMATION_RANGE = { gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 } };
+const AUTOMATION_LABEL = { gain: 'Volume', pan: 'Pan' };
+function getAutomationPoints(track, param) {
+  const t = state.automation[track];
+  return (t && t[param]) || null;
+}
+function setAutomationPoints(track, param, points) {
+  const t = state.automation[track] || (state.automation[track] = {});
+  if (points && points.length) t[param] = points; else delete t[param];
+}
+// Interpolated value at a (possibly fractional) column; flat before the first
+// point and after the last, linear between — the common automation-curve convention.
+function automationValueAt(points, col, fallback) {
+  if (!points || !points.length) return fallback;
+  if (col <= points[0].col) return points[0].value;
+  const last = points[points.length - 1];
+  if (col >= last.col) return last.value;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    if (col >= a.col && col <= b.col) return a.value + (b.value - a.value) * (col - a.col) / ((b.col - a.col) || 1);
+  }
+  return fallback;
+}
+function valueToY(param, value) {
+  const r = AUTOMATION_RANGE[param];
+  const t = Math.max(0, Math.min(1, (value - r.min) / (r.max - r.min)));
+  return (1 - t) * AUTOMATION_H;
+}
+function yToValue(param, y) {
+  const r = AUTOMATION_RANGE[param];
+  const t = Math.max(0, Math.min(1, 1 - y / AUTOMATION_H));
+  return round2(r.min + t * (r.max - r.min));
+}
+function addAutomationPoint(e, lane, track, param) {
+  const rect = lane.getBoundingClientRect();
+  const col = Math.max(0, Math.min(COLS, Math.round((e.clientX - rect.left) / colPx * 4) / 4));
+  const value = yToValue(param, e.clientY - rect.top);
+  const points = (getAutomationPoints(track, param) || []).filter(p => Math.abs(p.col - col) > 0.01);
+  points.push({ col, value });
+  points.sort((a, b) => a.col - b.col);
+  setAutomationPoints(track, param, points);
+  render(); autosave();
+}
+function deleteAutomationPoint(track, param, idx) {
+  const points = [...(getAutomationPoints(track, param) || [])];
+  points.splice(idx, 1);
+  setAutomationPoints(track, param, points.length ? points : null);
+  render(); autosave();
+}
+function startAutomationDrag(e, lane, track, param, idx) {
+  e.preventDefault();
+  const rect = lane.getBoundingClientRect();
+  const before = getAutomationPoints(track, param) || [];
+  const prev = before[idx - 1], next = before[idx + 1];
+  const minCol = prev ? prev.col : 0;
+  const maxCol = next ? next.col : COLS;
+  let moved = false; // a plain click (no movement) leaves the point untouched — and,
+  // crucially, skips the render() that would otherwise swap out the DOM node mid-gesture
+  // and break the browser's native double-click detection (used to delete a point).
+  function onMove(ev) {
+    moved = true;
+    const col = Math.max(minCol, Math.min(maxCol, Math.round((ev.clientX - rect.left) / colPx * 4) / 4));
+    const value = yToValue(param, ev.clientY - rect.top);
+    const points = [...(getAutomationPoints(track, param) || [])];
+    points[idx] = { col, value };
+    setAutomationPoints(track, param, points);
+    scheduleRender();
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if (moved) { render(); autosave(); }
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+// A full-width row (mirrors a normal .track's header/gutter/lane structure so
+// it inherits the same sticky positioning) showing one parameter's automation
+// curve for `track`. Rendered as an extra sibling row right after that track
+// when its AUTO panel is open — see renderTracks().
+function renderAutomationRow(track, param) {
+  const row = el('div', 'track automation-row');
+  row.dataset.track = track;
+
+  const header = el('div', 'track-header automation-header');
+  const title = el('span', 'automation-title'); title.textContent = 'Automation';
+  const select = document.createElement('select');
+  for (const p of ['gain', 'pan']) {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = AUTOMATION_LABEL[p];
+    if (p === param) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('mousedown', (e) => e.stopPropagation());
+  select.addEventListener('change', () => { automationOpen.set(track, select.value); render(); });
+  const clearBtn = el('button'); clearBtn.textContent = 'Clear'; clearBtn.title = 'Remove all points for this parameter';
+  clearBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  clearBtn.addEventListener('click', (e) => { e.stopPropagation(); setAutomationPoints(track, param, null); render(); autosave(); });
+  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close automation lane';
+  closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); automationOpen.delete(track); render(); });
+  header.append(title, select, clearBtn, closeBtn);
+
+  const gutter = el('div', 'gutter automation-gutter');
+  const r = AUTOMATION_RANGE[param];
+  const hi = el('div', 'glabel'); hi.textContent = param === 'gain' ? r.max.toFixed(1) : r.max.toFixed(0);
+  const lo = el('div', 'glabel'); lo.textContent = param === 'gain' ? r.min.toFixed(1) : r.min.toFixed(0);
+  gutter.append(hi, lo);
+
+  const lane = el('div', 'lane automation-lane-el');
+  lane.style.height = AUTOMATION_H + 'px';
+  lane.style.width = (COLS * colPx) + 'px';
+  const epb = eighthsPerBar();
+  lane.style.backgroundImage = `repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent ${epb * colPx}px)`;
+
+  if (param === 'pan') {
+    const zero = el('div', 'automation-zero-line');
+    zero.style.top = valueToY('pan', 0) + 'px';
+    lane.appendChild(zero);
+  }
+
+  const points = getAutomationPoints(track, param) || [];
+  if (points.length) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', COLS * colPx); svg.setAttribute('height', AUTOMATION_H);
+    svg.classList.add('automation-svg');
+    const firstY = valueToY(param, points[0].value), lastY = valueToY(param, points[points.length - 1].value);
+    let d = `M 0 ${firstY} `;
+    for (const p of points) d += `L ${p.col * colPx} ${valueToY(param, p.value)} `;
+    d += `L ${COLS * colPx} ${lastY}`;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', trackColor(track));
+    path.setAttribute('stroke-width', '2');
+    svg.appendChild(path);
+    lane.appendChild(svg);
+  }
+  points.forEach((p, idx) => {
+    const dot = el('div', 'automation-point');
+    dot.style.left = (p.col * colPx) + 'px';
+    dot.style.top = valueToY(param, p.value) + 'px';
+    dot.style.borderColor = trackColor(track);
+    dot.title = param === 'gain' ? p.value.toFixed(2) : panLabel(p.value);
+    dot.addEventListener('mousedown', (e) => { e.stopPropagation(); startAutomationDrag(e, lane, track, param, idx); });
+    dot.addEventListener('click', (e) => e.stopPropagation());
+    dot.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteAutomationPoint(track, param, idx); });
+    lane.appendChild(dot);
+  });
+  lane.addEventListener('click', (e) => { if (e.target === lane) addAutomationPoint(e, lane, track, param); });
+
+  row.append(header, gutter, lane);
+  return row;
 }
 
 function buildHeader(track) {
@@ -1542,6 +1754,16 @@ function buildHeader(track) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
     btns.append(btn);
   }
+  const autoBtn = el('button', 'auto' + (automationOpen.has(track) ? ' on' : ''));
+  autoBtn.textContent = '〰';
+  autoBtn.title = 'Automation (volume/pan over time)';
+  autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  autoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (automationOpen.has(track)) automationOpen.delete(track); else automationOpen.set(track, 'gain');
+    render();
+  });
+  btns.append(autoBtn);
   if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
     const rm = el('button', 'x'); rm.textContent = '✕'; rm.title = 'Remove this track';
     rm.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -2604,6 +2826,7 @@ document.getElementById('reset').addEventListener('click', () => {
   state.timeSig = { ...DEFAULT_TS };  // game song is 4/4; reset meter first so COLS rounds right
   syncTimeSigUI();
   state.markers = [];
+  state.automation = {};
   const gd = gameDefaults();          // rebuilds track list + all per-track maps, recomputes COLS
   state.trackList = gd.trackList; state.tracks = gd.tracks; state.gains = gd.gains;
   state.waveform = gd.waveform; state.pan = gd.pan; state.mute = gd.mute; state.solo = gd.solo;
@@ -2646,6 +2869,7 @@ function createNewSong(withStarterTracks, name) {
   state.timeSig = { ...DEFAULT_TS };
   syncTimeSigUI();
   state.markers = [];
+  state.automation = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
@@ -2682,10 +2906,43 @@ document.getElementById('loop-reset').addEventListener('click', () => {
   updateLoopPositions();
 });
 
+// ---------- Region repeat ("loop clip") ----------
+// Duplicates every track's notes/hits within the loop range into the region
+// right after it, overwriting whatever was already there, and advances the
+// loop range onto the new copy so clicking again keeps stamping forward.
+document.getElementById('repeat-loop').addEventListener('click', () => {
+  const start = state.loopStart, end = state.loopEnd;
+  const len = end - start;
+  if (len <= 0) return;
+  const destStart = end, destEnd = end + len;
+  const epb = eighthsPerBar();
+  const neededCols = Math.ceil(destEnd / epb) * epb;
+  if (neededCols > MAX_COLS) {
+    alert(`Can't repeat — that would exceed the maximum song length of ${Math.round(MAX_COLS / epb)} bars.`);
+    return;
+  }
+  if (neededCols > COLS) setCols(neededCols);
+  for (const t of PITCH_TRACKS) {
+    const source = state.tracks[t].filter(n => n.start >= start && n.start < end);
+    const rest = state.tracks[t].filter(n => !(n.start >= destStart && n.start < destEnd));
+    const copies = source.map(n => ({ ...n, start: n.start - start + destStart, arp: n.arp ? [...n.arp] : null }));
+    state.tracks[t] = [...rest, ...copies];
+  }
+  const sourceHits = state.tracks.rhythm.filter(h => h.start >= start && h.start < end);
+  const restHits = state.tracks.rhythm.filter(h => !(h.start >= destStart && h.start < destEnd));
+  state.tracks.rhythm = [...restHits, ...sourceHits.map(h => ({ ...h, start: h.start - start + destStart }))];
+  state.loopStart = destStart;
+  state.loopEnd = destEnd;
+  state.selected = null;
+  state.multiSelected.clear();
+  render();
+  autosave();
+});
+
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -2922,6 +3179,28 @@ function applyGains() {
 }
 function applyPan() {
   for (const ch of ALL_TRACKS) if (chanPan[ch]) chanPan[ch].pan.value = state.pan[ch];
+}
+
+// Schedule an automation curve's points as native AudioParam ramps for the
+// chunk [fromCol, toCol) starting at startAt — called once per playback chunk
+// (see loop() in startPlaybackFrom) since chanGain/chanPan are torn down and
+// rebuilt fresh each play session.
+function scheduleParamAutomation(audioParam, points, baseValue, startAt, eighthSec, fromCol, toCol) {
+  if (!points || !points.length) return;
+  audioParam.cancelScheduledValues(startAt);
+  audioParam.setValueAtTime(automationValueAt(points, fromCol, baseValue), startAt);
+  for (const p of points) {
+    if (p.col <= fromCol || p.col >= toCol) continue;
+    audioParam.linearRampToValueAtTime(p.value, startAt + (p.col - fromCol) * eighthSec);
+  }
+}
+function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
+  for (const ch of ALL_TRACKS) {
+    const auto = state.automation[ch];
+    if (!auto) continue;
+    if (auto.gain && chanGain[ch] && audible(ch)) scheduleParamAutomation(chanGain[ch].gain, auto.gain, state.gains[ch], startAt, eighthSec, fromCol, toCol);
+    if (auto.pan && chanPan[ch]) scheduleParamAutomation(chanPan[ch].pan, auto.pan, state.pan[ch], startAt, eighthSec, fromCol, toCol);
+  }
 }
 
 const pulseWaves = new Map();
@@ -3162,6 +3441,7 @@ function startPlaybackFrom(col) {
     const startAt = ctx.currentTime + 0.05;
     const looping = document.getElementById('loop').checked;
     const toCol = looping ? state.loopEnd : COLS;
+    scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol);
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;

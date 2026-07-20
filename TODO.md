@@ -24,13 +24,6 @@ Genomgång av vad ett "riktigt" DAW (Pro Tools, Ableton, FL Studio) har som
 denna editor saknar. Prioritetsordning nedan är en rekommendation, inte
 ett facit.
 
-- [ ] **Automationskurvor** — volym/pan idag är statiska per spår (ett
-  värde för hela låten). Ett riktigt DAW låter dessa ändras över tid via
-  ritbara kurvor (t.ex. en bruten linje ovanpå pianorullen). Störst
-  redigeringskraft för pengarna av allt i denna lista.
-- [ ] **Klipp-/regionupprepning ("loop clip")** — markera ett taktsegment
-  och upprepa/klona det istället för att rita om noter manuellt, likt
-  Pro Tools' region-loop.
 - [ ] **Metronom + count-in** — redan listad under "Interaktion / touch"
   ovan; lyfts fram här som en av de mest lågt hängande frukterna.
 - [ ] **ADSR-envelope per instrument** — redan nämnd under
@@ -38,7 +31,7 @@ ett facit.
   attack/release-kontroll ger stor klangvariation för litet arbete.
 - [ ] **EQ/kompression (t.ex. sidokedjad ducking) på mastern** — genuint
   DAW-territorium. Avvägning: drar appen bort från sin identitet som ett
-  lättviktigt, beroendefritt 8-bit-verktyg — lägst prioritet av de fem.
+  lättviktigt, beroendefritt 8-bit-verktyg — lägst prioritet av de tre.
 
 ## Ljud / export
 
