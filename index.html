@@ -178,11 +178,17 @@
   .rolls-column { flex: 1; min-width: 0; }
 
   /* ---- The DAW surface: one horizontally-scrolling area holding the timeline
-         and every track lane, so headers pin to the left and lanes scroll as one. ---- */
+         and every track lane, so headers pin to the left and lanes scroll as one.
+         Also height-bounded (desktop only — see the mobile media query below)
+         so the track lanes scroll vertically *inside* this box instead of the
+         whole page: that's what lets .timeline stick to the top of it below,
+         and keeps #hscroll/#master-track always on-screen without needing
+         their own scroll-tracking. ---- */
   .daw {
     position: relative; overflow-x: auto; background: var(--panel);
     border-radius: 8px 8px 0 0; border: 1px solid #2c2c33; border-bottom: none; padding-bottom: 4px;
     scrollbar-width: none; /* hidden — replaced by #hscroll, which starts under the grid */
+    max-height: calc(100vh - var(--sticky-top, 110px) - var(--daw-footer-h, 90px) - 12px);
   }
   .daw::-webkit-scrollbar { height: 0; display: none; }
 
@@ -232,7 +238,13 @@
   #master-track.collapsed .mstrip-body { display: none; }
   #master-track:not(.collapsed) .mstrip-collapsed-label { display: none; }
 
-  .timeline { display: flex; height: 22px; width: max-content; }
+  /* Sticks to the top of .daw's own (now-bounded) scrollport as tracks scroll
+     past underneath, so the bar ruler (and its bar numbers) stays visible.
+     The loop region/handles, playhead grip and marker flags aren't sticky
+     (they're position:absolute for horizontal placement, which doesn't mix
+     with sticky without a wrapper per element) — they scroll with the
+     tracks same as before; only the ruler cells themselves stay pinned. */
+  .timeline { display: flex; height: 22px; width: max-content; position: sticky; top: 0; z-index: 8; background: var(--panel); }
   .tl-corner {
     position: sticky; left: 0; z-index: 7; flex: 0 0 auto;
     width: calc(var(--header-w) + var(--gutter-w));
@@ -266,6 +278,16 @@
     pointer-events: none;
   }
   .th-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .th-collapse {
+    flex: 0 0 auto; width: 18px; height: 18px; padding: 0; font-size: 11px; line-height: 1;
+    background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0; border-radius: 4px; cursor: pointer;
+  }
+  .th-collapse:hover { border-color: #55555f; }
+  /* Collapsed: keep just the name/M/S/X row, hide the volume/pan/meter rows
+     and the whole grid lane for that track — a slim strip so many tracks fit
+     on screen at once (the lane/gutter aren't even built when collapsed, see
+     renderPitchTrack/renderRhythmTrack). */
+  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .vu { display: none; }
   .th-name { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
   .th-wave {
@@ -475,6 +497,11 @@
     .toolbar.show-extra .tb-extra { display: flex; }
     /* Inspector becomes a bottom sheet that only appears when a note is selected. */
     .editor-layout { flex-direction: column; }
+    /* The bounded-height/internally-scrolling grid is a desktop refinement —
+       keep the whole page scrolling normally here, where screen space is
+       already tight and the rotate-hint steers people to landscape instead. */
+    .daw { max-height: none; }
+    .timeline { position: static; }
     .inspector {
       position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; flex: none;
       max-height: 48vh; border-radius: 12px 12px 0 0; z-index: 45;
@@ -530,6 +557,7 @@
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (in the toolbar) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip (hiding its grid) — handy for an overview with many tracks. Remembered per browser.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1374,10 +1402,28 @@ function removeTrack(id) {
   render(); autosave();
 }
 
+// ---------- Per-track collapse (view preference, not song data — not autosaved
+// with the song, same idea as masterCollapsed) ----------
+const COLLAPSED_TRACKS_KEY = 'music-studio-collapsed-tracks';
+let collapsedTracks = new Set();
+try { collapsedTracks = new Set(JSON.parse(localStorage.getItem(COLLAPSED_TRACKS_KEY) || '[]')); } catch { /* ignore */ }
+function toggleTrackCollapsed(track) {
+  if (collapsedTracks.has(track)) collapsedTracks.delete(track); else collapsedTracks.add(track);
+  try { localStorage.setItem(COLLAPSED_TRACKS_KEY, JSON.stringify([...collapsedTracks])); } catch { /* ignore */ }
+  render();
+}
+
 function buildHeader(track) {
   const header = el('div', 'track-header');
   header.style.borderLeftColor = trackColor(track);
   const top = el('div', 'th-top');
+  const collapsed = collapsedTracks.has(track);
+  const collapseBtn = el('button', 'th-collapse');
+  collapseBtn.textContent = collapsed ? '▸' : '▾';
+  collapseBtn.title = collapsed ? 'Expand this track' : 'Collapse this track';
+  collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+  collapseBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTrackCollapsed(track); });
   const nameWrap = el('div');
   const name = el('span', 'th-name'); name.textContent = trackName(track);
   name.style.color = trackColor(track);
@@ -1426,7 +1472,7 @@ function buildHeader(track) {
     rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
     btns.append(rm);
   }
-  top.append(nameWrap, btns);
+  top.append(collapseBtn, nameWrap, btns);
 
   const vol = el('div', 'th-vol');
   const slider = document.createElement('input');
@@ -1498,9 +1544,10 @@ function renderPitchTrack(track) {
   const win = pitchWindow(track);
   const pitchCount = win.max - win.min + 1;
   const active = state.activeTrack === track;
-  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent'));
+  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent') + (collapsedTracks.has(track) ? ' collapsed' : ''));
   row.dataset.track = track;
   row.appendChild(buildHeader(track));
+  if (collapsedTracks.has(track)) { tracksEl.appendChild(row); return; } // skip the (expensive) grid entirely while collapsed
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
@@ -1585,9 +1632,10 @@ function renderPitchTrack(track) {
 function renderRhythmTrack() {
   const track = 'rhythm';
   const active = state.activeTrack === track;
-  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent'));
+  const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent') + (collapsedTracks.has(track) ? ' collapsed' : ''));
   row.dataset.track = track;
   row.appendChild(buildHeader(track));
+  if (collapsedTracks.has(track)) { tracksEl.appendChild(row); return; } // skip the (expensive) grid entirely while collapsed
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
@@ -2338,6 +2386,7 @@ function applyMasterCollapsed() {
   masterCollapseBtn.textContent = masterCollapsed ? '▸' : '▾';
   masterCollapseBtn.title = masterCollapsed ? 'Show Tempo / Length / Master' : 'Hide this bar';
   masterCollapseBtn.setAttribute('aria-expanded', String(!masterCollapsed));
+  updateDawFooterHeight();
 }
 masterCollapseBtn.addEventListener('click', () => {
   masterCollapsed = !masterCollapsed;
@@ -3078,6 +3127,18 @@ window.addEventListener('scroll', updateStuck, { passive: true });
 window.addEventListener('resize', () => { updateStickyTop(); updateStuck(); });
 updateStickyTop();
 updateStuck();
+
+// Bounds .daw's height to whatever's left below the toolbar and above
+// #hscroll/#master-track, so the track lanes scroll inside .daw itself
+// (letting .timeline stick to its top) instead of the whole page — which in
+// turn keeps #hscroll/#master-track always on-screen without needing their
+// own scroll-tracking. Recomputed whenever the footer's own height changes
+// (master bar collapsed/expanded) or the window resizes.
+function updateDawFooterHeight() {
+  document.documentElement.style.setProperty('--daw-footer-h', (hscrollEl.offsetHeight + masterTrackEl.offsetHeight) + 'px');
+}
+window.addEventListener('resize', updateDawFooterHeight);
+updateDawFooterHeight();
 
 createOverlays();
 updateLengthUI();
