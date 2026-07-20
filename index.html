@@ -374,22 +374,27 @@
   .hit.tom   { background: #ff6a3b; }
 
   /* top:0/bottom:0 stretches the line across the whole daw (timeline + tracks)
-     automatically, so its visibility never depends on a JS height measurement. */
-  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b3b; z-index: 5; pointer-events: none; }
-  /* Timeline markers: a labelled flag on the ruler + a faint line down the tracks. */
-  #markers-layer { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; z-index: 5; }
+     automatically, so its visibility never depends on a JS height measurement.
+     z-index is above the sticky channel-strip header/gutter (6) and sticky
+     corner (7) — the playhead's `left` is a content-space coordinate that
+     scrolls with the timeline, so without this it gets painted over by those
+     viewport-pinned columns whenever it scrolls under them. */
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff3b3b; z-index: 9; pointer-events: none; }
+  /* Timeline markers: a labelled flag on the ruler + a faint line down the tracks.
+     Same reasoning as .playhead above — above the sticky header/gutter/corner. */
+  #markers-layer { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; z-index: 9; }
   .marker-line { position: absolute; top: 22px; bottom: 0; width: 1px; background: rgba(255, 208, 84, 0.45); }
   .marker-flag {
     position: absolute; top: 0; height: 22px; display: flex; align-items: center; gap: 3px;
     padding: 0 6px 0 5px; max-width: 160px; background: #e0ac36; color: #201400;
     font-size: 10px; font-weight: 700; line-height: 22px; white-space: nowrap; overflow: hidden;
     border-radius: 0 4px 4px 0; cursor: pointer; pointer-events: auto;
-    box-shadow: 1px 0 2px rgba(0,0,0,0.4); z-index: 6;
+    box-shadow: 1px 0 2px rgba(0,0,0,0.4); z-index: 9;
   }
   .marker-flag:hover { background: #f2bd45; }
   .marker-flag::before { content: '🚩'; font-size: 9px; }
   .playhead-grip {
-    position: absolute; top: 0; width: 12px; height: 22px; margin-left: -6px; z-index: 8; cursor: ew-resize;
+    position: absolute; top: 0; width: 12px; height: 22px; margin-left: -6px; z-index: 10; cursor: ew-resize;
   }
   .playhead-grip::before {
     content: ''; position: absolute; top: 0; left: 1px;
@@ -399,7 +404,7 @@
     position: absolute; top: 0; height: 22px; background: rgba(59, 255, 143, 0.14);
     border-top: 2px solid #3bff8f; pointer-events: none; z-index: 4;
   }
-  .loop-handle { position: absolute; top: 0; width: 10px; height: 22px; margin-left: -5px; cursor: ew-resize; z-index: 8; }
+  .loop-handle { position: absolute; top: 0; width: 10px; height: 22px; margin-left: -5px; cursor: ew-resize; z-index: 10; }
   .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
 
   .inspector {
