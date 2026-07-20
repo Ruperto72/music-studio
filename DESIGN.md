@@ -370,6 +370,14 @@ never flicker mid-drag (playhead, marker layer, loop region/handles) is
 created once by `createOverlays()` and only *repositioned*, never rebuilt,
 by `positionOverlays()`.
 
+Two independent `requestAnimationFrame` loops run during playback:
+`animatePlayhead()` (repositions the playhead and updates the Bars|Beats
+counter — via `textContent` on persistent span elements, not an `innerHTML`
+rebuild, since only the numbers change) and the VU-meter loop (throttled to
+~30fps — a level meter doesn't need 60Hz to read as smooth, and the
+per-channel `AnalyserNode` read is the one per-frame cost that scales with
+track count).
+
 ### B.5 Interaction state machines
 
 Mouse-driven editing is implemented as manual `mousedown` → `document`-level
@@ -413,20 +421,28 @@ Built fresh each time playback starts (`ensureCtx()`), torn down on stop:
 - **Automation**: `scheduleAutomationForChunk()` schedules a track's
   gain/pan curve as native `AudioParam` ramps (`setValueAtTime` +
   `linearRampToValueAtTime`) directly on `chanGain`/`chanPan`, once per
-  playback chunk (loop iteration) — independent of individual notes, so it
-  keeps working correctly across loop points and seeks.
+  scheduling chunk (re-anchoring itself from each chunk's starting value) —
+  independent of individual notes, so it keeps working correctly across
+  chunk boundaries, loop points, and seeks.
 - **Rhythm**: each hit type is a small dedicated synthesis function
   (`scheduleKick`/`scheduleSnare`/`scheduleHihat`/`schedulePuka`(tom)/
   `scheduleClap`/`scheduleCrash`) — filtered noise bursts and/or short
   pitch-swept oscillators, no shared "drum" abstraction since each sound's
   shape is bespoke.
-- **Playback scheduling**: `startPlaybackFrom(col)` schedules one "chunk"
-  (from the current column to the loop end or song end) ahead of time via
-  Web Audio's own clock (`ctx.currentTime` + lookahead), then re-arms via
-  `setTimeout` for the next chunk — not a real-time per-frame scheduler, so
-  it stays sample-accurate regardless of `requestAnimationFrame` jitter; the
-  visual playhead is driven by a separate `requestAnimationFrame` loop that
-  just interpolates position from the audio clock.
+- **Playback scheduling**: `startPlaybackFrom(col)` schedules one bounded
+  "chunk" (`SCHEDULE_LOOKAHEAD_BARS` = 8 bars, capped to the loop end or
+  song end if closer) ahead of time via Web Audio's own clock
+  (`ctx.currentTime` + lookahead), then re-arms via `setTimeout` for the
+  next chunk once the current one is about to finish — not a real-time
+  per-frame scheduler, so it stays sample-accurate regardless of
+  `requestAnimationFrame` jitter. Capping each chunk keeps every scheduling
+  burst bounded regardless of total song length — scheduling the whole
+  remaining song in one synchronous call (the original design) creates
+  enough `AudioNode`s for a long, dense song to visibly freeze the page for
+  a moment on a weaker mobile CPU. The visual playhead is driven by a
+  separate `requestAnimationFrame` loop that just interpolates position
+  from the audio clock, so it advances smoothly across chunk boundaries
+  without needing to know about them.
 
 ### B.7 Undo/history
 
