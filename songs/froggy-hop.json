@@ -8071,7 +8071,289 @@
       {
         "start": 567,
         "type": "kick"
+      },
+      {
+        "start": 0,
+        "type": "crash"
+      },
+      {
+        "start": 64,
+        "type": "crash"
+      },
+      {
+        "start": 128,
+        "type": "crash"
+      },
+      {
+        "start": 192,
+        "type": "crash"
+      },
+      {
+        "start": 256,
+        "type": "crash"
+      },
+      {
+        "start": 320,
+        "type": "crash"
+      },
+      {
+        "start": 384,
+        "type": "crash"
+      },
+      {
+        "start": 448,
+        "type": "crash"
+      },
+      {
+        "start": 512,
+        "type": "crash"
+      },
+      {
+        "start": 194,
+        "type": "clap"
+      },
+      {
+        "start": 198,
+        "type": "clap"
+      },
+      {
+        "start": 202,
+        "type": "clap"
+      },
+      {
+        "start": 206,
+        "type": "clap"
+      },
+      {
+        "start": 212,
+        "type": "clap"
+      },
+      {
+        "start": 220,
+        "type": "clap"
+      },
+      {
+        "start": 228,
+        "type": "clap"
+      },
+      {
+        "start": 236,
+        "type": "clap"
+      },
+      {
+        "start": 244,
+        "type": "clap"
+      },
+      {
+        "start": 252,
+        "type": "clap"
+      },
+      {
+        "start": 386,
+        "type": "clap"
+      },
+      {
+        "start": 390,
+        "type": "clap"
+      },
+      {
+        "start": 394,
+        "type": "clap"
+      },
+      {
+        "start": 398,
+        "type": "clap"
+      },
+      {
+        "start": 404,
+        "type": "clap"
+      },
+      {
+        "start": 412,
+        "type": "clap"
+      },
+      {
+        "start": 420,
+        "type": "clap"
+      },
+      {
+        "start": 428,
+        "type": "clap"
+      },
+      {
+        "start": 434,
+        "type": "clap"
+      },
+      {
+        "start": 438,
+        "type": "clap"
       }
     ]
+  },
+  "adsr": {
+    "lead": {
+      "attack": 0.03,
+      "decay": 0.1,
+      "sustain": 0.85,
+      "release": 0.12
+    },
+    "harmony": {
+      "attack": 0.05,
+      "decay": 0.2,
+      "sustain": 0.65,
+      "release": 0.2
+    },
+    "bass": {
+      "attack": 0.02,
+      "decay": 0.12,
+      "sustain": 0.8,
+      "release": 0.1
+    },
+    "arp": {
+      "attack": 0.02,
+      "decay": 0.1,
+      "sustain": 0.6,
+      "release": 0.08
+    },
+    "pad": {
+      "attack": 0.3,
+      "decay": 0.2,
+      "sustain": 0.9,
+      "release": 0.35
+    }
+  },
+  "automation": {
+    "pad": {
+      "gain": [
+        {
+          "col": 0,
+          "value": 0.15
+        },
+        {
+          "col": 64,
+          "value": 0.25
+        },
+        {
+          "col": 128,
+          "value": 0.2
+        },
+        {
+          "col": 176,
+          "value": 0.35
+        },
+        {
+          "col": 224,
+          "value": 0.4
+        },
+        {
+          "col": 256,
+          "value": 0.2
+        },
+        {
+          "col": 320,
+          "value": 0.25
+        },
+        {
+          "col": 368,
+          "value": 0.4
+        },
+        {
+          "col": 416,
+          "value": 0.42
+        },
+        {
+          "col": 448,
+          "value": 0.2
+        },
+        {
+          "col": 512,
+          "value": 0.3
+        },
+        {
+          "col": 576,
+          "value": 0.05
+        }
+      ]
+    },
+    "arp": {
+      "pan": [
+        {
+          "col": 0,
+          "value": 0.4
+        },
+        {
+          "col": 64,
+          "value": -0.2
+        },
+        {
+          "col": 128,
+          "value": 0.4
+        },
+        {
+          "col": 192,
+          "value": -0.3
+        },
+        {
+          "col": 256,
+          "value": 0.5
+        },
+        {
+          "col": 320,
+          "value": -0.2
+        },
+        {
+          "col": 384,
+          "value": 0.4
+        },
+        {
+          "col": 448,
+          "value": -0.3
+        },
+        {
+          "col": 512,
+          "value": 0.5
+        },
+        {
+          "col": 576,
+          "value": 0.4
+        }
+      ]
+    },
+    "lead": {
+      "gain": [
+        {
+          "col": 0,
+          "value": 0.7
+        },
+        {
+          "col": 64,
+          "value": 0.9
+        },
+        {
+          "col": 192,
+          "value": 1
+        },
+        {
+          "col": 256,
+          "value": 0.75
+        },
+        {
+          "col": 384,
+          "value": 1
+        },
+        {
+          "col": 448,
+          "value": 0.7
+        },
+        {
+          "col": 512,
+          "value": 0.85
+        },
+        {
+          "col": 576,
+          "value": 0.6
+        }
+      ]
+    }
   }
 }

@@ -1,17 +1,17 @@
 [
   {
     "file": "froggy-hop.json",
-    "name": "Froggy Hop (demo)",
-    "desc": "The bouncy 8-bit loop from the Frog vs Toad game."
+    "name": "Froggy Hop",
+    "desc": "The bouncy 8-bit loop from the Frog vs Toad game — now with pad/lead automation, per-instrument envelopes and crash/clap accents."
   },
   {
     "file": "cinematic.json",
     "name": "Cinematic",
-    "desc": "A ~2-minute epic in A minor — intro, theme, bridge, climax and outro with strings, horn, brass and arps."
+    "desc": "A ~2-minute epic in A minor — intro, theme, bridge, climax and outro with strings, horn, brass and arps, swelling into the climax via automation."
   },
   {
     "file": "techno.json",
     "name": "Techno",
-    "desc": "A ~2-minute 128 BPM journey — intro, groove, build, drop, breakdown and a bigger second drop."
+    "desc": "A ~2-minute 128 BPM journey — intro, groove, build, drop, breakdown and a bigger second drop, with riser automation and backbeat claps into each drop."
   }
 ]
