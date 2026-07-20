@@ -18,5 +18,10 @@
     "file": "neon-drive.json",
     "name": "Neon Drive",
     "desc": "An original 80s synth-pop song at 120 BPM — verse, chorus, bridge and a soaring final chorus, with a sequenced arp, lush swelling pad, synth-bass slides and a proper melodic hook."
+  },
+  {
+    "file": "popcorn.json",
+    "name": "Popcorn",
+    "desc": "A chiptune interpretation of the classic bouncy synth riff — a punchy square-wave hook alternating between two keys a whole step apart, with a contrasting bridge."
   }
 ]
