@@ -179,11 +179,14 @@
 
   /* ---- The DAW surface: one horizontally-scrolling area holding the timeline
          and every track lane, so headers pin to the left and lanes scroll as one.
-         Also height-bounded (desktop only — see the mobile media query below)
-         so the track lanes scroll vertically *inside* this box instead of the
-         whole page: that's what lets .timeline stick to the top of it below,
-         and keeps #hscroll/#master-track always on-screen without needing
-         their own scroll-tracking. ---- */
+         Also height-bounded (mobile too, since a fully-unclipped grid meant
+         scrolling through every track just to reach the master bar) so the
+         track lanes scroll vertically *inside* this box instead of the whole
+         page: that's what lets .timeline stick to the top of it below, and
+         keeps #hscroll/#master-track always on-screen without needing their
+         own scroll-tracking. --sticky-top/--daw-footer-h are measured in JS
+         (updateStickyTop()/updateDawFooterHeight()) and already account for
+         the mobile-stacked Song panel sitting above .daw — see there. ---- */
   .daw {
     position: relative; overflow-x: auto; background: var(--panel);
     border-radius: 8px 8px 0 0; border: 1px solid #2c2c33; border-bottom: none; padding-bottom: 4px;
@@ -500,6 +503,12 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     padding: 8px; min-width: 200px;
     display: flex; flex-direction: column;
+    /* Anchored just below the toolbar, so the space actually left below it is
+       the viewport height minus the same offset --sticky-top already tracks —
+       matters most on short viewports (phone landscape), where the full menu
+       otherwise runs off the bottom of the screen with no way to reach it. */
+    max-height: calc(100vh - var(--sticky-top, 110px) - 10px);
+    overflow-y: auto;
   }
   .file-menu[hidden] { display: none; }
   .file-menu-section { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
@@ -581,11 +590,6 @@
     .inspector-column {
       position: static; width: auto; flex: none; max-height: none; overflow: visible; order: -1;
     }
-    /* The bounded-height/internally-scrolling grid is a desktop refinement —
-       keep the whole page scrolling normally here, where screen space is
-       already tight and the rotate-hint steers people to landscape instead. */
-    .daw { max-height: none; }
-    .timeline { position: static; }
     .inspector {
       position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; flex: none;
       max-height: 48vh; border-radius: 12px 12px 0 0; z-index: 45;
@@ -2874,6 +2878,10 @@ moreToggle.addEventListener('click', () => {
   const open = toolbar.classList.toggle('show-extra');
   moreToggle.setAttribute('aria-expanded', String(open));
   moreToggle.textContent = open ? '✕ Less' : '⋯ More';
+  // Revealing Loop&Zoom can change the toolbar's own height (it may wrap to
+  // an extra row), which .daw's bounded height depends on.
+  updateStickyTop();
+  updateStuck();
 });
 document.getElementById('rotate-dismiss').addEventListener('click', () => document.getElementById('rotate-hint').classList.add('dismissed'));
 document.getElementById('insp-close').addEventListener('click', () => clearSelection());
@@ -4309,10 +4317,16 @@ if ('serviceWorker' in navigator) {
 // toolbarTop is cached (it only changes on resize) so the scroll handler does no
 // layout reads.
 const toolbarEl = document.querySelector('.toolbar');
+const inspectorColumnEl = document.querySelector('.inspector-column');
+const isMobileLayout = () => window.matchMedia('(max-width: 760px)').matches;
 let toolbarTop = 0;
 function updateStickyTop() {
   toolbarTop = toolbarEl.offsetTop;
-  document.documentElement.style.setProperty('--sticky-top', (toolbarEl.offsetHeight + 18) + 'px');
+  // On mobile the Song panel (inspector-column, reduced to just the song
+  // name) sits stacked above .daw instead of beside it, so it eats into the
+  // same "space used before the scrollable grid" that --sticky-top tracks.
+  const stackedHeader = isMobileLayout() ? inspectorColumnEl.offsetHeight : 0;
+  document.documentElement.style.setProperty('--sticky-top', (toolbarEl.offsetHeight + stackedHeader + 18) + 'px');
 }
 const updateStuck = () => toolbarEl.classList.toggle('stuck', window.scrollY > toolbarTop);
 window.addEventListener('scroll', updateStuck, { passive: true });
