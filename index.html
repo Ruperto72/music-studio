@@ -3640,13 +3640,25 @@ let rafId = null, playStartCtxTime = 0, playStartCol = 0;
 // the same mechanism already used for wrapping at a loop point, just applied
 // more often) keeps every burst small regardless of total song length.
 const SCHEDULE_LOOKAHEAD_BARS = 8;
+// How long before a chunk's boundary the *next* chunk gets scheduled. The
+// re-arm timer (setTimeout) has no precision guarantee — a GC pause, a
+// re-render, or the tab being backgrounded can delay it well past a few
+// tens of milliseconds. Re-deriving the next chunk's start time from
+// ctx.currentTime at the moment the (possibly late) timer fires meant any
+// such delay became an audible silence gap at every chunk boundary — an
+// occasional glitch roughly once per SCHEDULE_LOOKAHEAD_BARS. Anchoring
+// each chunk's start to the previous chunk's exact intended end time
+// (an absolute Web Audio clock value, independent of when the JS callback
+// actually runs) makes the audio timeline gap-free; SCHEDULE_AHEAD_SEC is
+// just slack for the JS side to do that scheduling work before the
+// boundary arrives, not something the audio timing depends on.
+const SCHEDULE_AHEAD_SEC = 0.3;
 function startPlaybackFrom(col) {
   playing = true;
   clearTimeout(loopTimer);
-  function loop(fromCol) {
+  function loop(fromCol, startAt) {
     if (!playing) return;
     const eighthSec = 60 / state.tempo / 2;
-    const startAt = ctx.currentTime + 0.05;
     const looping = document.getElementById('loop').checked;
     const loopEnd = looping ? state.loopEnd : COLS;
     const toCol = Math.min(loopEnd, fromCol + SCHEDULE_LOOKAHEAD_BARS * eighthsPerBar());
@@ -3654,14 +3666,16 @@ function startPlaybackFrom(col) {
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;
-    const remainingDur = Math.max(0.01, (toCol - fromCol) * eighthSec);
+    const chunkDur = Math.max(0.01, (toCol - fromCol) * eighthSec);
+    const chunkEndAt = startAt + chunkDur;
+    const delayMs = Math.max(0, (chunkEndAt - SCHEDULE_AHEAD_SEC - ctx.currentTime) * 1000);
     loopTimer = setTimeout(() => {
-      if (toCol < loopEnd) loop(toCol);
-      else if (looping) loop(state.loopStart);
+      if (toCol < loopEnd) loop(toCol, chunkEndAt);
+      else if (looping) loop(state.loopStart, chunkEndAt);
       else playing = false;
-    }, remainingDur * 1000);
+    }, delayMs);
   }
-  loop(col);
+  loop(col, ctx.currentTime + 0.05);
   if (!rafId) animatePlayhead();
 }
 function animatePlayhead() {
