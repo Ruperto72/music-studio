@@ -3236,6 +3236,350 @@ loadInput.addEventListener('change', async () => {
   if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing the rhythm track).');
 });
 
+// ---------- MIDI export ----------
+// Minimal Standard MIDI File (format 1) writer, no library. Pitches round to
+// the nearest semitone (freqToMidi already does this). Per-note effects
+// (bend, vibrato, arp, duty, bitcrush, echo, chorus) have no MIDI equivalent
+// and aren't exported — same omission the "export as code" path already
+// makes for automation/ADSR/markers.
+const MIDI_PPQ = 480; // ticks per quarter note
+function writeVarLen(value) {
+  let buffer = value & 0x7f;
+  const out = [];
+  while ((value >>= 7) > 0) {
+    buffer <<= 8;
+    buffer |= ((value & 0x7f) | 0x80);
+  }
+  while (true) {
+    out.push(buffer & 0xff);
+    if (buffer & 0x80) buffer >>= 8;
+    else break;
+  }
+  return out;
+}
+// events: [{ tick, prio, data:[bytes] }] — prio breaks same-tick ties (lower
+// first) so a note-off never sorts after a note-on that starts at the same tick.
+function midiTrackChunk(events) {
+  const sorted = [...events].sort((a, b) => a.tick - b.tick || a.prio - b.prio);
+  const bytes = [];
+  let lastTick = 0;
+  for (const ev of sorted) {
+    bytes.push(...writeVarLen(ev.tick - lastTick));
+    bytes.push(...ev.data);
+    lastTick = ev.tick;
+  }
+  bytes.push(0x00, 0xFF, 0x2F, 0x00); // end of track
+  const len = bytes.length;
+  return [0x4D, 0x54, 0x72, 0x6B, (len >>> 24) & 0xFF, (len >>> 16) & 0xFF, (len >>> 8) & 0xFF, len & 0xFF, ...bytes];
+}
+function midiTrackNameEvent(name) {
+  const bytes = Array.from(name).map(c => c.charCodeAt(0) & 0x7F);
+  return { tick: 0, prio: -1, data: [0xFF, 0x03, bytes.length, ...bytes] };
+}
+const GM_DRUM_NOTE = { kick: 36, snare: 38, hihat: 42, tom: 45, clap: 39, crash: 49 };
+function exportMidiBytes() {
+  const ticksPerEighth = MIDI_PPQ / 2;
+  const microsPerQuarter = Math.round(60000000 / state.tempo);
+  const denExp = Math.round(Math.log2(state.timeSig.den));
+  const tempoTrack = midiTrackChunk([
+    { tick: 0, prio: -2, data: [0xFF, 0x51, 0x03, (microsPerQuarter >> 16) & 0xFF, (microsPerQuarter >> 8) & 0xFF, microsPerQuarter & 0xFF] },
+    { tick: 0, prio: -1, data: [0xFF, 0x58, 0x04, state.timeSig.num, denExp, 24, 8] },
+  ]);
+  const trackChunks = [tempoTrack];
+  let channel = 0;
+  for (const t of state.trackList) {
+    const events = [midiTrackNameEvent(t.name)];
+    if (t.kind === 'tone') {
+      if (channel === 9) channel++; // channel 9 is reserved for drums
+      const ch = channel++ % 16;
+      for (const n of state.tracks[t.id] || []) {
+        if (!n.freq) continue;
+        const midiNum = Math.max(0, Math.min(127, freqToMidi(n.freq)));
+        const vel = Math.max(1, Math.min(127, Math.round((n.vel ?? 1) * 127)));
+        const startTick = Math.round(n.start * ticksPerEighth);
+        const durTick = Math.max(1, Math.round(n.len * ticksPerEighth));
+        events.push({ tick: startTick, prio: 1, data: [0x90 | ch, midiNum, vel] });
+        events.push({ tick: startTick + durTick, prio: 0, data: [0x80 | ch, midiNum, 0] });
+      }
+    } else {
+      const hitDurTick = Math.max(1, Math.round(ticksPerEighth * 0.25));
+      for (const h of state.tracks[t.id] || []) {
+        const note = GM_DRUM_NOTE[h.type] ?? 38;
+        const startTick = Math.round(h.start * ticksPerEighth);
+        events.push({ tick: startTick, prio: 1, data: [0x99, note, 100] });
+        events.push({ tick: startTick + hitDurTick, prio: 0, data: [0x89, note, 0] });
+      }
+    }
+    trackChunks.push(midiTrackChunk(events));
+  }
+  const header = [0x4D, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, (trackChunks.length >> 8) & 0xFF, trackChunks.length & 0xFF, (MIDI_PPQ >> 8) & 0xFF, MIDI_PPQ & 0xFF];
+  return new Uint8Array([...header, ...trackChunks.flat()]);
+}
+document.getElementById('export-midi').addEventListener('click', () => {
+  const bytes = exportMidiBytes();
+  const blob = new Blob([bytes], { type: 'audio/midi' });
+  const url = URL.createObjectURL(blob);
+  const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+  const a = document.createElement('a');
+  a.href = url; a.download = slug + '.mid'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ---------- MIDI import ----------
+function readVarLen(bytes, pos) {
+  let value = 0, b;
+  do {
+    b = bytes[pos++];
+    value = (value << 7) | (b & 0x7f);
+  } while (b & 0x80);
+  return [value, pos];
+}
+function parseMidiFile(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const dv = new DataView(buffer);
+  let pos = 0;
+  const str = (n) => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(bytes[pos + i]); pos += n; return s; };
+  if (str(4) !== 'MThd') throw new Error('not a MIDI file (missing MThd)');
+  const headerLen = dv.getUint32(pos); pos += 4;
+  pos += 2; // format — not needed, format 0/1 both handled the same way here
+  const numTracks = dv.getUint16(pos); pos += 2;
+  const division = dv.getUint16(pos); pos += 2;
+  pos += headerLen - 6;
+  if (division & 0x8000) throw new Error('SMPTE time division is not supported');
+  const ppq = division;
+
+  const tracks = [];
+  for (let i = 0; i < numTracks && pos < bytes.length; i++) {
+    if (str(4) !== 'MTrk') throw new Error('malformed MIDI file (missing MTrk)');
+    const len = dv.getUint32(pos); pos += 4;
+    const trackEnd = pos + len;
+    const events = [];
+    let tick = 0, runningStatus = 0, trackName = '';
+    while (pos < trackEnd) {
+      let delta;
+      [delta, pos] = readVarLen(bytes, pos);
+      tick += delta;
+      const statusByte = bytes[pos];
+      let status;
+      if (statusByte < 0x80) {
+        status = runningStatus; // running status: this byte is already event data
+      } else {
+        status = statusByte; pos++;
+        if (status < 0xF0) runningStatus = status; // only channel voice messages set running status
+      }
+      if (status === 0xFF) {
+        const metaType = bytes[pos++];
+        let mlen; [mlen, pos] = readVarLen(bytes, pos);
+        const data = bytes.slice(pos, pos + mlen); pos += mlen;
+        if (metaType === 0x51 && data.length === 3) {
+          events.push({ tick, type: 'tempo', microsPerQuarter: (data[0] << 16) | (data[1] << 8) | data[2] });
+        } else if (metaType === 0x03) {
+          trackName = Array.from(data).map(c => String.fromCharCode(c)).join('');
+        }
+      } else if (status === 0xF0 || status === 0xF7) {
+        let slen; [slen, pos] = readVarLen(bytes, pos);
+        pos += slen; // skip sysex
+      } else {
+        const type = status & 0xF0, ch = status & 0x0F;
+        if (type === 0x90 || type === 0x80) {
+          const note = bytes[pos++], vel = bytes[pos++];
+          events.push({ tick, type: (type === 0x90 && vel > 0) ? 'on' : 'off', channel: ch, note, velocity: vel });
+        } else if (type === 0xA0 || type === 0xB0 || type === 0xE0) {
+          pos += 2; // poly aftertouch / CC / pitch bend — ignored
+        } else if (type === 0xC0 || type === 0xD0) {
+          pos += 1; // program change / channel aftertouch — ignored
+        } else {
+          break; // unsupported/corrupt status — stop parsing this track defensively
+        }
+      }
+    }
+    pos = trackEnd;
+    tracks.push({ name: trackName, events });
+  }
+  return { ppq, tracks };
+}
+// Map a General MIDI percussion note back to the app's 6-piece kit (best-effort).
+const GM_DRUM_REVERSE = {
+  35: 'kick', 36: 'kick', 38: 'snare', 40: 'snare', 37: 'snare',
+  42: 'hihat', 44: 'hihat', 46: 'hihat',
+  41: 'tom', 43: 'tom', 45: 'tom', 47: 'tom', 48: 'tom', 50: 'tom',
+  39: 'clap',
+  49: 'crash', 51: 'crash', 52: 'crash', 53: 'crash', 55: 'crash', 57: 'crash', 59: 'crash',
+};
+function importMidiIntoSong(buffer) {
+  let parsed;
+  try { parsed = parseMidiFile(buffer); }
+  catch (err) { alert('Could not read the MIDI file: ' + err.message); return; }
+
+  let microsPerQuarter = 500000; // default 120 BPM if the file has no tempo event
+  outer: for (const t of parsed.tracks) for (const e of t.events) if (e.type === 'tempo') { microsPerQuarter = e.microsPerQuarter; break outer; }
+  const importedBpm = Math.round(60000000 / microsPerQuarter);
+  const ticksPerEighth = parsed.ppq / 2;
+
+  let maxCol = 0;
+  const newTonalTracks = []; // { name, notes }
+  let importedRhythmHits = [];
+
+  for (const track of parsed.tracks) {
+    const onNotes = new Map(); // "channel:note" -> start tick
+    const notes = [], hits = [];
+    for (const e of track.events) {
+      if (e.type === 'on') {
+        onNotes.set(e.channel + ':' + e.note, e.tick);
+      } else if (e.type === 'off') {
+        const key = e.channel + ':' + e.note;
+        const startTick = onNotes.get(key);
+        if (startTick == null) continue;
+        onNotes.delete(key);
+        const startCol = quant(startTick / ticksPerEighth);
+        const endCol = quant(e.tick / ticksPerEighth);
+        const lenCol = Math.max(MICRO, endCol - startCol);
+        if (e.channel === 9) {
+          hits.push({ start: startCol, type: GM_DRUM_REVERSE[e.note] || 'hihat' });
+        } else {
+          notes.push({
+            start: startCol, len: lenCol, freq: round2(midiToFreq(e.note)), vel: 1,
+            bend: null, vib: false, trem: false, duty: null, arp: null,
+            porta: false, crush: false, echo: false, chorus: false
+          });
+        }
+        maxCol = Math.max(maxCol, startCol + lenCol);
+      }
+    }
+    if (notes.length) newTonalTracks.push({ name: track.name || ('Imported ' + (newTonalTracks.length + 1)), notes });
+    if (hits.length) importedRhythmHits = importedRhythmHits.concat(hits);
+  }
+
+  if (!newTonalTracks.length && !importedRhythmHits.length) {
+    alert('No notes found in that MIDI file.');
+    return;
+  }
+
+  if (playing) stopPlayback();
+  let lastNewId = null;
+  for (const { name, notes } of newTonalTracks) {
+    const id = nextTrackId();
+    const tonalCount = state.trackList.filter(t => t.kind === 'tone').length;
+    const desc = { id, name, color: TRACK_PALETTE[tonalCount % TRACK_PALETTE.length], kind: 'tone' };
+    const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm');
+    state.trackList.splice(rIdx < 0 ? state.trackList.length : rIdx, 0, desc);
+    state.tracks[id] = notes;
+    state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
+    lastNewId = id;
+  }
+  if (importedRhythmHits.length) state.tracks.rhythm = state.tracks.rhythm.concat(importedRhythmHits);
+  refreshTrackArrays();
+  for (const t of state.trackList) ensureChannelNodes(t.id);
+  if (importedBpm !== state.tempo && confirm(`This MIDI file's tempo is ${importedBpm} BPM (song is currently ${state.tempo} BPM). Use the file's tempo?`)) {
+    state.tempo = importedBpm;
+    tempoInput.value = state.tempo;
+  }
+  const neededBar = Math.ceil(maxCol / eighthsPerBar()) * eighthsPerBar();
+  if (neededBar > COLS) COLS = clampCols(neededBar);
+  if (lastNewId) state.activeTrack = lastNewId;
+  updateLengthUI();
+  render();
+  autosave();
+}
+document.getElementById('import-midi').addEventListener('click', () => document.getElementById('import-midi-input').click());
+document.getElementById('import-midi-input').addEventListener('change', async () => {
+  const input = document.getElementById('import-midi-input');
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  const buffer = await file.arrayBuffer();
+  importMidiIntoSong(buffer);
+});
+
+// ---------- WAV export ----------
+function audioBufferToWav(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const numFrames = buffer.length;
+  const blockAlign = numCh * 2;
+  const dataSize = numFrames * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (offset, s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+  const channels = []; for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+  let offset = 44;
+  for (let i = 0; i < numFrames; i++) {
+    for (let c = 0; c < numCh; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return ab;
+}
+// Renders the whole song offline (OfflineAudioContext) using the same
+// synthesis functions as live playback, then returns the rendered AudioBuffer.
+// The drum-hit functions (scheduleKick etc.) hardcode chanGain.rhythm rather
+// than taking a destination param, so the only way to redirect them at an
+// offline graph is to temporarily point the shared ctx/chanGain/chanPan
+// globals at it — mirrors ensureCtx()'s own setup, just against an
+// OfflineAudioContext instead of a live one. Requires playback to be
+// stopped first (stopPlayback() already tears these globals down to null).
+async function renderSongToWav() {
+  if (playing) stopPlayback();
+  const eighthSec = 60 / state.tempo / 2;
+  const tailSec = 2; // let release/echo tails ring out past the last note
+  const sampleRate = 44100;
+  const totalSamples = Math.ceil((COLS * eighthSec + tailSec) * sampleRate);
+  const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
+
+  ctx = offline;
+  masterGain = ctx.createGain();
+  masterGain.gain.value = state.masterVol;
+  masterFXNodes = buildMasterFXChain(ctx, masterGain, ctx.destination);
+  applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  for (const ch of ALL_TRACKS) {
+    chanPan[ch] = ctx.createStereoPanner();
+    chanPan[ch].connect(masterGain);
+    chanGain[ch] = ctx.createGain();
+    chanGain[ch].connect(chanPan[ch]);
+  }
+  applyGains();
+  applyPan();
+
+  scheduleAutomationForChunk(0, eighthSec, 0, COLS);
+  playOnce(0, eighthSec, 0, COLS);
+
+  const rendered = await offline.startRendering();
+
+  ctx = null; masterGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
+  noiseBuffer = null; crashNoiseBuffer = null; pulseWaves.clear(); crushCurve = null; chanDelays.clear();
+
+  return rendered;
+}
+document.getElementById('export-wav').addEventListener('click', async () => {
+  const btn = document.getElementById('export-wav');
+  const oldTitle = btn.title, oldText = btn.textContent;
+  // Rendering a long/dense song can take tens of seconds (OfflineAudioContext
+  // isn't guaranteed to run faster than real time) — swap the emoji itself so
+  // there's feedback visible without hovering, not just the title tooltip.
+  btn.disabled = true; btn.title = 'Rendering…'; btn.textContent = '⏳';
+  try {
+    const buffer = await renderSongToWav();
+    const wavBytes = audioBufferToWav(buffer);
+    const blob = new Blob([wavBytes], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+    const a = document.createElement('a');
+    a.href = url; a.download = slug + '.wav'; a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Could not render the WAV file: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.title = oldTitle; btn.textContent = oldText;
+  }
+});
+
 // ---------- Song library: examples (fetched from this site) + local songs ----------
 const SONGS_KEY = 'music-studio-songs';
 const songsDialog = document.getElementById('songs-dialog');
