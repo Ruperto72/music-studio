@@ -498,7 +498,7 @@
   .song-info-row span:last-child { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   #file-menu-panel { position: relative; }
   .file-menu {
-    position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
     background: #17171b; border: 1px solid #3a3a42; border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     padding: 8px; min-width: 200px;
@@ -577,7 +577,6 @@
     .panel-body { min-height: 30px; gap: 5px; }
     /* Collapse the non-essential panels behind the More toggle. */
     #more-toggle { display: inline-flex; margin-left: auto; }
-    #file-menu-panel { margin-left: 6px; }
     .tb-extra { display: none; }
     .toolbar.show-extra .tb-extra { display: flex; }
     /* Inspector becomes a bottom sheet that only appears when a note is selected. */
@@ -758,6 +757,40 @@
   <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
   <div class="toolbar">
+    <!-- File menu: consolidates session/export actions, project properties and
+         help behind one trigger so the toolbar doesn't grow with every new
+         file format — Transport/Bars/Tools stay directly visible/uncollapsed.
+         Placed first so it's a consistent, predictable "app menu" spot. -->
+    <div class="panel" id="file-menu-panel">
+      <div class="panel-cap">Menu</div>
+      <div class="panel-body">
+        <button id="file-menu-toggle" class="icon-btn" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false">☰</button>
+      </div>
+      <div id="file-menu" class="file-menu" hidden>
+        <div class="file-menu-section">
+          <button id="songs-btn" class="file-menu-item">🎵 Songs…</button>
+          <button id="save-file" class="file-menu-item">💾 Save as .json</button>
+          <button id="load-file" class="file-menu-item">📂 Load .json</button>
+          <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
+          <button id="export" class="file-menu-item">⤓ Export code</button>
+          <button id="export-midi" class="file-menu-item">🎹 Export MIDI</button>
+          <button id="import-midi" class="file-menu-item">🎼 Import MIDI</button>
+          <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
+          <button id="export-wav" class="file-menu-item">🔊 Export WAV</button>
+          <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
+        </div>
+        <div class="file-menu-section file-menu-info">
+          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
+          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
+          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
+          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
+        </div>
+        <div class="file-menu-section">
+          <button id="help-btn" class="file-menu-item">❓ Help</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Transport -->
     <div class="panel" id="transport-panel">
       <div class="panel-cap">Transport</div>
@@ -815,38 +848,6 @@
       </div>
     </div>
 
-    <!-- File menu: consolidates session/export actions, project properties and
-         help behind one trigger so the toolbar doesn't grow with every new
-         file format — Transport/Bars/Tools stay directly visible/uncollapsed. -->
-    <div class="panel" id="file-menu-panel">
-      <div class="panel-cap">Menu</div>
-      <div class="panel-body">
-        <button id="file-menu-toggle" class="icon-btn" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false">☰</button>
-      </div>
-      <div id="file-menu" class="file-menu" hidden>
-        <div class="file-menu-section">
-          <button id="songs-btn" class="file-menu-item">🎵 Songs…</button>
-          <button id="save-file" class="file-menu-item">💾 Save as .json</button>
-          <button id="load-file" class="file-menu-item">📂 Load .json</button>
-          <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
-          <button id="export" class="file-menu-item">⤓ Export code</button>
-          <button id="export-midi" class="file-menu-item">🎹 Export MIDI</button>
-          <button id="import-midi" class="file-menu-item">🎼 Import MIDI</button>
-          <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
-          <button id="export-wav" class="file-menu-item">🔊 Export WAV</button>
-          <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
-        </div>
-        <div class="file-menu-section file-menu-info">
-          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
-          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
-          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
-          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
-        </div>
-        <div class="file-menu-section">
-          <button id="help-btn" class="file-menu-item">❓ Help</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div class="editor-layout">
