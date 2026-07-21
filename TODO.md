@@ -7,16 +7,19 @@ som saknas, inte ett facit över buggar.
 
 ## Näst på tur (efterfrågat)
 
-- [ ] **MIDI-import/export** — läsa in och skriva `.mid`-filer, inte bara
-  `.json`/kod-exporten. Internt är tonhöjder redan MIDI-nummer
-  (`MIDI_MIN`/`MIDI_MAX`, `midiToFreq`), så det som saknas är själv
-  filformatet (parsning av `.mid` in, och en SMF-writer ut) — ingen
-  ändring av notmodellen borde behövas.
-- [ ] **Ljudfilsexport (WAV/MP3)** — rendera hela låten till en nedladdningsbar
-  ljudfil via `OfflineAudioContext` (samma synteskod som `render()`/uppspelningen
-  redan använder, bara mot en offline-kontext istället för `ctx`). WAV är
-  rakt fram (PCM-header, inga beroenden); MP3 kräver antingen ett
-  encoder-bibliotek eller att man nöjer sig med WAV-only export.
+- [x] **MIDI-import/export** — 🎹/🎼-knapparna i Session-panelen skriver/läser
+  Standard MIDI File format 1 (egen SMF-writer/parser, inga beroenden).
+  Export: en track per instrumentspår (namn bevaras), tempo/taktart som
+  meta-events, rytmspåret mappas till GM-slagverksnoter (kick=36 osv);
+  import gör motsvarande baklänges och skapar nya tonspår + fyller på
+  rytmspåret, med kolumn-snap (`quant`) och en fråga om man vill anta
+  filens tempo om det skiljer sig. Per-not-effekter (bend/vibrato/arp/...)
+  har ingen MIDI-motsvarighet och exporteras/importeras inte — samma
+  begränsning som kodexporten redan har för automation/ADSR.
+- [x] **Ljudfilsexport (WAV)** — 🔊-knappen renderar hela låten offline
+  (`OfflineAudioContext`, samma synteskod som uppspelningen) och laddar
+  ner en `.wav`. MP3 uteslöts medvetet (se nedan) för att hålla appen
+  beroendefri.
 
 ## Inspirerat av etablerade DAW:ar (Pro Tools m.fl.)
 
@@ -26,9 +29,12 @@ ett facit.
 
 - [ ] **Metronom + count-in** — redan listad under "Interaktion / touch"
   ovan; lyfts fram här som en av de mest lågt hängande frukterna.
-- [ ] **EQ/kompression (t.ex. sidokedjad ducking) på mastern** — genuint
-  DAW-territorium. Avvägning: drar appen bort från sin identitet som ett
-  lättviktigt, beroendefritt 8-bit-verktyg — lägst prioritet av de två.
+- [x] **EQ/kompression på mastern** — 🎛️-knappen i mastersektionen öppnar
+  ett litet panel med 3-bands-EQ (low/mid/high shelf/peak,
+  `BiquadFilterNode`) och en kompressor (`DynamicsCompressorNode`),
+  inkopplade sist i mastergrafen (mastergain → EQ → komp → destination,
+  och VU-mätaren tappar post-FX). Standardvärden är helt neutrala (0dB,
+  ratio 1:1) så gamla låtar utan dessa fält låter exakt som förut.
 
 ## Ljud / export
 
