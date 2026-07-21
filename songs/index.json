@@ -23,5 +23,10 @@
     "file": "popcorn.json",
     "name": "Popcorn",
     "desc": "A chiptune interpretation of the classic bouncy synth riff — a punchy square-wave hook alternating between two keys a whole step apart, with a contrasting bridge."
+  },
+  {
+    "file": "space-miner.json",
+    "name": "Deep Vacuum",
+    "desc": "A 132 BPM techno track for the Space Miner game — sparse vacuum-drone intros/outros build into hard-hitting drops via riser arps and crash transitions, with bitcrushed lead stabs, chorused pads and a tightened master EQ/compressor for a deeper, punchier sound."
   }
 ]
