@@ -31,14 +31,7 @@
     padding: 14px; margin: 0;
   }
   h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
-  #help-panel .panel-body { justify-content: center; }
   .icon-btn { padding: 6px 9px; font-size: 14px; line-height: 1; min-width: 34px; text-align: center; }
-  .help-fab {
-    width: 30px; height: 30px; padding: 0; border-radius: 50%;
-    font-size: 15px; font-weight: 700; line-height: 1;
-    color: var(--muted); background: #1a1a1f; border: 1px solid #3a3a42;
-  }
-  .help-fab:hover { color: var(--ink); border-color: #55555f; }
   dialog#help-dialog {
     background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
     max-width: 700px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
@@ -498,12 +491,26 @@
     position: sticky; top: var(--sticky-top, 110px); align-self: flex-start;
     max-height: calc(100vh - var(--sticky-top, 110px) - 12px); overflow-y: auto;
   }
-  .song-info-details {
-    display: flex; flex-direction: column; gap: 4px; margin-top: 2px;
-    padding-top: 6px; border-top: 1px solid #26262e;
-  }
   .song-info-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
   .song-info-row span:last-child { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #file-menu-panel { position: relative; }
+  .file-menu {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    background: #17171b; border: 1px solid #3a3a42; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 8px; min-width: 200px;
+    display: flex; flex-direction: column;
+  }
+  .file-menu[hidden] { display: none; }
+  .file-menu-section { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+  .file-menu-section + .file-menu-section { border-top: 1px solid #2a2a33; margin-top: 4px; padding-top: 8px; }
+  .file-menu-item {
+    display: flex; align-items: center; gap: 8px; justify-content: flex-start;
+    width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
+    padding: 7px 10px; border-radius: 5px; font-size: 12px;
+  }
+  .file-menu-item:hover { background: #26262e; border-color: #3a3a42; }
+  .file-menu-info { padding: 6px 10px; gap: 6px; }
   .inspector {
     background: linear-gradient(#1b1b20, #141418); padding: 8px; border-radius: 8px;
     border: 1px solid #34343c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
@@ -561,7 +568,7 @@
     .panel-body { min-height: 30px; gap: 5px; }
     /* Collapse the non-essential panels behind the More toggle. */
     #more-toggle { display: inline-flex; margin-left: auto; }
-    #help-panel { margin-left: 6px; }
+    #file-menu-panel { margin-left: 6px; }
     .tb-extra { display: none; }
     .toolbar.show-extra .tb-extra { display: flex; }
     /* Inspector becomes a bottom sheet that only appears when a note is selected. */
@@ -606,7 +613,6 @@
     .segmented button { padding: 10px 13px; font-size: 15px; }
     .th-btns button { width: 32px; height: 28px; font-size: 13px; }
     .th-vol input[type=range] { height: 28px; }
-    .help-fab { width: 38px; height: 38px; font-size: 17px; }
     .icon-btn { min-height: 38px; min-width: 40px; }
     button { min-height: 34px; }
   }
@@ -805,27 +811,36 @@
       </div>
     </div>
 
-    <div class="panel tb-extra" id="file-panel">
-      <div class="panel-cap">Session</div>
-      <div class="panel-body file-group">
-        <button id="songs-btn" class="icon-btn" title="Open the song library (examples, your saved songs, new song)">🎵</button>
-        <button id="save-file" class="icon-btn" title="Download as .json file">💾</button>
-        <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
-        <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
-        <button id="export" class="icon-btn" title="Export code">⤓</button>
-        <button id="export-midi" class="icon-btn" title="Export as a MIDI file">🎹</button>
-        <button id="import-midi" class="icon-btn" title="Import a MIDI file">🎼</button>
-        <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
-        <button id="export-wav" class="icon-btn" title="Render and download as a .wav file">🔊</button>
-        <button id="fullscreen-btn" class="icon-btn" title="Enter fullscreen" aria-pressed="false">⛶</button>
-      </div>
-    </div>
-
-    <!-- Help (discreet ? in a panel, far right) -->
-    <div class="panel" id="help-panel">
-      <div class="panel-cap">Help</div>
+    <!-- File menu: consolidates session/export actions, project properties and
+         help behind one trigger so the toolbar doesn't grow with every new
+         file format — Transport/Bars/Tools stay directly visible/uncollapsed. -->
+    <div class="panel" id="file-menu-panel">
+      <div class="panel-cap">Menu</div>
       <div class="panel-body">
-        <button id="help-btn" class="help-fab" title="Show help" aria-label="Help">?</button>
+        <button id="file-menu-toggle" class="icon-btn" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false">☰</button>
+      </div>
+      <div id="file-menu" class="file-menu" hidden>
+        <div class="file-menu-section">
+          <button id="songs-btn" class="file-menu-item">🎵 Songs…</button>
+          <button id="save-file" class="file-menu-item">💾 Save as .json</button>
+          <button id="load-file" class="file-menu-item">📂 Load .json</button>
+          <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
+          <button id="export" class="file-menu-item">⤓ Export code</button>
+          <button id="export-midi" class="file-menu-item">🎹 Export MIDI</button>
+          <button id="import-midi" class="file-menu-item">🎼 Import MIDI</button>
+          <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
+          <button id="export-wav" class="file-menu-item">🔊 Export WAV</button>
+          <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
+        </div>
+        <div class="file-menu-section file-menu-info">
+          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
+          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
+          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
+          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
+        </div>
+        <div class="file-menu-section">
+          <button id="help-btn" class="file-menu-item">❓ Help</button>
+        </div>
       </div>
     </div>
   </div>
@@ -906,18 +921,12 @@
     </div>
     <div class="inspector-column">
       <!-- Current project name — always visible so it's clear which song is
-           loaded; click to rename (see renameSong() in JS). ▾ expands details. -->
+           loaded; click to rename (see renameSong() in JS). Tempo/meter/length/
+           track-count details live in the File menu (☰) instead of here. -->
       <div class="panel" id="song-info-panel">
         <div class="panel-cap">Song</div>
         <div class="panel-body">
           <button id="song-name-display" title="Click to rename this song">Froggy Hop</button>
-          <button id="song-info-toggle" class="icon-btn" title="Show song details" aria-expanded="false">▾</button>
-        </div>
-        <div class="song-info-details" id="song-info-details" hidden>
-          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
-          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
-          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
-          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
         </div>
       </div>
       <div class="inspector empty" id="inspector">No note selected.</div>
@@ -1308,16 +1317,31 @@ function renameSong() {
 songNameDisplay.addEventListener('click', renameSong);
 updateSongNameUI();
 
-// Expandable "Song" panel details (tempo/meter/length/track count) — a
-// read-only at-a-glance summary; the actual controls live in the master bar.
-const songInfoToggle = document.getElementById('song-info-toggle');
-const songInfoDetails = document.getElementById('song-info-details');
-songInfoToggle.addEventListener('mousedown', (e) => e.stopPropagation());
-songInfoToggle.addEventListener('click', () => {
-  const opening = songInfoDetails.hasAttribute('hidden');
-  if (opening) songInfoDetails.removeAttribute('hidden'); else songInfoDetails.setAttribute('hidden', '');
-  songInfoToggle.textContent = opening ? '▴' : '▾';
-  songInfoToggle.setAttribute('aria-expanded', String(opening));
+// ---------- File menu (session/export actions + project info + help) ----------
+// A single dropdown so the toolbar doesn't grow every time another file
+// format is added — Transport/Bars/Tools stay directly visible either way.
+const fileMenuToggle = document.getElementById('file-menu-toggle');
+const fileMenu = document.getElementById('file-menu');
+function closeFileMenu() {
+  fileMenu.setAttribute('hidden', '');
+  fileMenuToggle.setAttribute('aria-expanded', 'false');
+}
+function openFileMenu() {
+  fileMenu.removeAttribute('hidden');
+  fileMenuToggle.setAttribute('aria-expanded', 'true');
+}
+fileMenuToggle.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (fileMenu.hasAttribute('hidden')) openFileMenu(); else closeFileMenu();
+});
+// Close on outside click, Escape, or after picking any action inside (except
+// the file-input triggers, whose own dialog / follow-up click should decide).
+document.addEventListener('click', (e) => {
+  if (!fileMenu.hasAttribute('hidden') && !fileMenu.contains(e.target) && e.target !== fileMenuToggle) closeFileMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFileMenu(); });
+fileMenu.addEventListener('click', (e) => {
+  if (e.target.closest('.file-menu-item')) closeFileMenu();
 });
 function updateSongInfo() {
   document.getElementById('info-tempo').textContent = state.tempo + ' BPM';
