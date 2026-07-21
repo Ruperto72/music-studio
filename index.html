@@ -248,6 +248,10 @@
   .mstrip-collapsed-label { color: var(--muted); font-size: 11px; }
   #master-track.collapsed .mstrip-body { display: none; }
   #master-track:not(.collapsed) .mstrip-collapsed-label { display: none; }
+  #master-track.collapsed #master-fx-panel { display: none !important; }
+  .master-fx-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 8px 12px; border-top: 1px solid #2a2a33; }
+  .mfx-group { display: flex; align-items: center; gap: 10px; }
+  .mfx-cap { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: #6b6b78; font-weight: 700; }
 
   /* Sticks to the top of .daw's own (now-bounded) scrollport as tracks scroll
      past underneath, so the bar ruler (and its bar numbers) stays visible.
@@ -809,6 +813,10 @@
         <button id="load-file" class="icon-btn" title="Load a .json file">📂</button>
         <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
         <button id="export" class="icon-btn" title="Export code">⤓</button>
+        <button id="export-midi" class="icon-btn" title="Export as a MIDI file">🎹</button>
+        <button id="import-midi" class="icon-btn" title="Import a MIDI file">🎼</button>
+        <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
+        <button id="export-wav" class="icon-btn" title="Render and download as a .wav file">🔊</button>
         <button id="fullscreen-btn" class="icon-btn" title="Enter fullscreen" aria-pressed="false">⛶</button>
       </div>
     </div>
@@ -872,6 +880,24 @@
               <option value="1/8T">1/8 T</option>
               <option value="1/16T">1/16 T</option>
             </select>
+          </div>
+          <div class="mstrip-cell">
+            <button id="master-fx-toggle" class="icon-btn" title="Master EQ &amp; compression" aria-pressed="false">🎛️</button>
+          </div>
+        </div>
+        <div id="master-fx-panel" class="master-fx-panel" style="display:none">
+          <div class="mfx-group">
+            <span class="mfx-cap">EQ</span>
+            <div class="adsr-field"><span class="adsr-label">Lo</span><input id="eq-low" type="range" min="-12" max="12" step="0.5" title="Low shelf (~200Hz)"><span id="eq-low-val" class="adsr-val"></span></div>
+            <div class="adsr-field"><span class="adsr-label">Mid</span><input id="eq-mid" type="range" min="-12" max="12" step="0.5" title="Mid peak (~1kHz)"><span id="eq-mid-val" class="adsr-val"></span></div>
+            <div class="adsr-field"><span class="adsr-label">Hi</span><input id="eq-high" type="range" min="-12" max="12" step="0.5" title="High shelf (~4kHz)"><span id="eq-high-val" class="adsr-val"></span></div>
+          </div>
+          <div class="mfx-group">
+            <span class="mfx-cap">Comp</span>
+            <div class="adsr-field"><span class="adsr-label">Thr</span><input id="comp-threshold" type="range" min="-60" max="0" step="1" title="Threshold"><span id="comp-threshold-val" class="adsr-val"></span></div>
+            <div class="adsr-field"><span class="adsr-label">Rat</span><input id="comp-ratio" type="range" min="1" max="20" step="0.5" title="Ratio (1:1 = off)"><span id="comp-ratio-val" class="adsr-val"></span></div>
+            <div class="adsr-field"><span class="adsr-label">Atk</span><input id="comp-attack" type="range" min="0" max="1" step="0.01" title="Attack"><span id="comp-attack-val" class="adsr-val"></span></div>
+            <div class="adsr-field"><span class="adsr-label">Rel</span><input id="comp-release" type="range" min="0.01" max="1" step="0.01" title="Release"><span id="comp-release-val" class="adsr-val"></span></div>
           </div>
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
@@ -954,6 +980,15 @@ const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', tom: 'Tom
 // scale naturally with note length instead of needing per-tempo absolute times);
 // sustain is a level (0..1 of the note's peak amplitude).
 const DEFAULT_ADSR = { attack: 0.05, decay: 0.15, sustain: 0.7, release: 0.15 };
+
+// Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
+// song-global rather than per-track — see getMasterEQ()/getMasterComp()).
+// Defaults are chosen to be fully transparent (0dB EQ; ratio 1:1 means the
+// compressor never reduces gain regardless of threshold) so a song saved
+// before this existed, or one that never touches these controls, sounds
+// exactly as it did before.
+const DEFAULT_MASTER_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
+const DEFAULT_MASTER_COMP = { threshold: -24, ratio: 1, attack: 0.01, release: 0.25 };
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1094,7 +1129,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1130,6 +1165,8 @@ const state = {
   markers: [],               // [{ col, name }] editor-only timeline markers
   automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
+  masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
+  masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
@@ -1179,6 +1216,18 @@ function applySavedMix(data) {
       if (keys.every(k => typeof a[k] === 'number')) {
         state.adsr[ch] = { attack: a.attack, decay: a.decay, sustain: a.sustain, release: a.release };
       }
+    }
+  }
+  if (data.masterEQ && typeof data.masterEQ === 'object') {
+    const eqKeys = ['low', 'mid', 'high'];
+    if (eqKeys.every(k => typeof data.masterEQ[k] === 'number')) {
+      state.masterEQ = { low: data.masterEQ.low, mid: data.masterEQ.mid, high: data.masterEQ.high };
+    }
+  }
+  if (data.masterComp && typeof data.masterComp === 'object') {
+    const compKeys = ['threshold', 'ratio', 'attack', 'release'];
+    if (compKeys.every(k => typeof data.masterComp[k] === 'number')) {
+      state.masterComp = { threshold: data.masterComp.threshold, ratio: data.masterComp.ratio, attack: data.masterComp.attack, release: data.masterComp.release };
     }
   }
   for (const key of ['mute', 'solo']) {
@@ -1400,6 +1449,8 @@ function audible(track) {
   return anySolo() ? state.solo[track] : true;
 }
 function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
+function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
+function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 
 // ---------- Rendering ----------
 // The playhead/grip/loop overlays are built once by createOverlays() and only
@@ -2887,6 +2938,46 @@ masterVolInput.addEventListener('input', () => {
 });
 syncMasterVolUI();
 
+// ---------- Master EQ / compression ----------
+const EQ_FIELDS = [['low', 'dB'], ['mid', 'dB'], ['high', 'dB']];
+const COMP_FIELDS = [['threshold', 'dB'], ['ratio', ':1'], ['attack', 's'], ['release', 's']];
+function syncMasterFxUI() {
+  const eq = getMasterEQ(), comp = getMasterComp();
+  for (const [key, unit] of EQ_FIELDS) {
+    document.getElementById('eq-' + key).value = eq[key];
+    document.getElementById('eq-' + key + '-val').textContent = eq[key].toFixed(1) + unit;
+  }
+  for (const [key, unit] of COMP_FIELDS) {
+    document.getElementById('comp-' + key).value = comp[key];
+    const decimals = key === 'threshold' ? 0 : (unit === ':1' ? 1 : 2);
+    document.getElementById('comp-' + key + '-val').textContent = comp[key].toFixed(decimals) + unit;
+  }
+}
+for (const [key] of EQ_FIELDS) {
+  document.getElementById('eq-' + key).addEventListener('input', (e) => {
+    state.masterEQ = { ...getMasterEQ(), [key]: parseFloat(e.target.value) };
+    syncMasterFxUI();
+    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+    autosave();
+  });
+}
+for (const [key] of COMP_FIELDS) {
+  document.getElementById('comp-' + key).addEventListener('input', (e) => {
+    state.masterComp = { ...getMasterComp(), [key]: parseFloat(e.target.value) };
+    syncMasterFxUI();
+    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+    autosave();
+  });
+}
+document.getElementById('master-fx-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('master-fx-panel');
+  const btn = document.getElementById('master-fx-toggle');
+  const showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'flex';
+  btn.setAttribute('aria-pressed', String(!showing));
+});
+syncMasterFxUI();
+
 // Collapse the whole bottom bar (Tempo/Length/Master) to a slim strip; remembered.
 const masterCollapseBtn = document.getElementById('master-collapse');
 let masterCollapsed = false;
@@ -3024,6 +3115,10 @@ function createNewSong(withStarterTracks, name) {
   syncMasterVolUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
+  state.masterEQ = { ...DEFAULT_MASTER_EQ };
+  state.masterComp = { ...DEFAULT_MASTER_COMP };
+  syncMasterFxUI();
+  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
   COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
   state.loopStart = 0; state.loopEnd = COLS;
   state.playhead = 0; visualPlayhead = 0;
@@ -3083,7 +3178,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3116,11 +3211,13 @@ function applySongData(data, name) {
   applySavedMix(data);
   state.activeTrack = state.trackList[0] ? state.trackList[0].id : 'rhythm';
   syncMasterVolUI();
+  syncMasterFxUI();
   syncGridUI();
   syncTimeSigUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
   applyPan();
+  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
@@ -3220,13 +3317,43 @@ let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACK
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let masterAnalyser = null;
+let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compressor chain
+
+// Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor chain
+// on the given context, wired input -> low -> mid -> high -> comp -> output,
+// and returns the created nodes so the caller can both store them (for later
+// param updates via applyMasterFX) and tap them for metering. Used by both
+// the live ensureCtx() graph and the offline WAV-render graph, which is why
+// it takes the context/input/output explicitly rather than touching globals.
+function buildMasterFXChain(c, inputNode, outputNode) {
+  const low = c.createBiquadFilter();
+  low.type = 'lowshelf'; low.frequency.value = 200;
+  const mid = c.createBiquadFilter();
+  mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 0.7;
+  const high = c.createBiquadFilter();
+  high.type = 'highshelf'; high.frequency.value = 4000;
+  const comp = c.createDynamicsCompressor();
+  inputNode.connect(low).connect(mid).connect(high).connect(comp).connect(outputNode);
+  return { low, mid, high, comp };
+}
+// Pushes state (EQ dB gains + compressor params) onto a live chain's AudioParams.
+function applyMasterFX(nodes, eq, comp) {
+  nodes.low.gain.value = eq.low;
+  nodes.mid.gain.value = eq.mid;
+  nodes.high.gain.value = eq.high;
+  nodes.comp.threshold.value = comp.threshold;
+  nodes.comp.ratio.value = comp.ratio;
+  nodes.comp.attack.value = comp.attack;
+  nodes.comp.release.value = comp.release;
+}
 
 function ensureCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (!masterGain) {
     masterGain = ctx.createGain();
     masterGain.gain.value = state.masterVol;
-    masterGain.connect(ctx.destination);
+    masterFXNodes = buildMasterFXChain(ctx, masterGain, ctx.destination);
+    applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
     for (const ch of ALL_TRACKS) {
       // Per channel: gain → panner → master, mirroring the game's audio graph.
       chanPan[ch] = ctx.createStereoPanner();
@@ -3245,7 +3372,7 @@ function ensureCtx() {
     previewGain.connect(masterGain);
     masterAnalyser = ctx.createAnalyser();
     masterAnalyser.fftSize = 256;
-    masterGain.connect(masterAnalyser);
+    masterFXNodes.comp.connect(masterAnalyser); // tap post-EQ/comp so the meter reflects the actual output
     startMeters();
   }
   return ctx;
@@ -3720,6 +3847,7 @@ function stopPlayback() {
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {};
     masterAnalyser = null;
+    masterFXNodes = null;
     stopMeters();
     noiseBuffer = null;
     crashNoiseBuffer = null;
