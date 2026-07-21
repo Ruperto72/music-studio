@@ -2315,21 +2315,38 @@ function colFromClientX(clientX, rect = rulerGridEl.getBoundingClientRect()) {
   return (clientX - rect.left) / colPx;
 }
 
-function seekTo(col) {
+// Rescheduling audio (startPlaybackFrom) creates a full lookahead window's
+// worth of Web Audio nodes for every track. seekTo is called on every
+// mousemove while scrubbing the ruler, which — with no throttle — could
+// fire dozens of times a second during a drag; each call scheduled a fresh
+// batch of nodes on top of whatever the previous call had already
+// scheduled (nothing cancels those), so a single fast drag while playing
+// could create tens of thousands of nodes and crash the tab. The visual
+// playhead still moves on every event (cheap, no audio graph involved);
+// only the audio reschedule is throttled.
+const SCRUB_AUDIO_RESCHEDULE_MS = 120;
+let lastScrubReschedule = 0;
+function seekTo(col, { throttleAudio = false } = {}) {
   col = Math.max(0, Math.min(COLS - 1, Math.round(col)));
   state.playhead = col;
   visualPlayhead = col;
   updatePlayheadPositions();
-  if (playing) { ensureCtx(); startPlaybackFrom(col); }
+  if (playing) {
+    const now = performance.now();
+    if (throttleAudio && now - lastScrubReschedule < SCRUB_AUDIO_RESCHEDULE_MS) return;
+    lastScrubReschedule = now;
+    ensureCtx();
+    startPlaybackFrom(col);
+  }
 }
 function startScrub(e) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
   const rect = rulerGridEl.getBoundingClientRect();
-  const seek = (ev) => seekTo(colFromClientX(ev.clientX, rect));
+  const seek = (ev, opts) => seekTo(colFromClientX(ev.clientX, rect), opts);
   seek(e);
-  const onMove = (ev) => seek(ev);
-  const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; };
+  const onMove = (ev) => seek(ev, { throttleAudio: true });
+  const onUp = (ev) => { seek(ev); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; };
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
 }
