@@ -520,9 +520,8 @@
   }
   .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
 
-  /* Groups the Song-info panel with the note/effect inspector below it so
-     they scroll and stick together as one right-hand column (see .inspector
-     for why it's pinned). */
+  /* Right-hand column holding the note/effect inspector (see .inspector for
+     why it's pinned). */
   .inspector-column {
     display: flex; flex-direction: column; gap: 10px;
     width: 244px; flex: 0 0 244px;
@@ -618,11 +617,9 @@
     .editor-layout { flex-direction: column; }
     /* .inspector-column's sticky positioning would otherwise become the
        containing block for .inspector's fixed bottom-sheet below, trapping
-       it inside this column instead of pinning it to the viewport. Reset it
-       to a plain block and move it above the DAW grid (order: -1) so the
-       still-visible Song panel sits where the old toolbar panel used to. */
+       it inside this column instead of pinning it to the viewport. */
     .inspector-column {
-      position: static; width: auto; flex: none; max-height: none; overflow: visible; order: -1;
+      position: static; width: auto; flex: none; max-height: none; overflow: visible;
     }
     .inspector {
       position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; flex: none;
@@ -670,18 +667,19 @@
         Web Audio API, no audio files. Instruments are laid out as separate <b>tracks</b> stacked
         vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
         red playhead run across every lane at once. The current project's name is shown at the top
-        left (click it to rename) — open <b>🎵</b> in the Session group to load an example, one of
-        your own saved songs, or start a new one; your own songs are stored in this browser.
+        of the <b>☰</b> menu (click it to rename) — the same menu's <b>🎵 Songs…</b> loads an example, one of
+        your own saved songs, or starts a new one; your own songs are stored in this browser.
       </p>
 
       <h3>Tracks &amp; channel strips</h3>
       <ul>
-        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane with six hit types: Kick, Snare, Hi-hat, Tom, Clap and Crash.</li>
+        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
         <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
-        <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores the default shape.</li>
+        <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -705,7 +703,7 @@
       <h3>Note effects</h3>
       <p>
         Select a single note to edit vibrato, tremolo, bend, duty cycle, arpeggio, portamento,
-        bitcrush, echo and chorus in the inspector on the right.
+        bitcrush, echo, chorus and reverb in the inspector on the right.
       </p>
 
       <h3>Bottom bar (Tempo · Length · Grid · Master)</h3>
@@ -721,10 +719,11 @@
       <h3>Mixing</h3>
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
-        <li>The <b>waveform</b> picker (Square / Triangle / Saw / Sine) and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li>The <b>waveform</b> picker (Square / Triangle / Saw / Sine / <b>NES Tri</b> wavetable / <b>FM</b>) and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>🔊 Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
+        <li>The <b>🎛️</b> button next to Master opens the <b>Master FX</b> panel: a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit, a lo-fi <b>downsampler</b>, and a live spectrum + approximate <b>LUFS</b> meter — all on the master bus, post-FX.</li>
       </ul>
 
       <h3>Transport &amp; timeline</h3>
@@ -738,9 +737,11 @@
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>🎵</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The <b>Song</b> panel above the inspector shows the project name (click-to-rename any time) and, via its <b>▾</b>, tempo/meter/length/track-count at a glance.</li>
+        <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name and tempo/meter/length/track-count sit at the top of this same <b>☰</b> menu (click the name to rename).</li>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
-        <li><b>⤓ Export</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><b>🎹 Export MIDI</b> / <b>🎼 Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
+        <li><b>🔊 Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
 
@@ -843,6 +844,7 @@
           <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
         </div>
         <div class="file-menu-section file-menu-info">
+          <div class="song-info-row"><span>Song</span><button id="song-name-display" title="Click to rename this song">Froggy Hop</button></div>
           <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
           <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
           <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
@@ -1013,15 +1015,6 @@
       </div>
     </div>
     <div class="inspector-column">
-      <!-- Current project name — always visible so it's clear which song is
-           loaded; click to rename (see renameSong() in JS). Tempo/meter/length/
-           track-count details live in the File menu (☰) instead of here. -->
-      <div class="panel" id="song-info-panel">
-        <div class="panel-cap">Song</div>
-        <div class="panel-body">
-          <button id="song-name-display" title="Click to rename this song">Froggy Hop</button>
-        </div>
-      </div>
       <div class="inspector empty" id="inspector">No note selected.</div>
     </div>
   </div>
