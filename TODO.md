@@ -244,6 +244,13 @@ ett facit.
   en `RHYTHM_TRACKS`-array (även uppdaterat i `js/song-data.js`) — ett
   medvetet formatbrott mot Frog vs Toad-spelets nuvarande kod, som ligger
   i ett separat repo utanför den här kodbasen.
+- [ ] **Frog vs Toad-spelets `audio.js` behöver uppdateras manuellt.**
+  Ovanstående formatbrott (`RHYTHM_TRACK` → `RHYTHM_TRACKS`) gör att en
+  färsk "⤓ Export code"-output inte längre går att klistra in rakt av i
+  spelets nuvarande `audio.js`, som fortfarande förväntar sig det gamla
+  enstaka `RHYTHM_TRACK`-objektet. Måste göras i
+  [frogger-multiplayer](https://github.com/Ruperto72/frogger-multiplayer)
+  (separat repo), inte här.
 
 ## Spårhantering
 
