@@ -37,11 +37,11 @@
     max-width: 700px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
   }
   dialog#help-dialog::backdrop { background: rgba(0,0,0,0.65); }
-  dialog#songs-dialog, dialog#preset-dialog {
+  dialog#songs-dialog, dialog#preset-dialog, dialog#pattern-dialog {
     background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
     max-width: 560px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
   }
-  dialog#songs-dialog::backdrop, dialog#preset-dialog::backdrop { background: rgba(0,0,0,0.65); }
+  dialog#songs-dialog::backdrop, dialog#preset-dialog::backdrop, dialog#pattern-dialog::backdrop { background: rgba(0,0,0,0.65); }
   .songs-body { padding: 4px 20px 18px; overflow-y: auto; max-height: calc(86vh - 60px); }
   .songs-body h3 { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #8f8f9b; margin: 16px 0 8px; }
   .songs-note { color: #b7b7c2; font-size: 12px; line-height: 1.55; margin: 10px 0 4px; }
@@ -783,6 +783,17 @@
     </div>
   </dialog>
 
+  <dialog id="pattern-dialog">
+    <div class="help-head">
+      <h2>🥁 Rhythm patterns</h2>
+      <button id="pattern-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note">Inserts a one-bar groove into the Rhythm track, tiled from the playhead's bar through the end of the song (replacing whatever was there). Move the playhead first if you only want to fill part of the song.</p>
+      <div id="pattern-list" class="song-list"></div>
+    </div>
+  </dialog>
+
   <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
   <div class="toolbar">
@@ -1025,6 +1036,85 @@ const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', si
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
 const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
+
+// Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
+// (4/4) resolution — insertPatternIntoRhythm() scales the `start` columns to
+// whatever eighthsPerBar() the song is actually in. `swing` (optional) is
+// applied to state.swing on insert, since a few grooves (shuffle) only read
+// as their genre once the off-8th is pushed toward the triplet position.
+const RHYTHM_PATTERNS = [
+  {
+    id: 'rock', name: 'Rock',
+    desc: 'Classic rock backbeat — kick on 1 & 3, snare on 2 & 4, straight 8th hi-hats.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 4, type: 'kick' },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
+      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+    ],
+  },
+  {
+    id: 'techno', name: 'Techno',
+    desc: 'Four-on-the-floor kick, clap backbeat, closed hi-hat on every off-beat.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
+      { start: 2, type: 'clap' }, { start: 6, type: 'clap' },
+      { start: 1, type: 'hihat' }, { start: 3, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 7, type: 'hihat' },
+    ],
+  },
+  {
+    id: 'disco', name: 'Disco',
+    desc: 'Four-on-the-floor kick, snare backbeat, open hi-hat "chhh" on every off-beat.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      { start: 1, type: 'openhat' }, { start: 3, type: 'openhat' }, { start: 5, type: 'openhat' }, { start: 7, type: 'openhat' },
+    ],
+  },
+  {
+    id: 'swing', name: 'Swing / Shuffle',
+    desc: 'Ride on every 8th plus a backbeat. Also nudges Swing to 60% for a "spang-a-lang" triplet feel — tweak the Swing slider afterward to taste.',
+    swing: 60,
+    hits: [
+      { start: 0, type: 'kick' }, { start: 4, type: 'kick' },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      { start: 0, type: 'ride' }, { start: 1, type: 'ride' }, { start: 2, type: 'ride' }, { start: 3, type: 'ride' },
+      { start: 4, type: 'ride' }, { start: 5, type: 'ride' }, { start: 6, type: 'ride' }, { start: 7, type: 'ride' },
+    ],
+  },
+  {
+    id: 'hiphop', name: 'Hip-Hop',
+    desc: 'Boom-bap syncopation — kick lands ahead of beat 3, snare backbeat, straight 8th hats.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 3, type: 'kick' }, { start: 4, type: 'kick' },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
+      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+    ],
+  },
+  {
+    id: 'house', name: 'House',
+    desc: 'Four-on-the-floor with a shuffling shaker layer and a clap backbeat.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
+      { start: 2, type: 'clap' }, { start: 6, type: 'clap' },
+      { start: 1, type: 'hihat' }, { start: 3, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 0, type: 'shaker' }, { start: 1, type: 'shaker' }, { start: 2, type: 'shaker' }, { start: 3, type: 'shaker' },
+      { start: 4, type: 'shaker' }, { start: 5, type: 'shaker' }, { start: 6, type: 'shaker' }, { start: 7, type: 'shaker' },
+    ],
+  },
+  {
+    id: 'breakbeat', name: 'Breakbeat',
+    desc: 'Syncopated kick pattern with a crash on the downbeat — classic sampled-break energy.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 5, type: 'kick' },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
+      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 0, type: 'crash' },
+    ],
+  },
+];
 
 // Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
 // absent) — attack/decay/release are fractions of the note's own duration (so they
@@ -2067,6 +2157,13 @@ function buildHeader(track) {
     presetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     presetBtn.addEventListener('click', (e) => { e.stopPropagation(); openPresetDialog(track); });
     tools.append(presetBtn);
+  } else {
+    const patternsBtn = el('button', 'th-tool-btn icon');
+    patternsBtn.textContent = '🥁';
+    patternsBtn.title = 'Rhythm patterns — insert a built-in groove (Rock, Techno, Disco, Swing, ...)';
+    patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    patternsBtn.addEventListener('click', (e) => { e.stopPropagation(); renderPatternList(); patternDialog.showModal(); });
+    tools.append(patternsBtn);
   }
 
   const vol = el('div', 'th-vol');
@@ -2555,6 +2652,39 @@ function onRhythmCellClick(row, col) {
   render();
 }
 function removeHit(hit) { state.tracks.rhythm = state.tracks.rhythm.filter(h => h !== hit); render(); }
+// Plays a built-in RHYTHM_PATTERNS entry once, one bar, for audition before inserting.
+function previewPattern(pattern) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const eighthSec = 60 / state.tempo / 2;
+    const startAt = ctx.currentTime + 0.05;
+    const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
+    for (const h of pattern.hits) {
+      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + h.start * scale * eighthSec);
+    }
+  } catch { /* audio unavailable */ }
+}
+// Tiles a built-in RHYTHM_PATTERNS entry from the playhead's bar through the
+// end of the song, replacing any existing hits in that range (hits before the
+// playhead's bar are left alone). Patterns are authored at 8 eighths/bar
+// (4/4) and scaled to whatever eighthsPerBar() the song is actually in.
+function insertPatternIntoRhythm(pattern) {
+  const barLen = eighthsPerBar();
+  const scale = barLen / 8;
+  const startBar = Math.floor(state.playhead / barLen) * barLen;
+  const newHits = [];
+  for (let barCol = startBar; barCol < COLS; barCol += barLen) {
+    for (const h of pattern.hits) {
+      const start = quant(barCol + h.start * scale);
+      if (start < COLS) newHits.push({ start, type: h.type });
+    }
+  }
+  state.tracks.rhythm = state.tracks.rhythm.filter(h => h.start < startBar).concat(newHits);
+  if (pattern.swing != null) { state.swing = pattern.swing; syncSwingUI(); }
+  render();
+  autosave();
+}
 function selectNote(track, idx) { state.selected = { track, index: idx }; state.multiSelected.clear(); previewNote(track, state.tracks[track][idx]); render(); }
 function deleteNote(track, idx) {
   state.tracks[track] = state.tracks[track].filter((_, i) => i !== idx);
@@ -3845,6 +3975,29 @@ document.getElementById('preset-save').addEventListener('click', () => {
   renderPresetList();
 });
 
+// ---------- Rhythm patterns (built-in one-bar groove templates) ----------
+const patternDialog = document.getElementById('pattern-dialog');
+const patternListEl = document.getElementById('pattern-list');
+function renderPatternList() {
+  patternListEl.innerHTML = '';
+  for (const pattern of RHYTHM_PATTERNS) {
+    const row = el('div', 'song-item');
+    const info = el('div', 'song-info');
+    const title = el('div', 'song-title'); title.textContent = pattern.name; info.appendChild(title);
+    const desc = el('div', 'song-desc'); desc.textContent = pattern.desc; info.appendChild(desc);
+    row.appendChild(info);
+    const preview = el('button'); preview.textContent = '▶'; preview.title = 'Preview this pattern (one bar)';
+    preview.addEventListener('click', () => previewPattern(pattern));
+    row.appendChild(preview);
+    const insert = el('button'); insert.textContent = 'Insert';
+    insert.title = 'Insert into the Rhythm track, from the playhead\'s bar through the end of the song';
+    insert.addEventListener('click', () => { insertPatternIntoRhythm(pattern); patternDialog.close(); });
+    row.appendChild(insert);
+    patternListEl.appendChild(row);
+  }
+}
+document.getElementById('pattern-close').addEventListener('click', () => patternDialog.close());
+
 // ---------- Playback ----------
 let ctx = null, loopTimer = null, playing = false;
 let masterGain = null;
@@ -3977,16 +4130,7 @@ function previewHit(type) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const at = ctx.currentTime + 0.005;
-    if (type === 'kick') scheduleKick(at);
-    else if (type === 'snare') scheduleSnare(at);
-    else if (type === 'rim') scheduleRim(at);
-    else if (type === 'tom') schedulePuka(at);
-    else if (type === 'clap') scheduleClap(at);
-    else if (type === 'crash') scheduleCrash(at);
-    else if (type === 'openhat') scheduleOpenHat(at);
-    else if (type === 'shaker') scheduleShaker(at);
-    else if (type === 'ride') scheduleRide(at);
-    else scheduleHihat(at);
+    (DRUM_SCHEDULERS[type] || scheduleHihat)(at);
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
@@ -4329,6 +4473,12 @@ function scheduleRide(startAt) {
   ping.connect(pingGain).connect(chanGain.rhythm);
   ping.start(startAt); ping.stop(startAt + 0.12);
 }
+// Shared dispatch table for all 10 kit sounds — used by playback (playOnce),
+// the click-to-place preview (previewHit) and pattern preview/insert.
+const DRUM_SCHEDULERS = {
+  kick: scheduleKick, snare: scheduleSnare, rim: scheduleRim, tom: schedulePuka, hihat: scheduleHihat,
+  openhat: scheduleOpenHat, shaker: scheduleShaker, clap: scheduleClap, crash: scheduleCrash, ride: scheduleRide,
+};
 // Classic 8th-note swing: delays the off-beat 8th (the "and") within each beat,
 // sliding it toward the triplet position as the amount rises to 100%. Only
 // applies to simple meters (beat = 2 eighths) and only to notes/hits landing
@@ -4365,12 +4515,8 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
     scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id));
   }
   if (audible('rhythm')) {
-    const scheduleHit = {
-      kick: scheduleKick, snare: scheduleSnare, rim: scheduleRim, tom: schedulePuka, hihat: scheduleHihat,
-      openhat: scheduleOpenHat, shaker: scheduleShaker, clap: scheduleClap, crash: scheduleCrash, ride: scheduleRide,
-    };
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
-      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
+      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
     }
   }
 }

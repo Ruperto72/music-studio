@@ -20,6 +20,15 @@ som saknas, inte ett facit över buggar.
   (`OfflineAudioContext`, samma synteskod som uppspelningen) och laddar
   ner en `.wav`. MP3 uteslöts medvetet (se nedan) för att hålla appen
   beroendefri.
+- [x] **Rytm-mallar** — en 🥁-knapp i rytmspårets header öppnar en dialog
+  med sju inbyggda en-takts-grooves (`RHYTHM_PATTERNS`): Rock, Techno,
+  Disco, Swing/Shuffle, Hip-Hop, House, Breakbeat. Varje mall har en
+  ▶-förhandslyssning och en Insert-knapp som lägger in mallen upprepad
+  från speakerhuvudets takt till låtens slut (ersätter det som låg där;
+  det som ligger före speakerhuvudet rörs inte). Mallarna är skrivna för
+  4/4 (8 åttondelar/takt) och skalas mot `eighthsPerBar()` för andra
+  taktarter. Swing/Shuffle-mallen sätter även Swing-reglaget till 60% för
+  den klassiska "spang-a-lang"-känslan.
 
 ## Inspirerat av etablerade DAW:ar (Pro Tools m.fl.)
 
