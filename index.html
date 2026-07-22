@@ -1732,6 +1732,10 @@ const pitchWheelAccum = {};
 function attachPitchWheel(el, track) {
   el.addEventListener('wheel', (e) => {
     if (state.activeTrack !== track) return;
+    // A horizontal gesture (trackpad two-finger swipe, shift+wheel) should
+    // still scroll the timeline left/right as normal — only a vertically-
+    // dominant gesture pans the octave.
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
     e.preventDefault();
     pitchWheelAccum[track] = (pitchWheelAccum[track] || 0) + e.deltaY;
     if (pitchWheelRaf) return;
