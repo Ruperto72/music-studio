@@ -225,10 +225,6 @@
     position: sticky; bottom: 0; z-index: 20;
     box-shadow: 0 -6px 14px rgba(0,0,0,0.45);
   }
-  /* Pushed to the far right when there's room (wraps below otherwise); kept
-     out of the scrolling track list so it's reachable without scrolling past
-     every lane first. */
-  #master-track #add-track-btn { flex: 0 0 auto; margin-left: auto; }
   #master-collapse {
     flex: 0 0 auto; background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0;
     border-radius: 5px; padding: 4px 9px; cursor: pointer; font-size: 12px; line-height: 1;
@@ -675,7 +671,7 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
-        <li><b>＋ Add track</b> / <b>＋ 🥁 Add rhythm track</b> (next to the Master bar at the bottom) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
+        <li><b>＋ Add track</b> / <b>＋ 🥁 Add rhythm track</b> (in the <b>☰</b> menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
@@ -842,6 +838,10 @@
           <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
           <button id="export-wav" class="file-menu-item">🔊 Export WAV</button>
           <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
+        </div>
+        <div class="file-menu-section">
+          <button id="add-track-btn" class="file-menu-item" title="Add a new tonal track">＋ Add track</button>
+          <button id="add-rhythm-track-btn" class="file-menu-item" title="Add a new rhythm track (same kit as the others)">＋ 🥁 Add rhythm track</button>
         </div>
         <div class="file-menu-section file-menu-info">
           <div class="song-info-row"><span>Song</span><button id="song-name-display" title="Click to rename this song">Froggy Hop</button></div>
@@ -1011,8 +1011,6 @@
           </div>
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
-        <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
-        <button id="add-rhythm-track-btn" class="icon-btn" title="Add a new rhythm track (same kit as the others)">＋ 🥁 Add rhythm track</button>
       </div>
     </div>
     <div class="inspector-column">
