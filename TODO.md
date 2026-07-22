@@ -45,9 +45,18 @@ ett facit.
 
 ## Rytmspår
 
-- **Bara ett rytmspår med ett fast kit** (nu 6 ljud: kick/snare/hihat/tom/
-  clap/crash) — inget sätt att lägga till egna/ytterligare slagverksljud
-  utöver dessa, eller ett andra rytmspår med eget kit.
+- [x] **Fler slagverksljud i kittet** — utökat från 6 till 10 ljud:
+  kick/snare/rim/hihat/open hi-hat/shaker/tom/clap/crash/ride
+  (`RHYTHM_ROWS`/`RHYTHM_LABELS`). Varje ljud har en egen
+  syntesfunktion (`scheduleRim`/`scheduleOpenHat`/`scheduleShaker`/
+  `scheduleRide` m.fl.) och en egen färg i griden; MIDI-export/import
+  mappar dem mot lämpliga GM-slagverksnoter (`GM_DRUM_NOTE`/
+  `GM_DRUM_REVERSE`).
+- **Bara ett rytmspår med ett fast kit** — inget sätt att lägga till ett
+  andra rytmspår med eget kit (id:t `'rhythm'` är hårdkodat på ett
+  tjugotal ställen i koden — synthesis, export, klippbord, MIDI-mappning
+  m.m. — och skulle behöva generaliseras för att stödja flera
+  rytmspår).
 
 ## Spårhantering
 
