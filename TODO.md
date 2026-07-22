@@ -36,9 +36,20 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   befintliga vågforms-dropdownen på vilket tonspår som helst.
 
 ### Fas 2: Pro-syntes (medel)
-- [ ] FM-syntes för oscillatorerna (koppla en modulerande `OscillatorNode`s
-  utgång direkt till bärvågens `frequency`-`AudioParam`, t.ex.
-  `modulator.connect(carrier.frequency)`, istället för till en `GainNode`)
+- [x] **FM-syntes för oscillatorerna** — ett nytt vågformsval "FM" i samma
+  dropdown som Square/Triangle/Saw/Sine/NES Tri. Klassisk 2-operator-FM: en
+  sinus-modulator kopplas `modulator → gain → carrier.frequency`
+  (`addFmModulator()`), samma koppling som redan användes för vibrato
+  (`addVibrato()`) men vid ljudfrekvens istället för ett par Hz. Två nya
+  reglage — "Ratio" (modulatorns frekvens som multipel av bärvågens, 0.5–12)
+  och "Depth" (0–100 %, moduleringsindex skalat mot notens egen frekvens så
+  höga och låga toner får proportionerligt lika mycket sidband) — dyker bara
+  upp i Envelope/Filter-panelen (nu döpt till "Envelope, Filter & FM") när
+  spårets vågform är satt till FM. Depth 0 gör spåret till en vanlig sinus,
+  så "neutral by default"-kontraktet gäller precis som för filtret. Sparas
+  per spår (`state.fm`) i samma tre ställen som filtret
+  (autosave/JSON-export, `snapshotSong`/`restoreSnapshot`, instrument-presets)
+  och testat med tät notplacering + WAV-export utan fel.
 - [x] **Resonant filter per spår med envelope** — varje tonspår har nu en
   `BiquadFilterNode` (lowpass) inkopplad `osc → filter → gain → …` (även
   integrerad i röst-poolen ovan: `.frequency`/`.Q` är `AudioParam`s precis

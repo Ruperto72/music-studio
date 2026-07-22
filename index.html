@@ -393,7 +393,7 @@
   .automation-point:hover { background: #fff; }
   .adsr-lane-el { display: flex; align-items: center; gap: 18px; padding: 0 14px; }
   .adsr-field { display: flex; align-items: center; gap: 6px; }
-  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 20px; text-align: center; }
+  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 34px; text-align: center; }
   .adsr-divider { width: 1px; align-self: stretch; background: #3a3a44; margin: 4px 0; }
   .adsr-field input[type=range] { width: 90px; cursor: pointer; }
   .adsr-val { font-size: 10px; color: var(--muted); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -1046,8 +1046,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const DEFAULT_IDS = ['lead', 'harmony', 'bass', 'arp', 'pad']; // ids for the game's tonal tracks (match saved-file keys)
 const RHYTHM_COLOR = '#39ff6a';
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', kit: 'Kit' };
+const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri', 'fm']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', fm: 'FM', kit: 'Kit' };
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
 const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
@@ -1151,6 +1151,15 @@ const FILTER_MIN_HZ = 60, FILTER_MAX_HZ = 20000;
 // (which would waste most of its travel on the top octave).
 const sliderToHz = (x) => FILTER_MIN_HZ * Math.pow(FILTER_MAX_HZ / FILTER_MIN_HZ, x);
 const hzToSlider = (hz) => Math.log(hz / FILTER_MIN_HZ) / Math.log(FILTER_MAX_HZ / FILTER_MIN_HZ);
+
+// FM synthesis params for tracks with waveform === 'fm' (state.fm[track] absent -> this).
+// depth 0 means the modulator contributes no frequency deviation, so an 'fm'
+// track with untouched controls still sounds like a plain sine — same
+// "neutral by default" contract as filter/masterEQ. ratio is the modulator
+// frequency as a multiple of the carrier's (classic 2-operator FM); depth is
+// in "modulation index" units (0..1 slider mapped to a few hundred Hz swing,
+// see addFmModulator).
+const DEFAULT_FM = { ratio: 2, depth: 0 };
 
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
@@ -1302,7 +1311,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1339,6 +1348,7 @@ const state = {
   automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
+  fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   swing: DEFAULT_SWING,      // % — see swingOffsetCols()
@@ -1400,6 +1410,15 @@ function applySavedMix(data) {
       if (!f || typeof f !== 'object') continue;
       if (['cutoff', 'q', 'envAmount'].every(k => typeof f[k] === 'number')) {
         state.filter[ch] = { cutoff: f.cutoff, q: f.q, envAmount: f.envAmount };
+      }
+    }
+  }
+  if (data.fm && typeof data.fm === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const f = data.fm[ch];
+      if (!f || typeof f !== 'object') continue;
+      if (['ratio', 'depth'].every(k => typeof f[k] === 'number')) {
+        state.fm[ch] = { ratio: f.ratio, depth: f.depth };
       }
     }
   }
@@ -1534,7 +1553,7 @@ let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
-  automation: state.automation, adsr: state.adsr, filter: state.filter
+  automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1559,6 +1578,7 @@ function restoreSnapshot(s) {
     state.automation = data.automation && typeof data.automation === 'object' ? data.automation : {};
     state.adsr = data.adsr && typeof data.adsr === 'object' ? data.adsr : {};
     state.filter = data.filter && typeof data.filter === 'object' ? data.filter : {};
+    state.fm = data.fm && typeof data.fm === 'object' ? data.fm : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan();
@@ -1652,6 +1672,8 @@ function audible(track) {
 function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
 function getFilterState(track) { return state.filter[track] || DEFAULT_FILTER; }
 function setFilterState(track, patch) { state.filter[track] = { ...getFilterState(track), ...patch }; }
+function getFmState(track) { return state.fm[track] || DEFAULT_FM; }
+function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getSwing() { return state.swing || DEFAULT_SWING; }
@@ -2065,10 +2087,10 @@ function renderAdsrRow(track) {
   row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
 
   const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = 'Envelope & Filter';
+  const title = el('span', 'automation-title'); title.textContent = state.waveform[track] === 'fm' ? 'Envelope, Filter & FM' : 'Envelope & Filter';
   const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; render(); autosave(); });
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; delete state.fm[track]; render(); autosave(); });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
@@ -2153,6 +2175,46 @@ function renderAdsrRow(track) {
   envField.append(envCap, envSlider, envVal);
   lane.appendChild(envField);
 
+  if (state.waveform[track] === 'fm') {
+    const fmDivider = el('span', 'adsr-divider');
+    lane.appendChild(fmDivider);
+
+    const fmState = getFmState(track);
+    const ratioField = el('div', 'adsr-field');
+    const ratioCap = el('span', 'adsr-label'); ratioCap.textContent = 'Ratio';
+    const ratioSlider = document.createElement('input');
+    ratioSlider.type = 'range'; ratioSlider.min = 0.5; ratioSlider.max = 12; ratioSlider.step = 0.5; ratioSlider.value = fmState.ratio;
+    ratioSlider.style.accentColor = trackColor(track);
+    ratioSlider.title = 'FM modulator frequency, as a multiple of the note\'s own frequency';
+    const ratioVal = el('span', 'adsr-val'); ratioVal.textContent = fmState.ratio.toFixed(1);
+    ratioSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+    ratioSlider.addEventListener('input', () => {
+      const ratio = parseFloat(ratioSlider.value);
+      ratioVal.textContent = ratio.toFixed(1);
+      setFmState(track, { ratio });
+      autosave();
+    });
+    ratioField.append(ratioCap, ratioSlider, ratioVal);
+    lane.appendChild(ratioField);
+
+    const depthField = el('div', 'adsr-field');
+    const depthCap = el('span', 'adsr-label'); depthCap.textContent = 'Depth';
+    const depthSlider = document.createElement('input');
+    depthSlider.type = 'range'; depthSlider.min = 0; depthSlider.max = 1; depthSlider.step = 0.02; depthSlider.value = fmState.depth;
+    depthSlider.style.accentColor = trackColor(track);
+    depthSlider.title = 'FM modulation depth (0 = plain sine)';
+    const depthVal = el('span', 'adsr-val'); depthVal.textContent = Math.round(fmState.depth * 100) + '%';
+    depthSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+    depthSlider.addEventListener('input', () => {
+      const depth = parseFloat(depthSlider.value);
+      depthVal.textContent = Math.round(depth * 100) + '%';
+      setFmState(track, { depth });
+      autosave();
+    });
+    depthField.append(depthCap, depthSlider, depthVal);
+    lane.appendChild(depthField);
+  }
+
   row.append(header, gutter, lane);
   return row;
 }
@@ -2235,6 +2297,7 @@ function buildHeader(track) {
       state.waveform[track] = wave.value;
       const n = state.tracks[track][0];
       if (n) previewNote(track, n);
+      if (adsrOpen.has(track)) render(); // Envelope panel's FM sliders show/hide based on waveform
       autosave();
     });
     waveRow.append(wave);
@@ -3608,7 +3671,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -4115,6 +4178,7 @@ function applyPresetToTrack(track, preset) {
   if (WAVEFORMS.includes(preset.waveform)) state.waveform[track] = preset.waveform;
   if (preset.adsr) setAdsr(track, preset.adsr);
   if (preset.filter) setFilterState(track, preset.filter);
+  if (preset.fm) setFmState(track, preset.fm);
   const n = state.tracks[track][0];
   if (n) previewNote(track, n);
   render();
@@ -4123,8 +4187,10 @@ function applyPresetToTrack(track, preset) {
 function presetDesc(preset) {
   const a = preset.adsr || DEFAULT_ADSR;
   const f = preset.filter || DEFAULT_FILTER;
+  const fm = preset.fm || DEFAULT_FM;
   const filterPart = f.envAmount ? ` · LPF ${Math.round(f.cutoff)}Hz env${f.envAmount > 0 ? '+' : ''}${f.envAmount.toFixed(1)}` : '';
-  return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}${filterPart}`;
+  const fmPart = fm.depth ? ` · FM ratio${fm.ratio.toFixed(1)} depth${Math.round(fm.depth * 100)}%` : '';
+  return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}${filterPart}${fmPart}`;
 }
 function renderPresetList() {
   const presets = readPresets();
@@ -4154,7 +4220,7 @@ document.getElementById('preset-save').addEventListener('click', () => {
   if (!name) { presetNewNameInput.focus(); return; }
   const presets = readPresets();
   if (presets[name] && !confirm(`Overwrite preset “${name}”?`)) return;
-  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) } };
+  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) }, fm: { ...getFmState(track) } };
   writePresets(presets);
   presetNewNameInput.value = '';
   renderPresetList();
@@ -4307,7 +4373,7 @@ function previewNote(track, note) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const oscType = state.waveform[track] || 'square';
-    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track));
+    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track), getFmState(track));
   } catch { /* audio unavailable */ }
 }
 function previewHit(type) {
@@ -4535,6 +4601,22 @@ function addVibrato(osc, freq, startAt, endAt) {
   lfo.connect(lfoGain).connect(osc.frequency);
   lfo.start(startAt); lfo.stop(endAt);
 }
+// Classic 2-operator FM: a sine modulator running at `ratio` times the
+// carrier frequency drives the carrier's own frequency AudioParam, same
+// wiring as addVibrato (modulator -> gain -> carrier.frequency) but at
+// audio-rate instead of a few Hz. depth (0..1 slider) maps onto a modulation
+// index scaled by the carrier frequency itself, so higher notes still get an
+// audibly proportional amount of sideband spread instead of a fixed Hz swing
+// that would vanish at high pitches or overwhelm low ones.
+function addFmModulator(osc, carrierFreq, ratio, depth, startAt, endAt) {
+  if (!depth) return;
+  const modOsc = ctx.createOscillator(), modGain = ctx.createGain();
+  modOsc.type = 'sine';
+  modOsc.frequency.value = carrierFreq * ratio;
+  modGain.gain.value = carrierFreq * depth * 4;
+  modOsc.connect(modGain).connect(osc.frequency);
+  modOsc.start(startAt); modOsc.stop(endAt);
+}
 function addTremolo(gainNode, startAt, endAt) {
   const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
   lfo.frequency.value = 18;
@@ -4612,10 +4694,11 @@ function voiceGainFor(note, destGain, startAt, dur) {
   filter.connect(gain);
   return { gain, filter, pooled: false };
 }
-function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER) {
+function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM) {
   const osc = ctx.createOscillator();
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
-  if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  if (oscType === 'fm') osc.type = 'sine';
+  else if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
 
@@ -4632,9 +4715,11 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
       osc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
     }
     if (note.vib) addVibrato(osc, note.freq, startAt, startAt + dur);
+    if (oscType === 'fm') addFmModulator(osc, note.freq, fmState.ratio, fmState.depth, startAt, startAt + dur);
     if (note.chorus) {
       chorusOsc = ctx.createOscillator();
-      if (oscType === 'square' && note.duty) chorusOsc.setPeriodicWave(pulseWave(note.duty));
+      if (oscType === 'fm') chorusOsc.type = 'sine';
+      else if (oscType === 'square' && note.duty) chorusOsc.setPeriodicWave(pulseWave(note.duty));
       else if (oscType === 'nestri') chorusOsc.setPeriodicWave(getNesTriWave());
       else chorusOsc.type = oscType;
       osc.detune.value = 8;
@@ -4658,11 +4743,12 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
   osc.stop(startAt + dur);
   if (chorusOsc) { chorusOsc.connect(filter); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
 }
-function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER) {
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM) {
   const osc = ctx.createOscillator();
   const totalDur = (dur + nextDur) * durScale;
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
-  if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  if (oscType === 'fm') osc.type = 'sine';
+  else if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
   osc.frequency.setValueAtTime(note.freq, startAt);
@@ -4671,6 +4757,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   osc.frequency.setValueAtTime(note.freq, glideStart);
   osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
   if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
+  if (oscType === 'fm') addFmModulator(osc, note.freq, fmState.ratio, fmState.depth, startAt, startAt + totalDur);
   applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), adsr);
   applyFilterEnvelope(filter.frequency, startAt, totalDur, adsr, filterState.cutoff, filterState.envAmount);
   filter.Q.setValueAtTime(filterState.q, startAt);
@@ -4858,7 +4945,7 @@ function swingOffsetCols(col) {
   if (Math.abs(withinPair - 1) > EPS) return 0;
   return (amt / 100) * (1 / 3);
 }
-function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState) {
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState, fmState) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   for (let i = 0; i < sorted.length; i++) {
     const n = sorted[i];
@@ -4867,19 +4954,19 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
     if (n.porta) {
       const next = sorted[i + 1];
       if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
-        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState);
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState, fmState);
         i++;
         continue;
       }
     }
-    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr, filterState);
+    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr, filterState, fmState);
   }
 }
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id));
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id), getFmState(id));
   }
   if (audible('rhythm')) {
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
