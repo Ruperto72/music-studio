@@ -1044,8 +1044,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const DEFAULT_IDS = ['lead', 'harmony', 'bass', 'arp', 'pad']; // ids for the game's tonal tracks (match saved-file keys)
 const RHYTHM_COLOR = '#39ff6a';
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', kit: 'Kit' };
+const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', kit: 'Kit' };
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
 const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
@@ -3876,7 +3876,7 @@ async function renderSongToWav() {
   if (playing) stopPlayback();
   const eighthSec = 60 / state.tempo / 2;
   const tailSec = 2; // let release/echo tails ring out past the last note
-  const sampleRate = 44100;
+  const sampleRate = 48000;
   const totalSamples = Math.ceil((COLS * eighthSec + tailSec) * sampleRate);
   const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
 
@@ -3900,7 +3900,7 @@ async function renderSongToWav() {
   const rendered = await offline.startRendering();
 
   ctx = null; masterGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
-  noiseBuffer = null; crashNoiseBuffer = null; pulseWaves.clear(); crushCurve = null; chanDelays.clear();
+  noiseBuffer = null; crashNoiseBuffer = null; pulseWaves.clear(); crushCurve = null; nesTriWave = null; chanDelays.clear(); voicePools.clear();
 
   return rendered;
 }
@@ -4257,6 +4257,41 @@ function pulseWave(duty) {
   pulseWaves.set(duty, wave);
   return wave;
 }
+// ---------- Wavetable synthesis ----------
+// A hand-authored waveform (not one of the built-in OscillatorNode types),
+// turned into an OscillatorNode-compatible PeriodicWave by taking its
+// discrete Fourier transform. Any new wavetable just needs its one-cycle
+// sample array added here — the DFT below handles the rest.
+// The NES APU's triangle channel steps through a 32-value, 4-bit staircase
+// (15 down to 0, then back up to 15) rather than a smooth ramp, which is
+// exactly the "gritty" quantized triangle NES chiptunes are known for and
+// something plain OscillatorNode('triangle') can't reproduce.
+const NES_TRIANGLE_SAMPLES = [
+  15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+].map(v => (v / 15) * 2 - 1);
+function dftToPeriodicWave(samples) {
+  const n = samples.length;
+  const harmonics = Math.floor(n / 2);
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+  for (let k = 1; k <= harmonics; k++) {
+    let re = 0, im = 0;
+    for (let t = 0; t < n; t++) {
+      const angle = (2 * Math.PI * k * t) / n;
+      re += samples[t] * Math.cos(angle);
+      im -= samples[t] * Math.sin(angle);
+    }
+    real[k] = re / n;
+    imag[k] = im / n;
+  }
+  return ctx.createPeriodicWave(real, imag);
+}
+let nesTriWave = null;
+function getNesTriWave() {
+  if (!nesTriWave) nesTriWave = dftToPeriodicWave(NES_TRIANGLE_SAMPLES);
+  return nesTriWave;
+}
 let crushCurve = null;
 function bitcrushCurve() {
   if (crushCurve) return crushCurve;
@@ -4287,6 +4322,38 @@ function ensureDelay(destGain) {
   }
   d.delay.delayTime.value = (60 / state.tempo / 2) * 1.5;
   return d.delay;
+}
+// ---------- Voice pooling ----------
+// A fixed-size pool of persistent GainNodes per destination channel, reused
+// across notes instead of creating a brand-new gain (plus its connection to
+// destGain and the echo bus) for every single one. The OscillatorNode itself
+// still has to be created fresh per note — Web Audio forbids restarting a
+// stopped oscillator — but that's cheap; the gain node's setup (creation +
+// wiring) is the part worth not repeating for every note in a dense song.
+//
+// Crushed notes (note.crush) are deliberately excluded from pooling: bitcrush
+// needs a WaveShaperNode whose `.curve` is a plain property, not an
+// AudioParam, so it can't be scheduled for a future time the way the ADSR
+// envelope or the echo send below are. Since this app schedules a whole
+// lookahead window of notes ahead of real time, reassigning a shared node's
+// `.curve` for a later note would retroactively corrupt whichever earlier
+// note is still actually playing through that node when the change lands —
+// crushed notes get their own ad-hoc WaveShaperNode instead, as before.
+const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
+const voicePools = new Map(); // destGain -> [{ gain, echoSend, busyUntil }]
+function acquireVoice(destGain, startAt) {
+  let pool = voicePools.get(destGain);
+  if (!pool) { pool = []; voicePools.set(destGain, pool); }
+  for (const v of pool) if (v.busyUntil <= startAt) return v;
+  if (pool.length >= VOICE_POOL_SIZE) return null; // exhausted — caller falls back to an ad-hoc gain node
+  const gain = ctx.createGain();
+  const echoSend = ctx.createGain();
+  echoSend.gain.value = 0;
+  gain.connect(destGain);
+  gain.connect(echoSend).connect(ensureDelay(destGain));
+  const voice = { gain, echoSend, busyUntil: 0 };
+  pool.push(voice);
+  return voice;
 }
 function connectVoiceOutput(gain, note, destGain) {
   let outputNode = gain;
@@ -4336,10 +4403,27 @@ function applyAdsrEnvelope(gainParam, startAt, dur, peak, adsr) {
   gainParam.exponentialRampToValueAtTime(0.0001, t4);
 }
 const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
+// Grabs a pooled voice's gain node when possible (see acquireVoice above),
+// resetting its envelope/echo-send schedule for this note; falls back to an
+// ad-hoc gain node for crushed notes or when the pool is exhausted.
+function voiceGainFor(note, destGain, startAt, dur) {
+  if (!note.crush) {
+    const voice = acquireVoice(destGain, startAt);
+    if (voice) {
+      voice.gain.gain.cancelScheduledValues(startAt);
+      voice.echoSend.gain.cancelScheduledValues(startAt);
+      voice.echoSend.gain.setValueAtTime(note.echo ? 1 : 0, startAt);
+      voice.busyUntil = startAt + dur;
+      return { gain: voice.gain, pooled: true };
+    }
+  }
+  return { gain: ctx.createGain(), pooled: false };
+}
 function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR) {
   const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
+  const { gain, pooled } = voiceGainFor(note, destGain, startAt, dur);
   if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
 
   let chorusOsc = null;
@@ -4358,6 +4442,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
     if (note.chorus) {
       chorusOsc = ctx.createOscillator();
       if (oscType === 'square' && note.duty) chorusOsc.setPeriodicWave(pulseWave(note.duty));
+      else if (oscType === 'nestri') chorusOsc.setPeriodicWave(getNesTriWave());
       else chorusOsc.type = oscType;
       osc.detune.value = 8;
       chorusOsc.detune.value = -8;
@@ -4372,7 +4457,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
   applyAdsrEnvelope(gain.gain, startAt, dur, notePeak(note), adsr);
   if (note.trem) addTremolo(gain, startAt, startAt + dur);
 
-  connectVoiceOutput(gain, note, destGain);
+  if (!pooled) connectVoiceOutput(gain, note, destGain);
   osc.connect(gain);
   osc.start(startAt);
   osc.stop(startAt + dur);
@@ -4380,9 +4465,10 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
 }
 function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR) {
   const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
   const totalDur = (dur + nextDur) * durScale;
+  const { gain, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
   if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
+  else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
   osc.frequency.setValueAtTime(note.freq, startAt);
   const glideStart = startAt + dur * 0.6;
@@ -4392,7 +4478,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
   applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), adsr);
   if (note.trem) addTremolo(gain, startAt, startAt + totalDur);
-  connectVoiceOutput(gain, note, destGain);
+  if (!pooled) connectVoiceOutput(gain, note, destGain);
   osc.connect(gain);
   osc.start(startAt);
   osc.stop(startAt + totalDur);
@@ -4700,7 +4786,9 @@ function stopPlayback() {
     crashNoiseBuffer = null;
     pulseWaves.clear();
     crushCurve = null;
+    nesTriWave = null;
     chanDelays.clear();
+    voicePools.clear();
   }
   visualPlayhead = state.playhead;
   updatePlayheadPositions();
