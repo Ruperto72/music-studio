@@ -76,8 +76,15 @@ ett facit.
   Fungerar troligen via mobilwebbläsares syntetiska mus-events, men är
   inte lika robust för pekskärm/penna som en riktig pointer-implementation.
 - **Ingen metronom** och inget "count-in" vid inspelning/uppspelning.
-- **Ingen svänggrad (swing/groove).** Griden snappar strikt (1/4, 1/8,
-  1/16, triol) utan möjlighet att förskjuta jämna/udda steg.
+- [x] **Svänggrad (swing)** — en Swing-reglage (0-75%) i masterraden
+  (`state.swing`/`swingOffsetCols()`) fördröjer den obetonade 8:e-delen
+  i varje slag mot en trioltoning vid högre värden, tillämpat vid
+  uppspelning/WAV-export utan att flytta noterna i pianorullen. Gäller
+  bara enkla taktarter (slag = 2 åttondelar) och bara noter/hits som
+  ligger exakt på 8:e-delsgriden — finare underindelningar (16-delar,
+  trioler) berörs inte. Grid snappar fortfarande strikt (1/4, 1/8, 1/16,
+  triol) — det är bara uppspelningstajmingen som sväng-fördröjs, inte
+  var noterna hamnar i redigeringsgriden.
 
 ## Lagring / delning
 

@@ -906,6 +906,13 @@
             </select>
           </div>
           <div class="mstrip-cell">
+            <span class="mstrip-cap">Swing</span>
+            <div class="mstrip-row">
+              <input id="swing" type="range" min="0" max="75" step="5" value="0" title="Delays the off-beat 8th note toward a triplet feel (0% = straight 8ths). Only affects notes/hits placed exactly on the 8th-note grid.">
+              <span id="swing-val" class="unit">0%</span>
+            </div>
+          </div>
+          <div class="mstrip-cell">
             <button id="master-fx-toggle" class="icon-btn" title="Master EQ &amp; compression" aria-pressed="false">🎛️</button>
           </div>
         </div>
@@ -1008,6 +1015,7 @@ const DEFAULT_ADSR = { attack: 0.05, decay: 0.15, sustain: 0.7, release: 0.15 };
 // exactly as it did before.
 const DEFAULT_MASTER_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
 const DEFAULT_MASTER_COMP = { threshold: -24, ratio: 1, attack: 0.01, release: 0.25 };
+const DEFAULT_SWING = 0; // % (0 = straight 8ths, up to 75 ≈ triplet feel) — see swingOffsetCols()
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1148,7 +1156,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1186,6 +1194,7 @@ const state = {
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
+  swing: DEFAULT_SWING,      // % — see swingOffsetCols()
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
@@ -1208,6 +1217,7 @@ function applySavedMix(data) {
   }
   if (typeof data.masterVol === 'number') state.masterVol = data.masterVol;
   if (typeof data.grid === 'number' && data.grid > 0) state.grid = quant(data.grid);
+  state.swing = (typeof data.swing === 'number') ? Math.max(0, Math.min(75, data.swing)) : DEFAULT_SWING;
   restoreTimeSig(data);
   state.markers = Array.isArray(data.markers)
     ? data.markers.filter(m => m && typeof m.col === 'number').map(m => ({ col: m.col, name: String(m.name || '') }))
@@ -1485,6 +1495,7 @@ function audible(track) {
 function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
+function getSwing() { return state.swing || DEFAULT_SWING; }
 
 // ---------- Rendering ----------
 // The playhead/grip/loop overlays are built once by createOverlays() and only
@@ -3055,6 +3066,20 @@ gridSelect.addEventListener('change', () => {
 });
 syncGridUI();
 
+// ---------- Swing ----------
+const swingInput = document.getElementById('swing');
+const swingValEl = document.getElementById('swing-val');
+function syncSwingUI() {
+  swingInput.value = getSwing();
+  swingValEl.textContent = getSwing() + '%';
+}
+swingInput.addEventListener('input', () => {
+  state.swing = Math.max(0, Math.min(75, parseFloat(swingInput.value) || 0));
+  syncSwingUI();
+  autosave();
+});
+syncSwingUI();
+
 // ---------- Time signature (meter) ----------
 const timeSigSelect = document.getElementById('time-sig');
 for (const ts of TIME_SIGS) {
@@ -3158,6 +3183,8 @@ function createNewSong(withStarterTracks, name) {
   state.masterComp = { ...DEFAULT_MASTER_COMP };
   syncMasterFxUI();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  state.swing = DEFAULT_SWING;
+  syncSwingUI();
   COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
   state.loopStart = 0; state.loopEnd = COLS;
   state.playhead = 0; visualPlayhead = 0;
@@ -3217,7 +3244,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3252,6 +3279,7 @@ function applySongData(data, name) {
   syncMasterVolUI();
   syncMasterFxUI();
   syncGridUI();
+  syncSwingUI();
   syncTimeSigUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
@@ -4181,12 +4209,24 @@ function scheduleRide(startAt) {
   ping.connect(pingGain).connect(chanGain.rhythm);
   ping.start(startAt); ping.stop(startAt + 0.12);
 }
+// Classic 8th-note swing: delays the off-beat 8th (the "and") within each beat,
+// sliding it toward the triplet position as the amount rises to 100%. Only
+// applies to simple meters (beat = 2 eighths) and only to notes/hits landing
+// exactly on that off-8th grid position — finer subdivisions (16ths, triplets)
+// are left exactly where they were placed.
+function swingOffsetCols(col) {
+  const amt = getSwing();
+  if (!amt || Math.abs(eighthsPerBeat() - 2) > EPS) return 0;
+  const withinPair = col - Math.floor(col / 2 + EPS) * 2;
+  if (Math.abs(withinPair - 1) > EPS) return 0;
+  return (amt / 100) * (1 / 3);
+}
 function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   for (let i = 0; i < sorted.length; i++) {
     const n = sorted[i];
     if (n.start < fromCol || n.start >= toCol) continue;
-    const at = startAt + (n.start - fromCol) * eighthSec;
+    const at = startAt + (n.start - fromCol + swingOffsetCols(n.start)) * eighthSec;
     if (n.porta) {
       const next = sorted[i + 1];
       if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
@@ -4210,7 +4250,7 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
       openhat: scheduleOpenHat, shaker: scheduleShaker, clap: scheduleClap, crash: scheduleCrash, ride: scheduleRide,
     };
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
-      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol) * eighthSec);
+      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
     }
   }
 }
