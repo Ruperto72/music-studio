@@ -20,7 +20,7 @@
   :root {
     --rhythm: #39ff6a;
     --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
-    --strip: #202027; --strip2: #191920; --ink: #e8e8ee; --muted: #9a9aa6;
+    --strip: #131316; --strip2: #0c0c0f; --ink: #e8e8ee; --muted: #9a9aa6;
     --subgrid: rgba(120, 200, 255, 0.16);
     --header-w: 200px; --gutter-w: 42px;
   }
@@ -264,6 +264,7 @@
     border-bottom: 1px solid #34343c;
     display: flex; align-items: center; padding-left: 10px;
     font-size: 10px; color: var(--muted); letter-spacing: 0.5px;
+    box-shadow: 4px 0 10px rgba(0,0,0,0.45);
   }
   .tl-ruler { display: grid; }
   .ruler-cell {
@@ -361,6 +362,10 @@
     position: sticky; left: var(--header-w); z-index: 6; flex: 0 0 auto;
     width: var(--gutter-w); display: grid; background: var(--strip2);
     border-right: 1px solid #34343c;
+    /* Casts a shadow onto the scrolling grid so the sticky header+gutter
+       column reads as its own panel (matching the Song panel on the right)
+       instead of blending into the grid it's floating above. */
+    box-shadow: 4px 0 10px rgba(0,0,0,0.45);
   }
   .gutter .glabel {
     font-size: 8px; color: #7d7d88; display: flex; align-items: center;
