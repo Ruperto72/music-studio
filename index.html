@@ -2889,6 +2889,13 @@ function updateLoopRegionClip() {
   const contentLeft = parseFloat(loopEls.region.style.left) || 0;
   const clipLeft = Math.max(0, LANE_ORIGIN - (contentLeft - daw.scrollLeft));
   loopEls.region.style.clipPath = clipLeft > 0 ? `inset(0 0 0 ${clipLeft}px)` : '';
+  // The handles (unlike the region's fill) can't be partially clipped — a
+  // 10px drag target sliced in half is unusable — so hide them outright
+  // once their column scrolls behind the sticky header, same as the
+  // playhead/markers above.
+  const contentWidth = parseFloat(loopEls.region.style.width) || 0;
+  setOverlayVisible(loopEls.startHandle, contentLeft);
+  setOverlayVisible(loopEls.endHandle, contentLeft + contentWidth);
 }
 
 // Pass a cached rect (captured once at gesture start) to avoid a layout read on
