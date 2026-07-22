@@ -258,7 +258,7 @@
      tracks same as before; only the ruler cells themselves stay pinned. */
   .timeline { display: flex; height: 22px; width: max-content; position: sticky; top: 0; z-index: 8; background: var(--panel); }
   .tl-corner {
-    position: sticky; left: 0; z-index: 7; flex: 0 0 auto;
+    position: sticky; left: 0; z-index: 12; flex: 0 0 auto;
     width: calc(var(--header-w) + var(--gutter-w));
     background: var(--strip2); border-right: 1px solid #34343c;
     border-bottom: 1px solid #34343c;
@@ -278,7 +278,7 @@
 
   .track { display: flex; width: max-content; border-bottom: 2px solid #3a3a44; }
   .track-header {
-    position: sticky; left: 0; z-index: 6; flex: 0 0 auto; width: var(--header-w);
+    position: sticky; left: 0; z-index: 11; flex: 0 0 auto; width: var(--header-w);
     background: linear-gradient(var(--strip), var(--strip2));
     border-right: 1px solid #34343c;
     padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;
@@ -359,7 +359,7 @@
   .track.silent .lane { opacity: 0.32; }
 
   .gutter {
-    position: sticky; left: var(--header-w); z-index: 6; flex: 0 0 auto;
+    position: sticky; left: var(--header-w); z-index: 11; flex: 0 0 auto;
     width: var(--gutter-w); display: grid; background: var(--strip2);
     border-right: 1px solid #34343c;
     /* Casts a shadow onto the scrolling grid so the sticky header+gutter
