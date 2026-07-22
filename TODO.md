@@ -36,17 +36,57 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   befintliga vågforms-dropdownen på vilket tonspår som helst.
 
 ### Fas 2: Pro-syntes (medel)
-- [ ] FM-syntes för oscillatorerna (koppla en modulerande `OscillatorNode`s
-  utgång direkt till bärvågens `frequency`-`AudioParam`, t.ex.
-  `modulator.connect(carrier.frequency)`, istället för till en `GainNode`)
-- [ ] Resonant filter per spår med envelope (`BiquadFilterNode` med
-  `type: 'lowpass'`, `.frequency`/`.Q` som `AudioParam`s — envelopen kan
-  schemaläggas med samma `linearRampToValueAtTime`/`exponentialRampToValueAtTime`-
-  mönster som `applyAdsrEnvelope()` redan använder för gain)
-- [ ] Aux-send system för reverb/delay (`ConvolverNode` för reverb — kräver en
-  impulsrespons-`AudioBuffer` — och `DelayNode` för delay/eko; en riktig
-  send-buss är parallell `GainNode`-utfläkning till en delad effekt, inte
-  seriekoppling som dagens per-not `echo`-effekt)
+- [x] **FM-syntes för oscillatorerna** — ett nytt vågformsval "FM" i samma
+  dropdown som Square/Triangle/Saw/Sine/NES Tri. Klassisk 2-operator-FM: en
+  sinus-modulator kopplas `modulator → gain → carrier.frequency`
+  (`addFmModulator()`), samma koppling som redan användes för vibrato
+  (`addVibrato()`) men vid ljudfrekvens istället för ett par Hz. Två nya
+  reglage — "Ratio" (modulatorns frekvens som multipel av bärvågens, 0.5–12)
+  och "Depth" (0–100 %, moduleringsindex skalat mot notens egen frekvens så
+  höga och låga toner får proportionerligt lika mycket sidband) — dyker bara
+  upp i Envelope/Filter-panelen (nu döpt till "Envelope, Filter & FM") när
+  spårets vågform är satt till FM. Depth 0 gör spåret till en vanlig sinus,
+  så "neutral by default"-kontraktet gäller precis som för filtret. Sparas
+  per spår (`state.fm`) i samma tre ställen som filtret
+  (autosave/JSON-export, `snapshotSong`/`restoreSnapshot`, instrument-presets)
+  och testat med tät notplacering + WAV-export utan fel.
+- [x] **Resonant filter per spår med envelope** — varje tonspår har nu en
+  `BiquadFilterNode` (lowpass) inkopplad `osc → filter → gain → …` (även
+  integrerad i röst-poolen ovan: `.frequency`/`.Q` är `AudioParam`s precis
+  som gain, så filtret kan återanvändas mellan noter på samma sätt).
+  Cutoff/Q/Env-reglagen bor i samma rad som ADSR-envelopen (döpt om till
+  "Envelope & Filter") eftersom filterenvelopen återanvänder exakt samma
+  attack/decay/sustain/release-form som redan fanns
+  (`applyFilterEnvelope()`/den delade `envelopeTimes()`) — ett "Env"-reglage
+  (-100%..+100%) styr hur många oktaver (upp till ±4) cutoff sveps. Cutoff
+  ligger som standard vid gehörsgränsen (20 kHz, olik Q) så opåverkade spår
+  låter exakt som förut. Cutoff-reglaget är log-skalat
+  (`sliderToHz`/`hzToSlider`) eftersom ett linjärt Hz-reglage hade slösat
+  bort det mesta av sitt spann på den översta oktaven. Sparas per spår
+  (`state.filter`) och ingår nu även i instrument-presets.
+- [x] **Aux-send system för reverb** — en ny per-not "Reverb"-effekt (bredvid
+  Bitcrush/Echo/Chorus i noteditorn), som skickar noten till en delad
+  `ConvolverNode`-reverb-buss per kanal (`ensureReverb()`), parallellt med
+  torrsignalen — precis den send/aux-arkitektur som efterfrågades, till
+  skillnad från dagens `echo`-effekt (fortfarande en seriekopplad
+  `DelayNode`, oförändrad). Impulsresponsen är genererad (inga ljudfiler i
+  appen): exponentiellt avklingande stereo-vitt brus
+  (`ensureReverbImpulse()`), en vanlig algoritmisk-reverb-teknik. Integrerad
+  i röst-poolen via ett `reverbSend`-gain per röst, samma mönster som den
+  redan existerande eko-sänden.
+
+  **Bugg hittad och fixad under verifiering:** `ConvolverNode.buffer` kräver
+  (till skillnad från `AudioBufferSourceNode`, som resamplar automatiskt) att
+  bufferns samplingsfrekvens exakt matchar kontextens. Eftersom
+  `renderSongToWav()` bara nollställer de kontext-bundna cacharna
+  (`noiseBuffer`/`pulseWaves`/`nesTriWave`/`chanDelays`/`chanReverbs`/m.fl.,
+  nu samlade i `resetAudioCaches()`) via `stopPlayback()` — som bara körs OM
+  `playing` redan var sant — kunde en tidigare live-förhandslyssning (annan
+  samplingsfrekvens) lämna en cachad reverb-impulsrespons som kraschade
+  WAV-exporten (`new OfflineAudioContext(... 48000)`) med "buffer sample
+  rate ... does not match the context rate". Fixat genom att
+  `renderSongToWav()` nu alltid nollställer cacharna innan den skapar sin
+  offline-kontext, oavsett `playing`-läge.
 
 ### Fas 3: Pro-mixing (långsamt)
 - [ ] AudioWorklet för custom DSP (`audioContext.audioWorklet.addModule()` +
