@@ -45,19 +45,19 @@ deliberately not built yet.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Toolbar (sticky top): Transport | Bars|Beats | Tools |           │
-│                       Loop & Zoom | Session | Help               │
+│ Toolbar (sticky top): Menu | Transport | Bars|Beats | Tools |    │
+│                       Loop & Zoom                                 │
 ├───────────────────────────────────────────────┬─────────────────┤
 │ BARS  │ ruler (bar numbers, loop region)       │                 │
-│ ──────┼────────────────────────────────────────┤  Song panel     │
-│ Track │ piano roll / rhythm grid               │  (name, ▾ for   │
-│ header│ (horizontally + vertically scrollable, │   tempo/meter/  │
-│ (name,│  playhead line, markers)                │   length/tracks)│
-│ M/S/  │                                         │                 │
-│ ✕,    │  ...one row per track, plus optional    │  Inspector      │
-│ wave, │  Automation / Envelope rows when open   │  (selected-note │
-│ Auto/ │                                         │   effects, or   │
-│ Env,  │                                         │   empty state)  │
+│ ──────┼────────────────────────────────────────┤                 │
+│ Track │ piano roll / rhythm grid               │   Inspector     │
+│ header│ (horizontally + vertically scrollable, │  (selected-note │
+│ (name,│  playhead line, markers)                │   effects, or   │
+│ M/S/  │                                         │   empty state)  │
+│ ✕,    │  ...one row per track, plus optional    │                 │
+│ wave, │  Automation / Envelope rows when open   │                 │
+│ Auto/ │                                         │                 │
+│ Env,  │                                         │                 │
 │ vol,  │                                         │                 │
 │ pan,  │                                         │                 │
 │ VU)   │                                         │                 │
@@ -68,9 +68,10 @@ deliberately not built yet.
 ```
 
 - `.editor-layout` is a flex row: `.rolls-column` (the DAW surface + master
-  bar) on the left, `.inspector-column` (Song panel + Inspector) on the
-  right, both **`position: sticky`** so they stay in view while the page
-  scrolls vertically past a tall track list.
+  bar) on the left, `.inspector-column` (just the Inspector — the project
+  name and Tempo/Meter/Length/Track-count summary live in the ☰ menu
+  instead, see A.3/A.9) on the right, both **`position: sticky`** so they
+  stay in view while the page scrolls vertically past a tall track list.
 - `.daw` (the scrollable grid surface) has a **bounded `max-height`**
   computed from the viewport minus the sticky toolbar/master-bar heights, so
   it scrolls *internally* — the toolbar and master bar never move.
@@ -90,12 +91,11 @@ label) laid out left to right:
 
 | Panel | Contents |
 |---|---|
+| **Menu (☰)** | Project name + Tempo/Meter/Length/Track-count summary (see A.9), 🎵 Songs library, 💾 Save file, 📂 Load file, ⤓ Export code (toggles a code box open/closed), 🎹 Export MIDI, 🎼 Import MIDI, 🔊 Export WAV, ⛶ Fullscreen, ❓ Help |
 | **Transport** | Return-to-start (⏮), Stop (⏹), Play (▶), Loop toggle (↺) |
 | **Bars\|Beats** | LCD-style counter (bar\|beat\|sub-beat, plus mm:ss) |
 | **Tools** | Pen / Eraser / Grab tool segmented control; Undo/Redo |
 | **Loop & Zoom** | Full range, ⧉ Repeat (duplicate the loop region forward), 🚩 Add marker, zoom −/100%/+ |
-| **Session** | 🎵 Songs library, 💾 Save file, 📂 Load file, ⤓ Export code (toggles a code box open/closed), ⛶ Fullscreen |
-| **Help** | Opens the Help dialog |
 
 On narrow screens, an "⋯ More" toggle collapses the less-essential panels
 (`.tb-extra`) behind a button to keep the primary controls reachable.
@@ -108,12 +108,14 @@ with distinct rows, each independently hideable when the track is collapsed:
 1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
    track name (click-to-... double-click-to-rename, ellipsis-truncated),
    **M**ute, **S**olo, and (hidden when collapsed) **✕** remove.
-2. **Waveform row** (hidden when collapsed): a `<select>` of
-   Square/Triangle/Saw/Sine for tonal tracks, or a static "Kit" label for
-   the rhythm track.
+2. **Waveform row** (hidden when collapsed): a `<select>` of Square/
+   Triangle/Saw/Sine/NES Tri (wavetable)/FM for tonal tracks, or a static
+   "Kit" label for the rhythm track.
 3. **Tools row** (hidden when collapsed): **〰 Auto** (toggles the
-   automation-curve row) and **E Env** (toggles the ADSR-envelope row,
-   tonal tracks only — drum hits use fixed per-type envelopes).
+   automation-curve row), **E Env** (toggles the envelope/filter/FM row,
+   tonal tracks only — drum hits use fixed per-type envelopes), and
+   **🎚 Preset** (saves/loads that track's waveform+envelope+filter+FM as a
+   named preset, shared across songs via `localStorage`).
 4. **Volume row** (hidden when collapsed): a slider (0–2) + numeric readout.
 5. **Pan row** (hidden when collapsed): a slider (−1–1, double-click to
    re-center) + L/C/R readout.
@@ -132,10 +134,11 @@ id), not part of the saved song.
   spanning the full MIDI range (33–96).
 - Notes render as colored blocks (`.note`), width = duration × zoom,
   brightness = velocity; small badges/border styles indicate active effects
-  (arpeggio ♪ badge; `.bend`/`.vib`/`.trem`/`.porta`/`.crush`/`.echo`/`.chorus`
-  classes for a subtle visual cue).
-- The rhythm track has one fixed row per hit type (Kick/Snare/Hi-hat/Tom/
-  Clap/Crash), 17px tall; hits are short colored blocks, one color per type.
+  (arpeggio ♪ badge; `.bend`/`.vib`/`.trem`/`.porta`/`.crush`/`.echo`/
+  `.chorus`/`.reverb` classes for a subtle visual cue).
+- The rhythm track has one fixed row per hit type (Kick/Snare/Rim/Hi-hat/
+  Open hat/Shaker/Tom/Clap/Crash/Ride — `RHYTHM_ROWS`), 17px tall; hits are
+  short colored blocks, one color per type.
 - **Tools**: Pen (click an empty cell to add a note/hit at the current grid
   resolution), Eraser (click to remove), Grab (drag to move, drag the right
   edge to resize, drag empty space to marquee-select).
@@ -167,18 +170,26 @@ above/below it):
   existed (the channel strip's static slider value for the whole song) —
   fully backward compatible.
 
-### A.7 ADSR envelope editor
+### A.7 Envelope, filter & FM editor
 
 Opened per-track (tonal tracks only) via **E Env**; same full-width-row
 placement convention as automation, but its "lane" is a plain flex row of
-four sliders rather than a column-indexed curve — it doesn't need to scroll
+sliders rather than a column-indexed curve — it doesn't need to scroll
 with the timeline:
 
 - **A**ttack, **D**ecay, **R**elease are shown as a **percentage of each
   note's own length** (0–50%, or 2–60% for release) — they scale with short
   vs. long notes rather than needing per-tempo absolute times.
 - **S**ustain is the held level (0–100% of the note's peak amplitude).
-- **Reset** restores the default envelope (`DEFAULT_ADSR`); **✕** closes the
+- A per-track resonant **lowpass filter**: cutoff (60Hz–20kHz, log slider),
+  resonance (Q, 0.1–20), and an envelope amount (−1–1) that sweeps the
+  cutoff using the same ADSR shape above (0 = filter envelope off, cutoff
+  stays at its base value).
+- Tracks on the **FM** waveform additionally show modulator **ratio** and
+  **depth** sliders (`state.fm`, `DEFAULT_FM`).
+- The row's title reflects what's shown: "Envelope & Filter", or
+  "Envelope, Filter & FM" when the track's waveform is FM.
+- **Reset** restores every default (ADSR, filter, FM); **✕** closes the
   panel without changing anything.
 
 ### A.8 Note/effects inspector
@@ -193,21 +204,21 @@ a single note is selected, per-note controls grouped into:
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
   (pulse-width for square waves), Arpeggio (comma-separated semitone
   offsets, with Major/Minor-triad quick-fill buttons).
-- **Texture / FX**: Bitcrush, Echo, Chorus toggle buttons.
+- **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
 - **Delete note** button.
 
 On narrow screens the inspector becomes a fixed bottom sheet that only
 appears while a note is selected (with a "✕ Done" pill to dismiss it).
 
-### A.9 Song info panel
+### A.9 Project info (☰ menu)
 
-Sits above the inspector in the same sticky right-hand column:
+Lives at the top of the **☰ Menu** dropdown (not a separate right-column
+panel — see A.2):
 
-- Always shows the current song's name (click to rename via a prompt) and a
-  **▾** disclosure toggle.
-- Expanded, it shows a **read-only** at-a-glance summary: Tempo, Meter,
-  Length, Track count (the live controls for these stay in the master bar —
-  this panel is a summary, not a second set of controls).
+- The current song's name, click-to-rename via a prompt (`renameSong()`).
+- A **read-only** at-a-glance summary below it: Tempo, Meter, Length, Track
+  count (the live controls for these stay in the master bar — this is a
+  summary, not a second set of controls).
 
 ### A.10 Master bar
 
@@ -215,8 +226,22 @@ Sticky bottom strip, collapsible to a slim label bar (▾, remembered
 per-browser): **Master** volume + **Output** VU, **Tempo** (BPM number
 input), **Meter** (time-signature select), **Length** (±1 bar, trims/pads
 notes, hits, and markers past the new end when shrinking), **Grid** (note
-snap resolution — see A.5), and **＋ Add track** (appends a new tonal
-track).
+snap resolution — see A.5), **＋ Add track** (appends a new tonal track),
+and a **🎛️** toggle for the **Master FX** panel:
+
+- **EQ**: 3-band (Lo shelf ~200Hz, Mid peak ~1kHz, Hi shelf ~4kHz, ±12dB).
+- **Comp**: a `DynamicsCompressorNode` (threshold, ratio, attack, release).
+- **Par Comp**: a parallel ("New York") compression blend — mixes in a
+  second, much harder-compressed copy of the signal alongside the main one.
+- **Sidechain**: ducks the master bus on every kick/snare hit (on/off +
+  depth).
+- **Downsample**: a lo-fi sample-and-hold `AudioWorkletNode` on the master
+  bus (0 = full quality).
+- **Meter**: a live frequency-spectrum canvas plus an approximate momentary
+  LUFS readout (ITU-R BS.1770 K-weighting, not a certified meter).
+
+All defaults are neutral (0dB, ratio 1:1, sidechain/downsample off), so an
+untouched song's master bus is unaffected — see B.6 for the signal chain.
 
 ### A.11 Songs library dialog
 
@@ -283,6 +308,10 @@ state = {
   markers,     // [{ col, name }]
   automation,  // id -> { gain?: Point[], pan?: Point[] }
   adsr,        // id -> { attack, decay, sustain, release } (tonal only)
+  filter,      // id -> { cutoff, q, envAmount } (tonal only) — DEFAULT_FILTER
+  fm,          // id -> { ratio, depth } (tonal only, waveform === 'fm') — DEFAULT_FM
+  sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
+  masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   selected,    // { track, index } | null — single-note inspector target
   multiSelected, // Set<Note|Hit> — group selection within activeTrack
   playhead, loopStart, loopEnd,
@@ -295,7 +324,7 @@ state = {
 rebuilt by `refreshTrackArrays()` whenever `trackList` changes.
 
 A `Note` is `{ start, len, freq, vel, bend, vib, trem, duty, arp, porta,
-crush, echo, chorus }` (columns are in eighth-note units; `MICRO = 1/6`
+crush, echo, chorus, reverb }` (columns are in eighth-note units; `MICRO = 1/6`
 eighth is the finest shared lattice, so triplet and straight subdivisions
 never drift). A `Hit` is `{ start, type }` where `type` is one of
 `RHYTHM_ROWS`. Multiple hits (or, in the pad/strings/stab style, multiple
@@ -324,7 +353,14 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
   "mute": { "lead": false }, "solo": { "lead": false },
   "tracks": { "lead": [/* Note[] */], "rhythm": [/* Hit[] */] },
   "automation": { "lead": { "gain": [{ "col": 0, "value": 0.9 }] } },
-  "adsr": { "lead": { "attack": 0.05, "decay": 0.15, "sustain": 0.7, "release": 0.15 } }
+  "adsr": { "lead": { "attack": 0.05, "decay": 0.15, "sustain": 0.7, "release": 0.15 } },
+  "filter": { "lead": { "cutoff": 20000, "q": 0.707, "envAmount": 0 } },
+  "fm": { "lead": { "ratio": 2, "depth": 0 } },
+  "sidechain": { "enabled": false, "depth": 0.5 },
+  "masterEQ": { "low": 0, "mid": 0, "high": 0 },
+  "masterComp": { "threshold": -24, "ratio": 1, "attack": 0.01, "release": 0.25 },
+  "masterParallel": { "blend": 0 },
+  "masterCrush": { "amount": 0 }
 }
 ```
 
@@ -356,7 +392,7 @@ render()
  ├─ positionOverlays()    → updateOverlayHeights(), updatePlayheadPositions(),
  │                          updateLoopPositions(), updateHScroll()
  ├─ renderInspector()     → selected-note effect controls, or empty state
- ├─ updateSongInfo()      → Song-panel Tempo/Meter/Length/Track-count text
+ ├─ updateSongInfo()      → ☰ menu's Tempo/Meter/Length/Track-count text
  ├─ autosave()            → debounced localStorage write
  └─ checkpointHistory()   → debounced undo-stack push if state changed
 ```
@@ -398,26 +434,41 @@ its target element swapped out mid-gesture by an intervening rebuild.
 Built fresh each time playback starts (`ensureCtx()`), torn down on stop:
 
 ```
-                         ┌──────────────┐
- per-note oscillator ──► │ note gain    │ ─┬─► chanGain[track] ─► chanPan[track] ─┬─► masterGain ─► destination
- (+ optional bitcrush    │ (ADSR shape) │  │                                       │
-  WaveShaper, detuned    └──────────────┘  └─► chanAnalyser[track] (VU meter)      ├─► masterAnalyser (VU)
-  2nd osc for chorus)                                                              │
-                                                                                     └─◄ previewGain (click-to-hear,
-                                                                                          bypasses mute/solo)
+per-note oscillator (+ resonant lowpass filter, optional bitcrush
+WaveShaper / detuned 2nd osc for chorus)
+  └─► note gain (ADSR shape)
+        ├─► chanGain[track] ─► chanPan[track] ─┬─► chanAnalyser[track] (VU meter)
+        │                                       └─► duckGain (sidechain ducking)
+        ├─► echoSend ─► delay ──────────────────────┘     │
+        └─► reverbSend ─► convolver ─────────────────────►│
+                                                            ▼
+                                            Master FX chain: EQ → Comp → parallel-comp blend
+                                                            │
+                                                            ├─► masterAnalyser (spectrum/LUFS)
+                                                            ├─► downsampler (AudioWorklet)
+                                                            └─► destination
+
+previewGain taps in separately (click-to-hear), bypassing mute/solo.
 ```
 
 - **Per note**: `scheduleTone()`/`schedulePortamentoTone()` build an
-  `OscillatorNode` (or a `PeriodicWave` for pulse-width square waves) →
-  `GainNode`, shaped by `applyAdsrEnvelope()` (the track's ADSR, scaled down
-  proportionally if attack+decay+release would exceed the note's own
-  duration) → optionally a bitcrush `WaveShaperNode` → the destination gain,
-  with an echo/delay tap if `note.echo`. Vibrato/tremolo are LFOs modulating
-  frequency/gain; bend is a `linearRampToValueAtTime` mid-note;
-  arpeggio steps the frequency every 30ms through the chord tones; chorus
-  adds a second, detuned oscillator into the same gain node; portamento
-  glides the oscillator frequency into the next contiguous note instead of
-  retriggering.
+  `OscillatorNode` (a `PeriodicWave` for pulse-width square waves, or a
+  detuned oscillator pair for the `fm` waveform) → a per-track resonant
+  lowpass `BiquadFilterNode` (`applyFilterEnvelope()` sweeps its cutoff
+  using the track's ADSR shape when `filterState.envAmount !== 0`) →
+  `GainNode`, shaped by `applyAdsrEnvelope()` (scaled down proportionally if
+  attack+decay+release would exceed the note's own duration) → optionally a
+  bitcrush `WaveShaperNode` → the destination gain, with echo/reverb aux
+  sends if `note.echo`/`note.reverb`. Vibrato/tremolo are LFOs modulating
+  frequency/gain; bend is a `linearRampToValueAtTime` mid-note; arpeggio
+  steps the frequency every 30ms through the chord tones; chorus adds a
+  second, detuned oscillator into the same gain node; portamento glides the
+  oscillator frequency into the next contiguous note instead of
+  retriggering. **Voice pooling** (`acquireVoice()`, `VOICE_POOL_SIZE = 16`
+  per channel) reuses a fixed pool of filter+gain+echoSend+reverbSend node
+  sets across notes instead of building fresh ones each time — bitcrushed
+  notes are excluded (their `WaveShaperNode.curve` can't be safely reused
+  for a future-scheduled note) and get an ad-hoc node set instead.
 - **Automation**: `scheduleAutomationForChunk()` schedules a track's
   gain/pan curve as native `AudioParam` ramps (`setValueAtTime` +
   `linearRampToValueAtTime`) directly on `chanGain`/`chanPan`, once per
@@ -425,10 +476,18 @@ Built fresh each time playback starts (`ensureCtx()`), torn down on stop:
   independent of individual notes, so it keeps working correctly across
   chunk boundaries, loop points, and seeks.
 - **Rhythm**: each hit type is a small dedicated synthesis function
-  (`scheduleKick`/`scheduleSnare`/`scheduleHihat`/`schedulePuka`(tom)/
-  `scheduleClap`/`scheduleCrash`) — filtered noise bursts and/or short
+  (`scheduleKick`/`scheduleSnare`/`scheduleRim`/`scheduleHihat`/
+  `scheduleOpenHat`/`scheduleShaker`/`schedulePuka`(tom)/`scheduleClap`/
+  `scheduleCrash`/`scheduleRide`) — filtered noise bursts and/or short
   pitch-swept oscillators, no shared "drum" abstraction since each sound's
   shape is bespoke.
+- **Master bus** (`buildMasterFXChain()`/`applyMasterFX()`, all optional —
+  neutral defaults are a no-op): `masterGain` → `duckGain` (gain node
+  ducked on every kick/snare hit by `scheduleDucking()` when sidechain is
+  enabled) → 3-band EQ → `DynamicsCompressorNode` → a parallel-compression
+  dry/wet blend → `masterAnalyser` (drives the spectrum canvas + LUFS
+  estimate) → a lo-fi sample-and-hold `AudioWorkletNode`
+  (`js/downsample-processor.js`) → `destination`.
 - **Playback scheduling**: `startPlaybackFrom(col)` schedules one bounded
   "chunk" (`SCHEDULE_LOOKAHEAD_BARS` = 8 bars, capped to the loop end or
   song end if closer) ahead of time via Web Audio's own clock
