@@ -981,6 +981,15 @@
             <div class="adsr-field"><span class="adsr-label">Atk</span><input id="comp-attack" type="range" min="0" max="1" step="0.01" title="Attack"><span id="comp-attack-val" class="adsr-val"></span></div>
             <div class="adsr-field"><span class="adsr-label">Rel</span><input id="comp-release" type="range" min="0.01" max="1" step="0.01" title="Release"><span id="comp-release-val" class="adsr-val"></span></div>
           </div>
+          <div class="mfx-group">
+            <span class="mfx-cap">Par Comp</span>
+            <div class="adsr-field"><span class="adsr-label">Blend</span><input id="parallel-blend" type="range" min="0" max="1" step="0.02" title="Parallel (&quot;New York&quot;) compression blend — mixes in a much harder-compressed copy alongside the main signal"><span id="parallel-blend-val" class="adsr-val"></span></div>
+          </div>
+          <div class="mfx-group">
+            <span class="mfx-cap">Sidechain</span>
+            <button id="sidechain-toggle" class="icon-btn" title="Duck the master bus on every kick/snare hit" aria-pressed="false">Off</button>
+            <div class="adsr-field"><span class="adsr-label">Depth</span><input id="sidechain-depth" type="range" min="0.05" max="0.95" step="0.05" title="How far the master bus ducks on each kick/snare hit"><span id="sidechain-depth-val" class="adsr-val"></span></div>
+          </div>
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
         <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
@@ -1169,6 +1178,24 @@ const DEFAULT_FM = { ratio: 2, depth: 0 };
 // exactly as it did before.
 const DEFAULT_MASTER_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
 const DEFAULT_MASTER_COMP = { threshold: -24, ratio: 1, attack: 0.01, release: 0.25 };
+// Parallel ("New York") compression: a second, much harder compressor runs
+// alongside (not instead of) the main comp above, blended back in — blend=0
+// mutes that path entirely so it's a no-op until dialed in. The harder
+// compressor's own threshold/ratio/attack/release are fixed (not exposed as
+// controls) to keep this a single "how much" knob rather than a second full
+// compressor UI — see applyMasterFX().
+const DEFAULT_MASTER_PARALLEL = { blend: 0 };
+// Sidechain ducking: dips the master bus gain on every kick/snare hit, since
+// the rhythm track's hit timing is already known ahead of playback (same
+// principle scheduleAutomationForChunk() already relies on for automation
+// curves) — Web Audio's DynamicsCompressorNode has no sidechain input, so
+// this is scheduled directly as a gain envelope instead. enabled=false is a
+// no-op (duckGain just stays pinned at 1).
+const DEFAULT_SIDECHAIN = { enabled: false, depth: 0.5 };
+// AudioWorklet-based lo-fi downsampler (sample-and-hold) on the master bus —
+// see ensureWorkletChain()/js/downsample-processor.js. amount=0 holds every
+// sample (i.e. no reduction), matching the "neutral by default" contract.
+const DEFAULT_MASTER_CRUSH = { amount: 0 };
 const DEFAULT_SWING = 0; // % (0 = straight 8ths, up to 75 ≈ triplet feel) — see swingOffsetCols()
 
 const ROW_H = 11;       // px per semitone in a pitch lane
@@ -1311,7 +1338,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1351,6 +1378,9 @@ const state = {
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
+  masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
+  sidechain: { ...DEFAULT_SIDECHAIN },    // song-global kick/snare-triggered ducking
+  masterCrush: { ...DEFAULT_MASTER_CRUSH }, // song-global AudioWorklet lo-fi downsampler
   swing: DEFAULT_SWING,      // % — see swingOffsetCols()
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
@@ -1433,6 +1463,15 @@ function applySavedMix(data) {
     if (compKeys.every(k => typeof data.masterComp[k] === 'number')) {
       state.masterComp = { threshold: data.masterComp.threshold, ratio: data.masterComp.ratio, attack: data.masterComp.attack, release: data.masterComp.release };
     }
+  }
+  if (data.masterParallel && typeof data.masterParallel === 'object' && typeof data.masterParallel.blend === 'number') {
+    state.masterParallel = { blend: data.masterParallel.blend };
+  }
+  if (data.sidechain && typeof data.sidechain === 'object' && typeof data.sidechain.depth === 'number') {
+    state.sidechain = { enabled: !!data.sidechain.enabled, depth: data.sidechain.depth };
+  }
+  if (data.masterCrush && typeof data.masterCrush === 'object' && typeof data.masterCrush.amount === 'number') {
+    state.masterCrush = { amount: data.masterCrush.amount };
   }
   for (const key of ['mute', 'solo']) {
     const src = (data[key] && typeof data[key] === 'object') ? data[key] : {};
@@ -1676,6 +1715,9 @@ function getFmState(track) { return state.fm[track] || DEFAULT_FM; }
 function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
+function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
+function getSidechain() { return state.sidechain || DEFAULT_SIDECHAIN; }
+function getMasterCrush() { return state.masterCrush || DEFAULT_MASTER_CRUSH; }
 function getSwing() { return state.swing || DEFAULT_SWING; }
 
 // ---------- Rendering ----------
@@ -3419,7 +3461,7 @@ syncMasterVolUI();
 const EQ_FIELDS = [['low', 'dB'], ['mid', 'dB'], ['high', 'dB']];
 const COMP_FIELDS = [['threshold', 'dB'], ['ratio', ':1'], ['attack', 's'], ['release', 's']];
 function syncMasterFxUI() {
-  const eq = getMasterEQ(), comp = getMasterComp();
+  const eq = getMasterEQ(), comp = getMasterComp(), parallel = getMasterParallel();
   for (const [key, unit] of EQ_FIELDS) {
     document.getElementById('eq-' + key).value = eq[key];
     document.getElementById('eq-' + key + '-val').textContent = eq[key].toFixed(1) + unit;
@@ -3429,12 +3471,20 @@ function syncMasterFxUI() {
     const decimals = key === 'threshold' ? 0 : (unit === ':1' ? 1 : 2);
     document.getElementById('comp-' + key + '-val').textContent = comp[key].toFixed(decimals) + unit;
   }
+  document.getElementById('parallel-blend').value = parallel.blend;
+  document.getElementById('parallel-blend-val').textContent = Math.round(parallel.blend * 100) + '%';
+  const sidechain = getSidechain();
+  const scBtn = document.getElementById('sidechain-toggle');
+  scBtn.textContent = sidechain.enabled ? 'On' : 'Off';
+  scBtn.setAttribute('aria-pressed', String(sidechain.enabled));
+  document.getElementById('sidechain-depth').value = sidechain.depth;
+  document.getElementById('sidechain-depth-val').textContent = Math.round(sidechain.depth * 100) + '%';
 }
 for (const [key] of EQ_FIELDS) {
   document.getElementById('eq-' + key).addEventListener('input', (e) => {
     state.masterEQ = { ...getMasterEQ(), [key]: parseFloat(e.target.value) };
     syncMasterFxUI();
-    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
     autosave();
   });
 }
@@ -3442,10 +3492,26 @@ for (const [key] of COMP_FIELDS) {
   document.getElementById('comp-' + key).addEventListener('input', (e) => {
     state.masterComp = { ...getMasterComp(), [key]: parseFloat(e.target.value) };
     syncMasterFxUI();
-    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
     autosave();
   });
 }
+document.getElementById('parallel-blend').addEventListener('input', (e) => {
+  state.masterParallel = { blend: parseFloat(e.target.value) };
+  syncMasterFxUI();
+  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+  autosave();
+});
+document.getElementById('sidechain-toggle').addEventListener('click', () => {
+  state.sidechain = { ...getSidechain(), enabled: !getSidechain().enabled };
+  syncMasterFxUI();
+  autosave();
+});
+document.getElementById('sidechain-depth').addEventListener('input', (e) => {
+  state.sidechain = { ...getSidechain(), depth: parseFloat(e.target.value) };
+  syncMasterFxUI();
+  autosave();
+});
 document.getElementById('master-fx-toggle').addEventListener('click', () => {
   const panel = document.getElementById('master-fx-panel');
   const btn = document.getElementById('master-fx-toggle');
@@ -3608,8 +3674,11 @@ function createNewSong(withStarterTracks, name) {
   applyGains();
   state.masterEQ = { ...DEFAULT_MASTER_EQ };
   state.masterComp = { ...DEFAULT_MASTER_COMP };
+  state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
+  state.sidechain = { ...DEFAULT_SIDECHAIN };
+  state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
   syncMasterFxUI();
-  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   state.swing = DEFAULT_SWING;
   syncSwingUI();
   COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
@@ -3671,7 +3740,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3711,7 +3780,7 @@ function applySongData(data, name) {
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
   applyPan();
-  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
@@ -4044,8 +4113,10 @@ async function renderSongToWav() {
   ctx = offline;
   masterGain = ctx.createGain();
   masterGain.gain.value = state.masterVol;
-  masterFXNodes = buildMasterFXChain(ctx, masterGain, ctx.destination);
-  applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  duckGain = ctx.createGain();
+  masterGain.connect(duckGain);
+  masterFXNodes = buildMasterFXChain(ctx, duckGain, ctx.destination);
+  applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   for (const ch of ALL_TRACKS) {
     chanPan[ch] = ctx.createStereoPanner();
     chanPan[ch].connect(masterGain);
@@ -4056,11 +4127,12 @@ async function renderSongToWav() {
   applyPan();
 
   scheduleAutomationForChunk(0, eighthSec, 0, COLS);
+  scheduleDucking(0, eighthSec, 0, COLS);
   playOnce(0, eighthSec, 0, COLS);
 
   const rendered = await offline.startRendering();
 
-  ctx = null; masterGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
+  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
   resetAudioCaches();
 
   return rendered;
@@ -4258,13 +4330,17 @@ let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let masterAnalyser = null;
 let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compressor chain
+let duckGain = null; // GainNode ahead of masterFXNodes — see scheduleDucking()
 
-// Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor chain
-// on the given context, wired input -> low -> mid -> high -> comp -> output,
+// Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor +
+// parallel-compression chain on the given context, wired
+// input -> low -> mid -> high -> comp -> dryGain -> finalMix -> output
+//                                 `----> parallelComp -> wetGain -^
 // and returns the created nodes so the caller can both store them (for later
-// param updates via applyMasterFX) and tap them for metering. Used by both
-// the live ensureCtx() graph and the offline WAV-render graph, which is why
-// it takes the context/input/output explicitly rather than touching globals.
+// param updates via applyMasterFX) and tap finalMix for metering (the true
+// post-FX signal, after the parallel blend). Used by both the live
+// ensureCtx() graph and the offline WAV-render graph, which is why it takes
+// the context/input/output explicitly rather than touching globals.
 function buildMasterFXChain(c, inputNode, outputNode) {
   const low = c.createBiquadFilter();
   low.type = 'lowshelf'; low.frequency.value = 200;
@@ -4273,11 +4349,30 @@ function buildMasterFXChain(c, inputNode, outputNode) {
   const high = c.createBiquadFilter();
   high.type = 'highshelf'; high.frequency.value = 4000;
   const comp = c.createDynamicsCompressor();
-  inputNode.connect(low).connect(mid).connect(high).connect(comp).connect(outputNode);
-  return { low, mid, high, comp };
+  inputNode.connect(low).connect(mid).connect(high).connect(comp);
+
+  // Parallel ("New York") compression: comp's output feeds both a dry path
+  // and a second, much harder-compressed path (fixed settings — this is a
+  // single "blend" knob, not a second full compressor UI); dryGain/wetGain
+  // mix the two back together into finalMix. blend=0 mutes the wet path
+  // entirely, so an untouched song sounds exactly as it did before this
+  // feature existed.
+  const dryGain = c.createGain();
+  const wetGain = c.createGain(); wetGain.gain.value = 0;
+  const parallelComp = c.createDynamicsCompressor();
+  parallelComp.threshold.value = -30; parallelComp.ratio.value = 12;
+  parallelComp.attack.value = 0.003; parallelComp.release.value = 0.25;
+  const finalMix = c.createGain();
+  comp.connect(dryGain).connect(finalMix);
+  comp.connect(parallelComp).connect(wetGain).connect(finalMix);
+  finalMix.connect(outputNode);
+
+  return { low, mid, high, comp, dryGain, wetGain, parallelComp, finalMix };
 }
-// Pushes state (EQ dB gains + compressor params) onto a live chain's AudioParams.
-function applyMasterFX(nodes, eq, comp) {
+// Pushes state (EQ dB gains, compressor params, parallel-comp blend) onto a
+// live chain's AudioParams. `parallel` defaults to off so existing call
+// sites that don't pass it keep the wet path muted.
+function applyMasterFX(nodes, eq, comp, parallel = DEFAULT_MASTER_PARALLEL) {
   nodes.low.gain.value = eq.low;
   nodes.mid.gain.value = eq.mid;
   nodes.high.gain.value = eq.high;
@@ -4285,6 +4380,8 @@ function applyMasterFX(nodes, eq, comp) {
   nodes.comp.ratio.value = comp.ratio;
   nodes.comp.attack.value = comp.attack;
   nodes.comp.release.value = comp.release;
+  nodes.dryGain.gain.value = 1 - parallel.blend;
+  nodes.wetGain.gain.value = parallel.blend;
 }
 
 function ensureCtx() {
@@ -4292,8 +4389,10 @@ function ensureCtx() {
   if (!masterGain) {
     masterGain = ctx.createGain();
     masterGain.gain.value = state.masterVol;
-    masterFXNodes = buildMasterFXChain(ctx, masterGain, ctx.destination);
-    applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+    duckGain = ctx.createGain();
+    masterGain.connect(duckGain);
+    masterFXNodes = buildMasterFXChain(ctx, duckGain, ctx.destination);
+    applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
     for (const ch of ALL_TRACKS) {
       // Per channel: gain → panner → master, mirroring the game's audio graph.
       chanPan[ch] = ctx.createStereoPanner();
@@ -4312,7 +4411,7 @@ function ensureCtx() {
     previewGain.connect(masterGain);
     masterAnalyser = ctx.createAnalyser();
     masterAnalyser.fftSize = 256;
-    masterFXNodes.comp.connect(masterAnalyser); // tap post-EQ/comp so the meter reflects the actual output
+    masterFXNodes.finalMix.connect(masterAnalyser); // tap the final post-FX signal so the meter reflects the actual output
     startMeters();
   }
   return ctx;
@@ -4410,6 +4509,29 @@ function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
     if (!auto) continue;
     if (auto.gain && chanGain[ch] && audible(ch)) scheduleParamAutomation(chanGain[ch].gain, auto.gain, state.gains[ch], startAt, eighthSec, fromCol, toCol);
     if (auto.pan && chanPan[ch]) scheduleParamAutomation(chanPan[ch].pan, auto.pan, state.pan[ch], startAt, eighthSec, fromCol, toCol);
+  }
+}
+// Sidechain-style ducking: Web Audio's DynamicsCompressorNode has no sidechain
+// input, so this schedules the same effect directly as a gain envelope on
+// duckGain (ahead of the master EQ/comp chain) — dip fast on every kick/snare
+// hit, then recover, exactly like a real sidechain-compressed kick would
+// pump the rest of the mix. Works chunk-by-chunk like scheduleParamAutomation
+// above since the rhythm track's hit timing for [fromCol, toCol) is already
+// known ahead of playback.
+function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
+  if (!duckGain) return;
+  duckGain.gain.cancelScheduledValues(startAt);
+  duckGain.gain.setValueAtTime(1, startAt);
+  const { enabled, depth } = getSidechain();
+  if (!enabled || !depth) return;
+  const duckTo = Math.max(0.05, 1 - depth);
+  const releaseSec = 0.15;
+  for (const h of state.tracks.rhythm) {
+    if ((h.type !== 'kick' && h.type !== 'snare') || h.start < fromCol || h.start >= toCol) continue;
+    const at = startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec;
+    duckGain.gain.cancelScheduledValues(at);
+    duckGain.gain.setValueAtTime(duckTo, at);
+    duckGain.gain.exponentialRampToValueAtTime(1, at + releaseSec);
   }
 }
 
@@ -5007,6 +5129,7 @@ function startPlaybackFrom(col) {
     const loopEnd = looping ? state.loopEnd : COLS;
     const toCol = Math.min(loopEnd, fromCol + SCHEDULE_LOOKAHEAD_BARS * eighthsPerBar());
     scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol);
+    scheduleDucking(startAt, eighthSec, fromCol, toCol);
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;
@@ -5061,6 +5184,7 @@ function stopPlayback() {
     ctx.close();
     ctx = null;
     masterGain = null;
+    duckGain = null;
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {};
     masterAnalyser = null;

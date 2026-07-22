@@ -97,13 +97,26 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   för spektrumvyn; LUFS har ingen inbyggd nod utan kräver egen
   ITU-R BS.1770-loudness-beräkning ovanpå `AnalyserNode`- eller
   `AudioWorkletProcessor`-samples)
-- [ ] Parallell kompressor (två parallella `GainNode`-vägar — en torr, en
-  hårt komprimerad via `DynamicsCompressorNode` — summerade i en delad
-  buss, inte en seriekopplad insert)
-- [ ] Sidechain support (`DynamicsCompressorNode` saknar en inbyggd
-  sidokedje-ingång i Web Audio API; måste simuleras genom att schemalägga
-  `GainNode.gain`-duckning i takt med triggerspårets kick/snare-träffar,
-  vilket redan går eftersom rytmspårets tajming är känd i förväg)
+- [x] **Parallell kompressor** — `buildMasterFXChain()`s befintliga
+  EQ→kompressor-kedja grenar nu ut efter huvudkompressorn i två vägar: en
+  torr (`dryGain`) och en hårt komprimerad (`parallelComp`, fasta
+  inställningar — tröskel/ratio/attack/release är inte egna reglage, bara
+  hur mycket av den blandas in), summerade i en delad `finalMix`-nod innan
+  utgången — precis "New York"-kompressionsteknikens parallella (inte
+  seriekopplade) uppbyggnad. Ett enda "Blend"-reglage (0–100%) i
+  🎛️-panelen; 0% (standard) tystar den hårt komprimerade vägen helt så
+  opåverkade låtar låter som förut. VU-mätaren flyttades till att tappa
+  `finalMix` istället för kompressorns utgång, så den visar den verkliga
+  slutsignalen inklusive den parallella blandningen.
+- [x] **Sidechain support** — eftersom `DynamicsCompressorNode` saknar en
+  sidokedje-ingång i Web Audio API simuleras duckningen istället genom att
+  schemalägga en ren gain-envelope (`scheduleDucking()`) på en ny
+  `duckGain`-nod (mellan `masterGain` och EQ/kompressor-kedjan) i takt med
+  rytmspårets kick/snare-träffar — samma per-chunk-schemaläggning som
+  automationskurvorna redan använder (`scheduleAutomationForChunk()`),
+  eftersom rytmspårets tajming för det aktuella schemaläggningsfönstret
+  redan är känd. En "Sidechain"-knapp + "Depth"-reglage i 🎛️-panelen; av som
+  standard.
 
 ### Fas 4: Samplingar & kolaborering
 - [ ] Sample playback + granular syntes (`AudioBufferSourceNode` +
