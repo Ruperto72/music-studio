@@ -221,11 +221,29 @@ ett facit.
   `scheduleRide` m.fl.) och en egen färg i griden; MIDI-export/import
   mappar dem mot lämpliga GM-slagverksnoter (`GM_DRUM_NOTE`/
   `GM_DRUM_REVERSE`).
-- [ ] **Bara ett rytmspår med ett fast kit** — inget sätt att lägga till ett
-  andra rytmspår med eget kit (id:t `'rhythm'` är hårdkodat på ett
-  tjugotal ställen i koden — synthesis, export, klippbord, MIDI-mappning
-  m.m. — och skulle behöva generaliseras för att stödja flera
-  rytmspår).
+- [x] **Flera rytmspår (delat kit)** — en ＋ 🥁 Add rhythm track-knapp
+  bredvid ＋ Add track (`addRhythmTrack()`) lägger till fler rytmspår.
+  Alla delar samma fasta 10-delars kit (`RHYTHM_ROWS`/syntesfunktionerna
+  är fortfarande globala) men är annars helt egna spår: egna träffar,
+  egen volym/pan/mute/solo, kan tas bort (`canRemoveTrack()` — minst ett
+  rytmspår måste alltid finnas) och flyttas (`moveTrack()` tillåter nu
+  ombyte inom samma "kind"; tonala spår kan aldrig hoppa förbi ett
+  rytmspår eller tvärtom). De dryga femtio ställena som antog exakt ett
+  spår med id:t `'rhythm'` (rendering, syntesens fasta
+  `chanGain.rhythm`-destination — nu en `destGain`-parameter på alla tio
+  `scheduleX()`-funktionerna — urklipp, nudge, region-repeat,
+  JSON-spara/ladda) generaliserades till att loopa över det nya
+  `RHYTHM_TRACK_IDS` (mirror av `PITCH_TRACKS`) eller läsa det aktiva
+  spårets id; undo/autosave/`snapshotSong()` behövde inga ändringar
+  eftersom de redan serialiserade `trackList`/`tracks` generiskt.
+  MIDI-export fungerade redan generiskt (varje rytmspår blir en egen
+  namngiven MIDI-track på kanal 10); MIDI-import slår fortsatt ihop alla
+  kanal-10-händelser i en fil till det första rytmspåret, eftersom GM
+  inte har någon standard för att skilja flera trumspår åt inom en fil.
+  "Export as code" bytte format från ett enda `RHYTHM_TRACK`-objekt till
+  en `RHYTHM_TRACKS`-array (även uppdaterat i `js/song-data.js`) — ett
+  medvetet formatbrott mot Frog vs Toad-spelets nuvarande kod, som ligger
+  i ett separat repo utanför den här kodbasen.
 
 ## Spårhantering
 
