@@ -89,9 +89,34 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   offline-kontext, oavsett `playing`-läge.
 
 ### Fas 3: Pro-mixing (långsamt)
-- [ ] AudioWorklet för custom DSP (`audioContext.audioWorklet.addModule()` +
-  en separat `AudioWorkletProcessor`-modulfil som körs i sin egen
-  audio-rendering-tråd, ansluten via `AudioWorkletNode`)
+- [x] **AudioWorklet för custom DSP** — en ny "Downsample"-effekt (lo-fi
+  sample-and-hold, en klassisk chiptune-kompanjon till den befintliga
+  bitcrush-effekten men för samplingsfrekvens istället för bitdjup) längst
+  bak i mastersignalkedjan, innan högtalarna. Detta går inte att göra med
+  någon inbyggd nod (`WaveShaperNode` formar bara amplituden per sampel,
+  den kan inte hålla kvar ett sampel över flera utgångsramar) så en egen
+  `AudioWorkletProcessor`-modulfil (`js/downsample-processor.js`) körs i sin
+  egen audio-rendering-tråd via `audioContext.audioWorklet.addModule()` +
+  `new AudioWorkletNode(ctx, 'downsample-processor', …)`. Ett "Amt"-reglage
+  (0–100%) i 🎛️-panelen styr en `hold`-`AudioParam` (1–16 utgångsramar per
+  hållet sampel); 0% håller varje sampel i exakt en ram, dvs. ingen
+  förändring alls, samma "neutral by default"-kontrakt som resten av
+  mastersteget.
+
+  Eftersom `audioWorklet.addModule()` är asynkron men `ensureCtx()` måste
+  förbli synkron (för många anropsställen använder `ctx` direkt efteråt)
+  kopplas signalen inledningsvis rakt igenom (bypass) och byts sedan ut mot
+  den riktiga `AudioWorkletNode`n så fort modulen har laddats
+  (`ensureCrusher()`) — eftersom standardvärdet 0% låter identiskt genom
+  båda vägarna märks aldrig den korta väntan i praktiken. WAV-exportens
+  offline-rendering (`renderSongToWav()`) är redan `async` och kan invänta
+  laddningen rent, utan bypass-trixet.
+
+  **Bugg hittad och fixad under verifiering:** `context.createAudioWorkletNode()`
+  finns inte i Web Audio API (till skillnad från `createGain()` m.fl. har
+  `AudioWorkletNode` bara sin vanliga konstruktor-form,
+  `new AudioWorkletNode(context, name, options)`) — det första försöket
+  kraschade WAV-exporten med "createAudioWorkletNode is not a function".
 - [x] **Spectrum analyzer + LUFS metering** — en ny "Meter"-grupp i
   🎛️-panelen. Spektrumvyn tappar samma post-FX `finalMix`-nod som VU-mätaren
   via en egen bredare `AnalyserNode` (`spectrumAnalyser`,

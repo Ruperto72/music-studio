@@ -992,6 +992,10 @@
             <div class="adsr-field"><span class="adsr-label">Depth</span><input id="sidechain-depth" type="range" min="0.05" max="0.95" step="0.05" title="How far the master bus ducks on each kick/snare hit"><span id="sidechain-depth-val" class="adsr-val"></span></div>
           </div>
           <div class="mfx-group">
+            <span class="mfx-cap">Downsample</span>
+            <div class="adsr-field"><span class="adsr-label">Amt</span><input id="crush-amount" type="range" min="0" max="1" step="0.05" title="Lo-fi sample-and-hold downsampler (AudioWorklet) on the master bus — 0 = full quality"><span id="crush-amount-val" class="adsr-val"></span></div>
+          </div>
+          <div class="mfx-group">
             <span class="mfx-cap">Meter</span>
             <canvas id="spectrum-canvas" width="200" height="46" title="Master bus frequency spectrum (post-FX)"></canvas>
             <span id="lufs-val" class="adsr-val" title="Approximate momentary loudness, ITU-R BS.1770 K-weighting (not a certified LUFS meter)">— LUFS</span>
@@ -3485,6 +3489,9 @@ function syncMasterFxUI() {
   scBtn.setAttribute('aria-pressed', String(sidechain.enabled));
   document.getElementById('sidechain-depth').value = sidechain.depth;
   document.getElementById('sidechain-depth-val').textContent = Math.round(sidechain.depth * 100) + '%';
+  const crush = getMasterCrush();
+  document.getElementById('crush-amount').value = crush.amount;
+  document.getElementById('crush-amount-val').textContent = Math.round(crush.amount * 100) + '%';
 }
 for (const [key] of EQ_FIELDS) {
   document.getElementById('eq-' + key).addEventListener('input', (e) => {
@@ -3516,6 +3523,12 @@ document.getElementById('sidechain-toggle').addEventListener('click', () => {
 document.getElementById('sidechain-depth').addEventListener('input', (e) => {
   state.sidechain = { ...getSidechain(), depth: parseFloat(e.target.value) };
   syncMasterFxUI();
+  autosave();
+});
+document.getElementById('crush-amount').addEventListener('input', (e) => {
+  state.masterCrush = { amount: parseFloat(e.target.value) };
+  syncMasterFxUI();
+  applyMasterCrush(state.masterCrush.amount);
   autosave();
 });
 document.getElementById('master-fx-toggle').addEventListener('click', () => {
@@ -3685,6 +3698,7 @@ function createNewSong(withStarterTracks, name) {
   state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
   syncMasterFxUI();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+  applyMasterCrush(state.masterCrush.amount);
   state.swing = DEFAULT_SWING;
   syncSwingUI();
   COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
@@ -3787,6 +3801,7 @@ function applySongData(data, name) {
   applyGains();
   applyPan();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+  applyMasterCrush(getMasterCrush().amount);
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
@@ -4121,8 +4136,22 @@ async function renderSongToWav() {
   masterGain.gain.value = state.masterVol;
   duckGain = ctx.createGain();
   masterGain.connect(duckGain);
-  masterFXNodes = buildMasterFXChain(ctx, duckGain, ctx.destination);
+  crushBus = ctx.createGain();
+  masterFXNodes = buildMasterFXChain(ctx, duckGain, crushBus);
   applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+  // Unlike ensureCtx() (which must stay synchronous), renderSongToWav() is
+  // already async, so the worklet module can just be awaited cleanly instead
+  // of needing the bypass-then-upgrade dance ensureCrusher() does for live
+  // playback.
+  if (ctx.audioWorklet) {
+    await ctx.audioWorklet.addModule('js/downsample-processor.js');
+    crusherNode = new AudioWorkletNode(ctx, 'downsample-processor', {
+      parameterData: { hold: crushAmountToHold(getMasterCrush().amount) },
+    });
+    crushBus.connect(crusherNode).connect(ctx.destination);
+  } else {
+    crushBus.connect(ctx.destination);
+  }
   for (const ch of ALL_TRACKS) {
     chanPan[ch] = ctx.createStereoPanner();
     chanPan[ch].connect(masterGain);
@@ -4140,6 +4169,7 @@ async function renderSongToWav() {
 
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
+  crushBus = null; crusherNode = null;
   resetAudioCaches();
 
   return rendered;
@@ -4340,6 +4370,8 @@ let spectrumAnalyser = null; // wider fftSize, post-FX — drives the spectrum c
 let lufsShelf = null, lufsHighpass = null, lufsAnalyser = null; // K-weighting chain — see computeLufs()
 let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compressor chain
 let duckGain = null; // GainNode ahead of masterFXNodes — see scheduleDucking()
+let crushBus = null; // GainNode between masterFXNodes.finalMix and the crusher/destination
+let crusherNode = null; // AudioWorkletNode once loaded — see ensureCrusher()
 
 // Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor +
 // parallel-compression chain on the given context, wired
@@ -4393,6 +4425,37 @@ function applyMasterFX(nodes, eq, comp, parallel = DEFAULT_MASTER_PARALLEL) {
   nodes.wetGain.gain.value = parallel.blend;
 }
 
+// amount (0..1, DEFAULT_MASTER_CRUSH.amount = 0) -> how many output frames the
+// AudioWorkletProcessor holds each sample for. 1 = pass every sample through
+// unchanged (no reduction); up to 16 at amount=1.
+const crushAmountToHold = (amount) => 1 + Math.round(amount * 15);
+// Wires inputNode -> outputNode through a lo-fi downsampler
+// (js/downsample-processor.js), the last stage before the speakers. Starts
+// bypassed (a direct connection) and, if the browser supports AudioWorklet,
+// asynchronously loads the processor module and swaps the direct connection
+// for the real AudioWorkletNode once it's ready. ensureCtx() itself has to
+// stay synchronous (too many call sites use ctx immediately), so this can't
+// just be awaited inline — but masterCrush defaults to amount=0 (a no-op
+// even through the direct connection), so the brief gap before the worklet
+// loads is inaudible in the common case. Falls back to staying bypassed
+// forever on browsers without AudioWorklet support (no crash either way).
+function ensureCrusher(c, inputNode, outputNode) {
+  inputNode.connect(outputNode);
+  if (!c.audioWorklet) return;
+  c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
+    if (c !== ctx || c.state === 'closed') return; // context replaced/torn down before this resolved
+    const node = new AudioWorkletNode(c, 'downsample-processor', {
+      parameterData: { hold: crushAmountToHold(getMasterCrush().amount) },
+    });
+    inputNode.disconnect(outputNode);
+    inputNode.connect(node).connect(outputNode);
+    crusherNode = node;
+  }).catch(() => { /* module failed to load — stays bypassed */ });
+}
+function applyMasterCrush(amount) {
+  if (crusherNode) crusherNode.parameters.get('hold').value = crushAmountToHold(amount);
+}
+
 function ensureCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (!masterGain) {
@@ -4400,8 +4463,10 @@ function ensureCtx() {
     masterGain.gain.value = state.masterVol;
     duckGain = ctx.createGain();
     masterGain.connect(duckGain);
-    masterFXNodes = buildMasterFXChain(ctx, duckGain, ctx.destination);
+    crushBus = ctx.createGain();
+    masterFXNodes = buildMasterFXChain(ctx, duckGain, crushBus);
     applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+    ensureCrusher(ctx, crushBus, ctx.destination); // last stage before the speakers — see ensureCrusher()
     for (const ch of ALL_TRACKS) {
       // Per channel: gain → panner → master, mirroring the game's audio graph.
       chanPan[ch] = ctx.createStereoPanner();
