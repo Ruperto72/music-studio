@@ -248,6 +248,7 @@
   .master-fx-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 8px 12px; border-top: 1px solid #2a2a33; }
   .mfx-group { display: flex; align-items: center; gap: 10px; }
   .mfx-cap { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: #6b6b78; font-weight: 700; }
+  #spectrum-canvas { background: #0c0c10; border: 1px solid #2a2a33; border-radius: 3px; }
 
   /* Sticks to the top of .daw's own (now-bounded) scrollport as tracks scroll
      past underneath, so the bar ruler (and its bar numbers) stays visible.
@@ -989,6 +990,11 @@
             <span class="mfx-cap">Sidechain</span>
             <button id="sidechain-toggle" class="icon-btn" title="Duck the master bus on every kick/snare hit" aria-pressed="false">Off</button>
             <div class="adsr-field"><span class="adsr-label">Depth</span><input id="sidechain-depth" type="range" min="0.05" max="0.95" step="0.05" title="How far the master bus ducks on each kick/snare hit"><span id="sidechain-depth-val" class="adsr-val"></span></div>
+          </div>
+          <div class="mfx-group">
+            <span class="mfx-cap">Meter</span>
+            <canvas id="spectrum-canvas" width="200" height="46" title="Master bus frequency spectrum (post-FX)"></canvas>
+            <span id="lufs-val" class="adsr-val" title="Approximate momentary loudness, ITU-R BS.1770 K-weighting (not a certified LUFS meter)">— LUFS</span>
           </div>
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
@@ -4133,6 +4139,7 @@ async function renderSongToWav() {
   const rendered = await offline.startRendering();
 
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
+  spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   resetAudioCaches();
 
   return rendered;
@@ -4329,6 +4336,8 @@ let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACK
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let masterAnalyser = null;
+let spectrumAnalyser = null; // wider fftSize, post-FX — drives the spectrum canvas
+let lufsShelf = null, lufsHighpass = null, lufsAnalyser = null; // K-weighting chain — see computeLufs()
 let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compressor chain
 let duckGain = null; // GainNode ahead of masterFXNodes — see scheduleDucking()
 
@@ -4412,6 +4421,24 @@ function ensureCtx() {
     masterAnalyser = ctx.createAnalyser();
     masterAnalyser.fftSize = 256;
     masterFXNodes.finalMix.connect(masterAnalyser); // tap the final post-FX signal so the meter reflects the actual output
+    spectrumAnalyser = ctx.createAnalyser();
+    spectrumAnalyser.fftSize = 1024;
+    spectrumAnalyser.smoothingTimeConstant = 0.75;
+    masterFXNodes.finalMix.connect(spectrumAnalyser);
+    // Approximate ITU-R BS.1770 K-weighting (a high-shelf boost around
+    // presence frequencies, then a highpass to remove sub-bass) ahead of a
+    // wide-window analyser used for a momentary loudness readout — see
+    // computeLufs(). Not a certified LUFS meter (real BS.1770 also gates
+    // silence and needs per-channel weighting for true surround content),
+    // but a reasonable single-number "how loud does this actually sound"
+    // approximation for a stereo chiptune mix.
+    lufsShelf = ctx.createBiquadFilter();
+    lufsShelf.type = 'highshelf'; lufsShelf.frequency.value = 1500; lufsShelf.gain.value = 4;
+    lufsHighpass = ctx.createBiquadFilter();
+    lufsHighpass.type = 'highpass'; lufsHighpass.frequency.value = 38; lufsHighpass.Q.value = 0.5;
+    lufsAnalyser = ctx.createAnalyser();
+    lufsAnalyser.fftSize = 32768;
+    masterFXNodes.finalMix.connect(lufsShelf).connect(lufsHighpass).connect(lufsAnalyser);
     startMeters();
   }
   return ctx;
@@ -4443,6 +4470,59 @@ function updateMeters() {
   vuLevel.master = Math.max(m, vuLevel.master * 0.86);
   setMeter(masterVuEl, vuLevel.master);
 }
+// ---- Spectrum + LUFS (both post-FX, master-fx-panel only — see startMeters) ----
+const spectrumCanvas = document.getElementById('spectrum-canvas');
+const spectrumCtx2d = spectrumCanvas ? spectrumCanvas.getContext('2d') : null;
+const SPECTRUM_BARS = 32;
+let spectrumBuf = null; // Uint8Array sized to spectrumAnalyser.frequencyBinCount, allocated lazily
+function drawSpectrum() {
+  if (!spectrumAnalyser || !spectrumCtx2d) return;
+  if (!spectrumBuf || spectrumBuf.length !== spectrumAnalyser.frequencyBinCount) {
+    spectrumBuf = new Uint8Array(spectrumAnalyser.frequencyBinCount);
+  }
+  spectrumAnalyser.getByteFrequencyData(spectrumBuf);
+  const w = spectrumCanvas.width, h = spectrumCanvas.height;
+  spectrumCtx2d.clearRect(0, 0, w, h);
+  const barW = w / SPECTRUM_BARS;
+  // Most chiptune content lives well under the Nyquist frequency, so an even
+  // split across all bins would leave most bars dark — group bins
+  // log-spaced instead (each bar covers a wider band than the last) so the
+  // display uses its width evenly, same reasoning as the filter's cutoff slider.
+  const maxBin = spectrumBuf.length;
+  for (let i = 0; i < SPECTRUM_BARS; i++) {
+    const lo = Math.floor(Math.pow(maxBin, i / SPECTRUM_BARS));
+    const hi = Math.max(lo + 1, Math.floor(Math.pow(maxBin, (i + 1) / SPECTRUM_BARS)));
+    let sum = 0, n = 0;
+    for (let b = lo; b < hi && b < maxBin; b++) { sum += spectrumBuf[b]; n++; }
+    const level = n ? sum / n / 255 : 0;
+    const barH = Math.max(1, level * h);
+    spectrumCtx2d.fillStyle = '#5ce0a0';
+    spectrumCtx2d.fillRect(i * barW, h - barH, Math.max(1, barW - 1), barH);
+  }
+}
+const lufsBuf = new Float32Array(32768);
+// Approximate momentary loudness (ITU-R BS.1770 formula, over whatever window
+// lufsAnalyser's fftSize captures — see the K-weighting comment in ensureCtx()).
+function computeLufs() {
+  if (!lufsAnalyser) return null;
+  if (lufsBuf.length !== lufsAnalyser.fftSize) return null;
+  lufsAnalyser.getFloatTimeDomainData(lufsBuf);
+  let sum = 0;
+  for (let i = 0; i < lufsBuf.length; i++) sum += lufsBuf[i] * lufsBuf[i];
+  const meanSquare = sum / lufsBuf.length;
+  if (meanSquare <= 0) return -Infinity;
+  return -0.691 + 10 * Math.log10(meanSquare);
+}
+const lufsValEl = document.getElementById('lufs-val');
+function updateLufs() {
+  if (!lufsValEl) return;
+  const lufs = computeLufs();
+  lufsValEl.textContent = (lufs === null || lufs === -Infinity) ? '— LUFS' : lufs.toFixed(1) + ' LUFS';
+}
+function masterFxPanelOpen() {
+  const panel = document.getElementById('master-fx-panel');
+  return panel && panel.style.display !== 'none';
+}
 function startMeters() {
   if (meterRafId) return;
   let frame = 0;
@@ -4453,6 +4533,8 @@ function startMeters() {
     // other frame halves the per-channel analyser-read cost, which scales
     // with track count and matters more on weaker mobile CPUs.
     if ((frame++ & 1) === 0) updateMeters();
+    // Spectrum/LUFS only cost anything while their panel is actually open.
+    if (masterFxPanelOpen()) { drawSpectrum(); updateLufs(); }
     meterRafId = requestAnimationFrame(tick);
   };
   meterRafId = requestAnimationFrame(tick);
@@ -5188,6 +5270,7 @@ function stopPlayback() {
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {};
     masterAnalyser = null;
+    spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
     masterFXNodes = null;
     stopMeters();
     resetAudioCaches();

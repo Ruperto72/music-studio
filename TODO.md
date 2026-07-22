@@ -92,11 +92,24 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
 - [ ] AudioWorklet för custom DSP (`audioContext.audioWorklet.addModule()` +
   en separat `AudioWorkletProcessor`-modulfil som körs i sin egen
   audio-rendering-tråd, ansluten via `AudioWorkletNode`)
-- [ ] Spectrum analyzer + LUFS metering (`AnalyserNode.getByteFrequencyData()`/
-  `getFloatFrequencyData()` — samma nodtyp som redan driver VU-mätarna —
-  för spektrumvyn; LUFS har ingen inbyggd nod utan kräver egen
-  ITU-R BS.1770-loudness-beräkning ovanpå `AnalyserNode`- eller
-  `AudioWorkletProcessor`-samples)
+- [x] **Spectrum analyzer + LUFS metering** — en ny "Meter"-grupp i
+  🎛️-panelen. Spektrumvyn tappar samma post-FX `finalMix`-nod som VU-mätaren
+  via en egen bredare `AnalyserNode` (`spectrumAnalyser`,
+  `getByteFrequencyData()`) och ritas som 32 log-spaceade staplar på en
+  `<canvas>` (log-spacing eftersom en chiptune-mix mest lever långt under
+  Nyquist-frekvensen — en linjär bin-uppdelning hade lämnat det mesta av
+  bredden mörk, samma resonemang som filtrets cutoff-reglage). LUFS har
+  ingen inbyggd nod i Web Audio API, så en enkel ITU-R BS.1770-inspirerad
+  K-viktning byggs av två `BiquadFilterNode` (high-shelf +4dB vid ~1500Hz,
+  highpass vid ~38Hz) följt av en `AnalyserNode` med `fftSize 32768` (ett
+  brett tidsdomän-fönster) — momentanljudstyrkan räknas ut som
+  `-0.691 + 10·log10(medelkvadrat)` på det fönstret. Detta är en
+  förenkling (ingen "gating" av tystnad, ingen kanalviktning för surround)
+  och inte en certifierad LUFS-mätare, men ger ett rimligt "hur högt låter
+  det egentligen"-närmevärde för en stereo chiptune-mix — dokumenterat i
+  koden och i mätarens tooltip. Both spektrumritning och
+  LUFS-uppdatering är villkorade på att 🎛️-panelen faktiskt är öppen, så
+  de kostar ingenting när den är stängd.
 - [x] **Parallell kompressor** — `buildMasterFXChain()`s befintliga
   EQ→kompressor-kedja grenar nu ut efter huvudkompressorn i två vägar: en
   torr (`dryGain`) och en hårt komprimerad (`parallelComp`, fasta
