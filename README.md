@@ -27,6 +27,17 @@ game, whose soundtrack ships here as the **demo song**.
   that support the install prompt); a **⛶** toolbar button also toggles
   plain browser fullscreen
 
+## Roadmap
+
+Planned audio-engine work, roughly in order of effort (see `TODO.md` for the
+full breakdown and the specific Web Audio API interfaces each item builds
+on — `AudioWorklet`, `ConvolverNode`, `PeriodicWave`, `AnalyserNode`, and so on):
+
+1. **Quality basics** — 48 kHz export, voice pooling, simple wavetable synthesis
+2. **Pro synthesis** — FM synthesis, a resonant filter per track, aux-sends for reverb/delay
+3. **Pro mixing** — custom DSP via AudioWorklet, a spectrum analyzer + LUFS metering, parallel compression, sidechain
+4. **Sampling & collaboration** — sample playback/granular synthesis, cloud sync and live collaboration
+
 ## Run it locally
 
 No build step. Serve the folder over http:// (ES modules don't work from
