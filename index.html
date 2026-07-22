@@ -305,10 +305,12 @@
   /* Collapsed: keep just name/M/S plus the live VU bar, hide everything else
      (waveform, automation/envelope tools, volume/pan sliders, remove button)
      and the whole grid lane for that track — a slim strip so many tracks fit
-     on screen at once (the lane/gutter aren't even built when collapsed, see
-     renderPitchTrack/renderRhythmTrack). */
+     on screen at once (the full lane/gutter aren't even built when collapsed,
+     see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
+     note layout, renderCollapsedOverview(), stands in for it instead). */
   .track.collapsed .th-wave-row, .track.collapsed .th-tools,
   .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove { display: none; }
+  .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
     font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2;
     flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1684,8 +1686,12 @@ let interacting = false;    // freezes pitch-window auto-fit during a drag so la
 
 // Pitch auto-fit window per pitch track. Cached; frozen while `interacting`.
 const winCache = {};
-function pitchWindow(track) {
-  if (interacting && winCache[track]) return winCache[track];
+// Manual override once a track's piano has been wheel-scrolled (see
+// scrollPitchWindow()) — sticks until the song reloads, so the auto-fit
+// window doesn't keep snapping back to the notes while the user is
+// deliberately looking at a different octave to place new ones.
+const manualPitchWindow = {};
+function autoFitPitchWindow(track) {
   const notes = state.tracks[track];
   let lo, hi;
   if (!notes.length) { lo = 57; hi = 79; }
@@ -1698,9 +1704,48 @@ function pitchWindow(track) {
   if (span < MIN_SPAN) { const g = Math.ceil((MIN_SPAN - span) / 2); lo -= g; hi += g; }
   lo = Math.max(MIDI_MIN, lo); hi = Math.min(MIDI_MAX, hi);
   if (hi - lo < MIN_SPAN) { if (lo <= MIDI_MIN) hi = Math.min(MIDI_MAX, lo + MIN_SPAN); else lo = Math.max(MIDI_MIN, hi - MIN_SPAN); }
-  const w = { min: lo, max: hi };
+  return { min: lo, max: hi };
+}
+function pitchWindow(track) {
+  if (interacting && winCache[track]) return winCache[track];
+  const w = manualPitchWindow[track] || autoFitPitchWindow(track);
   winCache[track] = w;
   return w;
+}
+// Pans a track's piano by `semis` semitones (positive = toward higher
+// pitches), keeping the window's span fixed and clamped to the instrument
+// range — this is how the active track's piano reaches octaves outside
+// whatever the auto-fit window currently shows.
+function scrollPitchWindow(track, semis) {
+  if (!semis) return;
+  const cur = manualPitchWindow[track] || autoFitPitchWindow(track);
+  const span = cur.max - cur.min;
+  let min = cur.min + semis;
+  min = Math.max(MIDI_MIN, Math.min(MIDI_MAX - span, min));
+  manualPitchWindow[track] = { min, max: min + span };
+}
+// Wheel-scrolls the given pitch-lane element's track, but only while that
+// track is the active one — otherwise the wheel just scrolls the page/track
+// list normally, same as hovering any other part of the editor.
+let pitchWheelRaf = null;
+const pitchWheelAccum = {};
+function attachPitchWheel(el, track) {
+  el.addEventListener('wheel', (e) => {
+    if (state.activeTrack !== track) return;
+    e.preventDefault();
+    pitchWheelAccum[track] = (pitchWheelAccum[track] || 0) + e.deltaY;
+    if (pitchWheelRaf) return;
+    pitchWheelRaf = requestAnimationFrame(() => {
+      pitchWheelRaf = null;
+      for (const t of Object.keys(pitchWheelAccum)) {
+        const px = pitchWheelAccum[t];
+        delete pitchWheelAccum[t];
+        const semis = -Math.round(px / ROW_H);
+        if (semis) scrollPitchWindow(t, semis);
+      }
+      render();
+    });
+  }, { passive: false });
 }
 
 function clearOverlaps(notes, start, len, exceptIdx = -1) {
@@ -1926,6 +1971,7 @@ function removeTrack(id) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
+  delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
   if (state.selected && state.selected.track === id) state.selected = null;
@@ -2461,6 +2507,44 @@ function addSubgrid(rollEl, heightPx) {
   rollEl.appendChild(sub);
 }
 
+// A collapsed track's grid isn't built at all (see the `collapsedTracks.has`
+// branches in renderPitchTrack/renderRhythmTrack) — this draws a small
+// canvas "thumbnail" instead so the note layout is still visible at a
+// glance. Positioned to start where the gutter+lane normally would (the
+// first GUTTER_W px stay blank), so its horizontal position lines up with
+// the timeline/playhead like everything else keyed off LANE_ORIGIN.
+function renderCollapsedOverview(track) {
+  const height = 20;
+  const canvas = document.createElement('canvas');
+  canvas.className = 'collapsed-overview';
+  const width = GUTTER_W + COLS * colPx;
+  canvas.width = width;
+  canvas.height = height;
+  const cx = canvas.getContext('2d');
+  cx.fillStyle = trackColor(track);
+  if (track === 'rhythm') {
+    const rowH = height / RHYTHM_ROWS.length;
+    for (const h of state.tracks.rhythm) {
+      const r = RHYTHM_ROWS.indexOf(h.type);
+      if (r < 0) continue;
+      cx.fillRect(GUTTER_W + h.start * colPx, r * rowH, Math.max(1.5, colPx * 0.8), Math.max(1, rowH - 0.5));
+    }
+  } else {
+    const notes = state.tracks[track];
+    if (notes.length) {
+      let lo = Infinity, hi = -Infinity;
+      for (const n of notes) { const m = freqToMidi(n.freq); if (m < lo) lo = m; if (m > hi) hi = m; }
+      if (lo === hi) { lo -= 1; hi += 1; } // avoid a divide-by-zero when every note shares one pitch
+      for (const n of notes) {
+        const m = freqToMidi(n.freq);
+        const y = (1 - (m - lo) / (hi - lo)) * (height - 3); // higher pitch draws higher in the strip
+        cx.fillRect(GUTTER_W + n.start * colPx, y, Math.max(1.5, n.len * colPx), 3);
+      }
+    }
+  }
+  return canvas;
+}
+
 function renderPitchTrack(track) {
   const win = pitchWindow(track);
   const pitchCount = win.max - win.min + 1;
@@ -2475,24 +2559,29 @@ function renderPitchTrack(track) {
     // has nowhere to "stick" within a row that narrow, so it scrolls off the
     // left edge with the rest of the row instead of staying pinned.
     row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+    row.appendChild(renderCollapsedOverview(track));
     tracksEl.appendChild(row);
     return;
   }
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
+  if (active) gutter.title = 'Scroll to change octave';
   for (let p = 0; p < pitchCount; p++) {
     const midi = win.max - p;
     const isC = midi % 12 === 0;
     const isBlack = NOTE_NAMES[((midi % 12) + 12) % 12].includes('#');
     gutter.appendChild(buildGutterCell(isBlack ? '' : midiToName(midi), isC ? 'c' : ''));
   }
+  attachPitchWheel(gutter, track);
   row.appendChild(gutter);
 
   const rollEl = el('div', 'lane');
   rollEl.style.gridTemplateColumns = `repeat(${COLS}, ${colPx}px)`;
   rollEl.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
   rollEl.dataset.track = track;
+  if (active) rollEl.title = 'Scroll to change octave';
+  attachPitchWheel(rollEl, track);
 
   const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
   for (let p = 0; p < pitchCount; p++) {
@@ -2572,6 +2661,7 @@ function renderRhythmTrack() {
     // has nowhere to "stick" within a row that narrow, so it scrolls off the
     // left edge with the rest of the row instead of staying pinned.
     row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+    row.appendChild(renderCollapsedOverview(track));
     tracksEl.appendChild(row);
     return;
   }
