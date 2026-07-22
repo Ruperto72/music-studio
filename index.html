@@ -393,7 +393,8 @@
   .automation-point:hover { background: #fff; }
   .adsr-lane-el { display: flex; align-items: center; gap: 18px; padding: 0 14px; }
   .adsr-field { display: flex; align-items: center; gap: 6px; }
-  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 12px; text-align: center; }
+  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 20px; text-align: center; }
+  .adsr-divider { width: 1px; align-self: stretch; background: #3a3a44; margin: 4px 0; }
   .adsr-field input[type=range] { width: 90px; cursor: pointer; }
   .adsr-val { font-size: 10px; color: var(--muted); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -1135,6 +1136,21 @@ const RHYTHM_PATTERNS = [
 // sustain is a level (0..1 of the note's peak amplitude).
 const DEFAULT_ADSR = { attack: 0.05, decay: 0.15, sustain: 0.7, release: 0.15 };
 
+// Per-track resonant lowpass filter (state.filter[track] absent -> this).
+// cutoff sits at the very top of the audible range with a non-resonant Q, so
+// a track that never touches these controls sounds exactly as if there were
+// no filter in the signal path at all — same "neutral by default" contract
+// as masterEQ/masterComp. envAmount (-1..1) sweeps the cutoff by up to ±4
+// octaves following the track's own ADSR shape (see applyFilterEnvelope) —
+// 0 means the filter envelope is off and cutoff just sits at its base value.
+const DEFAULT_FILTER = { cutoff: 20000, q: 0.707, envAmount: 0 };
+const FILTER_MIN_HZ = 60, FILTER_MAX_HZ = 20000;
+// Cutoff is perceived logarithmically, so its slider works in a 0..1 "position"
+// space mapped exponentially onto the Hz range instead of a linear Hz slider
+// (which would waste most of its travel on the top octave).
+const sliderToHz = (x) => FILTER_MIN_HZ * Math.pow(FILTER_MAX_HZ / FILTER_MIN_HZ, x);
+const hzToSlider = (hz) => Math.log(hz / FILTER_MIN_HZ) / Math.log(FILTER_MAX_HZ / FILTER_MIN_HZ);
+
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
 // Defaults are chosen to be fully transparent (0dB EQ; ratio 1:1 means the
@@ -1284,7 +1300,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1320,6 +1336,7 @@ const state = {
   markers: [],               // [{ col, name }] editor-only timeline markers
   automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
+  filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   swing: DEFAULT_SWING,      // % — see swingOffsetCols()
@@ -1372,6 +1389,15 @@ function applySavedMix(data) {
       const keys = ['attack', 'decay', 'sustain', 'release'];
       if (keys.every(k => typeof a[k] === 'number')) {
         state.adsr[ch] = { attack: a.attack, decay: a.decay, sustain: a.sustain, release: a.release };
+      }
+    }
+  }
+  if (data.filter && typeof data.filter === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const f = data.filter[ch];
+      if (!f || typeof f !== 'object') continue;
+      if (['cutoff', 'q', 'envAmount'].every(k => typeof f[k] === 'number')) {
+        state.filter[ch] = { cutoff: f.cutoff, q: f.q, envAmount: f.envAmount };
       }
     }
   }
@@ -1506,7 +1532,7 @@ let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
-  automation: state.automation, adsr: state.adsr
+  automation: state.automation, adsr: state.adsr, filter: state.filter
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1530,6 +1556,7 @@ function restoreSnapshot(s) {
     for (const map of ['gains', 'waveform', 'pan', 'mute', 'solo']) if (data[map]) state[map] = data[map];
     state.automation = data.automation && typeof data.automation === 'object' ? data.automation : {};
     state.adsr = data.adsr && typeof data.adsr === 'object' ? data.adsr : {};
+    state.filter = data.filter && typeof data.filter === 'object' ? data.filter : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan();
@@ -1621,6 +1648,8 @@ function audible(track) {
   return anySolo() ? state.solo[track] : true;
 }
 function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
+function getFilterState(track) { return state.filter[track] || DEFAULT_FILTER; }
+function setFilterState(track, patch) { state.filter[track] = { ...getFilterState(track), ...patch }; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getSwing() { return state.swing || DEFAULT_SWING; }
@@ -2025,18 +2054,19 @@ function setAdsr(track, patch) {
   state.adsr[track] = cur;
 }
 // Same full-width-row trick as renderAutomationRow, but the content is just
-// four sliders (not a column-indexed curve), so the "lane" is a plain flex
-// row rather than something sized off COLS/colPx.
+// sliders (not a column-indexed curve), so the "lane" is a plain flex row
+// rather than something sized off COLS/colPx. Shares one row/toggle with the
+// filter controls since the filter envelope reuses this same ADSR shape.
 function renderAdsrRow(track) {
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
   row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
 
   const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = 'Envelope';
-  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset to the default envelope';
+  const title = el('span', 'automation-title'); title.textContent = 'Envelope & Filter';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; render(); autosave(); });
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; render(); autosave(); });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
@@ -2064,6 +2094,62 @@ function renderAdsrRow(track) {
     field.append(cap, slider, val);
     lane.appendChild(field);
   }
+
+  const divider = el('span', 'adsr-divider');
+  lane.appendChild(divider);
+
+  const filterState = getFilterState(track);
+  const cutoffField = el('div', 'adsr-field');
+  const cutoffCap = el('span', 'adsr-label'); cutoffCap.textContent = 'Hz';
+  const cutoffSlider = document.createElement('input');
+  cutoffSlider.type = 'range'; cutoffSlider.min = 0; cutoffSlider.max = 1; cutoffSlider.step = 0.001;
+  cutoffSlider.value = hzToSlider(filterState.cutoff);
+  cutoffSlider.style.accentColor = trackColor(track);
+  cutoffSlider.title = 'Filter cutoff (lowpass)';
+  const cutoffVal = el('span', 'adsr-val'); cutoffVal.textContent = Math.round(filterState.cutoff);
+  cutoffSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+  cutoffSlider.addEventListener('input', () => {
+    const hz = Math.round(sliderToHz(parseFloat(cutoffSlider.value)));
+    cutoffVal.textContent = hz;
+    setFilterState(track, { cutoff: hz });
+    autosave();
+  });
+  cutoffField.append(cutoffCap, cutoffSlider, cutoffVal);
+  lane.appendChild(cutoffField);
+
+  const qField = el('div', 'adsr-field');
+  const qCap = el('span', 'adsr-label'); qCap.textContent = 'Q';
+  const qSlider = document.createElement('input');
+  qSlider.type = 'range'; qSlider.min = 0.1; qSlider.max = 20; qSlider.step = 0.1; qSlider.value = filterState.q;
+  qSlider.style.accentColor = trackColor(track);
+  qSlider.title = 'Filter resonance';
+  const qVal = el('span', 'adsr-val'); qVal.textContent = filterState.q.toFixed(1);
+  qSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+  qSlider.addEventListener('input', () => {
+    const q = parseFloat(qSlider.value);
+    qVal.textContent = q.toFixed(1);
+    setFilterState(track, { q });
+    autosave();
+  });
+  qField.append(qCap, qSlider, qVal);
+  lane.appendChild(qField);
+
+  const envField = el('div', 'adsr-field');
+  const envCap = el('span', 'adsr-label'); envCap.textContent = 'Env';
+  const envSlider = document.createElement('input');
+  envSlider.type = 'range'; envSlider.min = -1; envSlider.max = 1; envSlider.step = 0.05; envSlider.value = filterState.envAmount;
+  envSlider.style.accentColor = trackColor(track);
+  envSlider.title = 'Filter envelope amount — sweeps the cutoff using the envelope above (0 = off)';
+  const envVal = el('span', 'adsr-val'); envVal.textContent = Math.round(filterState.envAmount * 100) + '%';
+  envSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+  envSlider.addEventListener('input', () => {
+    const amt = parseFloat(envSlider.value);
+    envVal.textContent = Math.round(amt * 100) + '%';
+    setFilterState(track, { envAmount: amt });
+    autosave();
+  });
+  envField.append(envCap, envSlider, envVal);
+  lane.appendChild(envField);
 
   row.append(header, gutter, lane);
   return row;
@@ -3519,7 +3605,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -4016,6 +4102,7 @@ function applyPresetToTrack(track, preset) {
   if (!t || t.kind === 'rhythm' || !preset) return;
   if (WAVEFORMS.includes(preset.waveform)) state.waveform[track] = preset.waveform;
   if (preset.adsr) setAdsr(track, preset.adsr);
+  if (preset.filter) setFilterState(track, preset.filter);
   const n = state.tracks[track][0];
   if (n) previewNote(track, n);
   render();
@@ -4023,7 +4110,9 @@ function applyPresetToTrack(track, preset) {
 }
 function presetDesc(preset) {
   const a = preset.adsr || DEFAULT_ADSR;
-  return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}`;
+  const f = preset.filter || DEFAULT_FILTER;
+  const filterPart = f.envAmount ? ` · LPF ${Math.round(f.cutoff)}Hz env${f.envAmount > 0 ? '+' : ''}${f.envAmount.toFixed(1)}` : '';
+  return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}${filterPart}`;
 }
 function renderPresetList() {
   const presets = readPresets();
@@ -4053,7 +4142,7 @@ document.getElementById('preset-save').addEventListener('click', () => {
   if (!name) { presetNewNameInput.focus(); return; }
   const presets = readPresets();
   if (presets[name] && !confirm(`Overwrite preset “${name}”?`)) return;
-  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) } };
+  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) } };
   writePresets(presets);
   presetNewNameInput.value = '';
   renderPresetList();
@@ -4206,7 +4295,7 @@ function previewNote(track, note) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const oscType = state.waveform[track] || 'square';
-    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track));
+    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track));
   } catch { /* audio unavailable */ }
 }
 function previewHit(type) {
@@ -4340,18 +4429,21 @@ function ensureDelay(destGain) {
 // note is still actually playing through that node when the change lands —
 // crushed notes get their own ad-hoc WaveShaperNode instead, as before.
 const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
-const voicePools = new Map(); // destGain -> [{ gain, echoSend, busyUntil }]
+const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, busyUntil }]
 function acquireVoice(destGain, startAt) {
   let pool = voicePools.get(destGain);
   if (!pool) { pool = []; voicePools.set(destGain, pool); }
   for (const v of pool) if (v.busyUntil <= startAt) return v;
   if (pool.length >= VOICE_POOL_SIZE) return null; // exhausted — caller falls back to an ad-hoc gain node
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
   const gain = ctx.createGain();
+  filter.connect(gain);
   const echoSend = ctx.createGain();
   echoSend.gain.value = 0;
   gain.connect(destGain);
   gain.connect(echoSend).connect(ensureDelay(destGain));
-  const voice = { gain, echoSend, busyUntil: 0 };
+  const voice = { gain, filter, echoSend, busyUntil: 0 };
   pool.push(voice);
   return voice;
 }
@@ -4385,27 +4477,53 @@ function addTremolo(gainNode, startAt, endAt) {
 // sustain is a level. If they'd add up to more than the note's duration (e.g. a very
 // short note with a long attack+decay+release), scale them all down proportionally
 // so the shape still fits — rather than just cutting the envelope off mid-stage.
-function applyAdsrEnvelope(gainParam, startAt, dur, peak, adsr) {
+// Shared by the amp envelope (applyAdsrEnvelope) and the filter envelope
+// (applyFilterEnvelope) below, so both stages move in lockstep.
+function envelopeTimes(startAt, dur, adsr) {
   let a = Math.max(0.001, adsr.attack * dur);
   let d = Math.max(0.001, adsr.decay * dur);
   let r = Math.max(0.001, adsr.release * dur);
   const totalADR = a + d + r;
   if (totalADR > dur) { const scale = dur / totalADR; a *= scale; d *= scale; r *= scale; }
-  const sustainLevel = Math.max(0.0001, peak * adsr.sustain);
   const t1 = startAt + a;
   const t2 = t1 + d;
   const t3 = Math.max(t2, startAt + dur - r);
   const t4 = startAt + dur;
+  return { t1, t2, t3, t4 };
+}
+function applyAdsrEnvelope(gainParam, startAt, dur, peak, adsr) {
+  const { t1, t2, t3, t4 } = envelopeTimes(startAt, dur, adsr);
+  const sustainLevel = Math.max(0.0001, peak * adsr.sustain);
   gainParam.setValueAtTime(0.0001, startAt);
   gainParam.exponentialRampToValueAtTime(Math.max(0.0001, peak), t1);
   gainParam.exponentialRampToValueAtTime(sustainLevel, t2);
   gainParam.setValueAtTime(sustainLevel, t3);
   gainParam.exponentialRampToValueAtTime(0.0001, t4);
 }
+// Sweeps the track's filter cutoff by up to ±4 octaves following the same
+// attack/decay/sustain/release shape as the amp envelope, then back to its
+// base cutoff — a classic "filter envelope". envAmount === 0 just holds the
+// filter at its base cutoff (no sweep), which is also the fully-neutral case
+// (DEFAULT_FILTER's cutoff sits at the edge of hearing) so untouched tracks
+// are unaffected.
+function applyFilterEnvelope(freqParam, startAt, dur, adsr, cutoff, envAmount) {
+  freqParam.cancelScheduledValues(startAt);
+  if (!envAmount) { freqParam.setValueAtTime(cutoff, startAt); return; }
+  const clampHz = (f) => Math.min(FILTER_MAX_HZ, Math.max(FILTER_MIN_HZ, f));
+  const { t1, t2, t3, t4 } = envelopeTimes(startAt, dur, adsr);
+  const peak = clampHz(cutoff * Math.pow(2, envAmount * 4));
+  const sustainHz = clampHz(cutoff * Math.pow(peak / cutoff, adsr.sustain));
+  freqParam.setValueAtTime(cutoff, startAt);
+  freqParam.exponentialRampToValueAtTime(peak, t1);
+  freqParam.exponentialRampToValueAtTime(sustainHz, t2);
+  freqParam.setValueAtTime(sustainHz, t3);
+  freqParam.exponentialRampToValueAtTime(cutoff, t4);
+}
 const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
-// Grabs a pooled voice's gain node when possible (see acquireVoice above),
-// resetting its envelope/echo-send schedule for this note; falls back to an
-// ad-hoc gain node for crushed notes or when the pool is exhausted.
+// Grabs a pooled voice's gain+filter nodes when possible (see acquireVoice
+// above), resetting their envelope/echo-send schedule for this note; falls
+// back to an ad-hoc gain+filter pair for crushed notes or when the pool is
+// exhausted.
 function voiceGainFor(note, destGain, startAt, dur) {
   if (!note.crush) {
     const voice = acquireVoice(destGain, startAt);
@@ -4414,14 +4532,18 @@ function voiceGainFor(note, destGain, startAt, dur) {
       voice.echoSend.gain.cancelScheduledValues(startAt);
       voice.echoSend.gain.setValueAtTime(note.echo ? 1 : 0, startAt);
       voice.busyUntil = startAt + dur;
-      return { gain: voice.gain, pooled: true };
+      return { gain: voice.gain, filter: voice.filter, pooled: true };
     }
   }
-  return { gain: ctx.createGain(), pooled: false };
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  const gain = ctx.createGain();
+  filter.connect(gain);
+  return { gain, filter, pooled: false };
 }
-function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR) {
+function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER) {
   const osc = ctx.createOscillator();
-  const { gain, pooled } = voiceGainFor(note, destGain, startAt, dur);
+  const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
   if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
@@ -4455,18 +4577,20 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
   }
 
   applyAdsrEnvelope(gain.gain, startAt, dur, notePeak(note), adsr);
+  applyFilterEnvelope(filter.frequency, startAt, dur, adsr, filterState.cutoff, filterState.envAmount);
+  filter.Q.setValueAtTime(filterState.q, startAt);
   if (note.trem) addTremolo(gain, startAt, startAt + dur);
 
   if (!pooled) connectVoiceOutput(gain, note, destGain);
-  osc.connect(gain);
+  osc.connect(filter);
   osc.start(startAt);
   osc.stop(startAt + dur);
-  if (chorusOsc) { chorusOsc.connect(gain); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
+  if (chorusOsc) { chorusOsc.connect(filter); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
 }
-function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR) {
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER) {
   const osc = ctx.createOscillator();
   const totalDur = (dur + nextDur) * durScale;
-  const { gain, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
+  const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
   if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else osc.type = oscType;
@@ -4477,9 +4601,11 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
   if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
   applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), adsr);
+  applyFilterEnvelope(filter.frequency, startAt, totalDur, adsr, filterState.cutoff, filterState.envAmount);
+  filter.Q.setValueAtTime(filterState.q, startAt);
   if (note.trem) addTremolo(gain, startAt, startAt + totalDur);
   if (!pooled) connectVoiceOutput(gain, note, destGain);
-  osc.connect(gain);
+  osc.connect(filter);
   osc.start(startAt);
   osc.stop(startAt + totalDur);
 }
@@ -4661,7 +4787,7 @@ function swingOffsetCols(col) {
   if (Math.abs(withinPair - 1) > EPS) return 0;
   return (amt / 100) * (1 / 3);
 }
-function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr) {
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   for (let i = 0; i < sorted.length; i++) {
     const n = sorted[i];
@@ -4670,19 +4796,19 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
     if (n.porta) {
       const next = sorted[i + 1];
       if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
-        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr);
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState);
         i++;
         continue;
       }
     }
-    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr);
+    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr, filterState);
   }
 }
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id));
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id));
   }
   if (audible('rhythm')) {
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {

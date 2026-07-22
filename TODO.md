@@ -39,10 +39,20 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
 - [ ] FM-syntes för oscillatorerna (koppla en modulerande `OscillatorNode`s
   utgång direkt till bärvågens `frequency`-`AudioParam`, t.ex.
   `modulator.connect(carrier.frequency)`, istället för till en `GainNode`)
-- [ ] Resonant filter per spår med envelope (`BiquadFilterNode` med
-  `type: 'lowpass'`, `.frequency`/`.Q` som `AudioParam`s — envelopen kan
-  schemaläggas med samma `linearRampToValueAtTime`/`exponentialRampToValueAtTime`-
-  mönster som `applyAdsrEnvelope()` redan använder för gain)
+- [x] **Resonant filter per spår med envelope** — varje tonspår har nu en
+  `BiquadFilterNode` (lowpass) inkopplad `osc → filter → gain → …` (även
+  integrerad i röst-poolen ovan: `.frequency`/`.Q` är `AudioParam`s precis
+  som gain, så filtret kan återanvändas mellan noter på samma sätt).
+  Cutoff/Q/Env-reglagen bor i samma rad som ADSR-envelopen (döpt om till
+  "Envelope & Filter") eftersom filterenvelopen återanvänder exakt samma
+  attack/decay/sustain/release-form som redan fanns
+  (`applyFilterEnvelope()`/den delade `envelopeTimes()`) — ett "Env"-reglage
+  (-100%..+100%) styr hur många oktaver (upp till ±4) cutoff sveps. Cutoff
+  ligger som standard vid gehörsgränsen (20 kHz, olik Q) så opåverkade spår
+  låter exakt som förut. Cutoff-reglaget är log-skalat
+  (`sliderToHz`/`hzToSlider`) eftersom ett linjärt Hz-reglage hade slösat
+  bort det mesta av sitt spann på den översta oktaven. Sparas per spår
+  (`state.filter`) och ingår nu även i instrument-presets.
 - [ ] Aux-send system för reverb/delay (`ConvolverNode` för reverb — kräver en
   impulsrespons-`AudioBuffer` — och `DelayNode` för delay/eko; en riktig
   send-buss är parallell `GainNode`-utfläkning till en delad effekt, inte
