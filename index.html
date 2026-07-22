@@ -676,6 +676,7 @@
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b> and <b>Chorus</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus toggles in the note inspector.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1191,6 +1192,12 @@ const hzToSlider = (hz) => Math.log(hz / FILTER_MIN_HZ) / Math.log(FILTER_MAX_HZ
 // see addFmModulator).
 const DEFAULT_FM = { ratio: 2, depth: 0 };
 
+// Per-track continuous send to the two shared FX buses (see createGlobalFxBuses()
+// below) — state.fxSend[track] absent -> this. 0 = silent/no-op, same "neutral
+// by default" contract as everything else here; unlike adsr/filter/fm this
+// applies to rhythm tracks too (see getFxSend/setFxSend).
+const DEFAULT_FX_SEND = { delay: 0, chorus: 0 };
+
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
 // Defaults are chosen to be fully transparent (0dB EQ; ratio 1:1 means the
@@ -1364,7 +1371,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1412,6 +1419,7 @@ const state = {
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
+  fxSend: {},                // id -> { delay, chorus } (0..1 each, any track kind) — see DEFAULT_FX_SEND
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
@@ -1485,6 +1493,17 @@ function applySavedMix(data) {
       if (!f || typeof f !== 'object') continue;
       if (['ratio', 'depth'].every(k => typeof f[k] === 'number')) {
         state.fm[ch] = { ratio: f.ratio, depth: f.depth };
+      }
+    }
+  }
+  if (data.fxSend && typeof data.fxSend === 'object') {
+    // Unlike adsr/filter/fm above, this iterates ALL_TRACKS (not PITCH_TRACKS)
+    // since Delay/Chorus send works on rhythm tracks too.
+    for (const ch of ALL_TRACKS) {
+      const s = data.fxSend[ch];
+      if (!s || typeof s !== 'object') continue;
+      if (['delay', 'chorus'].every(k => typeof s[k] === 'number')) {
+        state.fxSend[ch] = { delay: Math.max(0, Math.min(1, s.delay)), chorus: Math.max(0, Math.min(1, s.chorus)) };
       }
     }
   }
@@ -1629,7 +1648,7 @@ let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
-  automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm
+  automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1655,9 +1674,10 @@ function restoreSnapshot(s) {
     state.adsr = data.adsr && typeof data.adsr === 'object' ? data.adsr : {};
     state.filter = data.filter && typeof data.filter === 'object' ? data.filter : {};
     state.fm = data.fm && typeof data.fm === 'object' ? data.fm : {};
+    state.fxSend = data.fxSend && typeof data.fxSend === 'object' ? data.fxSend : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
-    applyGains(); applyPan();
+    applyGains(); applyPan(); applyFxSend();
   }
   state.tempo = data.tempo;
   tempoInput.value = state.tempo;
@@ -1797,6 +1817,8 @@ function getFilterState(track) { return state.filter[track] || DEFAULT_FILTER; }
 function setFilterState(track, patch) { state.filter[track] = { ...getFilterState(track), ...patch }; }
 function getFmState(track) { return state.fm[track] || DEFAULT_FM; }
 function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
+function getFxSend(track) { return state.fxSend[track] || DEFAULT_FX_SEND; }
+function setFxSend(track, patch) { state.fxSend[track] = { ...getFxSend(track), ...patch }; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
@@ -1934,6 +1956,7 @@ function renderTracks() {
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
     if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
+    if (fxSendOpen.has(t.id)) tracksEl.appendChild(renderFxSendRow(t.id));
   }
 }
 
@@ -1953,6 +1976,7 @@ function ensureChannelNodes(id) {
   chanAnalyser[id] = ctx.createAnalyser();
   chanAnalyser[id].fftSize = 256;
   chanGain[id].connect(chanAnalyser[id]);
+  createTrackFxSends(id);
 }
 function addTrack() {
   const id = nextTrackId();
@@ -2018,11 +2042,11 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr]) delete map[id];
-  for (const nodes of [chanGain, chanPan, chanAnalyser]) {
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend]) delete map[id];
+  for (const nodes of [chanGain, chanPan, chanAnalyser, trackDelaySend, trackChorusSend]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
-  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
+  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
@@ -2217,6 +2241,7 @@ function renderAutomationRow(track, param) {
 
 // ---------- ADSR envelope panel (tonal tracks only) ----------
 const adsrOpen = new Set(); // track ids with the envelope panel open
+const fxSendOpen = new Set(); // track ids with the Delay/Chorus send panel open
 const ADSR_FIELDS = [
   ['attack', 'A', 0, 0.5, 0.01],
   ['decay', 'D', 0, 0.5, 0.01],
@@ -2369,6 +2394,57 @@ function renderAdsrRow(track) {
   return row;
 }
 
+// Continuous Delay/Chorus send panel — unlike renderAdsrRow() this is
+// available for every track kind (tonal and rhythm alike), since both
+// sends tap chanGain[track] directly rather than any tonal-only synthesis
+// state. Same row/header/lane CSS classes as renderAdsrRow() (no new CSS).
+function renderFxSendRow(track) {
+  const row = el('div', 'track automation-row');
+  row.dataset.track = track;
+  row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+
+  const header = el('div', 'track-header automation-header');
+  const title = el('span', 'automation-title'); title.textContent = 'Track FX (send)';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus send to 0';
+  resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.fxSend[track]; applyFxSend(); render(); autosave(); });
+  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close FX panel';
+  closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); fxSendOpen.delete(track); render(); });
+  header.append(title, resetBtn, closeBtn);
+
+  const gutter = el('div', 'gutter automation-gutter');
+
+  const lane = el('div', 'lane adsr-lane-el');
+  const fx = getFxSend(track);
+  const FX_SEND_FIELDS = [
+    ['delay', 'Delay', 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag'],
+    ['chorus', 'Chorus', 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag'],
+  ];
+  for (const [key, label, title_] of FX_SEND_FIELDS) {
+    const field = el('div', 'adsr-field');
+    const cap = el('span', 'adsr-label'); cap.textContent = label;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = 0; slider.max = 1; slider.step = 0.02; slider.value = fx[key];
+    slider.style.accentColor = trackColor(track);
+    slider.title = title_;
+    const val = el('span', 'adsr-val'); val.textContent = Math.round(fx[key] * 100) + '%';
+    slider.addEventListener('mousedown', (e) => e.stopPropagation());
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      val.textContent = Math.round(v * 100) + '%';
+      setFxSend(track, { [key]: v });
+      applyFxSend();
+      autosave();
+    });
+    field.append(cap, slider, val);
+    lane.appendChild(field);
+  }
+
+  row.append(header, gutter, lane);
+  return row;
+}
+
 function buildHeader(track) {
   const header = el('div', 'track-header');
   header.style.borderLeftColor = trackColor(track);
@@ -2469,6 +2545,16 @@ function buildHeader(track) {
     render();
   });
   tools.append(autoBtn);
+  const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
+  fxBtn.textContent = '✨ FX';
+  fxBtn.title = 'Track effects — continuous Delay & Chorus send (separate from the per-note Echo/Chorus flags)';
+  fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  fxBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (fxSendOpen.has(track)) fxSendOpen.delete(track); else fxSendOpen.add(track);
+    render();
+  });
+  tools.append(fxBtn);
   if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     adsrBtn.textContent = 'E Env';
@@ -3832,6 +3918,7 @@ function createNewSong(withStarterTracks, name) {
   state.markers = [];
   state.automation = {};
   state.adsr = {};
+  state.fxSend = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
@@ -3845,6 +3932,7 @@ function createNewSong(withStarterTracks, name) {
   syncMasterVolUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
+  applyFxSend();
   state.masterEQ = { ...DEFAULT_MASTER_EQ };
   state.masterComp = { ...DEFAULT_MASTER_COMP };
   state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
@@ -3916,7 +4004,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3955,6 +4043,7 @@ function applySongData(data, name) {
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
   applyPan();
+  applyFxSend();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(getMasterCrush().amount);
   state.selected = null;
@@ -4314,11 +4403,13 @@ async function renderSongToWav() {
   } else {
     crushBus.connect(ctx.destination);
   }
+  createGlobalFxBuses();
   for (const ch of ALL_TRACKS) {
     chanPan[ch] = ctx.createStereoPanner();
     chanPan[ch].connect(masterGain);
     chanGain[ch] = ctx.createGain();
     chanGain[ch].connect(chanPan[ch]);
+    createTrackFxSends(ch);
   }
   applyGains();
   applyPan();
@@ -4332,6 +4423,9 @@ async function renderSongToWav() {
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
+  trackDelaySend = {}; trackChorusSend = {};
+  fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
+  fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
   resetAudioCaches();
 
   return rendered;
@@ -4527,6 +4621,8 @@ let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
+let trackDelaySend = {};  // id -> GainNode, chanGain[id] -> shared delay bus (see createTrackFxSends())
+let trackChorusSend = {}; // id -> GainNode, chanGain[id] -> shared chorus bus
 let masterAnalyser = null;
 let spectrumAnalyser = null; // wider fftSize, post-FX — drives the spectrum canvas
 let lufsShelf = null, lufsHighpass = null, lufsAnalyser = null; // K-weighting chain — see computeLufs()
@@ -4534,6 +4630,11 @@ let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compress
 let duckGain = null; // GainNode ahead of masterFXNodes — see scheduleDucking()
 let crushBus = null; // GainNode between masterFXNodes.finalMix and the crusher/destination
 let crusherNode = null; // AudioWorkletNode once loaded — see ensureCrusher()
+// Two shared send/return FX buses (one delay-with-feedback, one LFO-modulated
+// short delay for chorus), fed by every track's own trackDelaySend/
+// trackChorusSend gain — see createGlobalFxBuses()/createTrackFxSends().
+let fxDelayBus = null, fxDelay = null, fxDelayFeedback = null, fxDelayWet = null;
+let fxChorusBus = null, fxChorusDelay = null, fxChorusLfo = null, fxChorusLfoGain = null, fxChorusWet = null;
 
 // Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor +
 // parallel-compression chain on the given context, wired
@@ -4618,6 +4719,47 @@ function applyMasterCrush(amount) {
   if (crusherNode) crusherNode.parameters.get('hold').value = crushAmountToHold(amount);
 }
 
+// One shared delay-with-feedback bus and one shared LFO-modulated short-delay
+// ("chorus") bus per audio context, fed by every track's own send-amount gain
+// (trackDelaySend[id]/trackChorusSend[id]) and returning into masterGain —
+// never back into chanGain[id], which would close a feedback loop through the
+// channel's own fader. A single global instance (like a real console's
+// send/return effects unit) rather than one per channel, since the per-track
+// *send amount* is already the per-track control — distinct from the
+// per-note Echo/Chorus flags' own per-channel buses (ensureDelay()/chorusOsc
+// in scheduleTone()), which are untouched by this.
+function createGlobalFxBuses() {
+  fxDelayBus = ctx.createGain();
+  fxDelay = ctx.createDelay(1.0);
+  fxDelay.delayTime.value = (60 / state.tempo / 2) * 1.5; // same dotted-eighth feel as the per-note echo bus
+  fxDelayFeedback = ctx.createGain(); fxDelayFeedback.gain.value = 0.35;
+  fxDelayWet = ctx.createGain(); fxDelayWet.gain.value = 1; // the per-track send gain is the level control now
+  fxDelayBus.connect(fxDelay);
+  fxDelay.connect(fxDelayFeedback).connect(fxDelay);
+  fxDelay.connect(fxDelayWet).connect(masterGain);
+
+  fxChorusBus = ctx.createGain();
+  fxChorusDelay = ctx.createDelay(0.05);
+  fxChorusDelay.delayTime.value = 0.02; // 20ms base
+  fxChorusLfo = ctx.createOscillator(); fxChorusLfo.frequency.value = 0.6; // Hz, slow wobble
+  fxChorusLfoGain = ctx.createGain(); fxChorusLfoGain.gain.value = 0.005; // +-5ms, stays positive against the 20ms base
+  fxChorusLfo.connect(fxChorusLfoGain).connect(fxChorusDelay.delayTime);
+  fxChorusLfo.start();
+  fxChorusWet = ctx.createGain(); fxChorusWet.gain.value = 1;
+  fxChorusBus.connect(fxChorusDelay).connect(fxChorusWet).connect(masterGain);
+}
+// Per-track taps into the two buses above. Called once per channel, right
+// after chanGain[id] exists, from every place that creates it (ensureCtx(),
+// renderSongToWav(), ensureChannelNodes()).
+function createTrackFxSends(id) {
+  trackDelaySend[id] = ctx.createGain();
+  trackDelaySend[id].gain.value = getFxSend(id).delay;
+  chanGain[id].connect(trackDelaySend[id]).connect(fxDelayBus);
+  trackChorusSend[id] = ctx.createGain();
+  trackChorusSend[id].gain.value = getFxSend(id).chorus;
+  chanGain[id].connect(trackChorusSend[id]).connect(fxChorusBus);
+}
+
 function ensureCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (!masterGain) {
@@ -4629,6 +4771,7 @@ function ensureCtx() {
     masterFXNodes = buildMasterFXChain(ctx, duckGain, crushBus);
     applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
     ensureCrusher(ctx, crushBus, ctx.destination); // last stage before the speakers — see ensureCrusher()
+    createGlobalFxBuses();
     for (const ch of ALL_TRACKS) {
       // Per channel: gain → panner → master, mirroring the game's audio graph.
       chanPan[ch] = ctx.createStereoPanner();
@@ -4639,6 +4782,7 @@ function ensureCtx() {
       chanAnalyser[ch] = ctx.createAnalyser();
       chanAnalyser[ch].fftSize = 256;
       chanGain[ch].connect(chanAnalyser[ch]);
+      createTrackFxSends(ch);
     }
     applyGains(); // set each channel to its audible gain (respecting mute/solo)
     applyPan();   // set each channel's stereo pan
@@ -4797,6 +4941,13 @@ function applyGains() {
 }
 function applyPan() {
   for (const ch of ALL_TRACKS) if (chanPan[ch]) chanPan[ch].pan.value = state.pan[ch];
+}
+function applyFxSend() {
+  for (const ch of ALL_TRACKS) {
+    const s = getFxSend(ch);
+    if (trackDelaySend[ch]) trackDelaySend[ch].gain.value = s.delay;
+    if (trackChorusSend[ch]) trackChorusSend[ch].gain.value = s.chorus;
+  }
 }
 
 // Schedule an automation curve's points as native AudioParam ramps for the
@@ -5497,6 +5648,9 @@ function stopPlayback() {
     duckGain = null;
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {};
+    trackDelaySend = {}; trackChorusSend = {};
+    fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
+    fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
     masterAnalyser = null;
     spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
     masterFXNodes = null;
