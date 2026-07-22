@@ -267,7 +267,7 @@
   .tl-ruler { display: grid; }
   .ruler-cell {
     border-right: 1px solid var(--grid); background: #26262c; cursor: pointer;
-    border-bottom: 1px solid #34343c; position: relative;
+    border-bottom: 1px solid #34343c; position: relative; touch-action: none;
   }
   .ruler-cell.bar-start { border-left: 1px solid var(--bar); }
   .ruler-cell .barnum {
@@ -388,7 +388,7 @@
   .automation-zero-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.15); pointer-events: none; }
   .automation-point {
     position: absolute; width: 9px; height: 9px; margin-left: -4.5px; margin-top: -4.5px;
-    border-radius: 50%; background: #1a1a20; border: 2px solid #888; cursor: grab;
+    border-radius: 50%; background: #1a1a20; border: 2px solid #888; cursor: grab; touch-action: none;
   }
   .automation-point:hover { background: #fff; }
   .adsr-lane-el { display: flex; align-items: center; gap: 18px; padding: 0 14px; }
@@ -410,7 +410,7 @@
 
   .note {
     border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2; touch-action: none;
   }
   .note.selected { outline: 2px solid #fff; z-index: 3; }
   .note.multi-selected, .hit.multi-selected { outline: 2px dashed #ffcc00; z-index: 3; }
@@ -420,7 +420,7 @@
   }
   .note .handle {
     position: absolute; right: 0; top: 0; width: 5px; height: 100%;
-    cursor: ew-resize; background: rgba(0,0,0,0.28);
+    cursor: ew-resize; background: rgba(0,0,0,0.28); touch-action: none;
   }
   .note.bend::after { content: "↝"; position: absolute; right: 2px; top: -2px; font-size: 10px; color: #111; }
   .note.vib::before { content: "~"; position: absolute; left: 2px; top: -3px; font-size: 10px; color: #111; }
@@ -433,7 +433,7 @@
 
   .hit {
     background: var(--rhythm); border-radius: 3px; cursor: pointer; align-self: center;
-    height: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); z-index: 2;
+    height: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); z-index: 2; touch-action: none;
   }
   .hit.snare   { background: #ffdf3b; }
   .hit.rim     { background: #b98cff; }
@@ -475,7 +475,7 @@
   .playhead-grip-wrap { position: absolute; top: 0; height: 100%; pointer-events: none; }
   .playhead-grip {
     position: sticky; top: 0; left: 0; width: 12px; height: 22px; margin-left: -6px;
-    z-index: 10; cursor: ew-resize; pointer-events: auto;
+    z-index: 10; cursor: ew-resize; pointer-events: auto; touch-action: none;
   }
   .playhead-grip::before {
     content: ''; position: absolute; top: 0; left: 1px;
@@ -493,7 +493,7 @@
   .loop-handle-wrap { position: absolute; top: 0; height: 100%; pointer-events: none; }
   .loop-handle {
     position: sticky; top: 0; left: 0; width: 10px; height: 22px; margin-left: -5px;
-    cursor: ew-resize; z-index: 10; pointer-events: auto;
+    cursor: ew-resize; z-index: 10; pointer-events: auto; touch-action: none;
   }
   .loop-handle::after { content: ''; position: absolute; left: 4px; top: 0; width: 2px; height: 22px; background: #3bff8f; }
 
@@ -1629,10 +1629,11 @@ function render() {
 }
 
 // render() rebuilds the whole grid (every cell of every track), so calling it
-// on every mousemove while dragging a note/hit/marquee can fire many times more
-// often than the browser can actually repaint. scheduleRender() coalesces those
-// into at most one render() per animation frame; the drag's final render() (on
-// mouseup) stays synchronous and cancels any still-pending scheduled one above.
+// on every pointermove while dragging a note/hit/marquee can fire many times
+// more often than the browser can actually repaint. scheduleRender() coalesces
+// those into at most one render() per animation frame; the drag's final
+// render() (on pointerup) stays synchronous and cancels any still-pending
+// scheduled one above.
 let renderRafId = null;
 function scheduleRender() {
   if (renderRafId != null) return;
@@ -1652,7 +1653,7 @@ function createOverlays() {
   playheadEl = el('div', 'playhead');
   playheadGrip = el('div', 'playhead-grip-wrap'); // positioned/hidden via this wrapper; see updatePlayheadPositions/updateOverlayClipping
   const gripVisual = el('div', 'playhead-grip');
-  gripVisual.addEventListener('mousedown', (e) => startScrub(e));
+  gripVisual.addEventListener('pointerdown', (e) => startScrub(e));
   playheadGrip.appendChild(gripVisual);
 
   const regionWrap = el('div', 'loop-region-wrap');
@@ -1661,12 +1662,12 @@ function createOverlays() {
 
   const startWrap = el('div', 'loop-handle-wrap');
   const startHandle = el('div', 'loop-handle');
-  startHandle.addEventListener('mousedown', (e) => startLoopDrag(e, 'start'));
+  startHandle.addEventListener('pointerdown', (e) => startLoopDrag(e, 'start'));
   startWrap.appendChild(startHandle);
 
   const endWrap = el('div', 'loop-handle-wrap');
   const endHandle = el('div', 'loop-handle');
-  endHandle.addEventListener('mousedown', (e) => startLoopDrag(e, 'end'));
+  endHandle.addEventListener('pointerdown', (e) => startLoopDrag(e, 'end'));
   endWrap.appendChild(endHandle);
 
   loopEls = { region: regionWrap, startHandle: startWrap, endHandle: endWrap };
@@ -1725,7 +1726,7 @@ function renderTimeline() {
     const rc = el('div', 'ruler-cell' + (c % bar === 0 ? ' bar-start' : ''));
     rc.style.gridColumn = c + 1;
     if (c % bar === 0) { const bn = el('span', 'barnum'); bn.textContent = (c / bar) + 1; rc.appendChild(bn); }
-    rc.addEventListener('mousedown', (e) => startScrub(e));
+    rc.addEventListener('pointerdown', (e) => startScrub(e));
     ruler.appendChild(rc);
   }
   timelineEl.appendChild(ruler);
@@ -1883,6 +1884,7 @@ function deleteAutomationPoint(track, param, idx) {
 }
 function startAutomationDrag(e, lane, track, param, idx) {
   e.preventDefault();
+  const pointerId = e.pointerId;
   const rect = lane.getBoundingClientRect();
   const before = getAutomationPoints(track, param) || [];
   const prev = before[idx - 1], next = before[idx + 1];
@@ -1892,6 +1894,7 @@ function startAutomationDrag(e, lane, track, param, idx) {
   // crucially, skips the render() that would otherwise swap out the DOM node mid-gesture
   // and break the browser's native double-click detection (used to delete a point).
   function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
     moved = true;
     const col = Math.max(minCol, Math.min(maxCol, Math.round((ev.clientX - rect.left) / colPx * 4) / 4));
     const value = yToValue(param, ev.clientY - rect.top);
@@ -1900,13 +1903,14 @@ function startAutomationDrag(e, lane, track, param, idx) {
     setAutomationPoints(track, param, points);
     scheduleRender();
   }
-  function onUp() {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
     if (moved) { render(); autosave(); }
   }
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
 }
 // A full-width row (mirrors a normal .track's header/gutter/lane structure so
 // it inherits the same sticky positioning) showing one parameter's automation
@@ -1976,7 +1980,7 @@ function renderAutomationRow(track, param) {
     dot.style.top = valueToY(param, p.value) + 'px';
     dot.style.borderColor = trackColor(track);
     dot.title = param === 'gain' ? p.value.toFixed(2) : panLabel(p.value);
-    dot.addEventListener('mousedown', (e) => { e.stopPropagation(); startAutomationDrag(e, lane, track, param, idx); });
+    dot.addEventListener('pointerdown', (e) => { e.stopPropagation(); startAutomationDrag(e, lane, track, param, idx); });
     dot.addEventListener('click', (e) => e.stopPropagation());
     dot.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteAutomationPoint(track, param, idx); });
     lane.appendChild(dot);
@@ -2286,7 +2290,7 @@ function renderPitchTrack(track) {
     const { col, midi } = laneCoords(e, rollEl, ROW_H, win.max);
     onCellClick(track, midi, col);
   });
-  rollEl.addEventListener('mousedown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+  rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
 
   state.tracks[track].forEach((note, idx) => {
     const midi = freqToMidi(note.freq);
@@ -2306,7 +2310,7 @@ function renderPitchTrack(track) {
     div.style.height = ROW_H + 'px';
     // Velocity shown as brightness — quieter notes look dimmer.
     div.style.opacity = (0.4 + 0.6 * (note.vel != null ? note.vel : 1)).toFixed(2);
-    div.addEventListener('mousedown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveNote(e, track, idx); });
+    div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveNote(e, track, idx); });
     div.addEventListener('click', (e) => {
       e.stopPropagation();
       if (e.shiftKey) { toggleMultiSelect(track, note); return; } // Shift+click adds/removes from the selection (any tool)
@@ -2319,7 +2323,7 @@ function renderPitchTrack(track) {
     if (note.arp && note.arp.length) { const badge = el('span', 'arp-badge'); badge.textContent = '♪'; div.appendChild(badge); }
     if (state.tool === 'grab') {
       const handle = el('div', 'handle');
-      handle.addEventListener('mousedown', (e) => { setActive(track); startResize(e, track, idx); });
+      handle.addEventListener('pointerdown', (e) => { setActive(track); startResize(e, track, idx); });
       div.appendChild(handle);
     }
     rollEl.appendChild(div);
@@ -2376,7 +2380,7 @@ function renderRhythmTrack() {
     const row = Math.max(0, Math.min(RHYTHM_ROWS.length - 1, Math.floor((e.clientY - rect.top) / RHY_H)));
     onRhythmCellClick(row, col);
   });
-  rollEl.addEventListener('mousedown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+  rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
 
   for (const hit of state.tracks.rhythm) {
     const r = RHYTHM_ROWS.indexOf(hit.type);
@@ -2385,7 +2389,7 @@ function renderRhythmTrack() {
     div.style.left = (hit.start * colPx) + 'px';
     div.style.width = Math.max(6, gridPx()) + 'px';
     div.style.top = (r * RHY_H + (RHY_H - 12) / 2) + 'px';
-    div.addEventListener('mousedown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, hit); });
+    div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, hit); });
     div.addEventListener('click', (e) => {
       e.stopPropagation();
       if (e.shiftKey) { toggleMultiSelect(track, hit); return; } // Shift+click adds/removes from the selection (any tool)
@@ -2565,14 +2569,14 @@ function updateLoopRegionClip() {
 }
 
 // Pass a cached rect (captured once at gesture start) to avoid a layout read on
-// every mousemove; falls back to a fresh measurement for one-off calls.
+// every pointermove; falls back to a fresh measurement for one-off calls.
 function colFromClientX(clientX, rect = rulerGridEl.getBoundingClientRect()) {
   return (clientX - rect.left) / colPx;
 }
 
 // Rescheduling audio (startPlaybackFrom) creates a full lookahead window's
 // worth of Web Audio nodes for every track. seekTo is called on every
-// mousemove while scrubbing the ruler, which — with no throttle — could
+// pointermove while scrubbing the ruler, which — with no throttle — could
 // fire dozens of times a second during a drag; each call scheduled a fresh
 // batch of nodes on top of whatever the previous call had already
 // scheduled (nothing cancels those), so a single fast drag while playing
@@ -2597,28 +2601,42 @@ function seekTo(col, { throttleAudio = false } = {}) {
 function startScrub(e) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
+  const pointerId = e.pointerId;
   const rect = rulerGridEl.getBoundingClientRect();
   const seek = (ev, opts) => seekTo(colFromClientX(ev.clientX, rect), opts);
   seek(e);
-  const onMove = (ev) => seek(ev, { throttleAudio: true });
-  const onUp = (ev) => { seek(ev); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; };
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  const onMove = (ev) => { if (ev.pointerId === pointerId) seek(ev, { throttleAudio: true }); };
+  const onUp = (ev) => {
+    if (ev.pointerId !== pointerId) return;
+    seek(ev);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    interacting = false;
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 function startLoopDrag(e, which) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
+  const pointerId = e.pointerId;
   const rect = rulerGridEl.getBoundingClientRect();
   function move(ev) {
+    if (ev.pointerId !== pointerId) return;
     const col = Math.max(0, Math.min(COLS, Math.round(colFromClientX(ev.clientX, rect))));
     if (which === 'start') state.loopStart = Math.min(col, state.loopEnd - 1);
     else state.loopEnd = Math.max(col, state.loopStart + 1);
     updateLoopPositions();
   }
   move(e);
-  function up() { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); interacting = false; }
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', up);
+  function up(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    interacting = false;
+  }
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
 }
 
 // ---------- Editing ----------
@@ -2696,27 +2714,30 @@ function deleteNote(track, idx) {
 function startMarquee(e, rollEl, track) {
   e.preventDefault();
   interacting = true;
+  const pointerId = e.pointerId;
   const rollRect = rollEl.getBoundingClientRect();
   const startCol = Math.max(0, Math.min(COLS, Math.round((e.clientX - rollRect.left) / colPx)));
   let moved = false;
   const setRange = (a, b) => { state.marquee = { col0: Math.min(a, b), col1: Math.max(a, b), track }; scheduleRender(); };
   setRange(startCol, startCol);
   function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
     const col = Math.max(0, Math.min(COLS, Math.round((ev.clientX - rollRect.left) / colPx)));
     if (col !== startCol) moved = true;
     setRange(startCol, col);
   }
-  function onUp() {
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
     interacting = false;
     const range = state.marquee;
     state.marquee = null;
     if (!moved) { clearSelection(); return; }
     selectRange(range.col0, range.col1);
   }
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 function selectRange(lo, hi) {
   state.multiSelected.clear();
@@ -2850,11 +2871,13 @@ function nextNoteStart(notes, afterCol) {
 function startResize(e, track, idx) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
+  const pointerId = e.pointerId;
   const notes = state.tracks[track];
   const note = notes[idx];
   const startX = e.clientX;
   const startLen = note.len;
   function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
     const deltaGrid = Math.round((ev.clientX - startX) / gridPx()) * state.grid;
     const newLen = Math.max(state.grid, startLen + deltaGrid);
     const others = notes.filter((_, i) => i !== idx);
@@ -2862,13 +2885,20 @@ function startResize(e, track, idx) {
     note.len = quant(Math.min(newLen, Math.max(state.grid, maxLen)));
     scheduleRender();
   }
-  function onUp() { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); interacting = false; render(); }
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    interacting = false;
+    render();
+  }
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 function startMoveNote(e, track, idx) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
+  const pointerId = e.pointerId;
   const notes = state.tracks[track];
   const note = notes[idx];
   const group = (state.multiSelected.size > 1 && state.multiSelected.has(note)) ? [...state.multiSelected] : [note];
@@ -2880,6 +2910,7 @@ function startMoveNote(e, track, idx) {
   const startX = e.clientX, startY = e.clientY;
   let moved = false;
   function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
     const dx = ev.clientX - startX, dy = ev.clientY - startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
     if (!moved) return;
@@ -2891,9 +2922,10 @@ function startMoveNote(e, track, idx) {
     }
     scheduleRender();
   }
-  function onUp() {
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
     interacting = false;
     if (!moved) { selectNote(track, idx); return; }
     const groupSet = new Set(group);
@@ -2903,12 +2935,13 @@ function startMoveNote(e, track, idx) {
     state.selected = { track, index: state.tracks[track].indexOf(note) };
     render();
   }
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 function startMoveHit(e, hit) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
+  const pointerId = e.pointerId;
   const group = (state.multiSelected.size > 1 && state.multiSelected.has(hit)) ? [...state.multiSelected] : [hit];
   const startPositions = group.map(h => ({ h, start: h.start, row: RHYTHM_ROWS.indexOf(h.type) }));
   const minStart = Math.min(...startPositions.map(p => p.start));
@@ -2917,21 +2950,23 @@ function startMoveHit(e, hit) {
   const maxRow   = Math.max(...startPositions.map(p => p.row));
   const startX = e.clientX, startY = e.clientY;
   function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
     const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, Math.round((ev.clientX - startX) / gridPx()) * state.grid));
     const deltaRows = Math.max(-minRow, Math.min(RHYTHM_ROWS.length - 1 - maxRow, Math.round((ev.clientY - startY) / RHY_H)));
     for (const { h, start, row } of startPositions) { h.start = quant(start + deltaCols); h.type = RHYTHM_ROWS[row + deltaRows]; }
     scheduleRender();
   }
-  function onUp() {
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
     interacting = false;
     const groupSet = new Set(group);
     state.tracks.rhythm = state.tracks.rhythm.filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
     render();
   }
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 
 // ---------- Inspector ----------
