@@ -37,11 +37,11 @@
     max-width: 700px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
   }
   dialog#help-dialog::backdrop { background: rgba(0,0,0,0.65); }
-  dialog#songs-dialog {
+  dialog#songs-dialog, dialog#preset-dialog {
     background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
     max-width: 560px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
   }
-  dialog#songs-dialog::backdrop { background: rgba(0,0,0,0.65); }
+  dialog#songs-dialog::backdrop, dialog#preset-dialog::backdrop { background: rgba(0,0,0,0.65); }
   .songs-body { padding: 4px 20px 18px; overflow-y: auto; max-height: calc(86vh - 60px); }
   .songs-body h3 { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #8f8f9b; margin: 16px 0 8px; }
   .songs-note { color: #b7b7c2; font-size: 12px; line-height: 1.55; margin: 10px 0 4px; }
@@ -294,6 +294,13 @@
     background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0; border-radius: 4px; cursor: pointer;
   }
   .th-collapse:hover { border-color: #55555f; }
+  .th-reorder { display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
+  .th-reorder button {
+    width: 14px; height: 9px; padding: 0; font-size: 7px; line-height: 1;
+    background: #2a2a30; border: 1px solid #3a3a42; color: #cfcfe0; border-radius: 2px; cursor: pointer;
+  }
+  .th-reorder button:hover:not(:disabled) { border-color: #55555f; }
+  .th-reorder button:disabled { opacity: 0.25; cursor: default; }
   /* Collapsed: keep just name/M/S plus the live VU bar, hide everything else
      (waveform, automation/envelope tools, volume/pan sliders, remove button)
      and the whole grid lane for that track — a slim strip so many tracks fit
@@ -340,6 +347,7 @@
   .th-tool-btn.on {
     background: #7a4fd1; color: #fff; border-color: #5c3aa8; box-shadow: 0 0 6px rgba(122,79,209,0.4);
   }
+  .th-tool-btn.icon { flex: 0 0 22px; font-size: 11px; }
   .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
@@ -754,6 +762,23 @@
           <button id="song-save-local">💾 Save current</button>
         </div>
         <div id="songs-local" class="song-list"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog id="preset-dialog">
+    <div class="help-head">
+      <h2>🎚 Instrument presets</h2>
+      <button id="preset-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note">Saves this track's waveform + envelope (attack/decay/sustain/release) as a named preset you can apply to any tonal track, in any song. Saved in this browser (nothing is uploaded).</p>
+      <section>
+        <div class="song-save-row">
+          <input id="preset-new-name" type="text" placeholder="Name this preset…" maxlength="60">
+          <button id="preset-save">💾 Save current as preset</button>
+        </div>
+        <div id="preset-list" class="song-list"></div>
       </section>
     </div>
   </dialog>
@@ -1659,6 +1684,20 @@ function addTrack() {
   state.activeTrack = id;
   render(); autosave();
 }
+// Swaps a tonal track with its neighbor. Rhythm always stays last (same
+// invariant addTrack() keeps when inserting new tracks) so it's never a
+// valid swap target and never gets a reorder button of its own.
+function moveTrack(id, dir) {
+  const list = state.trackList;
+  const idx = list.findIndex(t => t.id === id);
+  if (idx < 0 || list[idx].kind === 'rhythm') return;
+  const otherIdx = idx + dir;
+  if (otherIdx < 0 || otherIdx >= list.length || list[otherIdx].kind === 'rhythm') return;
+  [list[idx], list[otherIdx]] = [list[otherIdx], list[idx]];
+  refreshTrackArrays();
+  render();
+  autosave();
+}
 function renameTrack(id) {
   const t = trackOf(id);
   if (!t) return;
@@ -1952,7 +1991,23 @@ function buildHeader(track) {
     rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
     btns.append(rm);
   }
-  top.append(collapseBtn, name, btns);
+  if (track !== 'rhythm') { // rhythm always stays last, so it never gets reorder buttons
+    const idx = state.trackList.findIndex(t => t.id === track);
+    const prevT = state.trackList[idx - 1], nextT = state.trackList[idx + 1];
+    const reorder = el('div', 'th-reorder');
+    const up = el('button'); up.textContent = '▲'; up.title = 'Move track up';
+    const down = el('button'); down.textContent = '▼'; down.title = 'Move track down';
+    up.disabled = !prevT || prevT.kind === 'rhythm';
+    down.disabled = !nextT || nextT.kind === 'rhythm';
+    for (const [btn, dir] of [[up, -1], [down, 1]]) {
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => { e.stopPropagation(); moveTrack(track, dir); });
+    }
+    reorder.append(up, down);
+    top.append(collapseBtn, reorder, name, btns);
+  } else {
+    top.append(collapseBtn, name, btns);
+  }
 
   // Waveform picker (or the "Kit" label for rhythm) — its own full-width row,
   // hidden while collapsed.
@@ -2006,6 +2061,12 @@ function buildHeader(track) {
       render();
     });
     tools.append(adsrBtn);
+    const presetBtn = el('button', 'th-tool-btn icon');
+    presetBtn.textContent = '🎚';
+    presetBtn.title = 'Instrument presets — save/load this track\'s waveform + envelope';
+    presetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    presetBtn.addEventListener('click', (e) => { e.stopPropagation(); openPresetDialog(track); });
+    tools.append(presetBtn);
   }
 
   const vol = el('div', 'th-vol');
@@ -3723,6 +3784,65 @@ document.getElementById('song-save-local').addEventListener('click', () => {
   writeLocalSongs(songs);
   songNameInput.value = '';
   renderLocalSongs();
+});
+
+// ---------- Instrument presets (waveform + envelope, shared across tracks/songs) ----------
+const PRESETS_KEY = 'music-studio-instrument-presets';
+const presetDialog = document.getElementById('preset-dialog');
+const presetListEl = document.getElementById('preset-list');
+const presetNewNameInput = document.getElementById('preset-new-name');
+let presetDialogTrack = null; // which track the currently-open dialog applies to
+const readPresets = () => { try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || {}; } catch { return {}; } };
+function writePresets(obj) {
+  try { localStorage.setItem(PRESETS_KEY, JSON.stringify(obj)); }
+  catch { alert('Could not save — this browser\'s storage may be full.'); }
+}
+function applyPresetToTrack(track, preset) {
+  const t = trackOf(track);
+  if (!t || t.kind === 'rhythm' || !preset) return;
+  if (WAVEFORMS.includes(preset.waveform)) state.waveform[track] = preset.waveform;
+  if (preset.adsr) setAdsr(track, preset.adsr);
+  const n = state.tracks[track][0];
+  if (n) previewNote(track, n);
+  render();
+  autosave();
+}
+function presetDesc(preset) {
+  const a = preset.adsr || DEFAULT_ADSR;
+  return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}`;
+}
+function renderPresetList() {
+  const presets = readPresets();
+  const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
+  presetListEl.innerHTML = '';
+  if (!names.length) { presetListEl.innerHTML = '<div class="song-empty">No presets yet — dial in a waveform/envelope on a track, then save one below.</div>'; return; }
+  for (const name of names) {
+    presetListEl.appendChild(songRow({
+      title: name,
+      desc: presetDesc(presets[name]),
+      onLoad: () => { applyPresetToTrack(presetDialogTrack, presets[name]); presetDialog.close(); },
+      onDelete: () => { if (confirm(`Delete preset “${name}”?`)) { const p = readPresets(); delete p[name]; writePresets(p); renderPresetList(); } }
+    }));
+  }
+}
+function openPresetDialog(track) {
+  presetDialogTrack = track;
+  presetNewNameInput.value = '';
+  renderPresetList();
+  presetDialog.showModal();
+}
+document.getElementById('preset-close').addEventListener('click', () => presetDialog.close());
+document.getElementById('preset-save').addEventListener('click', () => {
+  const track = presetDialogTrack;
+  if (!track) return;
+  const name = presetNewNameInput.value.trim();
+  if (!name) { presetNewNameInput.focus(); return; }
+  const presets = readPresets();
+  if (presets[name] && !confirm(`Overwrite preset “${name}”?`)) return;
+  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) } };
+  writePresets(presets);
+  presetNewNameInput.value = '';
+  renderPresetList();
 });
 
 // ---------- Playback ----------
