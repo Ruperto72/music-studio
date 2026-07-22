@@ -1,6 +1,6 @@
 // Demo song data for Music Studio — "Froggy Hop", the loop from the Frog vs
 // Toad game. Pure data (note frequencies, the per-voice note arrays, and the
-// TRACKS/RHYTHM_TRACK assembly the editor loads on start). The editor has its
+// TRACKS/RHYTHM_TRACKS assembly the editor loads on start). The editor has its
 // own Web Audio synthesis, so no audio engine lives here.
 
 export const TEMPO_BPM = 150;
@@ -572,11 +572,12 @@ export const RHYTHM = [
   { type: 'tom', d: 1 }, { type: 'tom', d: 1 }, { type: 'tom', d: 1 }, { type: 'tom', d: 1 }, { type: 'snare', d: 1 }, { type: 'snare', d: 1 }, { type: 'kick', d: 1 }, { type: 'kick', d: 9 }, // takt 71-72 (tyst hela takt 72 — loopen landar rätt på takt 1:s ensamma kick)
 ];
 
-// Låten som en ordnad lista av tonala röst-spår plus rytmspåret. Editorn
-// redigerar exakt den här formen och dess export återskapar den — så spår kan
-// läggas till, döpas om och tas bort utan att spelet behöver ändras. Byggs av
-// arrayerna ovan så standardlåten är oförändrad. Varje tonalt spår: name,
-// osc (vågform), pan (-1..1), mix (relativ volym), notes. Rytmspåret har hits.
+// Låten som en ordnad lista av tonala röst-spår plus en lista av rytmspår
+// (idag bara ett, men editorn stödjer flera). Editorn redigerar exakt den här
+// formen och dess export återskapar den — så spår kan läggas till, döpas om
+// och tas bort utan att spelet behöver ändras. Byggs av arrayerna ovan så
+// standardlåten är oförändrad. Varje tonalt spår: name, osc (vågform), pan
+// (-1..1), mix (relativ volym), notes. Varje rytmspår: name, pan, mix, hits.
 export const TRACKS = [
   { name: 'Lead',    osc: VOICES.lead.osc,    pan: VOICES.lead.pan,    mix: MIX.lead,    notes: LEAD },
   { name: 'Harmony', osc: VOICES.harmony.osc, pan: VOICES.harmony.pan, mix: MIX.harmony, notes: HARMONY },
@@ -584,4 +585,6 @@ export const TRACKS = [
   { name: 'Arp',     osc: VOICES.arp.osc,     pan: VOICES.arp.pan,     mix: MIX.arp,     notes: ARP },
   { name: 'Pad',     osc: VOICES.pad.osc,     pan: VOICES.pad.pan,     mix: MIX.pad,     notes: PAD }
 ];
-export const RHYTHM_TRACK = { name: 'Rhythm', pan: VOICES.rhythm.pan, mix: MIX.rhythm, hits: RHYTHM };
+export const RHYTHM_TRACKS = [
+  { name: 'Rhythm', pan: VOICES.rhythm.pan, mix: MIX.rhythm, hits: RHYTHM }
+];

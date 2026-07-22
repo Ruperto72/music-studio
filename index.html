@@ -673,9 +673,9 @@
 
       <h3>Tracks &amp; channel strips</h3>
       <ul>
-        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus a fixed <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride.</li>
-        <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform, pan and a level meter.</li>
-        <li><b>＋ Add track</b> (next to the Master bar at the bottom) adds a tonal track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (Rhythm is fixed). Added tracks export into the game too.</li>
+        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
+        <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
+        <li><b>＋ Add track</b> / <b>＋ 🥁 Add rhythm track</b> (next to the Master bar at the bottom) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
@@ -739,7 +739,7 @@
       <ul>
         <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name and tempo/meter/length/track-count sit at the top of this same <b>☰</b> menu (click the name to rename).</li>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
-        <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACK</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><b>🎹 Export MIDI</b> / <b>🎼 Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><b>🔊 Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
         <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
@@ -1012,6 +1012,7 @@
         </div>
         <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
         <button id="add-track-btn" class="icon-btn" title="Add a new tonal track">＋ Add track</button>
+        <button id="add-rhythm-track-btn" class="icon-btn" title="Add a new rhythm track (same kit as the others)">＋ 🥁 Add rhythm track</button>
       </div>
     </div>
     <div class="inspector-column">
@@ -1023,7 +1024,7 @@
   <textarea id="exportBox" style="display:none" readonly></textarea>
 
 <script type="module">
-import { TRACKS, RHYTHM_TRACK, TEMPO_BPM } from './js/song-data.js';
+import { TRACKS, RHYTHM_TRACKS, TEMPO_BPM } from './js/song-data.js';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -1046,16 +1047,24 @@ const tsId = (ts) => `${ts.num}/${ts.den}`;
 const MIDI_MIN = 33, MIDI_MAX = 96;
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
-// Tracks are dynamic: the user can add, rename and remove tonal tracks. The
-// ordered descriptors live in state.trackList ({ id, name, color, kind }); the
-// per-track data/mix maps (state.tracks/gains/waveform/pan/mute/solo) are keyed
-// by id. PITCH_TRACKS/ALL_TRACKS are id lists rebuilt from trackList so the many
-// `for (const t of ALL_TRACKS)` loops keep working unchanged. Rhythm is a single
-// special track (a drum kit) that's always present and last.
+// Tracks are dynamic: the user can add, rename and remove tonal and rhythm
+// tracks. The ordered descriptors live in state.trackList ({ id, name, color,
+// kind }); the per-track data/mix maps (state.tracks/gains/waveform/pan/mute/
+// solo) are keyed by id. PITCH_TRACKS/RHYTHM_TRACK_IDS/ALL_TRACKS are id lists
+// rebuilt from trackList so the many `for (const t of ALL_TRACKS)` loops keep
+// working unchanged. All rhythm-kind tracks share the same fixed 10-piece kit
+// (RHYTHM_ROWS) and always stay grouped after every tonal track — at least one
+// always exists and can't be removed.
 let PITCH_TRACKS = ['lead', 'harmony', 'bass'];
 let ALL_TRACKS = ['lead', 'harmony', 'bass', 'rhythm'];
+// Ids of all rhythm-kind tracks (there can be more than one, all sharing the
+// same fixed kit — see RHYTHM_PALETTE/addRhythmTrack()). Named *_IDS rather
+// than RHYTHM_TRACKS to avoid colliding with the RHYTHM_TRACKS data array
+// imported from song-data.js.
+let RHYTHM_TRACK_IDS = ['rhythm'];
 function refreshTrackArrays() {
   PITCH_TRACKS = state.trackList.filter(t => t.kind === 'tone').map(t => t.id);
+  RHYTHM_TRACK_IDS = state.trackList.filter(t => t.kind === 'rhythm').map(t => t.id);
   ALL_TRACKS = state.trackList.map(t => t.id);
 }
 const trackOf = (id) => state.trackList.find(t => t.id === id);
@@ -1063,7 +1072,11 @@ const trackName = (id) => { const t = trackOf(id); return t ? t.name : id; };
 const trackColor = (id) => { const t = trackOf(id); return t ? t.color : '#8a8a94'; };
 const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm' : id === 'rhythm'; };
 const DEFAULT_IDS = ['lead', 'harmony', 'bass', 'arp', 'pad']; // ids for the game's tonal tracks (match saved-file keys)
-const RHYTHM_COLOR = '#39ff6a';
+// Color palette for rhythm tracks, separate from TRACK_PALETTE (tonal) so a
+// track's header border still hints at kind at a glance. RHYTHM_COLOR (the
+// first/default rhythm track's color) is this palette's first entry.
+const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
+const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
 const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri', 'fm']; // selectable per tonal track
 const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', fm: 'FM', kit: 'Kit' };
@@ -1305,7 +1318,7 @@ function fromColumnHits(hits) {
 const clampCols = (c) => { const bar = eighthsPerBar(); return Math.max(bar, Math.min(MAX_COLS, Math.round(c / bar) * bar)); };
 // Build the full editor state for the game's song: the track list plus every
 // per-track map (notes/gain/waveform/pan/mute/solo), derived from the exported
-// TRACKS + RHYTHM_TRACK. Also sets COLS. Used at startup and by Reset.
+// TRACKS + RHYTHM_TRACKS. Also sets COLS. Used at startup and by Reset.
 function gameDefaults() {
   const trackList = [];
   const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
@@ -1315,11 +1328,14 @@ function gameDefaults() {
     tracks[id] = toColumnNotes(t.notes);
     gains[id] = t.mix; waveform[id] = t.osc; pan[id] = t.pan; mute[id] = false; solo[id] = false;
   });
-  trackList.push({ id: 'rhythm', name: RHYTHM_TRACK.name, color: RHYTHM_COLOR, kind: 'rhythm' });
-  tracks.rhythm = toColumnHits(RHYTHM_TRACK.hits);
-  gains.rhythm = RHYTHM_TRACK.mix; waveform.rhythm = 'kit'; pan.rhythm = RHYTHM_TRACK.pan; mute.rhythm = false; solo.rhythm = false;
+  RHYTHM_TRACKS.forEach((rt, i) => {
+    const id = i === 0 ? 'rhythm' : 'rhythm' + (i + 1); // keep the first id stable for legacy-file compat
+    trackList.push({ id, name: rt.name, color: RHYTHM_PALETTE[i % RHYTHM_PALETTE.length], kind: 'rhythm' });
+    tracks[id] = toColumnHits(rt.hits);
+    gains[id] = rt.mix; waveform[id] = 'kit'; pan[id] = rt.pan; mute[id] = false; solo[id] = false;
+  });
   // The game's song is in 4/4 (8 eighths per bar); round up to a whole 4/4 bar.
-  const max = Math.max(...TRACKS.map(t => seqLength(t.notes)), seqLength(RHYTHM_TRACK.hits));
+  const max = Math.max(...TRACKS.map(t => seqLength(t.notes)), ...RHYTHM_TRACKS.map(rt => seqLength(rt.hits)));
   COLS = Math.max(8, Math.min(MAX_COLS, Math.ceil(max / 8) * 8));
   return { trackList, tracks, gains, waveform, pan, mute, solo };
 }
@@ -1330,7 +1346,9 @@ function derivedColsFromTracks(tracks) {
   const bar = eighthsPerBar();
   let max = bar;
   for (const t of PITCH_TRACKS) for (const n of tracks[t] || []) max = Math.max(max, n.start + n.len);
-  for (const h of tracks.rhythm || []) max = Math.max(max, h.start + 1);
+  // Called after restoreTrackList() has already populated state.trackList, so
+  // this reflects every rhythm-kind track, not just the default one.
+  for (const t of state.trackList) if (t.kind === 'rhythm') for (const h of tracks[t.id] || []) max = Math.max(max, h.start + 1);
   return Math.max(bar, Math.ceil(max / bar) * bar);
 }
 function colsFromSaved(data, tracks) {
@@ -1353,14 +1371,24 @@ function autosave() {
     } catch { /* best-effort */ }
   }, 400);
 }
+// A saved song (file, autosave draft, or local slot) is valid if it has at
+// least one rhythm-kind track with an array of hits — either declared in its
+// trackList, or (old files with no trackList) the legacy fixed `rhythm` key.
+function hasRhythmTrackData(data) {
+  const t = data && data.tracks;
+  if (!t || typeof t !== 'object') return false;
+  if (Array.isArray(data.trackList) && data.trackList.length) {
+    return data.trackList.some(tr => tr && tr.kind === 'rhythm' && Array.isArray(t[tr.id]));
+  }
+  return Array.isArray(t.rhythm);
+}
 function loadAutosaveIfPresent() {
   let raw;
   try { raw = localStorage.getItem(AUTOSAVE_KEY); } catch { return null; }
   if (!raw) return null;
   let data;
   try { data = JSON.parse(raw); } catch { return null; }
-  const t = data && data.tracks;
-  if (!t || typeof t !== 'object' || !Array.isArray(t.rhythm)) return null;
+  if (!hasRhythmTrackData(data)) return null;
   return data;
 }
 
@@ -1498,9 +1526,11 @@ function restoreTimeSig(data) {
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Rebuild the track list and per-track maps from saved data, tolerating old
-// files that had no trackList (derive it from the track data keys). Rhythm is
-// forced to exist exactly once, last. Mix values are seeded to defaults here and
-// overridden by applySavedMix. Refreshes PITCH_TRACKS/ALL_TRACKS.
+// files that had no trackList (derive it from the track data keys). At least
+// one rhythm track is guaranteed to exist, but a saved file's own rhythm-kind
+// entries (there can be more than one) are otherwise preserved as-is. Mix
+// values are seeded to defaults here and overridden by applySavedMix.
+// Refreshes PITCH_TRACKS/RHYTHM_TRACK_IDS/ALL_TRACKS.
 function restoreTrackList(data) {
   const src = (data.tracks && typeof data.tracks === 'object') ? data.tracks : {};
   let list = [];
@@ -1518,8 +1548,7 @@ function restoreTrackList(data) {
     const tonal = Object.keys(src).filter(k => k !== 'rhythm');
     list = tonal.map((id, i) => ({ id, name: cap(id), color: TRACK_PALETTE[i % TRACK_PALETTE.length], kind: 'tone' }));
   }
-  list = list.filter(t => t.kind !== 'rhythm');
-  list.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
+  if (!list.some(t => t.kind === 'rhythm')) list.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
   state.trackList = list;
   refreshTrackArrays();
   const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
@@ -1903,7 +1932,7 @@ function renderTracks() {
   tracksEl.innerHTML = '';
   laneRolls.length = 0;
   for (const t of state.trackList) {
-    if (t.kind === 'rhythm') renderRhythmTrack();
+    if (t.kind === 'rhythm') renderRhythmTrack(t.id);
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
     if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
@@ -1931,7 +1960,7 @@ function addTrack() {
   const id = nextTrackId();
   const tonalCount = state.trackList.filter(t => t.kind === 'tone').length;
   const desc = { id, name: 'Track ' + (tonalCount + 1), color: TRACK_PALETTE[tonalCount % TRACK_PALETTE.length], kind: 'tone' };
-  const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm'); // keep rhythm last
+  const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm'); // keep tonal tracks before every rhythm track
   state.trackList.splice(rIdx < 0 ? state.trackList.length : rIdx, 0, desc);
   state.tracks[id] = [];
   state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
@@ -1940,15 +1969,31 @@ function addTrack() {
   state.activeTrack = id;
   render(); autosave();
 }
-// Swaps a tonal track with its neighbor. Rhythm always stays last (same
-// invariant addTrack() keeps when inserting new tracks) so it's never a
-// valid swap target and never gets a reorder button of its own.
+// Mirrors addTrack() for a new rhythm-kind track (same fixed 10-piece kit as
+// every other rhythm track). Pushed to the very end so all rhythm tracks stay
+// grouped after every tonal one.
+function addRhythmTrack() {
+  const id = nextTrackId();
+  const rhythmCount = state.trackList.filter(t => t.kind === 'rhythm').length;
+  const desc = { id, name: 'Rhythm ' + (rhythmCount + 1), color: RHYTHM_PALETTE[rhythmCount % RHYTHM_PALETTE.length], kind: 'rhythm' };
+  state.trackList.push(desc);
+  state.tracks[id] = [];
+  state.gains[id] = 0.9; state.waveform[id] = 'kit'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
+  refreshTrackArrays();
+  ensureChannelNodes(id);
+  state.activeTrack = id;
+  render(); autosave();
+}
+// Swaps a track with its neighbor, tonal or rhythm. Tracks only ever swap
+// within their own kind — tonal tracks stay before every rhythm track, never
+// the other way around (same boundary addTrack()/addRhythmTrack() keep).
 function moveTrack(id, dir) {
   const list = state.trackList;
   const idx = list.findIndex(t => t.id === id);
-  if (idx < 0 || list[idx].kind === 'rhythm') return;
+  if (idx < 0) return;
   const otherIdx = idx + dir;
-  if (otherIdx < 0 || otherIdx >= list.length || list[otherIdx].kind === 'rhythm') return;
+  if (otherIdx < 0 || otherIdx >= list.length) return;
+  if (list[idx].kind !== list[otherIdx].kind) return;
   [list[idx], list[otherIdx]] = [list[otherIdx], list[idx]];
   refreshTrackArrays();
   render();
@@ -1962,9 +2007,16 @@ function renameTrack(id) {
   const trimmed = name.trim();
   if (trimmed) { t.name = trimmed; render(); autosave(); }
 }
+// A track can always be removed, except the very last remaining rhythm track
+// — at least one rhythm-kind track must always exist.
+function canRemoveTrack(id) {
+  const t = trackOf(id);
+  if (!t) return false;
+  return t.kind !== 'rhythm' || state.trackList.filter(x => x.kind === 'rhythm').length > 1;
+}
 function removeTrack(id) {
   const t = trackOf(id);
-  if (!t || t.kind === 'rhythm') return; // rhythm can't be removed
+  if (!t || !canRemoveTrack(id)) return;
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
@@ -2350,34 +2402,37 @@ function buildHeader(track) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
     btns.append(btn);
   }
-  if (track !== 'rhythm') { // rhythm is the fixed drum kit and can't be removed
+  if (canRemoveTrack(track)) {
     const rm = el('button', 'x th-remove'); rm.textContent = '✕'; rm.title = 'Remove this track';
     rm.addEventListener('mousedown', (e) => e.stopPropagation());
     rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
     btns.append(rm);
   }
-  if (track !== 'rhythm') { // rhythm always stays last, so it never gets reorder buttons
+  {
+    // Reorder is always within-kind: a tonal track's neighbors can only ever
+    // be tonal, a rhythm track's only ever rhythm (see moveTrack()) — so the
+    // up/down buttons just need to check the neighbor's kind, same rule for
+    // both kinds now.
+    const kind = isRhythm(track) ? 'rhythm' : 'tone';
     const idx = state.trackList.findIndex(t => t.id === track);
     const prevT = state.trackList[idx - 1], nextT = state.trackList[idx + 1];
     const reorder = el('div', 'th-reorder');
     const up = el('button'); up.textContent = '▲'; up.title = 'Move track up';
     const down = el('button'); down.textContent = '▼'; down.title = 'Move track down';
-    up.disabled = !prevT || prevT.kind === 'rhythm';
-    down.disabled = !nextT || nextT.kind === 'rhythm';
+    up.disabled = !prevT || prevT.kind !== kind;
+    down.disabled = !nextT || nextT.kind !== kind;
     for (const [btn, dir] of [[up, -1], [down, 1]]) {
       btn.addEventListener('mousedown', (e) => e.stopPropagation());
       btn.addEventListener('click', (e) => { e.stopPropagation(); moveTrack(track, dir); });
     }
     reorder.append(up, down);
     top.append(collapseBtn, reorder, name, btns);
-  } else {
-    top.append(collapseBtn, name, btns);
   }
 
   // Waveform picker (or the "Kit" label for rhythm) — its own full-width row,
   // hidden while collapsed.
   const waveRow = el('div', 'th-wave-row');
-  if (track === 'rhythm') {
+  if (isRhythm(track)) {
     const osc = el('span', 'th-osc'); osc.textContent = WAVE_LABEL.kit;
     waveRow.append(osc);
   } else {
@@ -2416,7 +2471,7 @@ function buildHeader(track) {
     render();
   });
   tools.append(autoBtn);
-  if (track !== 'rhythm') { // drum hits use fixed per-type envelopes, not a shared ADSR
+  if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     adsrBtn.textContent = 'E Env';
     adsrBtn.title = 'Envelope (attack/decay/sustain/release)';
@@ -2524,9 +2579,9 @@ function renderCollapsedOverview(track) {
   canvas.height = height;
   const cx = canvas.getContext('2d');
   cx.fillStyle = trackColor(track);
-  if (track === 'rhythm') {
+  if (isRhythm(track)) {
     const rowH = height / RHYTHM_ROWS.length;
-    for (const h of state.tracks.rhythm) {
+    for (const h of state.tracks[track]) {
       const r = RHYTHM_ROWS.indexOf(h.type);
       if (r < 0) continue;
       cx.fillRect(GUTTER_W + h.start * colPx, r * rowH, Math.max(1.5, colPx * 0.8), Math.max(1, rowH - 0.5));
@@ -2650,8 +2705,7 @@ function renderPitchTrack(track) {
   laneRolls.push({ track, rollEl });
 }
 
-function renderRhythmTrack() {
-  const track = 'rhythm';
+function renderRhythmTrack(track) {
   const active = state.activeTrack === track;
   const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent') + (collapsedTracks.has(track) ? ' collapsed' : ''));
   row.dataset.track = track;
@@ -2694,25 +2748,25 @@ function renderRhythmTrack() {
     const rect = rollEl.getBoundingClientRect();
     const col = Math.max(0, Math.min(COLS - state.grid, snapToGrid((e.clientX - rect.left) / colPx)));
     const row = Math.max(0, Math.min(RHYTHM_ROWS.length - 1, Math.floor((e.clientY - rect.top) / RHY_H)));
-    onRhythmCellClick(row, col);
+    onRhythmCellClick(track, row, col);
   });
   rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
 
-  for (const hit of state.tracks.rhythm) {
+  for (const hit of state.tracks[track]) {
     const r = RHYTHM_ROWS.indexOf(hit.type);
     const div = el('div', 'hit' + (hit.type !== 'kick' ? ' ' + hit.type : '') + (state.multiSelected.has(hit) ? ' multi-selected' : ''));
     div.style.position = 'absolute';
     div.style.left = (hit.start * colPx) + 'px';
     div.style.width = Math.max(6, gridPx()) + 'px';
     div.style.top = (r * RHY_H + (RHY_H - 12) / 2) + 'px';
-    div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, hit); });
+    div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, track, hit); });
     div.addEventListener('click', (e) => {
       e.stopPropagation();
       if (e.shiftKey) { toggleMultiSelect(track, hit); return; } // Shift+click adds/removes from the selection (any tool)
       setActive(track);
       if (state.tool === 'eraser') {
         if (state.multiSelected.size > 1 && state.multiSelected.has(hit)) deleteSelection();
-        else removeHit(hit);
+        else removeHit(track, hit);
       }
     });
     rollEl.appendChild(div);
@@ -3000,15 +3054,15 @@ function onCellClick(track, midi, col) {
   previewNote(track, cleared[cleared.length - 1]);
   render();
 }
-function onRhythmCellClick(row, col) {
+function onRhythmCellClick(track, row, col) {
   const type = RHYTHM_ROWS[row];
-  const hits = state.tracks.rhythm.filter(h => h.start !== col);
+  const hits = state.tracks[track].filter(h => h.start !== col);
   hits.push({ start: col, type });
-  state.tracks.rhythm = hits;
+  state.tracks[track] = hits;
   previewHit(type);
   render();
 }
-function removeHit(hit) { state.tracks.rhythm = state.tracks.rhythm.filter(h => h !== hit); render(); }
+function removeHit(track, hit) { state.tracks[track] = state.tracks[track].filter(h => h !== hit); render(); }
 // Plays a built-in RHYTHM_PATTERNS entry once, one bar, for audition before inserting.
 function previewPattern(pattern) {
   try {
@@ -3018,7 +3072,7 @@ function previewPattern(pattern) {
     const startAt = ctx.currentTime + 0.05;
     const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
     for (const h of pattern.hits) {
-      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + h.start * scale * eighthSec);
+      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + h.start * scale * eighthSec, previewGain);
     }
   } catch { /* audio unavailable */ }
 }
@@ -3027,6 +3081,8 @@ function previewPattern(pattern) {
 // playhead's bar are left alone). Patterns are authored at 8 eighths/bar
 // (4/4) and scaled to whatever eighthsPerBar() the song is actually in.
 function insertPatternIntoRhythm(pattern) {
+  const track = state.activeTrack;
+  if (!isRhythm(track)) return; // the 🥁 button that opens the pattern dialog only exists on rhythm tracks
   const barLen = eighthsPerBar();
   const scale = barLen / 8;
   const startBar = Math.floor(state.playhead / barLen) * barLen;
@@ -3037,7 +3093,7 @@ function insertPatternIntoRhythm(pattern) {
       if (start < COLS) newHits.push({ start, type: h.type });
     }
   }
-  state.tracks.rhythm = state.tracks.rhythm.filter(h => h.start < startBar).concat(newHits);
+  state.tracks[track] = state.tracks[track].filter(h => h.start < startBar).concat(newHits);
   if (pattern.swing != null) { state.swing = pattern.swing; syncSwingUI(); }
   render();
   autosave();
@@ -3124,7 +3180,7 @@ function deleteSelection() {
 function nudgeSelection(dCol, dRow) {
   if (state.multiSelected.size > 0) {
     const sel = [...state.multiSelected];
-    if (state.activeTrack === 'rhythm') {
+    if (isRhythm(state.activeTrack)) {
       const minStart = Math.min(...sel.map(h => h.start));
       const maxStart = Math.max(...sel.map(h => h.start));
       const rows = sel.map(h => RHYTHM_ROWS.indexOf(h.type));
@@ -3132,7 +3188,7 @@ function nudgeSelection(dCol, dRow) {
       const dr = Math.max(Math.max(...rows) - (RHYTHM_ROWS.length - 1), Math.min(Math.min(...rows), dRow));
       sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
       const selSet = state.multiSelected;
-      state.tracks.rhythm = state.tracks.rhythm.filter(h => selSet.has(h) || !sel.some(s => s.start === h.start));
+      state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(h => selSet.has(h) || !sel.some(s => s.start === h.start));
     } else {
       const notes = state.tracks[state.activeTrack];
       const minStart = Math.min(...sel.map(n => n.start));
@@ -3173,10 +3229,10 @@ function copySelection() {
 }
 function pasteClipboard() {
   if (!clipboard) return;
-  const clipIsRhythm = clipboard.track === 'rhythm';
-  if (clipIsRhythm !== (state.activeTrack === 'rhythm')) return;
+  const clipIsRhythm = isRhythm(clipboard.track);
+  if (clipIsRhythm !== isRhythm(state.activeTrack)) return;
   const anchor = state.playhead;
-  if (state.activeTrack === 'rhythm') {
+  if (clipIsRhythm) {
     const seen = new Set();
     const pasted = [];
     for (const it of clipboard.items) {
@@ -3185,7 +3241,7 @@ function pasteClipboard() {
       seen.add(start);
       pasted.push({ start, type: it.type });
     }
-    state.tracks.rhythm = [...state.tracks.rhythm.filter(h => !seen.has(h.start)), ...pasted];
+    state.tracks[state.activeTrack] = [...state.tracks[state.activeTrack].filter(h => !seen.has(h.start)), ...pasted];
     state.multiSelected = new Set(pasted);
   } else {
     let notes = state.tracks[state.activeTrack];
@@ -3287,7 +3343,7 @@ function startMoveNote(e, track, idx) {
   window.addEventListener('pointerup', onUp);
   window.addEventListener('pointercancel', onUp);
 }
-function startMoveHit(e, hit) {
+function startMoveHit(e, track, hit) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
   const pointerId = e.pointerId;
@@ -3312,7 +3368,7 @@ function startMoveHit(e, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    state.tracks.rhythm = state.tracks.rhythm.filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
+    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -3547,6 +3603,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 document.getElementById('add-track-btn').addEventListener('click', addTrack);
+document.getElementById('add-rhythm-track-btn').addEventListener('click', addRhythmTrack);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 
@@ -3735,7 +3792,7 @@ function setCols(newCols) {
         .filter(n => n.start < newCols)
         .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n));
     }
-    state.tracks.rhythm = state.tracks.rhythm.filter(h => h.start < newCols);
+    for (const id of RHYTHM_TRACK_IDS) state.tracks[id] = state.tracks[id].filter(h => h.start < newCols);
     state.markers = state.markers.filter(m => m.col <= newCols);
   }
   COLS = newCols;
@@ -3845,9 +3902,11 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
     const copies = source.map(n => ({ ...n, start: n.start - start + destStart, arp: n.arp ? [...n.arp] : null }));
     state.tracks[t] = [...rest, ...copies];
   }
-  const sourceHits = state.tracks.rhythm.filter(h => h.start >= start && h.start < end);
-  const restHits = state.tracks.rhythm.filter(h => !(h.start >= destStart && h.start < destEnd));
-  state.tracks.rhythm = [...restHits, ...sourceHits.map(h => ({ ...h, start: h.start - start + destStart }))];
+  for (const id of RHYTHM_TRACK_IDS) {
+    const sourceHits = state.tracks[id].filter(h => h.start >= start && h.start < end);
+    const restHits = state.tracks[id].filter(h => !(h.start >= destStart && h.start < destEnd));
+    state.tracks[id] = [...restHits, ...sourceHits.map(h => ({ ...h, start: h.start - start + destStart }))];
+  }
   state.loopStart = destStart;
   state.loopEnd = destEnd;
   state.selected = null;
@@ -3877,8 +3936,7 @@ document.getElementById('load-file').addEventListener('click', () => loadInput.c
 // `name` overrides data.songName — used when the song's name lives outside
 // the file itself (an example's index.json entry, or a local save's slot key).
 function applySongData(data, name) {
-  const t = data && data.tracks;
-  if (!t || typeof t !== 'object' || !Array.isArray(t.rhythm)) return false;
+  if (!hasRhythmTrackData(data)) return false;
   stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
   state.songName = name || (typeof data.songName === 'string' && data.songName) || 'Untitled Song';
   updateSongNameUI();
@@ -3916,7 +3974,7 @@ loadInput.addEventListener('change', async () => {
   catch (err) { alert('Could not read the file: ' + err.message); return; }
   // Fall back to the filename (minus extension) if the file predates songName.
   const fallbackName = file.name.replace(/\.json$/i, '');
-  if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing the rhythm track).');
+  if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing a rhythm track).');
 });
 
 // ---------- MIDI export ----------
@@ -4155,7 +4213,13 @@ function importMidiIntoSong(buffer) {
     state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
     lastNewId = id;
   }
-  if (importedRhythmHits.length) state.tracks.rhythm = state.tracks.rhythm.concat(importedRhythmHits);
+  // All channel-9 hits from the whole file are merged into the first rhythm
+  // track — there's no standard way to tell "which drum track" a GM channel-9
+  // event came from beyond the source MIDI track, which this doesn't track.
+  const rhythmTargetId = (state.trackList.find(t => t.kind === 'rhythm') || {}).id;
+  if (rhythmTargetId && importedRhythmHits.length) {
+    state.tracks[rhythmTargetId] = state.tracks[rhythmTargetId].concat(importedRhythmHits);
+  }
   refreshTrackArrays();
   for (const t of state.trackList) ensureChannelNodes(t.id);
   if (importedBpm !== state.tempo && confirm(`This MIDI file's tempo is ${importedBpm} BPM (song is currently ${state.tempo} BPM). Use the file's tempo?`)) {
@@ -4207,8 +4271,9 @@ function audioBufferToWav(buffer) {
 }
 // Renders the whole song offline (OfflineAudioContext) using the same
 // synthesis functions as live playback, then returns the rendered AudioBuffer.
-// The drum-hit functions (scheduleKick etc.) hardcode chanGain.rhythm rather
-// than taking a destination param, so the only way to redirect them at an
+// Every scheduler (tone or drum-hit) still creates its nodes via the shared
+// `ctx` global (osc/buffer-source/filter creation isn't parameterized, only
+// the destination gain is), so the only way to redirect a whole render at an
 // offline graph is to temporarily point the shared ctx/chanGain/chanPan
 // globals at it — mirrors ensureCtx()'s own setup, just against an
 // OfflineAudioContext instead of a live one. Requires playback to be
@@ -4382,7 +4447,7 @@ function writePresets(obj) {
 }
 function applyPresetToTrack(track, preset) {
   const t = trackOf(track);
-  if (!t || t.kind === 'rhythm' || !preset) return;
+  if (!t || isRhythm(track) || !preset) return;
   if (WAVEFORMS.includes(preset.waveform)) state.waveform[track] = preset.waveform;
   if (preset.adsr) setAdsr(track, preset.adsr);
   if (preset.filter) setFilterState(track, preset.filter);
@@ -4726,7 +4791,7 @@ function previewHit(type) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const at = ctx.currentTime + 0.005;
-    (DRUM_SCHEDULERS[type] || scheduleHihat)(at);
+    (DRUM_SCHEDULERS[type] || scheduleHihat)(at, previewGain);
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
@@ -4772,7 +4837,7 @@ function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
   if (!enabled || !depth) return;
   const duckTo = Math.max(0.05, 1 - depth);
   const releaseSec = 0.15;
-  for (const h of state.tracks.rhythm) {
+  for (const id of RHYTHM_TRACK_IDS) for (const h of state.tracks[id]) {
     if ((h.type !== 'kick' && h.type !== 'snare') || h.start < fromCol || h.start >= toCol) continue;
     const at = startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec;
     duckGain.gain.cancelScheduledValues(at);
@@ -5135,7 +5200,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   osc.start(startAt);
   osc.stop(startAt + totalDur);
 }
-function scheduleKick(startAt) {
+function scheduleKick(startAt, destGain) {
   const osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(150, startAt);
@@ -5143,7 +5208,7 @@ function scheduleKick(startAt) {
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.7, startAt + 0.008);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.12);
-  osc.connect(gain).connect(chanGain.rhythm);
+  osc.connect(gain).connect(destGain);
   osc.start(startAt); osc.stop(startAt + 0.13);
 }
 let noiseBuffer = null;
@@ -5156,17 +5221,17 @@ function ensureNoiseBuffer() {
   }
   return noiseBuffer;
 }
-function scheduleHihat(startAt) {
+function scheduleHihat(startAt, destGain) {
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
   filter.type = 'highpass'; filter.frequency.value = 6000;
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.6, startAt + 0.004);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
-  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.connect(filter).connect(gain).connect(destGain);
   src.start(startAt); src.stop(startAt + 0.04);
 }
-function schedulePuka(startAt) {
+function schedulePuka(startAt, destGain) {
   const osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(220, startAt);
@@ -5174,17 +5239,17 @@ function schedulePuka(startAt) {
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(1, startAt + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.28);
-  osc.connect(gain).connect(chanGain.rhythm);
+  osc.connect(gain).connect(destGain);
   osc.start(startAt); osc.stop(startAt + 0.3);
 }
-function scheduleSnare(startAt) {
+function scheduleSnare(startAt, destGain) {
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
   filter.type = 'bandpass'; filter.frequency.value = 1800; filter.Q.value = 0.7;
   noiseGain.gain.setValueAtTime(0.0001, startAt);
   noiseGain.gain.exponentialRampToValueAtTime(1, startAt + 0.004);
   noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.09);
-  src.connect(filter).connect(noiseGain).connect(chanGain.rhythm);
+  src.connect(filter).connect(noiseGain).connect(destGain);
   src.start(startAt); src.stop(startAt + 0.1);
 
   const osc = ctx.createOscillator(), oscGain = ctx.createGain();
@@ -5194,14 +5259,14 @@ function scheduleSnare(startAt) {
   oscGain.gain.setValueAtTime(0.0001, startAt);
   oscGain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
   oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.08);
-  osc.connect(oscGain).connect(chanGain.rhythm);
+  osc.connect(oscGain).connect(destGain);
   osc.start(startAt); osc.stop(startAt + 0.09);
 }
 // Three quick filtered-noise bursts (a "flam") through a shared bandpass filter.
-function scheduleClap(startAt) {
+function scheduleClap(startAt, destGain) {
   const filter = ctx.createBiquadFilter();
   filter.type = 'bandpass'; filter.frequency.value = 1200; filter.Q.value = 1.2;
-  filter.connect(chanGain.rhythm);
+  filter.connect(destGain);
   for (const t of [0, 0.012, 0.024]) {
     const src = ctx.createBufferSource(), g = ctx.createGain();
     src.buffer = ensureNoiseBuffer();
@@ -5222,7 +5287,7 @@ function ensureCrashNoiseBuffer() {
   }
   return crashNoiseBuffer;
 }
-function scheduleCrash(startAt) {
+function scheduleCrash(startAt, destGain) {
   const dur = 0.9;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
@@ -5230,10 +5295,10 @@ function scheduleCrash(startAt) {
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.connect(filter).connect(gain).connect(destGain);
   src.start(startAt); src.stop(startAt + dur);
 }
-function scheduleOpenHat(startAt) {
+function scheduleOpenHat(startAt, destGain) {
   const dur = 0.3;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
@@ -5241,18 +5306,18 @@ function scheduleOpenHat(startAt) {
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.connect(filter).connect(gain).connect(destGain);
   src.start(startAt); src.stop(startAt + dur);
 }
 // A short bandpassed noise tick plus a high triangle ping, distinct from the snare's boom.
-function scheduleRim(startAt) {
+function scheduleRim(startAt, destGain) {
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
   filter.type = 'bandpass'; filter.frequency.value = 2800; filter.Q.value = 3;
   noiseGain.gain.setValueAtTime(0.0001, startAt);
   noiseGain.gain.exponentialRampToValueAtTime(0.8, startAt + 0.002);
   noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.03);
-  src.connect(filter).connect(noiseGain).connect(chanGain.rhythm);
+  src.connect(filter).connect(noiseGain).connect(destGain);
   src.start(startAt); src.stop(startAt + 0.04);
 
   const osc = ctx.createOscillator(), oscGain = ctx.createGain();
@@ -5261,21 +5326,21 @@ function scheduleRim(startAt) {
   oscGain.gain.setValueAtTime(0.0001, startAt);
   oscGain.gain.exponentialRampToValueAtTime(0.4, startAt + 0.002);
   oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
-  osc.connect(oscGain).connect(chanGain.rhythm);
+  osc.connect(oscGain).connect(destGain);
   osc.start(startAt); osc.stop(startAt + 0.04);
 }
-function scheduleShaker(startAt) {
+function scheduleShaker(startAt, destGain) {
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
   filter.type = 'bandpass'; filter.frequency.value = 7000; filter.Q.value = 0.9;
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.06);
-  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.connect(filter).connect(gain).connect(destGain);
   src.start(startAt); src.stop(startAt + 0.07);
 }
 // Narrower bandpass than the crash (so it "pings" instead of washing out) plus a short sine bell tone.
-function scheduleRide(startAt) {
+function scheduleRide(startAt, destGain) {
   const dur = 0.5;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
@@ -5283,7 +5348,7 @@ function scheduleRide(startAt) {
   gain.gain.setValueAtTime(0.0001, startAt);
   gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
   gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.connect(filter).connect(gain).connect(destGain);
   src.start(startAt); src.stop(startAt + dur);
 
   const ping = ctx.createOscillator(), pingGain = ctx.createGain();
@@ -5292,7 +5357,7 @@ function scheduleRide(startAt) {
   pingGain.gain.setValueAtTime(0.0001, startAt);
   pingGain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.004);
   pingGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.1);
-  ping.connect(pingGain).connect(chanGain.rhythm);
+  ping.connect(pingGain).connect(destGain);
   ping.start(startAt); ping.stop(startAt + 0.12);
 }
 // Shared dispatch table for all 10 kit sounds — used by playback (playOnce),
@@ -5336,9 +5401,10 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
     scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id), getFmState(id));
   }
-  if (audible('rhythm')) {
-    for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
-      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
+  for (const id of RHYTHM_TRACK_IDS) {
+    if (!audible(id) || !chanGain[id]) continue;
+    for (const h of state.tracks[id].filter(n => n.start >= fromCol && n.start < toCol)) {
+      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id]);
     }
   }
 }
@@ -5484,10 +5550,13 @@ document.getElementById('export').addEventListener('click', () => {
     return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
   }).join(',\n');
   const tracksCode = `export const TRACKS = [\n${toneBlocks}\n];`;
-  const hits = exportNotesArray(fromColumnHits(state.tracks.rhythm), true, '');
-  const rhythmCode = `export const RHYTHM_TRACK = { name: 'Rhythm', pan: ${round2(state.pan.rhythm)}, mix: ${state.gains.rhythm}, hits: ${hits} };`;
+  const rhythmBlocks = state.trackList.filter(t => t.kind === 'rhythm').map(t => {
+    const hits = exportNotesArray(fromColumnHits(state.tracks[t.id]), true, '  ');
+    return `  { name: ${jsStr(t.name)}, pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, hits: ${hits} }`;
+  }).join(',\n');
+  const rhythmCode = `export const RHYTHM_TRACKS = [\n${rhythmBlocks}\n];`;
   box.value =
-    `// Paste over the TRACKS and RHYTHM_TRACK declarations in audio.js.\n` +
+    `// Paste over the TRACKS and RHYTHM_TRACKS declarations in audio.js.\n` +
     `// Tempo: ${state.tempo} BPM — also update TEMPO_BPM in audio.js if it changed.\n\n` +
     `${tracksCode}\n\n${rhythmCode}`;
   box.style.display = 'block';
