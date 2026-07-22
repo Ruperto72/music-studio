@@ -8,18 +8,32 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
 ## Punkter från CoPilot GitHub
 
 ### Fas 1: Grundkvalitet (snabb)
-- [ ] Höja samplingshastighet till 48 kHz (WAV-export kör fortfarande 44.1 kHz
-  — hårdkodat i `renderSongToWav()`s `new OfflineAudioContext(2, totalSamples, sampleRate)`
-  och i `audioBufferToWav()`; `AudioContext`/`OfflineAudioContext` tar valfri
-  `sampleRate` i sina konstruktoralternativ)
-- [ ] Implementera Voice Pooling (återanvänd synth-noder — `OscillatorNode`/
-  `AudioBufferSourceNode` är engångsnoder (kan bara `start()`/`stop()`:as en
-  gång vardera per spec), så "pooling" betyder i praktiken att återanvända
-  den kringliggande grafen (`GainNode`/`BiquadFilterNode` m.fl. via
-  `disconnect()`/`connect()`) och bara skapa en ny källnod per triggning)
-- [ ] Lägg till enkel wavetable synthesis (`AudioContext.createPeriodicWave()` /
-  `OscillatorNode.setPeriodicWave()` för att ersätta de inbyggda
-  square/saw/triangle/sine-vågformerna med egna godtyckliga övertonsspektra)
+- [x] **Höja samplingshastighet till 48 kHz** — `renderSongToWav()`s
+  `const sampleRate` (som styr `new OfflineAudioContext(2, totalSamples,
+  sampleRate)`) är nu `48000` istället för `44100`; `audioBufferToWav()`
+  läser redan `buffer.sampleRate` dynamiskt så den behövde ingen ändring.
+  Live-uppspelningens `AudioContext` lämnades orörd (kör enhetens egen
+  standardfrekvens — att tvinga en specifik rate där kan tvinga fram
+  onödig resampling hos webbläsaren).
+- [x] **Voice Pooling** — `scheduleTone()`/`schedulePortamentoTone()` hämtar nu
+  en `GainNode` ur en fast pool (`acquireVoice()`, 16 röster per
+  destinationskanal) istället för att skapa en ny per not; oscillator-noden
+  skapas fortfarande färsk per not (kan inte startas om enligt spec) men
+  gain-noden — och dess koppling till kanalen/eko-bussen — återanvänds så
+  fort en tidigare not på samma röst har hunnit klinga ut (`busyUntil`).
+  Krossade noter (`note.crush`) undantas medvetet: bitcrush-kurvan
+  (`WaveShaperNode.curve`) är en vanlig egenskap, inte en `AudioParam`, och
+  kan därför inte schemaläggas för en framtida not — den får en egen
+  engångs-`WaveShaperNode` precis som förut. Verifierat: 40 sekventiella
+  noter i en tät testlåt skapade bara 4 `GainNode`-instanser (mot 40 utan
+  pooling), demo-låten (flera spår samtidigt) spelar igenom utan fel.
+- [x] **Enkel wavetable synthesis** — ett nytt vågformsval "NES Tri" bygger en
+  kvantiserad/stegad triangelvåg (samma 32-stegs 4-bitars stairstep-sekvens
+  som NES-ljudchippets triangelkanal) via en handskriven diskret
+  Fourier-transform (`dftToPeriodicWave()`) till en `PeriodicWave`, cachad
+  och applicerad med `OscillatorNode.setPeriodicWave()` — samma mönster
+  som redan användes för duty-cycle-vågorna. Går att välja i den
+  befintliga vågforms-dropdownen på vilket tonspår som helst.
 
 ### Fas 2: Pro-syntes (medel)
 - [ ] FM-syntes för oscillatorerna (koppla en modulerande `OscillatorNode`s
