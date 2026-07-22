@@ -60,12 +60,18 @@ ett facit.
 
 ## Spårhantering
 
-- **Ingen omordning av spår.** Man kan lägga till/döpa om/ta bort tonspår,
-  men inte flytta ett spår upp/ner i listan.
-- **Inga sparade instrument-presets.** Varje spår har nu vågform + ADSR-
-  envelope, men inget bibliotek av namngivna timbre-recept att återanvända
-  mellan spår/låtar — utöver de per-not-effekter som redan finns (bend,
-  vibrato, tremolo, duty, bitcrush, echo, chorus).
+- [x] **Omordning av spår** — små ▲/▼-knappar i varje tonspårs header
+  (`moveTrack()`) byter plats på spåret med sin granne i `state.trackList`.
+  Rytmspåret ligger alltid sist och kan varken flyttas eller flyttas förbi
+  (samma invariant som `addTrack()` redan höll), så det får inga
+  omordningsknappar alls. Ordningen sparas/laddas som vanligt eftersom den
+  bara är `state.trackList`s ordning.
+- [x] **Sparade instrument-presets** — en 🎚-knapp per tonspår öppnar en
+  dialog (`preset-dialog`, samma list-mönster som låtbiblioteket) där man
+  kan spara spårets nuvarande vågform + ADSR-envelope under ett namn och
+  senare applicera det namngivna presetet på vilket tonspår som helst, i
+  vilken låt som helst. Sparas i `localStorage`
+  (`music-studio-instrument-presets`), oberoende av enskilda låtar.
 
 ## Interaktion / touch
 
