@@ -8,24 +8,57 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
 ## Punkter från CoPilot GitHub
 
 ### Fas 1: Grundkvalitet (snabb)
-- [ ] Höja samplingshastighet till 48 kHz (WAV-export kör fortfarande 44.1 kHz)
-- [ ] Implementera Voice Pooling (återanvänd synth-noder)
-- [ ] Lägg till enkel wavetable synthesis
+- [ ] Höja samplingshastighet till 48 kHz (WAV-export kör fortfarande 44.1 kHz
+  — hårdkodat i `renderSongToWav()`s `new OfflineAudioContext(2, totalSamples, sampleRate)`
+  och i `audioBufferToWav()`; `AudioContext`/`OfflineAudioContext` tar valfri
+  `sampleRate` i sina konstruktoralternativ)
+- [ ] Implementera Voice Pooling (återanvänd synth-noder — `OscillatorNode`/
+  `AudioBufferSourceNode` är engångsnoder (kan bara `start()`/`stop()`:as en
+  gång vardera per spec), så "pooling" betyder i praktiken att återanvända
+  den kringliggande grafen (`GainNode`/`BiquadFilterNode` m.fl. via
+  `disconnect()`/`connect()`) och bara skapa en ny källnod per triggning)
+- [ ] Lägg till enkel wavetable synthesis (`AudioContext.createPeriodicWave()` /
+  `OscillatorNode.setPeriodicWave()` för att ersätta de inbyggda
+  square/saw/triangle/sine-vågformerna med egna godtyckliga övertonsspektra)
 
 ### Fas 2: Pro-syntes (medel)
-- [ ] FM-syntes för oscillatorerna
-- [ ] Resonant filter per spår med envelope
-- [ ] Aux-send system för reverb/delay
+- [ ] FM-syntes för oscillatorerna (koppla en modulerande `OscillatorNode`s
+  utgång direkt till bärvågens `frequency`-`AudioParam`, t.ex.
+  `modulator.connect(carrier.frequency)`, istället för till en `GainNode`)
+- [ ] Resonant filter per spår med envelope (`BiquadFilterNode` med
+  `type: 'lowpass'`, `.frequency`/`.Q` som `AudioParam`s — envelopen kan
+  schemaläggas med samma `linearRampToValueAtTime`/`exponentialRampToValueAtTime`-
+  mönster som `applyAdsrEnvelope()` redan använder för gain)
+- [ ] Aux-send system för reverb/delay (`ConvolverNode` för reverb — kräver en
+  impulsrespons-`AudioBuffer` — och `DelayNode` för delay/eko; en riktig
+  send-buss är parallell `GainNode`-utfläkning till en delad effekt, inte
+  seriekoppling som dagens per-not `echo`-effekt)
 
 ### Fas 3: Pro-mixing (långsamt)
-- [ ] AudioWorklet för custom DSP
-- [ ] Spectrum analyzer + LUFS metering
-- [ ] Parallell kompressor
-- [ ] Sidechain support
+- [ ] AudioWorklet för custom DSP (`audioContext.audioWorklet.addModule()` +
+  en separat `AudioWorkletProcessor`-modulfil som körs i sin egen
+  audio-rendering-tråd, ansluten via `AudioWorkletNode`)
+- [ ] Spectrum analyzer + LUFS metering (`AnalyserNode.getByteFrequencyData()`/
+  `getFloatFrequencyData()` — samma nodtyp som redan driver VU-mätarna —
+  för spektrumvyn; LUFS har ingen inbyggd nod utan kräver egen
+  ITU-R BS.1770-loudness-beräkning ovanpå `AnalyserNode`- eller
+  `AudioWorkletProcessor`-samples)
+- [ ] Parallell kompressor (två parallella `GainNode`-vägar — en torr, en
+  hårt komprimerad via `DynamicsCompressorNode` — summerade i en delad
+  buss, inte en seriekopplad insert)
+- [ ] Sidechain support (`DynamicsCompressorNode` saknar en inbyggd
+  sidokedje-ingång i Web Audio API; måste simuleras genom att schemalägga
+  `GainNode.gain`-duckning i takt med triggerspårets kick/snare-träffar,
+  vilket redan går eftersom rytmspårets tajming är känd i förväg)
 
 ### Fas 4: Samplingar & kolaborering
-- [ ] Sample playback + granular syntes
+- [ ] Sample playback + granular syntes (`AudioBufferSourceNode` +
+  `decodeAudioData()` för att ladda/spela upp egna ljudfiler, med
+  `.loop`/`.playbackRate`; granular syntes byggs av många korta,
+  överlappande `AudioBufferSourceNode`-korn schemalagda via upprepade
+  `start()`-anrop, eller en dedikerad `AudioWorkletProcessor`)
 - [ ] Cloud sync och live collaboration — se "Lagring / delning" nedan
+  (inte en Web Audio-fråga, utan nätverk/lagring)
 
 ## Näst på tur (efterfrågat)
 
