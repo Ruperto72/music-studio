@@ -84,12 +84,20 @@ ett facit.
 
 ## Interaktion / touch
 
-- **Not-redigering använder bara mus-events**, inte Pointer Events
-  (`mousedown`/`mousemove`/`mouseup` i t.ex. `startMoveNote`, `startResize`,
-  `startMarquee`, `startScrub`) — till skillnad från scrollbaren
-  (index.html:2226) som redan är porterad till `pointerdown`/`pointermove`.
-  Fungerar troligen via mobilwebbläsares syntetiska mus-events, men är
-  inte lika robust för pekskärm/penna som en riktig pointer-implementation.
+- [x] **Not-redigering porterad till Pointer Events** — alla drag-gester
+  (`startMoveNote`, `startResize`, `startMoveHit`, `startMarquee`,
+  `startScrub`, `startLoopDrag`, `startAutomationDrag`) använder nu
+  `pointerdown`/`pointermove`/`pointerup` istället för mus-events, samma
+  mönster som scrollbaren redan hade. Varje drag filtrerar inkommande
+  `pointermove`/`pointerup` på `event.pointerId` så två samtidiga
+  pekpunkter (multi-touch) inte kan störa varandras drag. `touch-action:
+  none` lades till på de små, alltid-drag-avsedda ytorna (`.note`,
+  `.note .handle`, `.hit`, `.automation-point`, `.playhead-grip`,
+  `.loop-handle`, `.ruler-cell`) så webbläsarens inbyggda pan/scroll inte
+  konkurrerar med draget på pekskärm/penna — medvetet INTE på `.lane`
+  (griden i sig), eftersom marquee-drag där bara är aktivt i
+  grab-verktyget och en bredare `touch-action:none` hade blockerat
+  vanlig touch-scroll över griden i penn-läget.
 - **Ingen metronom** och inget "count-in" vid inspelning/uppspelning.
 - [x] **Svänggrad (swing)** — en Swing-reglage (0-75%) i masterraden
   (`state.swing`/`swingOffsetCols()`) fördröjer den obetonade 8:e-delen
