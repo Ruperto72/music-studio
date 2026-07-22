@@ -53,10 +53,29 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   (`sliderToHz`/`hzToSlider`) eftersom ett linjärt Hz-reglage hade slösat
   bort det mesta av sitt spann på den översta oktaven. Sparas per spår
   (`state.filter`) och ingår nu även i instrument-presets.
-- [ ] Aux-send system för reverb/delay (`ConvolverNode` för reverb — kräver en
-  impulsrespons-`AudioBuffer` — och `DelayNode` för delay/eko; en riktig
-  send-buss är parallell `GainNode`-utfläkning till en delad effekt, inte
-  seriekoppling som dagens per-not `echo`-effekt)
+- [x] **Aux-send system för reverb** — en ny per-not "Reverb"-effekt (bredvid
+  Bitcrush/Echo/Chorus i noteditorn), som skickar noten till en delad
+  `ConvolverNode`-reverb-buss per kanal (`ensureReverb()`), parallellt med
+  torrsignalen — precis den send/aux-arkitektur som efterfrågades, till
+  skillnad från dagens `echo`-effekt (fortfarande en seriekopplad
+  `DelayNode`, oförändrad). Impulsresponsen är genererad (inga ljudfiler i
+  appen): exponentiellt avklingande stereo-vitt brus
+  (`ensureReverbImpulse()`), en vanlig algoritmisk-reverb-teknik. Integrerad
+  i röst-poolen via ett `reverbSend`-gain per röst, samma mönster som den
+  redan existerande eko-sänden.
+
+  **Bugg hittad och fixad under verifiering:** `ConvolverNode.buffer` kräver
+  (till skillnad från `AudioBufferSourceNode`, som resamplar automatiskt) att
+  bufferns samplingsfrekvens exakt matchar kontextens. Eftersom
+  `renderSongToWav()` bara nollställer de kontext-bundna cacharna
+  (`noiseBuffer`/`pulseWaves`/`nesTriWave`/`chanDelays`/`chanReverbs`/m.fl.,
+  nu samlade i `resetAudioCaches()`) via `stopPlayback()` — som bara körs OM
+  `playing` redan var sant — kunde en tidigare live-förhandslyssning (annan
+  samplingsfrekvens) lämna en cachad reverb-impulsrespons som kraschade
+  WAV-exporten (`new OfflineAudioContext(... 48000)`) med "buffer sample
+  rate ... does not match the context rate". Fixat genom att
+  `renderSongToWav()` nu alltid nollställer cacharna innan den skapar sin
+  offline-kontext, oavsett `playing`-läge.
 
 ### Fas 3: Pro-mixing (långsamt)
 - [ ] AudioWorklet för custom DSP (`audioContext.audioWorklet.addModule()` +

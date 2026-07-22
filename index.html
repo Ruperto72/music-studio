@@ -443,6 +443,7 @@
   .note.crush { background-image: radial-gradient(circle, rgba(0,0,0,0.45) 1px, transparent 1.3px); background-size: 4px 4px; }
   .note.echo { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4), -4px 0 3px -1px rgba(255,255,255,0.35); }
   .note.chorus { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4), 0 0 0 1.5px rgba(255,255,255,0.4); }
+  .note.reverb { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4), 0 3px 4px -1px rgba(255,255,255,0.3); }
   .note .arp-badge { position: absolute; right: 2px; bottom: -3px; font-size: 9px; color: #111; pointer-events: none; }
 
   .hit {
@@ -1206,7 +1207,7 @@ function toColumnNotes(seq) {
       start: col, len: n.d, freq: n.f, vel: n.vel ?? 1,
       bend: n.bend ?? null, vib: !!n.vib, trem: !!n.trem,
       duty: n.duty ?? null, arp: n.arp ?? null,
-      porta: !!n.porta, crush: !!n.crush, echo: !!n.echo, chorus: !!n.chorus
+      porta: !!n.porta, crush: !!n.crush, echo: !!n.echo, chorus: !!n.chorus, reverb: !!n.reverb
     });
     col += n.d;
   }
@@ -1235,7 +1236,8 @@ function fromColumnNotes(notes) {
       ...(n.porta ? { porta: true } : {}),
       ...(n.crush ? { crush: true } : {}),
       ...(n.echo ? { echo: true } : {}),
-      ...(n.chorus ? { chorus: true } : {})
+      ...(n.chorus ? { chorus: true } : {}),
+      ...(n.reverb ? { reverb: true } : {})
     });
     col = n.start + n.len;
   }
@@ -2407,7 +2409,7 @@ function renderPitchTrack(track) {
     div.className = 'note ' + track +
       (note.bend ? ' bend' : '') + (note.vib ? ' vib' : '') + (note.trem ? ' trem' : '') +
       (note.porta ? ' porta' : '') + (note.crush ? ' crush' : '') +
-      (note.echo ? ' echo' : '') + (note.chorus ? ' chorus' : '') +
+      (note.echo ? ' echo' : '') + (note.chorus ? ' chorus' : '') + (note.reverb ? ' reverb' : '') +
       (isSelected ? ' selected' : '') + (state.multiSelected.has(note) ? ' multi-selected' : '');
     div.style.background = trackColor(track);
     div.style.position = 'absolute';
@@ -2777,7 +2779,7 @@ function onCellClick(track, midi, col) {
   cleared.push({
     start: col, len, freq: round2(midiToFreq(midi)), vel: 1,
     bend: null, vib: false, trem: false, duty: null, arp: null,
-    porta: false, crush: false, echo: false, chorus: false
+    porta: false, crush: false, echo: false, chorus: false, reverb: false
   });
   state.tracks[track] = cleared;
   state.selected = { track, index: cleared.length - 1 };
@@ -3233,6 +3235,7 @@ function renderInspector() {
   addFxToggle(fxRow, 'Bitcrush', 'crush');
   addFxToggle(fxRow, 'Echo', 'echo');
   addFxToggle(fxRow, 'Chorus', 'chorus');
+  addFxToggle(fxRow, 'Reverb', 'reverb');
   fx.appendChild(fxRow);
 
   const del = el('button', 'insp-del');
@@ -3873,7 +3876,7 @@ function importMidiIntoSong(buffer) {
           notes.push({
             start: startCol, len: lenCol, freq: round2(midiToFreq(e.note)), vel: 1,
             bend: null, vib: false, trem: false, duty: null, arp: null,
-            porta: false, crush: false, echo: false, chorus: false
+            porta: false, crush: false, echo: false, chorus: false, reverb: false
           });
         }
         maxCol = Math.max(maxCol, startCol + lenCol);
@@ -3960,6 +3963,15 @@ function audioBufferToWav(buffer) {
 // stopped first (stopPlayback() already tears these globals down to null).
 async function renderSongToWav() {
   if (playing) stopPlayback();
+  // Some of these caches (PeriodicWave objects, and ConvolverNode's impulse
+  // response in particular — its buffer's sample rate must exactly match the
+  // context's, unlike AudioBufferSourceNode which resamples automatically)
+  // are tied to whatever AudioContext created them. stopPlayback() only runs
+  // above if something was actually playing, so a prior live-context preview
+  // (e.g. clicking a note) can leave these caches populated from a context at
+  // a different sample rate than this offline render's fixed 48kHz — reset
+  // them unconditionally rather than relying on stopPlayback() having run.
+  resetAudioCaches();
   const eighthSec = 60 / state.tempo / 2;
   const tailSec = 2; // let release/echo tails ring out past the last note
   const sampleRate = 48000;
@@ -3986,7 +3998,7 @@ async function renderSongToWav() {
   const rendered = await offline.startRendering();
 
   ctx = null; masterGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
-  noiseBuffer = null; crashNoiseBuffer = null; pulseWaves.clear(); crushCurve = null; nesTriWave = null; chanDelays.clear(); voicePools.clear();
+  resetAudioCaches();
 
   return rendered;
 }
@@ -4412,6 +4424,41 @@ function ensureDelay(destGain) {
   d.delay.delayTime.value = (60 / state.tempo / 2) * 1.5;
   return d.delay;
 }
+// One reverb bus per channel, using a synthesized impulse response (no audio
+// files ship with this app, so the "space" is generated instead of sampled:
+// exponentially-decaying stereo white noise, a standard algorithmic-reverb
+// trick). Same per-channel-not-shared reasoning as the echo bus above — the
+// wet return flows back through destGain so Mute/Solo/volume also silence a
+// track's reverb tail, not just its dry signal.
+let reverbImpulse = null;
+function ensureReverbImpulse() {
+  if (!reverbImpulse) {
+    const len = Math.ceil(ctx.sampleRate * 2.2);
+    reverbImpulse = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = reverbImpulse.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 2.5);
+      }
+    }
+  }
+  return reverbImpulse;
+}
+const chanReverbs = new Map(); // destGain -> { convolver }
+function ensureReverb(destGain) {
+  let r = chanReverbs.get(destGain);
+  if (!r) {
+    const convolver = ctx.createConvolver();
+    convolver.buffer = ensureReverbImpulse();
+    const wet = ctx.createGain();
+    wet.gain.value = 0.4;
+    convolver.connect(wet).connect(destGain);
+    r = { convolver };
+    chanReverbs.set(destGain, r);
+  }
+  return r.convolver;
+}
 // ---------- Voice pooling ----------
 // A fixed-size pool of persistent GainNodes per destination channel, reused
 // across notes instead of creating a brand-new gain (plus its connection to
@@ -4429,7 +4476,7 @@ function ensureDelay(destGain) {
 // note is still actually playing through that node when the change lands —
 // crushed notes get their own ad-hoc WaveShaperNode instead, as before.
 const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
-const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, busyUntil }]
+const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, reverbSend, busyUntil }]
 function acquireVoice(destGain, startAt) {
   let pool = voicePools.get(destGain);
   if (!pool) { pool = []; voicePools.set(destGain, pool); }
@@ -4441,9 +4488,12 @@ function acquireVoice(destGain, startAt) {
   filter.connect(gain);
   const echoSend = ctx.createGain();
   echoSend.gain.value = 0;
+  const reverbSend = ctx.createGain();
+  reverbSend.gain.value = 0;
   gain.connect(destGain);
   gain.connect(echoSend).connect(ensureDelay(destGain));
-  const voice = { gain, filter, echoSend, busyUntil: 0 };
+  gain.connect(reverbSend).connect(ensureReverb(destGain));
+  const voice = { gain, filter, echoSend, reverbSend, busyUntil: 0 };
   pool.push(voice);
   return voice;
 }
@@ -4457,6 +4507,25 @@ function connectVoiceOutput(gain, note, destGain) {
   }
   outputNode.connect(destGain);
   if (note.echo) outputNode.connect(ensureDelay(destGain));
+  if (note.reverb) outputNode.connect(ensureReverb(destGain));
+}
+// All of the module-level synthesis caches above are tied to whichever
+// AudioContext was active when they were created (PeriodicWaves and
+// ConvolverNode buffers in particular can't just be reused across a
+// different context — ConvolverNode additionally requires an exact
+// sample-rate match). Call this whenever the active context is torn down
+// or swapped (stopPlayback(), and unconditionally before an offline render)
+// so nothing lingers from a previous context.
+function resetAudioCaches() {
+  noiseBuffer = null;
+  crashNoiseBuffer = null;
+  pulseWaves.clear();
+  crushCurve = null;
+  nesTriWave = null;
+  chanDelays.clear();
+  reverbImpulse = null;
+  chanReverbs.clear();
+  voicePools.clear();
 }
 // Shared voice building blocks used by both scheduleTone and schedulePortamentoTone.
 function addVibrato(osc, freq, startAt, endAt) {
@@ -4531,6 +4600,8 @@ function voiceGainFor(note, destGain, startAt, dur) {
       voice.gain.gain.cancelScheduledValues(startAt);
       voice.echoSend.gain.cancelScheduledValues(startAt);
       voice.echoSend.gain.setValueAtTime(note.echo ? 1 : 0, startAt);
+      voice.reverbSend.gain.cancelScheduledValues(startAt);
+      voice.reverbSend.gain.setValueAtTime(note.reverb ? 1 : 0, startAt);
       voice.busyUntil = startAt + dur;
       return { gain: voice.gain, filter: voice.filter, pooled: true };
     }
@@ -4908,13 +4979,7 @@ function stopPlayback() {
     masterAnalyser = null;
     masterFXNodes = null;
     stopMeters();
-    noiseBuffer = null;
-    crashNoiseBuffer = null;
-    pulseWaves.clear();
-    crushCurve = null;
-    nesTriWave = null;
-    chanDelays.clear();
-    voicePools.clear();
+    resetAudioCaches();
   }
   visualPlayhead = state.playhead;
   updatePlayheadPositions();
@@ -4944,6 +5009,7 @@ function formatSeqLine(entry, isRhythm) {
   if (entry.crush) parts.push(`crush: true`);
   if (entry.echo) parts.push(`echo: true`);
   if (entry.chorus) parts.push(`chorus: true`);
+  if (entry.reverb) parts.push(`reverb: true`);
   return `{ ${parts.join(', ')} }`;
 }
 // Multi-line note/hit array literal indented under `indent` spaces.
