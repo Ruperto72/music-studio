@@ -45,9 +45,18 @@ ett facit.
 
 ## Rytmspår
 
-- **Bara ett rytmspår med ett fast kit** (nu 6 ljud: kick/snare/hihat/tom/
-  clap/crash) — inget sätt att lägga till egna/ytterligare slagverksljud
-  utöver dessa, eller ett andra rytmspår med eget kit.
+- [x] **Fler slagverksljud i kittet** — utökat från 6 till 10 ljud:
+  kick/snare/rim/hihat/open hi-hat/shaker/tom/clap/crash/ride
+  (`RHYTHM_ROWS`/`RHYTHM_LABELS`). Varje ljud har en egen
+  syntesfunktion (`scheduleRim`/`scheduleOpenHat`/`scheduleShaker`/
+  `scheduleRide` m.fl.) och en egen färg i griden; MIDI-export/import
+  mappar dem mot lämpliga GM-slagverksnoter (`GM_DRUM_NOTE`/
+  `GM_DRUM_REVERSE`).
+- **Bara ett rytmspår med ett fast kit** — inget sätt att lägga till ett
+  andra rytmspår med eget kit (id:t `'rhythm'` är hårdkodat på ett
+  tjugotal ställen i koden — synthesis, export, klippbord, MIDI-mappning
+  m.m. — och skulle behöva generaliseras för att stödja flera
+  rytmspår).
 
 ## Spårhantering
 
@@ -67,8 +76,15 @@ ett facit.
   Fungerar troligen via mobilwebbläsares syntetiska mus-events, men är
   inte lika robust för pekskärm/penna som en riktig pointer-implementation.
 - **Ingen metronom** och inget "count-in" vid inspelning/uppspelning.
-- **Ingen svänggrad (swing/groove).** Griden snappar strikt (1/4, 1/8,
-  1/16, triol) utan möjlighet att förskjuta jämna/udda steg.
+- [x] **Svänggrad (swing)** — en Swing-reglage (0-75%) i masterraden
+  (`state.swing`/`swingOffsetCols()`) fördröjer den obetonade 8:e-delen
+  i varje slag mot en trioltoning vid högre värden, tillämpat vid
+  uppspelning/WAV-export utan att flytta noterna i pianorullen. Gäller
+  bara enkla taktarter (slag = 2 åttondelar) och bara noter/hits som
+  ligger exakt på 8:e-delsgriden — finare underindelningar (16-delar,
+  trioler) berörs inte. Grid snappar fortfarande strikt (1/4, 1/8, 1/16,
+  triol) — det är bara uppspelningstajmingen som sväng-fördröjs, inte
+  var noterna hamnar i redigeringsgriden.
 
 ## Lagring / delning
 

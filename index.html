@@ -357,7 +357,7 @@
     border-bottom: 1px solid rgba(255,255,255,0.03);
   }
   .gutter .glabel.c { color: #b7b7c4; }
-  .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; }
+  .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Automation lane — an extra full-width row under a track, shown while its
      AUTO panel is toggled open (see renderAutomationRow()). Reuses .track/
@@ -427,11 +427,15 @@
     background: var(--rhythm); border-radius: 3px; cursor: pointer; align-self: center;
     height: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4); z-index: 2;
   }
-  .hit.snare { background: #ffdf3b; }
-  .hit.hihat { background: #1fae54; }
-  .hit.tom   { background: #ff6a3b; }
-  .hit.clap  { background: #ff5ec8; }
-  .hit.crash { background: #d9e8ff; }
+  .hit.snare   { background: #ffdf3b; }
+  .hit.rim     { background: #b98cff; }
+  .hit.hihat   { background: #1fae54; }
+  .hit.openhat { background: #5be8a0; }
+  .hit.shaker  { background: #d9b36a; }
+  .hit.tom     { background: #ff6a3b; }
+  .hit.clap    { background: #ff5ec8; }
+  .hit.crash   { background: #d9e8ff; }
+  .hit.ride    { background: #e8c33b; }
 
   /* top:0/bottom:0 stretches the line across the whole daw (timeline + tracks)
      automatically, so its visibility never depends on a JS height measurement.
@@ -902,6 +906,13 @@
             </select>
           </div>
           <div class="mstrip-cell">
+            <span class="mstrip-cap">Swing</span>
+            <div class="mstrip-row">
+              <input id="swing" type="range" min="0" max="75" step="5" value="0" title="Delays the off-beat 8th note toward a triplet feel (0% = straight 8ths). Only affects notes/hits placed exactly on the 8th-note grid.">
+              <span id="swing-val" class="unit">0%</span>
+            </div>
+          </div>
+          <div class="mstrip-cell">
             <button id="master-fx-toggle" class="icon-btn" title="Master EQ &amp; compression" aria-pressed="false">🎛️</button>
           </div>
         </div>
@@ -986,8 +997,9 @@ const RHYTHM_COLOR = '#39ff6a';
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
 const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine']; // selectable per tonal track
 const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', kit: 'Kit' };
-const RHYTHM_ROWS = ['kick', 'snare', 'hihat', 'tom', 'clap', 'crash'];
-const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', tom: 'Tom', clap: 'Clap', crash: 'Crash' };
+const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
+const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
+const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
 
 // Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
 // absent) — attack/decay/release are fractions of the note's own duration (so they
@@ -1003,6 +1015,7 @@ const DEFAULT_ADSR = { attack: 0.05, decay: 0.15, sustain: 0.7, release: 0.15 };
 // exactly as it did before.
 const DEFAULT_MASTER_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
 const DEFAULT_MASTER_COMP = { threshold: -24, ratio: 1, attack: 0.01, release: 0.25 };
+const DEFAULT_SWING = 0; // % (0 = straight 8ths, up to 75 ≈ triplet feel) — see swingOffsetCols()
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1143,7 +1156,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1181,6 +1194,7 @@ const state = {
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
+  swing: DEFAULT_SWING,      // % — see swingOffsetCols()
   selected: null,            // { track, index } — single note, drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
@@ -1203,6 +1217,7 @@ function applySavedMix(data) {
   }
   if (typeof data.masterVol === 'number') state.masterVol = data.masterVol;
   if (typeof data.grid === 'number' && data.grid > 0) state.grid = quant(data.grid);
+  state.swing = (typeof data.swing === 'number') ? Math.max(0, Math.min(75, data.swing)) : DEFAULT_SWING;
   restoreTimeSig(data);
   state.markers = Array.isArray(data.markers)
     ? data.markers.filter(m => m && typeof m.col === 'number').map(m => ({ col: m.col, name: String(m.name || '') }))
@@ -1480,6 +1495,7 @@ function audible(track) {
 function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
+function getSwing() { return state.swing || DEFAULT_SWING; }
 
 // ---------- Rendering ----------
 // The playhead/grip/loop overlays are built once by createOverlays() and only
@@ -2031,9 +2047,10 @@ function buildHeader(track) {
   return header;
 }
 
-function buildGutterCell(text, cls) {
+function buildGutterCell(text, cls, title) {
   const g = el('div', 'glabel' + (cls ? ' ' + cls : ''));
   g.textContent = text;
+  if (title) g.title = title;
   return g;
 }
 
@@ -2175,7 +2192,7 @@ function renderRhythmTrack() {
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
-  for (const type of RHYTHM_ROWS) gutter.appendChild(buildGutterCell(RHYTHM_LABELS[type], 'rhy'));
+  for (const type of RHYTHM_ROWS) gutter.appendChild(buildGutterCell(RHYTHM_LABELS[type], 'rhy', RHYTHM_TITLES[type]));
   row.appendChild(gutter);
 
   const rollEl = el('div', 'lane');
@@ -2733,7 +2750,7 @@ function renderInspector() {
   document.body.classList.toggle('has-sel', !!note); // drives the mobile close button
   if (!note) {
     inspector.className = 'inspector empty';
-    inspector.textContent = 'No note selected. Pen a Kick/Snare/Hi-hat/Tom/Clap/Crash cell in the Rhythm track to add a hit.';
+    inspector.textContent = 'No note selected. Pen a cell in the Rhythm track (Kick/Snare/Rim/Hi-hat/Open hi-hat/Shaker/Tom/Clap/Crash/Ride) to add a hit.';
     return;
   }
   const { track, index } = sel;
@@ -3049,6 +3066,20 @@ gridSelect.addEventListener('change', () => {
 });
 syncGridUI();
 
+// ---------- Swing ----------
+const swingInput = document.getElementById('swing');
+const swingValEl = document.getElementById('swing-val');
+function syncSwingUI() {
+  swingInput.value = getSwing();
+  swingValEl.textContent = getSwing() + '%';
+}
+swingInput.addEventListener('input', () => {
+  state.swing = Math.max(0, Math.min(75, parseFloat(swingInput.value) || 0));
+  syncSwingUI();
+  autosave();
+});
+syncSwingUI();
+
 // ---------- Time signature (meter) ----------
 const timeSigSelect = document.getElementById('time-sig');
 for (const ts of TIME_SIGS) {
@@ -3152,6 +3183,8 @@ function createNewSong(withStarterTracks, name) {
   state.masterComp = { ...DEFAULT_MASTER_COMP };
   syncMasterFxUI();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp());
+  state.swing = DEFAULT_SWING;
+  syncSwingUI();
   COLS = clampCols(eighthsPerBar() * 8); // 8 bars to start — extend with the Length +/- control
   state.loopStart = 0; state.loopEnd = COLS;
   state.playhead = 0; visualPlayhead = 0;
@@ -3211,7 +3244,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, masterEQ: state.masterEQ, masterComp: state.masterComp, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -3246,6 +3279,7 @@ function applySongData(data, name) {
   syncMasterVolUI();
   syncMasterFxUI();
   syncGridUI();
+  syncSwingUI();
   syncTimeSigUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
@@ -3309,7 +3343,7 @@ function midiTrackNameEvent(name) {
   const bytes = Array.from(name).map(c => c.charCodeAt(0) & 0x7F);
   return { tick: 0, prio: -1, data: [0xFF, 0x03, bytes.length, ...bytes] };
 }
-const GM_DRUM_NOTE = { kick: 36, snare: 38, hihat: 42, tom: 45, clap: 39, crash: 49 };
+const GM_DRUM_NOTE = { kick: 36, snare: 38, rim: 37, hihat: 42, openhat: 46, shaker: 82, tom: 45, clap: 39, crash: 49, ride: 51 };
 function exportMidiBytes() {
   const ticksPerEighth = MIDI_PPQ / 2;
   const microsPerQuarter = Math.round(60000000 / state.tempo);
@@ -3431,13 +3465,18 @@ function parseMidiFile(buffer) {
   }
   return { ppq, tracks };
 }
-// Map a General MIDI percussion note back to the app's 6-piece kit (best-effort).
+// Map a General MIDI percussion note back to the app's 10-piece kit (best-effort).
 const GM_DRUM_REVERSE = {
-  35: 'kick', 36: 'kick', 38: 'snare', 40: 'snare', 37: 'snare',
-  42: 'hihat', 44: 'hihat', 46: 'hihat',
+  35: 'kick', 36: 'kick',
+  38: 'snare', 40: 'snare',
+  37: 'rim',
+  42: 'hihat', 44: 'hihat',
+  46: 'openhat',
+  69: 'shaker', 70: 'shaker', 82: 'shaker',
   41: 'tom', 43: 'tom', 45: 'tom', 47: 'tom', 48: 'tom', 50: 'tom',
   39: 'clap',
-  49: 'crash', 51: 'crash', 52: 'crash', 53: 'crash', 55: 'crash', 57: 'crash', 59: 'crash',
+  49: 'crash', 52: 'crash', 55: 'crash', 57: 'crash',
+  51: 'ride', 53: 'ride', 59: 'ride',
 };
 function importMidiIntoSong(buffer) {
   let parsed;
@@ -3820,9 +3859,13 @@ function previewHit(type) {
     const at = ctx.currentTime + 0.005;
     if (type === 'kick') scheduleKick(at);
     else if (type === 'snare') scheduleSnare(at);
+    else if (type === 'rim') scheduleRim(at);
     else if (type === 'tom') schedulePuka(at);
     else if (type === 'clap') scheduleClap(at);
     else if (type === 'crash') scheduleCrash(at);
+    else if (type === 'openhat') scheduleOpenHat(at);
+    else if (type === 'shaker') scheduleShaker(at);
+    else if (type === 'ride') scheduleRide(at);
     else scheduleHihat(at);
   } catch { /* audio unavailable */ }
 }
@@ -4104,12 +4147,86 @@ function scheduleCrash(startAt) {
   src.connect(filter).connect(gain).connect(chanGain.rhythm);
   src.start(startAt); src.stop(startAt + dur);
 }
+function scheduleOpenHat(startAt) {
+  const dur = 0.3;
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = ensureCrashNoiseBuffer();
+  filter.type = 'highpass'; filter.frequency.value = 7000;
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + dur);
+}
+// A short bandpassed noise tick plus a high triangle ping, distinct from the snare's boom.
+function scheduleRim(startAt) {
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
+  src.buffer = ensureNoiseBuffer();
+  filter.type = 'bandpass'; filter.frequency.value = 2800; filter.Q.value = 3;
+  noiseGain.gain.setValueAtTime(0.0001, startAt);
+  noiseGain.gain.exponentialRampToValueAtTime(0.8, startAt + 0.002);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.03);
+  src.connect(filter).connect(noiseGain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + 0.04);
+
+  const osc = ctx.createOscillator(), oscGain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(900, startAt);
+  oscGain.gain.setValueAtTime(0.0001, startAt);
+  oscGain.gain.exponentialRampToValueAtTime(0.4, startAt + 0.002);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
+  osc.connect(oscGain).connect(chanGain.rhythm);
+  osc.start(startAt); osc.stop(startAt + 0.04);
+}
+function scheduleShaker(startAt) {
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = ensureNoiseBuffer();
+  filter.type = 'bandpass'; filter.frequency.value = 7000; filter.Q.value = 0.9;
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.06);
+  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + 0.07);
+}
+// Narrower bandpass than the crash (so it "pings" instead of washing out) plus a short sine bell tone.
+function scheduleRide(startAt) {
+  const dur = 0.5;
+  const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
+  src.buffer = ensureCrashNoiseBuffer();
+  filter.type = 'bandpass'; filter.frequency.value = 6500; filter.Q.value = 2.5;
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  src.connect(filter).connect(gain).connect(chanGain.rhythm);
+  src.start(startAt); src.stop(startAt + dur);
+
+  const ping = ctx.createOscillator(), pingGain = ctx.createGain();
+  ping.type = 'sine';
+  ping.frequency.setValueAtTime(950, startAt);
+  pingGain.gain.setValueAtTime(0.0001, startAt);
+  pingGain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.004);
+  pingGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.1);
+  ping.connect(pingGain).connect(chanGain.rhythm);
+  ping.start(startAt); ping.stop(startAt + 0.12);
+}
+// Classic 8th-note swing: delays the off-beat 8th (the "and") within each beat,
+// sliding it toward the triplet position as the amount rises to 100%. Only
+// applies to simple meters (beat = 2 eighths) and only to notes/hits landing
+// exactly on that off-8th grid position — finer subdivisions (16ths, triplets)
+// are left exactly where they were placed.
+function swingOffsetCols(col) {
+  const amt = getSwing();
+  if (!amt || Math.abs(eighthsPerBeat() - 2) > EPS) return 0;
+  const withinPair = col - Math.floor(col / 2 + EPS) * 2;
+  if (Math.abs(withinPair - 1) > EPS) return 0;
+  return (amt / 100) * (1 / 3);
+}
 function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   for (let i = 0; i < sorted.length; i++) {
     const n = sorted[i];
     if (n.start < fromCol || n.start >= toCol) continue;
-    const at = startAt + (n.start - fromCol) * eighthSec;
+    const at = startAt + (n.start - fromCol + swingOffsetCols(n.start)) * eighthSec;
     if (n.porta) {
       const next = sorted[i + 1];
       if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
@@ -4128,9 +4245,12 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
     scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id));
   }
   if (audible('rhythm')) {
-    const scheduleHit = { kick: scheduleKick, snare: scheduleSnare, tom: schedulePuka, hihat: scheduleHihat, clap: scheduleClap, crash: scheduleCrash };
+    const scheduleHit = {
+      kick: scheduleKick, snare: scheduleSnare, rim: scheduleRim, tom: schedulePuka, hihat: scheduleHihat,
+      openhat: scheduleOpenHat, shaker: scheduleShaker, clap: scheduleClap, crash: scheduleCrash, ride: scheduleRide,
+    };
     for (const h of state.tracks.rhythm.filter(n => n.start >= fromCol && n.start < toCol)) {
-      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol) * eighthSec);
+      (scheduleHit[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
     }
   }
 }
