@@ -212,6 +212,36 @@ ett facit.
   klick) och markerar texten — men saknar en "Kopiera"-knapp
   (`navigator.clipboard`) eller nedladdning av filen direkt.
 
+## Spår-effekter
+
+- [x] **Delay- och Chorus-send per spår** — en ✨ FX-knapp i varje spårs
+  header (tonalt eller rytm) öppnar en panel med två reglage,
+  `state.fxSend[track] = { delay, chorus }` (0-100%, `getFxSend()`/
+  `setFxSend()`). Skickar spårets `chanGain[id]` till två delade globala
+  bussar — en tempo-synkad eko-med-feedback och en LFO-modulerad kort
+  fördröjning (chorus) — vars våta signal går tillbaka till `masterGain`,
+  aldrig tillbaka till `chanGain[id]` själv (det hade slutit en
+  ljud-feedbackslinga genom spårets egen fader). Eftersom alla ljud på
+  ett spår redan passerar `chanGain[id]` innan `chanPan`/mastern behövdes
+  ingen ändring alls i not- eller trumsyntesen (`scheduleTone`,
+  `schedulePortamentoTone`, de tio `scheduleKick`/`scheduleSnare`-m.fl.-
+  funktionerna) — det är också därför detta blev det första
+  effekt-reglaget som fungerar på rytmspår. Separat och oberoende av de
+  befintliga per-not-flaggorna Echo/Chorus (`note.echo`/`note.chorus`),
+  som är oförändrade.
+- [ ] **Fler spårnivå-effekter.** Naturliga fortsättningar på ovanstående:
+  - En kontinuerlig **Reverb-send** per spår — närmast att bygga av alla,
+    eftersom `ensureReverb()`/`chanReverbs` och den per-röst
+    `reverbSend`-gainen redan finns per kanal (idag styrd binärt av
+    `note.reverb`); kan återanvända samma `getFxSend`/`setFxSend`/
+    `renderFxSendRow`-mönster som ovan för ett tredje reglage.
+  - En riktig per-spårs **Compressor** — till skillnad från Delay/Chorus-
+    sändarna ovan är detta en insert, inte en send/return: en
+    `DynamicsCompressorNode` behöver splitsas in i varje kanals
+    signalkedja (mellan `chanGain[id]` och `chanPan[id]`, eller liknande)
+    snarare än att tappa av en parallell buss — egen plumbing.
+  - Möjligen per-spårs **EQ**, i samma anda som master-EQ:n.
+
 ## Rytmspår
 
 - [x] **Fler slagverksljud i kittet** — utökat från 6 till 10 ljud:
