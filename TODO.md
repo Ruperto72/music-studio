@@ -1,13 +1,14 @@
 # TODO
 
-Kvarstående arbete för musikeditorn, baserat på en genomgång av `index.html`
-mot README/CLAUDE.md:s funktionslista. Inget av detta är påbörjat i kod
-(inga `TODO`/`FIXME` finns i källan idag) — listan är en avstämning av vad
-som saknas, inte ett facit över buggar.
+Avstämning av vad som saknas i musikeditorn jämfört med README/CLAUDE.md:s
+funktionslista, plus önskemål från CoPilot-genomgången och inspiration från
+etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
+återstår.
 
-Punkter från CoPilot GitHub
+## Punkter från CoPilot GitHub
+
 ### Fas 1: Grundkvalitet (snabb)
-- [ ] Höja samplingshastighet till 48 kHz
+- [ ] Höja samplingshastighet till 48 kHz (WAV-export kör fortfarande 44.1 kHz)
 - [ ] Implementera Voice Pooling (återanvänd synth-noder)
 - [ ] Lägg till enkel wavetable synthesis
 
@@ -24,10 +25,8 @@ Punkter från CoPilot GitHub
 
 ### Fas 4: Samplingar & kolaborering
 - [ ] Sample playback + granular syntes
-- [ ] Cloud sync
-- [ ] Live collaboration
+- [ ] Cloud sync och live collaboration — se "Lagring / delning" nedan
 
-      
 ## Näst på tur (efterfrågat)
 
 - [x] **MIDI-import/export** — 🎹/🎼-knapparna i Session-panelen skriver/läser
@@ -59,8 +58,8 @@ Genomgång av vad ett "riktigt" DAW (Pro Tools, Ableton, FL Studio) har som
 denna editor saknar. Prioritetsordning nedan är en rekommendation, inte
 ett facit.
 
-- [ ] **Metronom + count-in** — redan listad under "Interaktion / touch"
-  ovan; lyfts fram här som en av de mest lågt hängande frukterna.
+- [ ] **Metronom + count-in** — inget stöd vid inspelning/uppspelning; en av
+  de mest lågt hängande frukterna, se även "Interaktion / touch" nedan.
 - [x] **EQ/kompression på mastern** — 🎛️-knappen i mastersektionen öppnar
   ett litet panel med 3-bands-EQ (low/mid/high shelf/peak,
   `BiquadFilterNode`) och en kompressor (`DynamicsCompressorNode`),
@@ -70,10 +69,10 @@ ett facit.
 
 ## Ljud / export
 
-- **Kodexport kräver manuell copy.** `#export`-knappen (index.html:3712)
-  fyller en `<textarea>` (tofflar den synlig/dold vid upprepade klick) och
-  markerar texten — men saknar en "Kopiera"-knapp (`navigator.clipboard`)
-  eller nedladdning av filen direkt.
+- [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en
+  `<textarea id="exportBox">` (tofflar den synlig/dold vid upprepade
+  klick) och markerar texten — men saknar en "Kopiera"-knapp
+  (`navigator.clipboard`) eller nedladdning av filen direkt.
 
 ## Rytmspår
 
@@ -84,7 +83,7 @@ ett facit.
   `scheduleRide` m.fl.) och en egen färg i griden; MIDI-export/import
   mappar dem mot lämpliga GM-slagverksnoter (`GM_DRUM_NOTE`/
   `GM_DRUM_REVERSE`).
-- **Bara ett rytmspår med ett fast kit** — inget sätt att lägga till ett
+- [ ] **Bara ett rytmspår med ett fast kit** — inget sätt att lägga till ett
   andra rytmspår med eget kit (id:t `'rhythm'` är hårdkodat på ett
   tjugotal ställen i koden — synthesis, export, klippbord, MIDI-mappning
   m.m. — och skulle behöva generaliseras för att stödja flera
@@ -121,7 +120,6 @@ ett facit.
   (griden i sig), eftersom marquee-drag där bara är aktivt i
   grab-verktyget och en bredare `touch-action:none` hade blockerat
   vanlig touch-scroll över griden i penn-läget.
-- **Ingen metronom** och inget "count-in" vid inspelning/uppspelning.
 - [x] **Svänggrad (swing)** — en Swing-reglage (0-75%) i masterraden
   (`state.swing`/`swingOffsetCols()`) fördröjer den obetonade 8:e-delen
   i varje slag mot en trioltoning vid högre värden, tillämpat vid
@@ -134,18 +132,19 @@ ett facit.
 
 ## Lagring / delning
 
-- **Bara lokalt.** Sparade låtar ligger i `localStorage` i webbläsaren;
+- [ ] **Bara lokalt.** Sparade låtar ligger i `localStorage` i webbläsaren;
   det finns ingen delning via länk/URL eller molnsynk mellan enheter.
-- **Ingen kollaborativ redigering** (flera personer på samma låt samtidigt).
+- [ ] **Ingen kollaborativ redigering** (flera personer på samma låt samtidigt).
 
 ## Kvalitet
 
-- **Inga automatiska tester.** CLAUDE.md bekräftar att det inte finns
+- [ ] **Inga automatiska tester.** CLAUDE.md bekräftar att det inte finns
   build/lint/test-kommando — all verifiering är manuell i webbläsaren.
-- **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
+- [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 
-- Endast engelskt UI (`<html lang="en">`) — ingen lokalisering.
-- Inget MIDI-/USB-tangentbordsstöd för att spela in noter live.
+- [ ] Endast engelskt UI (`<html lang="en">`) — ingen lokalisering.
+- [ ] Inget MIDI-/USB-tangentbordsstöd för att spela in noter live
+  (ingen `navigator.requestMIDIAccess`/Web MIDI-kod i källan).
