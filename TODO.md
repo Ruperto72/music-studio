@@ -5,6 +5,29 @@ mot README/CLAUDE.md:s funktionslista. Inget av detta är påbörjat i kod
 (inga `TODO`/`FIXME` finns i källan idag) — listan är en avstämning av vad
 som saknas, inte ett facit över buggar.
 
+Punkter från CoPilot GitHub
+### Fas 1: Grundkvalitet (snabb)
+- [ ] Höja samplingshastighet till 48 kHz
+- [ ] Implementera Voice Pooling (återanvänd synth-noder)
+- [ ] Lägg till enkel wavetable synthesis
+
+### Fas 2: Pro-syntes (medel)
+- [ ] FM-syntes för oscillatorerna
+- [ ] Resonant filter per spår med envelope
+- [ ] Aux-send system för reverb/delay
+
+### Fas 3: Pro-mixing (långsamt)
+- [ ] AudioWorklet för custom DSP
+- [ ] Spectrum analyzer + LUFS metering
+- [ ] Parallell kompressor
+- [ ] Sidechain support
+
+### Fas 4: Samplingar & kolaborering
+- [ ] Sample playback + granular syntes
+- [ ] Cloud sync
+- [ ] Live collaboration
+
+      
 ## Näst på tur (efterfrågat)
 
 - [x] **MIDI-import/export** — 🎹/🎼-knapparna i Session-panelen skriver/läser
