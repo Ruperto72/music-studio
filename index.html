@@ -3685,6 +3685,42 @@ function renderInspector() {
   presets.append(arpMajor, arpMinor);
   pitch.appendChild(presets);
 
+  // --- Chord ---
+  // Unlike the Arpeggio presets above (which just flag this single note to
+  // play its notes in quick succession), these add real, separate notes at
+  // the same start/len in this track — a true simultaneous chord, the way
+  // e.g. songs/cinematic.json's Strings track is authored.
+  const chordPanel = panel('Chord');
+  const chordHint = el('div', 'insp-sub');
+  chordHint.textContent = 'Adds real notes a third and fifth above, in this track.';
+  chordPanel.appendChild(chordHint);
+  const chordRow = el('div', 'arp-presets');
+  const addChordAbove = (semitoneIntervals) => {
+    const rootMidi = freqToMidi(note.freq);
+    const newNotes = semitoneIntervals.map((semis) => ({
+      start: note.start, len: note.len,
+      freq: round2(midiToFreq(Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semis)))),
+      vel: note.vel, bend: null, vib: false, trem: false, duty: null, arp: null,
+      porta: false, crush: false, echo: false, chorus: false, reverb: false,
+    }));
+    let notes = state.tracks[track];
+    for (const n of newNotes) notes = clearOverlaps(notes, n.start, n.len, n.freq);
+    notes.push(...newNotes);
+    state.tracks[track] = notes;
+    for (const n of newNotes) previewNote(track, n);
+    state.multiSelected = new Set([note, ...newNotes]);
+    state.selected = null;
+    render();
+  };
+  const majorChordBtn = document.createElement('button');
+  majorChordBtn.textContent = 'Add Major Chord';
+  majorChordBtn.addEventListener('click', () => addChordAbove([4, 7]));
+  const minorChordBtn = document.createElement('button');
+  minorChordBtn.textContent = 'Add Minor Chord';
+  minorChordBtn.addEventListener('click', () => addChordAbove([3, 7]));
+  chordRow.append(majorChordBtn, minorChordBtn);
+  chordPanel.appendChild(chordRow);
+
   // --- Texture / FX ---
   const fx = panel('Texture / FX');
   const fxRow = el('div', 'fx-row');

@@ -281,6 +281,18 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
     });
 
+    step('Note inspector: "Add Major Chord" adds two real notes and multi-selects the whole chord', async () => {
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await cdp.evaluate(`
+        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+      `);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 4`);
+      const multiCount = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note.multi-selected').length`);
+      if (multiCount !== 3) throw new Error(`expected 3 notes multi-selected as the chord group, got ${multiCount}`);
+      const inspectorEmpty = await cdp.evaluate(`document.querySelector('.inspector').classList.contains('empty')`);
+      if (!inspectorEmpty) throw new Error('expected the single-note inspector to close after the chord is selected as a group');
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
