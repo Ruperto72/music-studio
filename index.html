@@ -673,7 +673,7 @@
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
         <li><b>＋ Add track</b> / <b>＋ 🥁 Add rhythm track</b> (in the <b>☰</b> menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
-        <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
+        <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor).</li>
@@ -1233,6 +1233,12 @@ const DEFAULT_SIDECHAIN = { enabled: false, depth: 0.5 };
 // sample (i.e. no reduction), matching the "neutral by default" contract.
 const DEFAULT_MASTER_CRUSH = { amount: 0 };
 const DEFAULT_SWING = 0; // % (0 = straight 8ths, up to 75 ≈ triplet feel) — see swingOffsetCols()
+// Automatable parameter keys, in dropdown order (see the Automation section further
+// down for the rest of the automation constants/UI). Declared up here — not with the
+// others — because applySavedMix() below needs it, and applySavedMix() runs as soon as
+// the page loads (restoring an autosaved draft, if any) before the script has finished
+// evaluating top-level consts declared later in the file.
+const AUTOMATION_PARAMS = ['gain', 'pan', 'delay', 'chorus', 'reverb'];
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1466,7 +1472,7 @@ function applySavedMix(data) {
     for (const ch of ALL_TRACKS) {
       const chAuto = data.automation[ch];
       if (!chAuto || typeof chAuto !== 'object') continue;
-      for (const param of ['gain', 'pan']) {
+      for (const param of AUTOMATION_PARAMS) {
         const pts = chAuto[param];
         if (!Array.isArray(pts)) continue;
         const clean = pts
@@ -2104,8 +2110,15 @@ function toggleTrackCollapsed(track) {
 // fully backward compatible with songs saved before automation existed.
 const automationOpen = new Map(); // track id -> currently-shown param ('gain'|'pan'), absent = panel closed
 const AUTOMATION_H = 60;
-const AUTOMATION_RANGE = { gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 } };
-const AUTOMATION_LABEL = { gain: 'Volume', pan: 'Pan' };
+const AUTOMATION_RANGE = { gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 }, delay: { min: 0, max: 1 }, chorus: { min: 0, max: 1 }, reverb: { min: 0, max: 1 } };
+const AUTOMATION_LABEL = { gain: 'Volume', pan: 'Pan', delay: 'Delay', chorus: 'Chorus', reverb: 'Reverb' };
+// AUTOMATION_PARAMS (dropdown order; also reused by applySavedMix()) is declared
+// earlier in the file, near the other DEFAULT_* constants — see the comment there.
+// Per-param value formatting for the axis min/max labels and each point's
+// hover tooltip — replaces what used to be a `param === 'gain' ? ... : ...`
+// ternary back when gain/pan were the only two params.
+const AUTOMATION_AXIS_FORMAT = { gain: (v) => v.toFixed(1), pan: (v) => v.toFixed(0), delay: (v) => Math.round(v * 100) + '%', chorus: (v) => Math.round(v * 100) + '%', reverb: (v) => Math.round(v * 100) + '%' };
+const AUTOMATION_POINT_FORMAT = { gain: (v) => v.toFixed(2), pan: (v) => panLabel(v), delay: (v) => Math.round(v * 100) + '%', chorus: (v) => Math.round(v * 100) + '%', reverb: (v) => Math.round(v * 100) + '%' };
 function getAutomationPoints(track, param) {
   const t = state.automation[track];
   return (t && t[param]) || null;
@@ -2202,7 +2215,7 @@ function renderAutomationRow(track, param) {
   const header = el('div', 'track-header automation-header');
   const title = el('span', 'automation-title'); title.textContent = 'Automation';
   const select = document.createElement('select');
-  for (const p of ['gain', 'pan']) {
+  for (const p of AUTOMATION_PARAMS) {
     const opt = document.createElement('option');
     opt.value = p; opt.textContent = AUTOMATION_LABEL[p];
     if (p === param) opt.selected = true;
@@ -2220,8 +2233,8 @@ function renderAutomationRow(track, param) {
 
   const gutter = el('div', 'gutter automation-gutter');
   const r = AUTOMATION_RANGE[param];
-  const hi = el('div', 'glabel'); hi.textContent = param === 'gain' ? r.max.toFixed(1) : r.max.toFixed(0);
-  const lo = el('div', 'glabel'); lo.textContent = param === 'gain' ? r.min.toFixed(1) : r.min.toFixed(0);
+  const hi = el('div', 'glabel'); hi.textContent = AUTOMATION_AXIS_FORMAT[param](r.max);
+  const lo = el('div', 'glabel'); lo.textContent = AUTOMATION_AXIS_FORMAT[param](r.min);
   gutter.append(hi, lo);
 
   const lane = el('div', 'lane automation-lane-el');
@@ -2258,7 +2271,7 @@ function renderAutomationRow(track, param) {
     dot.style.left = (p.col * colPx) + 'px';
     dot.style.top = valueToY(param, p.value) + 'px';
     dot.style.borderColor = trackColor(track);
-    dot.title = param === 'gain' ? p.value.toFixed(2) : panLabel(p.value);
+    dot.title = AUTOMATION_POINT_FORMAT[param](p.value);
     dot.addEventListener('pointerdown', (e) => { e.stopPropagation(); startAutomationDrag(e, lane, track, param, idx); });
     dot.addEventListener('click', (e) => e.stopPropagation());
     dot.addEventListener('dblclick', (e) => { e.stopPropagation(); deleteAutomationPoint(track, param, idx); });
@@ -5079,6 +5092,9 @@ function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
     if (!auto) continue;
     if (auto.gain && chanGain[ch] && audible(ch)) scheduleParamAutomation(chanGain[ch].gain, auto.gain, state.gains[ch], startAt, eighthSec, fromCol, toCol);
     if (auto.pan && chanPan[ch]) scheduleParamAutomation(chanPan[ch].pan, auto.pan, state.pan[ch], startAt, eighthSec, fromCol, toCol);
+    if (auto.delay && trackDelaySend[ch]) scheduleParamAutomation(trackDelaySend[ch].gain, auto.delay, getFxSend(ch).delay, startAt, eighthSec, fromCol, toCol);
+    if (auto.chorus && trackChorusSend[ch]) scheduleParamAutomation(trackChorusSend[ch].gain, auto.chorus, getFxSend(ch).chorus, startAt, eighthSec, fromCol, toCol);
+    if (auto.reverb && trackReverbSend[ch]) scheduleParamAutomation(trackReverbSend[ch].gain, auto.reverb, getFxSend(ch).reverb, startAt, eighthSec, fromCol, toCol);
   }
 }
 // Sidechain-style ducking: Web Audio's DynamicsCompressorNode has no sidechain
