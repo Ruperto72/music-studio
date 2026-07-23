@@ -676,7 +676,7 @@
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector.</li>
+        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor).</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1198,6 +1198,14 @@ const DEFAULT_FM = { ratio: 2, depth: 0 };
 // applies to rhythm tracks too (see getFxSend/setFxSend).
 const DEFAULT_FX_SEND = { delay: 0, chorus: 0, reverb: 0 };
 
+// Per-track compressor (state.comp[track] absent -> this) — unlike the sends
+// above this is an insert (chanGain[id] -> chanComp[id] -> chanPan[id]/
+// chanAnalyser[id]/the FX sends), not a parallel send/return. ratio: 1 is a
+// true no-op regardless of threshold (same "neutral by default" contract as
+// DEFAULT_MASTER_COMP, which this mirrors exactly); applies to rhythm tracks
+// too (see getTrackComp/setTrackComp).
+const DEFAULT_TRACK_COMP = { threshold: -24, ratio: 1, attack: 0.01, release: 0.25 };
+
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
 // Defaults are chosen to be fully transparent (0dB EQ; ratio 1:1 means the
@@ -1371,7 +1379,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1420,6 +1428,7 @@ const state = {
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
   fxSend: {},                // id -> { delay, chorus, reverb } (0..1 each, any track kind) — see DEFAULT_FX_SEND
+  comp: {},                  // id -> { threshold, ratio, attack, release } (any track kind) — see DEFAULT_TRACK_COMP
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
@@ -1509,6 +1518,19 @@ function applySavedMix(data) {
           chorus: Math.max(0, Math.min(1, s.chorus)),
           reverb: typeof s.reverb === 'number' ? Math.max(0, Math.min(1, s.reverb)) : 0,
         };
+      }
+    }
+  }
+  if (data.comp && typeof data.comp === 'object') {
+    // Same validation as data.masterComp below (no clamping — matches that
+    // precedent), iterating ALL_TRACKS since the compressor works on rhythm
+    // tracks too.
+    const compKeys = ['threshold', 'ratio', 'attack', 'release'];
+    for (const ch of ALL_TRACKS) {
+      const c = data.comp[ch];
+      if (!c || typeof c !== 'object') continue;
+      if (compKeys.every(k => typeof c[k] === 'number')) {
+        state.comp[ch] = { threshold: c.threshold, ratio: c.ratio, attack: c.attack, release: c.release };
       }
     }
   }
@@ -1653,7 +1675,7 @@ let historyTimer = null;
 const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
-  automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend
+  automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1680,9 +1702,10 @@ function restoreSnapshot(s) {
     state.filter = data.filter && typeof data.filter === 'object' ? data.filter : {};
     state.fm = data.fm && typeof data.fm === 'object' ? data.fm : {};
     state.fxSend = data.fxSend && typeof data.fxSend === 'object' ? data.fxSend : {};
+    state.comp = data.comp && typeof data.comp === 'object' ? data.comp : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
-    applyGains(); applyPan(); applyFxSend();
+    applyGains(); applyPan(); applyFxSend(); applyTrackComp();
   }
   state.tempo = data.tempo;
   tempoInput.value = state.tempo;
@@ -1824,6 +1847,8 @@ function getFmState(track) { return state.fm[track] || DEFAULT_FM; }
 function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
 function getFxSend(track) { return state.fxSend[track] || DEFAULT_FX_SEND; }
 function setFxSend(track, patch) { state.fxSend[track] = { ...getFxSend(track), ...patch }; }
+function getTrackComp(track) { return state.comp[track] || DEFAULT_TRACK_COMP; }
+function setTrackComp(track, patch) { state.comp[track] = { ...getTrackComp(track), ...patch }; }
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
@@ -1977,10 +2002,11 @@ function ensureChannelNodes(id) {
   chanPan[id].connect(masterGain);
   chanGain[id] = ctx.createGain();
   chanGain[id].gain.value = audible(id) ? state.gains[id] : 0;
-  chanGain[id].connect(chanPan[id]);
+  createChanComp(id);
+  chanComp[id].connect(chanPan[id]);
   chanAnalyser[id] = ctx.createAnalyser();
   chanAnalyser[id].fftSize = 256;
-  chanGain[id].connect(chanAnalyser[id]);
+  chanComp[id].connect(chanAnalyser[id]);
   createTrackFxSends(id);
 }
 function addTrack() {
@@ -2047,8 +2073,8 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend]) delete map[id];
-  for (const nodes of [chanGain, chanPan, chanAnalyser, trackDelaySend, trackChorusSend, trackReverbSend]) {
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend, state.comp]) delete map[id];
+  for (const nodes of [chanGain, chanPan, chanAnalyser, chanComp, trackDelaySend, trackChorusSend, trackReverbSend]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
@@ -2399,20 +2425,22 @@ function renderAdsrRow(track) {
   return row;
 }
 
-// Continuous Delay/Chorus send panel — unlike renderAdsrRow() this is
-// available for every track kind (tonal and rhythm alike), since both
-// sends tap chanGain[track] directly rather than any tonal-only synthesis
-// state. Same row/header/lane CSS classes as renderAdsrRow() (no new CSS).
+// Continuous Delay/Chorus/Reverb send + Compressor panel — unlike
+// renderAdsrRow() this is available for every track kind (tonal and rhythm
+// alike), since the sends tap chanGain[track] (via chanComp[track])
+// directly rather than any tonal-only synthesis state, and the compressor
+// is a plain channel insert with no tonal-only concept either. Same
+// row/header/lane CSS classes as renderAdsrRow() (no new CSS).
 function renderFxSendRow(track) {
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
   row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
 
   const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = 'Track FX (send)';
-  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus/Reverb send to 0';
+  const title = el('span', 'automation-title'); title.textContent = 'Track FX';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus/Reverb send and Compressor to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.fxSend[track]; applyFxSend(); render(); autosave(); });
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.fxSend[track]; delete state.comp[track]; applyFxSend(); applyTrackComp(); render(); autosave(); });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close FX panel';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); fxSendOpen.delete(track); render(); });
@@ -2441,6 +2469,39 @@ function renderFxSendRow(track) {
       val.textContent = Math.round(v * 100) + '%';
       setFxSend(track, { [key]: v });
       applyFxSend();
+      autosave();
+    });
+    field.append(cap, slider, val);
+    lane.appendChild(field);
+  }
+
+  const divider = el('span', 'adsr-divider');
+  lane.appendChild(divider);
+
+  // Compressor — an insert (chanGain[track] -> chanComp[track] -> ...), not
+  // a send, so it has no 0-100% "amount" the way the three fields above do;
+  // same four params/ranges/formatting as the master compressor (COMP_FIELDS).
+  const comp = getTrackComp(track);
+  const TRACK_COMP_FIELDS = [
+    ['threshold', 'Thr', 'dB', -60, 0, 1, 0],
+    ['ratio', 'Rat', ':1', 1, 20, 0.5, 1],
+    ['attack', 'Atk', 's', 0, 1, 0.01, 2],
+    ['release', 'Rel', 's', 0.01, 1, 0.01, 2],
+  ];
+  for (const [key, label, unit, min, max, step, decimals] of TRACK_COMP_FIELDS) {
+    const field = el('div', 'adsr-field');
+    const cap = el('span', 'adsr-label'); cap.textContent = label;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = comp[key];
+    slider.style.accentColor = trackColor(track);
+    slider.title = key.charAt(0).toUpperCase() + key.slice(1) + (key === 'ratio' ? ' (1:1 = off)' : '');
+    const val = el('span', 'adsr-val'); val.textContent = comp[key].toFixed(decimals) + unit;
+    slider.addEventListener('mousedown', (e) => e.stopPropagation());
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      val.textContent = v.toFixed(decimals) + unit;
+      setTrackComp(track, { [key]: v });
+      applyTrackComp();
       autosave();
     });
     field.append(cap, slider, val);
@@ -2553,7 +2614,7 @@ function buildHeader(track) {
   tools.append(autoBtn);
   const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
   fxBtn.textContent = '✨ FX';
-  fxBtn.title = 'Track effects — continuous Delay, Chorus & Reverb send (separate from the per-note Echo/Chorus/Reverb flags)';
+  fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags) and a Compressor';
   fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   fxBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -3925,6 +3986,7 @@ function createNewSong(withStarterTracks, name) {
   state.automation = {};
   state.adsr = {};
   state.fxSend = {};
+  state.comp = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
@@ -3939,6 +4001,7 @@ function createNewSong(withStarterTracks, name) {
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
   applyFxSend();
+  applyTrackComp();
   state.masterEQ = { ...DEFAULT_MASTER_EQ };
   state.masterComp = { ...DEFAULT_MASTER_COMP };
   state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
@@ -4010,7 +4073,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -4050,6 +4113,7 @@ function applySongData(data, name) {
   applyGains();
   applyPan();
   applyFxSend();
+  applyTrackComp();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(getMasterCrush().amount);
   state.selected = null;
@@ -4414,7 +4478,8 @@ async function renderSongToWav() {
     chanPan[ch] = ctx.createStereoPanner();
     chanPan[ch].connect(masterGain);
     chanGain[ch] = ctx.createGain();
-    chanGain[ch].connect(chanPan[ch]);
+    createChanComp(ch);
+    chanComp[ch].connect(chanPan[ch]);
     createTrackFxSends(ch);
   }
   applyGains();
@@ -4426,7 +4491,7 @@ async function renderSongToWav() {
 
   const rendered = await offline.startRendering();
 
-  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
+  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
   trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
@@ -4628,6 +4693,7 @@ let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
+let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanGain[id] -> chanComp[id] -> chanPan[id]/chanAnalyser[id]/the FX sends
 let trackDelaySend = {};  // id -> GainNode, chanGain[id] -> shared delay bus (see createTrackFxSends())
 let trackChorusSend = {}; // id -> GainNode, chanGain[id] -> shared chorus bus
 let trackReverbSend = {}; // id -> GainNode, chanGain[id] -> shared reverb bus
@@ -4764,19 +4830,32 @@ function createGlobalFxBuses() {
   fxReverbWet = ctx.createGain(); fxReverbWet.gain.value = 1; // the per-track send gain is the level control now
   fxReverbBus.connect(fxReverb).connect(fxReverbWet).connect(masterGain);
 }
-// Per-track taps into the three buses above. Called once per channel, right
-// after chanGain[id] exists, from every place that creates it (ensureCtx(),
-// renderSongToWav(), ensureChannelNodes()).
+// Creates the per-track compressor insert and wires chanGain[id] -> chanComp[id].
+// Called right after chanGain[id] exists, before anything downstream
+// (chanPan[id]/chanAnalyser[id]/createTrackFxSends()) connects from it.
+function createChanComp(id) {
+  chanComp[id] = ctx.createDynamicsCompressor();
+  const c = getTrackComp(id);
+  chanComp[id].threshold.value = c.threshold;
+  chanComp[id].ratio.value = c.ratio;
+  chanComp[id].attack.value = c.attack;
+  chanComp[id].release.value = c.release;
+  chanGain[id].connect(chanComp[id]);
+}
+// Per-track taps into the three buses above, from chanComp[id] (post-
+// compressor) rather than chanGain[id] directly. Called once per channel,
+// right after chanComp[id] exists, from every place that creates it
+// (ensureCtx(), renderSongToWav(), ensureChannelNodes()).
 function createTrackFxSends(id) {
   trackDelaySend[id] = ctx.createGain();
   trackDelaySend[id].gain.value = getFxSend(id).delay;
-  chanGain[id].connect(trackDelaySend[id]).connect(fxDelayBus);
+  chanComp[id].connect(trackDelaySend[id]).connect(fxDelayBus);
   trackChorusSend[id] = ctx.createGain();
   trackChorusSend[id].gain.value = getFxSend(id).chorus;
-  chanGain[id].connect(trackChorusSend[id]).connect(fxChorusBus);
+  chanComp[id].connect(trackChorusSend[id]).connect(fxChorusBus);
   trackReverbSend[id] = ctx.createGain();
   trackReverbSend[id].gain.value = getFxSend(id).reverb;
-  chanGain[id].connect(trackReverbSend[id]).connect(fxReverbBus);
+  chanComp[id].connect(trackReverbSend[id]).connect(fxReverbBus);
 }
 
 function ensureCtx() {
@@ -4792,15 +4871,16 @@ function ensureCtx() {
     ensureCrusher(ctx, crushBus, ctx.destination); // last stage before the speakers — see ensureCrusher()
     createGlobalFxBuses();
     for (const ch of ALL_TRACKS) {
-      // Per channel: gain → panner → master, mirroring the game's audio graph.
+      // Per channel: gain → compressor → panner → master, mirroring the game's audio graph.
       chanPan[ch] = ctx.createStereoPanner();
       chanPan[ch].connect(masterGain);
       chanGain[ch] = ctx.createGain();
-      chanGain[ch].connect(chanPan[ch]);
-      // Tap the post-fader signal for the channel's VU meter (silent when muted).
+      createChanComp(ch);
+      chanComp[ch].connect(chanPan[ch]);
+      // Tap the post-fader, post-compressor signal for the channel's VU meter (silent when muted).
       chanAnalyser[ch] = ctx.createAnalyser();
       chanAnalyser[ch].fftSize = 256;
-      chanGain[ch].connect(chanAnalyser[ch]);
+      chanComp[ch].connect(chanAnalyser[ch]);
       createTrackFxSends(ch);
     }
     applyGains(); // set each channel to its audible gain (respecting mute/solo)
@@ -4967,6 +5047,16 @@ function applyFxSend() {
     if (trackDelaySend[ch]) trackDelaySend[ch].gain.value = s.delay;
     if (trackChorusSend[ch]) trackChorusSend[ch].gain.value = s.chorus;
     if (trackReverbSend[ch]) trackReverbSend[ch].gain.value = s.reverb;
+  }
+}
+function applyTrackComp() {
+  for (const ch of ALL_TRACKS) {
+    if (!chanComp[ch]) continue;
+    const c = getTrackComp(ch);
+    chanComp[ch].threshold.value = c.threshold;
+    chanComp[ch].ratio.value = c.ratio;
+    chanComp[ch].attack.value = c.attack;
+    chanComp[ch].release.value = c.release;
   }
 }
 
@@ -5667,7 +5757,7 @@ function stopPlayback() {
     masterGain = null;
     duckGain = null;
     previewGain = null;
-    chanGain = {}; chanPan = {}; chanAnalyser = {};
+    chanGain = {}; chanPan = {}; chanAnalyser = {}; chanComp = {};
     trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
     fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
