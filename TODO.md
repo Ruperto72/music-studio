@@ -247,9 +247,34 @@ ett facit.
   ✨ FX-panel som sändarna, under en delare. Eftersom det bara sätts in i
   kanalkedjan (ingen ändring i not- eller trumsyntesen, precis som
   send-reglagen) fungerar det på rytmspår direkt.
+- [x] **Delay/Chorus/Reverb-send automatiserbara över tid** — efter
+  användarfeedback (skärmdump av ✨ FX-panelen bredvid den befintliga
+  Automation-panelen: "kan man inte reglera procenten över tidslinjen som
+  för volym?") gick vi hellre den vägen än att bara flytta de statiska
+  reglagen till vänsterpanelen (7 reglage hade blivit trångt i den ~150px
+  smala spalten, och hade ändå inte löst det egentliga önskemålet).
+  Automation-dropdownen (som redan hade Volume/Pan) fick tre nya poster,
+  `AUTOMATION_PARAMS = ['gain','pan','delay','chorus','reverb']` — hela
+  den befintliga kurveditorn (`renderAutomationRow`, drag/dubbelklick,
+  SVG-ritningen, `scheduleParamAutomation()`) var redan helt
+  parametergenerisk, så själva utökningen blev nästan bara
+  konfiguration: nya poster i `AUTOMATION_RANGE`/`AUTOMATION_LABEL`, nya
+  formatterare för axel-etiketter/punkt-tooltips (`AUTOMATION_AXIS_FORMAT`/
+  `AUTOMATION_POINT_FORMAT`, ersätter en `param === 'gain' ? ... : ...`
+  som bara var skriven för två parametrar), tre nya rader i
+  `scheduleAutomationForChunk()` som rampar `trackDelaySend[id].gain`
+  m.fl. precis som volym/pan redan rampar `chanGain[id].gain`, och en
+  bugg-fix i `applySavedMix()` som hårdkodade `['gain','pan']` (utan den
+  hade sparade Delay/Chorus/Reverb-kurvor tystats bort vid inläsning).
+  Den statiska ✨ FX-panelens reglage rördes inte alls — de fungerar
+  redan som basvärde när ingen kurva finns, exakt som volym/pan-
+  reglagen i spårhuvudet redan gör. Compressorns fyra parametrar är
+  medvetet fortfarande bara statiska reglage (mindre naturligt att
+  automatisera ratio/attack/release).
 - [ ] Möjligen per-spårs **EQ**, i samma anda som master-EQ:n — enda
   kvarvarande punkten på den ursprungliga önskelistan (delay/eko,
-  compressor, chorus, reverb är nu alla klara).
+  compressor, chorus, reverb är nu alla klara, och sändarna dessutom
+  automatiserbara över tid).
 
 ## Rytmspår
 
