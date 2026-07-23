@@ -28,5 +28,10 @@
     "file": "space-miner.json",
     "name": "Deep Vacuum",
     "desc": "A 132 BPM techno track for the Space Miner game — sparse vacuum-drone intros/outros build into hard-hitting drops via riser arps and crash transitions, with bitcrushed lead stabs, chorused pads and a tightened master EQ/compressor for a deeper, punchier sound."
+  },
+  {
+    "file": "neon-cathedral.json",
+    "name": "Neon Cathedral",
+    "desc": "A 2-minute symphonic/techno hybrid at 128 BPM — intro, build, drop, breakdown and a key-change climax before the outro. Six tracks (sine pad, square arp lead, FM brass stabs, triangle sub-bass, and two rhythm kits) showcase nearly every feature: per-note bend/vibrato/arpeggio/portamento/bitcrush/duty-cycle, ADSR + filter envelopes, FM synthesis, volume/pan/delay/reverb automation curves, per-track Delay/Chorus/Reverb sends, Compressor, Bitcrush and Tremolo inserts, plus master EQ, compressor, parallel compression, kick-triggered sidechain ducking and a touch of master bitcrush."
   }
 ]
