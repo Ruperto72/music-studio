@@ -484,8 +484,35 @@ ett facit.
   Verifierat i webbläsaren: alla fält i alla fyra grupper på både
   tonalt och rytm-spår, spara/ladda-rundtur (inklusive
   reverb-default-fallet), och Reset-knappen, allt utan nya konsol-fel.
-- [ ] **Inga automatiska tester.** CLAUDE.md bekräftar att det inte finns
-  build/lint/test-kommando — all verifiering är manuell i webbläsaren.
+- [x] **Ingen återanvändbar regressionskoll fanns kvar i repot** — punkt #3
+  från samma retrospektiv-fråga som de två föregående punkterna. Varje
+  funktion i den här sessionen krävde att ett engångs-Playwright-skript
+  skrevs i en scratchpad för att verifiera att inget gått sönder, och
+  kastades sen — samma sak fick uppfinnas om och om igen. Lade till
+  `verify.js`, incheckad i repot: startar sin egen `dev-server.js` på
+  en engångsport, kör igenom en handfull kärninteraktioner (tomt
+  projekt vid start, ladda ett exempel via Songs-menyn,
+  Automation-/FX-panelerna, uppspelning, lägg till/ångra ett spår), och
+  faller om någon förväntan är fel ELLER om sidan loggar ett
+  konsol-fel/en ohanterad exception när som helst under körningen —
+  verifierat att den passiva fel-uppsamlingen faktiskt fångar sådant
+  (testat med ett medvetet `console.error`/en medveten ohanterad
+  exception, båda fångades och fällde körningen korrekt).
+  Pratar med webbläsaren direkt via Chrome DevTools Protocol
+  (`WebSocket` + JSON-RPC, bara Node:s egna inbyggda moduler) istället
+  för ett automationsbibliotek som Playwright — matchar projektets
+  "inga beroenden att installera"-regel istället för att introducera
+  repots första npm-beroende (och därmed `package.json`/
+  `node_modules`); `element.click()`/`dispatchEvent()` via
+  `Runtime.evaluate()` ersätter det ett bibliotek annars hade gett,
+  och slipper dessutom helt den tidigare i sessionen upptäckta
+  klick-missar-p.g.a.-scroll-clipping-buggen eftersom det inte är
+  riktiga koordinatbaserade klick genom renderingspipelinen. Hittar en
+  lokal Chromium-baserad webbläsare automatiskt (`CHROME_PATH` för att
+  override:a). Inte en fullständig testsvit — bara CLAUDE.md:s
+  beskrivning av "inget testkommando" uppdaterad till att nämna
+  `verify.js` som det närmaste som finns, fortfarande inget
+  build/lint-kommando.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 
