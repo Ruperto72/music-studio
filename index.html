@@ -306,7 +306,8 @@
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
   .track.collapsed .th-wave-row, .track.collapsed .th-tools,
-  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove { display: none; }
+  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove,
+  .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
     font-size: 13px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2;
@@ -353,6 +354,24 @@
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
   .track.silent .lane { opacity: 0.32; }
+
+  /* Track FX panel (Delay/Chorus/Reverb send, Compressor, Bitcrush, Tremolo)
+     — unlike Automation/Envelope this needs no timeline column width, so it
+     lives right inside the header as a compact 2-column grid instead of a
+     full-width row (see buildFxPanel()). */
+  .th-fx-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 2px; }
+  .th-fx-reset-wrap { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+  .th-fx-reset {
+    background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
+    font-size: 10px; padding: 2px 6px; cursor: pointer;
+  }
+  .th-fx-reset:hover { border-color: #55555f; }
+  .th-fx-divider { grid-column: 1 / -1; height: 1px; background: #3a3a44; margin: 1px 0; }
+  .th-fx-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .th-fx-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+  .th-fx-label { font-size: 10px; font-weight: 700; color: var(--muted); }
+  .th-fx-val { font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .th-fx-field input[type=range] { width: 100%; cursor: pointer; }
 
   .gutter {
     position: sticky; left: var(--header-w); z-index: 11; flex: 0 0 auto;
@@ -676,7 +695,7 @@
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off).</li>
+        <li>The <b>✨ FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off).</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1990,7 +2009,6 @@ function renderTracks() {
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
     if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
-    if (fxSendOpen.has(t.id)) tracksEl.appendChild(renderFxSendRow(t.id));
   }
 }
 
@@ -2441,20 +2459,42 @@ function renderAdsrRow(track) {
   return row;
 }
 
-// Continuous Delay/Chorus/Reverb send + Compressor panel — unlike
-// renderAdsrRow() this is available for every track kind (tonal and rhythm
-// alike), since the sends tap chanGain[track] (via chanComp[track])
-// directly rather than any tonal-only synthesis state, and the compressor
-// is a plain channel insert with no tonal-only concept either. Same
-// row/header/lane CSS classes as renderAdsrRow() (no new CSS).
-function renderFxSendRow(track) {
-  const row = el('div', 'track automation-row');
-  row.dataset.track = track;
-  row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+// Continuous Delay/Chorus/Reverb send + Compressor + Bitcrush + Tremolo panel
+// — unlike renderAdsrRow()/renderAutomationRow() this doesn't need the wide
+// piano-roll area at all (every field here is a plain static per-track knob,
+// nothing tied to timeline columns), so unlike those two it renders as a
+// compact 2-column grid appended straight into the track's own left header
+// (buildHeader()) instead of a separate full-width row — available for every
+// track kind (tonal and rhythm alike), since the sends tap chanGain[track]
+// (via chanComp[track]) directly rather than any tonal-only synthesis state,
+// and the compressor/crush/tremolo are all plain channel inserts with no
+// tonal-only concept either.
+function addFxField(panel, track, label, title_, value, min, max, step, format, onInput) {
+  const field = el('div', 'th-fx-field');
+  const row1 = el('div', 'th-fx-row1');
+  const cap = el('span', 'th-fx-label'); cap.textContent = label;
+  const val = el('span', 'th-fx-val'); val.textContent = format(value);
+  row1.append(cap, val);
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = value;
+  slider.style.accentColor = trackColor(track);
+  slider.title = title_;
+  slider.addEventListener('mousedown', (e) => e.stopPropagation());
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    val.textContent = format(v);
+    onInput(v);
+  });
+  field.append(row1, slider);
+  panel.appendChild(field);
+}
+function buildFxPanel(track) {
+  const panel = el('div', 'th-fx-panel');
+  const pct = (v) => Math.round(v * 100) + '%';
 
-  const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = 'Track FX';
-  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus/Reverb send, Compressor, Bitcrush and Tremolo to their defaults';
+  const resetWrap = el('div', 'th-fx-reset-wrap');
+  const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
+  resetBtn.title = 'Reset Delay/Chorus/Reverb send, Compressor, Bitcrush and Tremolo to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2462,14 +2502,9 @@ function renderFxSendRow(track) {
     applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo();
     render(); autosave();
   });
-  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close FX panel';
-  closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); fxSendOpen.delete(track); render(); });
-  header.append(title, resetBtn, closeBtn);
+  resetWrap.appendChild(resetBtn);
+  panel.appendChild(resetWrap);
 
-  const gutter = el('div', 'gutter automation-gutter');
-
-  const lane = el('div', 'lane adsr-lane-el');
   const fx = getFxSend(track);
   const FX_SEND_FIELDS = [
     ['delay', 'Delay', 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag'],
@@ -2477,27 +2512,9 @@ function renderFxSendRow(track) {
     ['reverb', 'Reverb', 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag'],
   ];
   for (const [key, label, title_] of FX_SEND_FIELDS) {
-    const field = el('div', 'adsr-field');
-    const cap = el('span', 'adsr-label'); cap.textContent = label;
-    const slider = document.createElement('input');
-    slider.type = 'range'; slider.min = 0; slider.max = 1; slider.step = 0.02; slider.value = fx[key];
-    slider.style.accentColor = trackColor(track);
-    slider.title = title_;
-    const val = el('span', 'adsr-val'); val.textContent = Math.round(fx[key] * 100) + '%';
-    slider.addEventListener('mousedown', (e) => e.stopPropagation());
-    slider.addEventListener('input', () => {
-      const v = parseFloat(slider.value);
-      val.textContent = Math.round(v * 100) + '%';
-      setFxSend(track, { [key]: v });
-      applyFxSend();
-      autosave();
-    });
-    field.append(cap, slider, val);
-    lane.appendChild(field);
+    addFxField(panel, track, label, title_, fx[key], 0, 1, 0.02, pct, (v) => { setFxSend(track, { [key]: v }); applyFxSend(); autosave(); });
   }
-
-  const divider = el('span', 'adsr-divider');
-  lane.appendChild(divider);
+  panel.appendChild(el('div', 'th-fx-divider'));
 
   // Compressor — an insert (chanGain[track] -> chanComp[track] -> ...), not
   // a send, so it has no 0-100% "amount" the way the three fields above do;
@@ -2510,27 +2527,11 @@ function renderFxSendRow(track) {
     ['release', 'Rel', 's', 0.01, 1, 0.01, 2],
   ];
   for (const [key, label, unit, min, max, step, decimals] of TRACK_COMP_FIELDS) {
-    const field = el('div', 'adsr-field');
-    const cap = el('span', 'adsr-label'); cap.textContent = label;
-    const slider = document.createElement('input');
-    slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = comp[key];
-    slider.style.accentColor = trackColor(track);
-    slider.title = key.charAt(0).toUpperCase() + key.slice(1) + (key === 'ratio' ? ' (1:1 = off)' : '');
-    const val = el('span', 'adsr-val'); val.textContent = comp[key].toFixed(decimals) + unit;
-    slider.addEventListener('mousedown', (e) => e.stopPropagation());
-    slider.addEventListener('input', () => {
-      const v = parseFloat(slider.value);
-      val.textContent = v.toFixed(decimals) + unit;
-      setTrackComp(track, { [key]: v });
-      applyTrackComp();
-      autosave();
-    });
-    field.append(cap, slider, val);
-    lane.appendChild(field);
+    const title_ = key.charAt(0).toUpperCase() + key.slice(1) + (key === 'ratio' ? ' (1:1 = off)' : '');
+    addFxField(panel, track, label, title_, comp[key], min, max, step, (v) => v.toFixed(decimals) + unit,
+      (v) => { setTrackComp(track, { [key]: v }); applyTrackComp(); autosave(); });
   }
-
-  const divider2 = el('span', 'adsr-divider');
-  lane.appendChild(divider2);
+  panel.appendChild(el('div', 'th-fx-divider'));
 
   // Bitcrush — an insert (chanComp[track] -> chanCrush[track]? -> chanTremolo[track]),
   // reusing the master bus crusher's own AudioWorkletProcessor/formula
@@ -2538,69 +2539,20 @@ function renderFxSendRow(track) {
   // track — independent of the per-note Crush flag (a fixed always-on
   // 16-step WaveShaperNode, not an amount you can dial in).
   const crush = getTrackCrush(track);
-  const crushField = el('div', 'adsr-field');
-  const crushCap = el('span', 'adsr-label'); crushCap.textContent = 'Crush';
-  const crushSlider = document.createElement('input');
-  crushSlider.type = 'range'; crushSlider.min = 0; crushSlider.max = 1; crushSlider.step = 0.02; crushSlider.value = crush.amount;
-  crushSlider.style.accentColor = trackColor(track);
-  crushSlider.title = 'Lo-fi sample-and-hold downsampler insert, independent of the per-note Crush flag';
-  const crushVal = el('span', 'adsr-val'); crushVal.textContent = Math.round(crush.amount * 100) + '%';
-  crushSlider.addEventListener('mousedown', (e) => e.stopPropagation());
-  crushSlider.addEventListener('input', () => {
-    const v = parseFloat(crushSlider.value);
-    crushVal.textContent = Math.round(v * 100) + '%';
-    setTrackCrush(track, { amount: v });
-    applyTrackCrush();
-    autosave();
-  });
-  crushField.append(crushCap, crushSlider, crushVal);
-  lane.appendChild(crushField);
-
-  const divider3 = el('span', 'adsr-divider');
-  lane.appendChild(divider3);
+  addFxField(panel, track, 'Crush', 'Lo-fi sample-and-hold downsampler insert, independent of the per-note Crush flag',
+    crush.amount, 0, 1, 0.02, pct, (v) => { setTrackCrush(track, { amount: v }); applyTrackCrush(); autosave(); });
+  panel.appendChild(el('div', 'th-fx-divider'));
 
   // Tremolo — an insert (an LFO added onto a plain gain node's own gain
   // AudioParam, see createChanTremolo()); Depth 0 is a true no-op regardless
   // of Rate.
   const trem = getTrackTremolo(track);
-  const rateField = el('div', 'adsr-field');
-  const rateCap = el('span', 'adsr-label'); rateCap.textContent = 'Rate';
-  const rateSlider = document.createElement('input');
-  rateSlider.type = 'range'; rateSlider.min = 0.5; rateSlider.max = 20; rateSlider.step = 0.1; rateSlider.value = trem.rate;
-  rateSlider.style.accentColor = trackColor(track);
-  rateSlider.title = 'Tremolo LFO speed';
-  const rateVal = el('span', 'adsr-val'); rateVal.textContent = trem.rate.toFixed(1) + 'Hz';
-  rateSlider.addEventListener('mousedown', (e) => e.stopPropagation());
-  rateSlider.addEventListener('input', () => {
-    const v = parseFloat(rateSlider.value);
-    rateVal.textContent = v.toFixed(1) + 'Hz';
-    setTrackTremolo(track, { rate: v });
-    applyTrackTremolo();
-    autosave();
-  });
-  rateField.append(rateCap, rateSlider, rateVal);
-  lane.appendChild(rateField);
+  addFxField(panel, track, 'Rate', 'Tremolo LFO speed', trem.rate, 0.5, 20, 0.1, (v) => v.toFixed(1) + 'Hz',
+    (v) => { setTrackTremolo(track, { rate: v }); applyTrackTremolo(); autosave(); });
+  addFxField(panel, track, 'Depth', 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point',
+    trem.depth, 0, 1, 0.02, pct, (v) => { setTrackTremolo(track, { depth: v }); applyTrackTremolo(); autosave(); });
 
-  const depthField = el('div', 'adsr-field');
-  const depthCap = el('span', 'adsr-label'); depthCap.textContent = 'Depth';
-  const depthSlider = document.createElement('input');
-  depthSlider.type = 'range'; depthSlider.min = 0; depthSlider.max = 1; depthSlider.step = 0.02; depthSlider.value = trem.depth;
-  depthSlider.style.accentColor = trackColor(track);
-  depthSlider.title = 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point';
-  const depthVal = el('span', 'adsr-val'); depthVal.textContent = Math.round(trem.depth * 100) + '%';
-  depthSlider.addEventListener('mousedown', (e) => e.stopPropagation());
-  depthSlider.addEventListener('input', () => {
-    const v = parseFloat(depthSlider.value);
-    depthVal.textContent = Math.round(v * 100) + '%';
-    setTrackTremolo(track, { depth: v });
-    applyTrackTremolo();
-    autosave();
-  });
-  depthField.append(depthCap, depthSlider, depthVal);
-  lane.appendChild(depthField);
-
-  row.append(header, gutter, lane);
-  return row;
+  return panel;
 }
 
 function buildHeader(track) {
@@ -2774,6 +2726,7 @@ function buildHeader(track) {
   vuMeters[track] = vuMask;
 
   header.append(top, waveRow, tools, vol, panRow, vu);
+  if (fxSendOpen.has(track)) header.appendChild(buildFxPanel(track));
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }
