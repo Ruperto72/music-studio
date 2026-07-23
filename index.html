@@ -3385,7 +3385,7 @@ function nudgeSelection(dCol, dRow) {
       sel.forEach((n, i) => { n.start = quant(n.start + dc); if (dr) n.freq = round2(midiToFreq(midis[i] + dr)); });
       const selSet = state.multiSelected;
       let rest = notes.filter(n => !selSet.has(n));
-      for (const n of sel) rest = rest.filter(o => o.start + o.len <= n.start || o.start >= n.start + n.len);
+      for (const n of sel) rest = rest.filter(o => o.freq !== n.freq || o.start + o.len <= n.start || o.start >= n.start + n.len);
       state.tracks[state.activeTrack] = [...rest, ...sel];
     }
     render();
@@ -3463,7 +3463,7 @@ function startResize(e, track, idx) {
     if (ev.pointerId !== pointerId) return;
     const deltaGrid = Math.round((ev.clientX - startX) / gridPx()) * state.grid;
     const newLen = Math.max(state.grid, startLen + deltaGrid);
-    const others = notes.filter((_, i) => i !== idx);
+    const others = notes.filter((n, i) => i !== idx && n.freq === note.freq);
     const maxLen = nextNoteStart(others, note.start) - note.start;
     note.len = quant(Math.min(newLen, Math.max(state.grid, maxLen)));
     scheduleRender();
@@ -3520,7 +3520,7 @@ function startMoveNote(e, track, idx) {
     // same track may have already committed its own array replacement, and filtering
     // against the stale `notes` snapshot would silently discard that other commit.
     let rest = state.tracks[track].filter(n => !groupSet.has(n));
-    for (const n of group) rest = rest.filter(o => o.start + o.len <= n.start || o.start >= n.start + n.len);
+    for (const n of group) rest = rest.filter(o => o.freq !== n.freq || o.start + o.len <= n.start || o.start >= n.start + n.len);
     state.tracks[track] = [...rest, ...group];
     state.selected = { track, index: state.tracks[track].indexOf(note) };
     render();
