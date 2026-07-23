@@ -301,6 +301,26 @@ ett facit.
   16-stegs-`WaveShaperNode`, inget reglerbart "amount"); ingen
   per-not-motsvarighet till tremolo finns alls. Båda är medvetet bara
   statiska reglage (som Compressorn), inte automatiserbara över tid.
+- [x] **✨ FX-panelen flyttad in i spårhuvudet** — efter feedback (skärmdump)
+  om att Delay/Chorus/Reverb/Compressor/Crush/Tremolo-reglagen låg ute på
+  samma yta som pianorullen/rytmgriden: "Kan dessa placeras på samma
+  ställe som volym och pan-reglagen? Typ när man klickar på fx-knappen
+  så expanderade den ytan." Till skillnad från Automation/Envelope (som
+  båda genuint behöver pianorullens bredd — en kurva ritas mot
+  tidslinjens kolumner, `renderAutomationRow()`/`renderAdsrRow()`) är
+  varje FX-reglage bara ett statiskt per-spårs-värde utan tidsaxel, så
+  det fanns ingen teknisk anledning att panelen låg i den breda ytan —
+  den hamnade där bara för att den återanvände samma "extra
+  `.track`-rad"-mekanik som redan fanns. `renderFxSendRow()` (en hel
+  bred rad) ersattes av `buildFxPanel()` (ett kompakt rutnät med 2
+  kolumner, `.th-fx-panel`) som byggs in direkt i `buildHeader()`s
+  vänsterkolumn — headerns höjd expanderar helt enkelt nedåt när man
+  klickar ✨ FX, precis som efterfrågat, istället för att lägga till en
+  rad. Samma 10 fält/samma logik (`getFxSend`/`setTrackComp`/
+  `getTrackCrush`/`getTrackTremolo` m.fl., `apply*()`, `autosave()`)
+  återanvänds oförändrat — bara renderingen skrevs om, ingen ändring i
+  ljudgrafen. En liten `addFxField()`-hjälpfunktion konsoliderar det
+  som tidigare var fyra nästan identiska fält-byggande loopar.
 - [ ] Möjligen per-spårs **EQ**, i samma anda som master-EQ:n — enda
   kvarvarande punkten på den ursprungliga önskelistan (delay/eko,
   compressor, chorus, reverb, bitcrush och tremolo är nu alla klara, och
