@@ -214,32 +214,33 @@ ett facit.
 
 ## Spår-effekter
 
-- [x] **Delay- och Chorus-send per spår** — en ✨ FX-knapp i varje spårs
-  header (tonalt eller rytm) öppnar en panel med två reglage,
-  `state.fxSend[track] = { delay, chorus }` (0-100%, `getFxSend()`/
-  `setFxSend()`). Skickar spårets `chanGain[id]` till två delade globala
-  bussar — en tempo-synkad eko-med-feedback och en LFO-modulerad kort
-  fördröjning (chorus) — vars våta signal går tillbaka till `masterGain`,
-  aldrig tillbaka till `chanGain[id]` själv (det hade slutit en
-  ljud-feedbackslinga genom spårets egen fader). Eftersom alla ljud på
-  ett spår redan passerar `chanGain[id]` innan `chanPan`/mastern behövdes
-  ingen ändring alls i not- eller trumsyntesen (`scheduleTone`,
-  `schedulePortamentoTone`, de tio `scheduleKick`/`scheduleSnare`-m.fl.-
-  funktionerna) — det är också därför detta blev det första
-  effekt-reglaget som fungerar på rytmspår. Separat och oberoende av de
-  befintliga per-not-flaggorna Echo/Chorus (`note.echo`/`note.chorus`),
-  som är oförändrade.
+- [x] **Delay-, Chorus- och Reverb-send per spår** — en ✨ FX-knapp i varje
+  spårs header (tonalt eller rytm) öppnar en panel med tre reglage,
+  `state.fxSend[track] = { delay, chorus, reverb }` (0-100%,
+  `getFxSend()`/`setFxSend()`). Skickar spårets `chanGain[id]` till tre
+  delade globala bussar — en tempo-synkad eko-med-feedback, en
+  LFO-modulerad kort fördröjning (chorus) och en `ConvolverNode`-reverb
+  som återanvänder samma genererade impulsrespons som den befintliga
+  per-not-reverben (`ensureReverbImpulse()`) — vars våta signal går
+  tillbaka till `masterGain`, aldrig tillbaka till `chanGain[id]` själv
+  (det hade slutit en ljud-feedbackslinga genom spårets egen fader, eller
+  för reverbens del låtit signalen återupprepas genom sin egen
+  impulsrespons om och om igen). Eftersom alla ljud på ett spår redan
+  passerar `chanGain[id]` innan `chanPan`/mastern behövdes ingen ändring
+  alls i not- eller trumsyntesen (`scheduleTone`, `schedulePortamentoTone`,
+  de tio `scheduleKick`/`scheduleSnare`-m.fl.-funktionerna) — det är också
+  därför detta blev det första effekt-reglaget som fungerar på rytmspår.
+  Separat och oberoende av de befintliga per-not-flaggorna
+  Echo/Chorus/Reverb (`note.echo`/`note.chorus`/`note.reverb`), som är
+  oförändrade. Reverb lades till efter Delay/Chorus i en egen omgång;
+  `reverb`-fältet i `state.fxSend` är valfritt vid inläsning (default 0)
+  så låtar sparade innan det fanns fortfarande laddar korrekt.
 - [ ] **Fler spårnivå-effekter.** Naturliga fortsättningar på ovanstående:
-  - En kontinuerlig **Reverb-send** per spår — närmast att bygga av alla,
-    eftersom `ensureReverb()`/`chanReverbs` och den per-röst
-    `reverbSend`-gainen redan finns per kanal (idag styrd binärt av
-    `note.reverb`); kan återanvända samma `getFxSend`/`setFxSend`/
-    `renderFxSendRow`-mönster som ovan för ett tredje reglage.
-  - En riktig per-spårs **Compressor** — till skillnad från Delay/Chorus-
-    sändarna ovan är detta en insert, inte en send/return: en
-    `DynamicsCompressorNode` behöver splitsas in i varje kanals
-    signalkedja (mellan `chanGain[id]` och `chanPan[id]`, eller liknande)
-    snarare än att tappa av en parallell buss — egen plumbing.
+  - En riktig per-spårs **Compressor** — till skillnad från
+    Delay/Chorus/Reverb-sändarna ovan är detta en insert, inte en
+    send/return: en `DynamicsCompressorNode` behöver splitsas in i varje
+    kanals signalkedja (mellan `chanGain[id]` och `chanPan[id]`, eller
+    liknande) snarare än att tappa av en parallell buss — egen plumbing.
   - Möjligen per-spårs **EQ**, i samma anda som master-EQ:n.
 
 ## Rytmspår
