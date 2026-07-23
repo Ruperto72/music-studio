@@ -735,7 +735,7 @@
       <h3>Saving &amp; exporting</h3>
       <ul>
         <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name and tempo/meter/length/track-count sit at the top of this same <b>☰</b> menu (click the name to rename).</li>
-        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser.</li>
+        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
         <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><b>🎹 Export MIDI</b> / <b>🎼 Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><b>🔊 Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
@@ -1023,7 +1023,7 @@
   <textarea id="exportBox" style="display:none" readonly></textarea>
 
 <script type="module">
-import { TRACKS, RHYTHM_TRACKS, TEMPO_BPM } from './js/song-data.js';
+import { TEMPO_BPM } from './js/song-data.js';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -1070,7 +1070,6 @@ const trackOf = (id) => state.trackList.find(t => t.id === id);
 const trackName = (id) => { const t = trackOf(id); return t ? t.name : id; };
 const trackColor = (id) => { const t = trackOf(id); return t ? t.color : '#8a8a94'; };
 const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm' : id === 'rhythm'; };
-const DEFAULT_IDS = ['lead', 'harmony', 'bass', 'arp', 'pad']; // ids for the game's tonal tracks (match saved-file keys)
 // Color palette for rhythm tracks, separate from TRACK_PALETTE (tonal) so a
 // track's header border still hints at kind at a glance. RHYTHM_COLOR (the
 // first/default rhythm track's color) is this palette's first entry.
@@ -1246,12 +1245,6 @@ const DEFAULT_SIDECHAIN = { enabled: false, depth: 0.5 };
 // sample (i.e. no reduction), matching the "neutral by default" contract.
 const DEFAULT_MASTER_CRUSH = { amount: 0 };
 const DEFAULT_SWING = 0; // % (0 = straight 8ths, up to 75 ≈ triplet feel) — see swingOffsetCols()
-// Automatable parameter keys, in dropdown order (see the Automation section further
-// down for the rest of the automation constants/UI). Declared up here — not with the
-// others — because applySavedMix() below needs it, and applySavedMix() runs as soon as
-// the page loads (restoring an autosaved draft, if any) before the script has finished
-// evaluating top-level consts declared later in the file.
-const AUTOMATION_PARAMS = ['gain', 'pan', 'delay', 'chorus', 'reverb'];
 
 const ROW_H = 11;       // px per semitone in a pitch lane
 const RHY_H = 17;       // px per rhythm row
@@ -1348,29 +1341,6 @@ function fromColumnHits(hits) {
 
 // Round to a whole bar in the current meter, clamped to the allowed range.
 const clampCols = (c) => { const bar = eighthsPerBar(); return Math.max(bar, Math.min(MAX_COLS, Math.round(c / bar) * bar)); };
-// Build the full editor state for the game's song: the track list plus every
-// per-track map (notes/gain/waveform/pan/mute/solo), derived from the exported
-// TRACKS + RHYTHM_TRACKS. Also sets COLS. Used at startup and by Reset.
-function gameDefaults() {
-  const trackList = [];
-  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
-  TRACKS.forEach((t, i) => {
-    const id = DEFAULT_IDS[i] || ('t' + i);
-    trackList.push({ id, name: t.name, color: TRACK_PALETTE[i % TRACK_PALETTE.length], kind: 'tone' });
-    tracks[id] = toColumnNotes(t.notes);
-    gains[id] = t.mix; waveform[id] = t.osc; pan[id] = t.pan; mute[id] = false; solo[id] = false;
-  });
-  RHYTHM_TRACKS.forEach((rt, i) => {
-    const id = i === 0 ? 'rhythm' : 'rhythm' + (i + 1); // keep the first id stable for legacy-file compat
-    trackList.push({ id, name: rt.name, color: RHYTHM_PALETTE[i % RHYTHM_PALETTE.length], kind: 'rhythm' });
-    tracks[id] = toColumnHits(rt.hits);
-    gains[id] = rt.mix; waveform[id] = 'kit'; pan[id] = rt.pan; mute[id] = false; solo[id] = false;
-  });
-  // The game's song is in 4/4 (8 eighths per bar); round up to a whole 4/4 bar.
-  const max = Math.max(...TRACKS.map(t => seqLength(t.notes)), ...RHYTHM_TRACKS.map(rt => seqLength(rt.hits)));
-  COLS = Math.max(8, Math.min(MAX_COLS, Math.ceil(max / 8) * 8));
-  return { trackList, tracks, gains, waveform, pan, mute, solo };
-}
 
 // Song length to use when a saved draft/file predates the explicit `cols` field:
 // round the last note/hit end up to a whole bar (min 1 bar) in the current meter.
@@ -1414,30 +1384,25 @@ function hasRhythmTrackData(data) {
   }
   return Array.isArray(t.rhythm);
 }
-function loadAutosaveIfPresent() {
-  let raw;
-  try { raw = localStorage.getItem(AUTOSAVE_KEY); } catch { return null; }
-  if (!raw) return null;
-  let data;
-  try { data = JSON.parse(raw); } catch { return null; }
-  if (!hasRhythmTrackData(data)) return null;
-  return data;
-}
-
-const _gd = gameDefaults();
+// Blank starting project (just the Rhythm track) — see the boot-time block
+// below (right after applySavedMix()) for why the page always starts here
+// rather than loading the game's demo song or an autosaved draft; pick a
+// song via the 🎵 Songs menu instead (js/song-data.js's TRACKS/RHYTHM_TRACKS
+// remain the "export as code" round-trip target — see fromColumnNotes()/
+// fromColumnHits() — they're just no longer imported for a startup default).
 const state = {
-  trackList: _gd.trackList,  // ordered track descriptors ({ id, name, color, kind })
-  tracks: _gd.tracks,        // id -> notes/hits
-  gains: _gd.gains,          // id -> relative volume (the game's MIX)
-  waveform: _gd.waveform,    // id -> oscillator (the game's VOICES)
-  pan: _gd.pan,              // id -> stereo pan (VOICES)
-  mute: _gd.mute,
-  solo: _gd.solo,
-  tempo: TEMPO_BPM,
-  songName: 'Froggy Hop',    // current project's display name — not song "content", so it's
+  trackList: [{ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' }], // ordered track descriptors ({ id, name, color, kind })
+  tracks: { rhythm: [] },    // id -> notes/hits
+  gains: { rhythm: 1.2 },    // id -> relative volume
+  waveform: { rhythm: 'kit' }, // id -> oscillator
+  pan: { rhythm: 0 },        // id -> stereo pan
+  mute: { rhythm: false },
+  solo: { rhythm: false },
+  tempo: 120,
+  songName: 'Untitled Song', // current project's display name — not song "content", so it's
                              // not part of undo history (see snapshotSong())
   masterVol: 0.45,           // editor preview master level (not part of the game)
-  activeTrack: 'lead',
+  activeTrack: 'rhythm',
   tool: 'pen',
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
@@ -1642,19 +1607,14 @@ function restoreTrackList(data) {
   state.adsr = {};
 }
 
-const autosaveDraft = loadAutosaveIfPresent();
-if (autosaveDraft && confirm('Found an unsaved draft from a previous session. Restore it?\n\n(Cancel discards it and loads the game\'s current song instead.)')) {
-  state.tempo = typeof autosaveDraft.tempo === 'number' ? autosaveDraft.tempo : TEMPO_BPM;
-  if (typeof autosaveDraft.songName === 'string' && autosaveDraft.songName) state.songName = autosaveDraft.songName;
-  restoreTimeSig(autosaveDraft);
-  restoreTrackList(autosaveDraft);
-  COLS = colsFromSaved(autosaveDraft, state.tracks);
-  state.loopEnd = COLS;
-  applySavedMix(autosaveDraft);
-} else if (autosaveDraft) {
-  try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ }
-}
-refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS with the (possibly restored) track list
+// state above already starts as a blank project (just Rhythm) rather than the
+// game's demo song or a background autosave draft — song selection happens
+// explicitly via the 🎵 Songs menu instead. This used to ask "restore your
+// unsaved draft?" on every reload, which became repetitive noise once
+// autosave started firing on every edit. autosave() (below) still keeps
+// saving in the background as a safety net against a crashed tab; it's just
+// never read back automatically on load anymore.
+refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS/RHYTHM_TRACK_IDS with the blank track list above
 
 // ---------- Song name (project title) ----------
 const songNameDisplay = document.getElementById('song-name-display');
@@ -2156,8 +2116,7 @@ const automationOpen = new Map(); // track id -> currently-shown param ('gain'|'
 const AUTOMATION_H = 60;
 const AUTOMATION_RANGE = { gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 }, delay: { min: 0, max: 1 }, chorus: { min: 0, max: 1 }, reverb: { min: 0, max: 1 } };
 const AUTOMATION_LABEL = { gain: 'Volume', pan: 'Pan', delay: 'Delay', chorus: 'Chorus', reverb: 'Reverb' };
-// AUTOMATION_PARAMS (dropdown order; also reused by applySavedMix()) is declared
-// earlier in the file, near the other DEFAULT_* constants — see the comment there.
+const AUTOMATION_PARAMS = ['gain', 'pan', 'delay', 'chorus', 'reverb']; // dropdown order; single source of truth, reused by applySavedMix()
 // Per-param value formatting for the axis min/max labels and each point's
 // hover tooltip — replaces what used to be a `param === 'gain' ? ... : ...`
 // ternary back when gain/pan were the only two params.
