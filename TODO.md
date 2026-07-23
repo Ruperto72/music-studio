@@ -429,6 +429,24 @@ ett facit.
   direkt, togs den och dess enda anropspunkt (`_gd`) samt den nu oanvända
   `TRACKS`/`RHYTHM_TRACKS`-importen bort — `index.html` importerar bara
   `TEMPO_BPM` från `js/song-data.js` numera.
+- [x] **Projektnamnet flyttat från ☰-menyn till Master-strippen** — efter
+  feedback: "Master-spåret innehåller ju all låt information redan. Så om
+  vi bara ser till att namnet syns i master-listen." ☰-menyns
+  `.file-menu-info`-block (Song/Tempo/Meter/Length/Tracks, en ren
+  read-only sammanfattning av kontroller som redan låg live i
+  Master-strippen — `updateSongInfo()`) togs bort helt, precis som
+  efterfrågat ("plocka bort all denna information från meny"). Låtnamnet
+  (`#song-name-display`) flyttades in i Master-strippens `.mstrip-body`
+  som en egen cell — samma `renameSong()`-klick-för-att-döpa-om som förut,
+  bara ny plats. Kravet "kollapsat tillstånd är namnet ej editerbart, i
+  expanderat ska man kunna ändra namnet" löstes utan ny logik: elementet i
+  `.mstrip-body` (klickbart, med ✎-ikon) döljs redan av befintlig CSS när
+  strippen är kollapsad (`#master-track.collapsed .mstrip-body { display:
+  none }`), så ett andra, rent textuellt `#mstrip-song-name`-`<span>`
+  lades till i `.mstrip-collapsed-label` (som redan bara syns när
+  strippen ÄR kollapsad) — samma `state.songName`, två element som CSS
+  redan växlade mellan, `updateSongNameUI()` uppdaterar båda. Hjälptexten
+  uppdaterades på tre ställen för att peka på nya platsen.
 - [ ] **Bara lokalt.** Sparade låtar ligger i `localStorage` i webbläsaren;
   det finns ingen delning via länk/URL eller molnsynk mellan enheter.
 - [ ] **Ingen kollaborativ redigering** (flera personer på samma låt samtidigt).

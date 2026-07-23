@@ -136,7 +136,7 @@
   .icon-btn[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
 
   #song-name-display {
-    font-size: 13px; font-weight: 700; color: var(--ink); flex: 1 1 auto; min-width: 0;
+    font-size: 13px; font-weight: 700; color: var(--ink); max-width: 220px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #song-name-display::after { content: ' ✎'; color: var(--muted); font-weight: 400; font-size: 11px; }
@@ -238,6 +238,7 @@
   #master-vol { width: 120px; cursor: pointer; accent-color: #cfcfe0; }
   #master-vol-val { color: var(--muted); font-size: 11px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
   .mstrip-collapsed-label { color: var(--muted); font-size: 11px; }
+  #mstrip-song-name { color: var(--ink); font-weight: 700; }
   #master-track.collapsed .mstrip-body { display: none; }
   #master-track:not(.collapsed) .mstrip-collapsed-label { display: none; }
   #master-track.collapsed #master-fx-panel { display: none !important; }
@@ -543,8 +544,6 @@
     position: sticky; top: var(--sticky-top, 110px); align-self: flex-start;
     max-height: calc(100vh - var(--sticky-top, 110px) - 12px); overflow-y: auto;
   }
-  .song-info-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
-  .song-info-row span:last-child { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   #file-menu-panel { position: relative; }
   .file-menu {
     position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
@@ -568,7 +567,6 @@
     padding: 7px 10px; border-radius: 5px; font-size: 12px;
   }
   .file-menu-item:hover { background: #26262e; border-color: #3a3a42; }
-  .file-menu-info { padding: 6px 10px; gap: 6px; }
   .inspector {
     background: linear-gradient(#1b1b20, #141418); padding: 8px; border-radius: 8px;
     border: 1px solid #34343c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
@@ -681,9 +679,10 @@
         A browser tool for composing 8-bit chiptune loops — everything is synthesised with the
         Web Audio API, no audio files. Instruments are laid out as separate <b>tracks</b> stacked
         vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
-        red playhead run across every lane at once. The current project's name is shown at the top
-        of the <b>☰</b> menu (click it to rename) — the same menu's <b>🎵 Songs…</b> loads an example, one of
-        your own saved songs, or starts a new one; your own songs are stored in this browser.
+        red playhead run across every lane at once. The current project's name is shown in the
+        <b>Master</b> strip at the bottom (click it to rename while the strip is expanded) — the
+        <b>☰</b> menu's <b>🎵 Songs…</b> loads an example, one of your own saved songs, or starts a
+        new one; your own songs are stored in this browser.
       </p>
 
       <h3>Tracks &amp; channel strips</h3>
@@ -722,14 +721,15 @@
         bitcrush, echo, chorus and reverb in the inspector on the right.
       </p>
 
-      <h3>Bottom bar (Tempo · Length · Grid · Master)</h3>
+      <h3>Bottom bar (Song · Tempo · Length · Grid · Master)</h3>
       <p>
-        The strip under the tracks holds <b>Tempo</b>, <b>Length</b>, <b>Grid</b> (the note snap
-        resolution), the <b>🔊 Master</b> volume and <b>＋ Add track</b>. The <b>▾</b> button collapses
-        it to a slim bar to free up space (remembered between sessions). <b>Length</b> makes the song
-        longer/shorter one bar at a time: <b>+</b> appends an empty bar, <b>−</b> removes the last bar
-        (dropping any notes/hits past the new end); the length is saved with your file and exported so
-        the game loops it.
+        The strip under the tracks holds the <b>Song</b> name (click it to rename), <b>Tempo</b>,
+        <b>Length</b>, <b>Grid</b> (the note snap resolution) and the <b>🔊 Master</b> volume. The
+        <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions) —
+        the song name stays visible, but only rename-able while expanded. <b>Length</b> makes the
+        song longer/shorter one bar at a time: <b>+</b> appends an empty bar, <b>−</b> removes the
+        last bar (dropping any notes/hits past the new end); the length is saved with your file and
+        exported so the game loops it.
       </p>
 
       <h3>Mixing</h3>
@@ -753,7 +753,7 @@
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name and tempo/meter/length/track-count sit at the top of this same <b>☰</b> menu (click the name to rename).</li>
+        <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
         <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
         <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><b>🎹 Export MIDI</b> / <b>🎼 Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
@@ -863,13 +863,6 @@
           <button id="add-track-btn" class="file-menu-item" title="Add a new tonal track">＋ Add track</button>
           <button id="add-rhythm-track-btn" class="file-menu-item" title="Add a new rhythm track (same kit as the others)">＋ 🥁 Add rhythm track</button>
         </div>
-        <div class="file-menu-section file-menu-info">
-          <div class="song-info-row"><span>Song</span><button id="song-name-display" title="Click to rename this song">Froggy Hop</button></div>
-          <div class="song-info-row"><span>Tempo</span><span id="info-tempo"></span></div>
-          <div class="song-info-row"><span>Meter</span><span id="info-meter"></span></div>
-          <div class="song-info-row"><span>Length</span><span id="info-length"></span></div>
-          <div class="song-info-row"><span>Tracks</span><span id="info-tracks"></span></div>
-        </div>
         <div class="file-menu-section">
           <button id="help-btn" class="file-menu-item">❓ Help</button>
         </div>
@@ -945,6 +938,10 @@
       <div id="master-track">
         <button id="master-collapse" title="Hide this bar" aria-label="Toggle bottom bar" aria-expanded="true">▾</button>
         <div class="mstrip-body">
+          <div class="mstrip-cell">
+            <span class="mstrip-cap">Song</span>
+            <button id="song-name-display" title="Click to rename this song">Untitled Song</button>
+          </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Master</span>
             <div class="th-vol">
@@ -1030,7 +1027,7 @@
             <span id="lufs-val" class="adsr-val" title="Approximate momentary loudness, ITU-R BS.1770 K-weighting (not a certified LUFS meter)">— LUFS</span>
           </div>
         </div>
-        <span class="mstrip-collapsed-label">Tempo · Length · Grid · Master</span>
+        <span class="mstrip-collapsed-label"><span id="mstrip-song-name"></span> · Tempo · Length · Grid · Master</span>
       </div>
     </div>
     <div class="inspector-column">
@@ -1612,9 +1609,15 @@ function restoreTrackList(data) {
 refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS/RHYTHM_TRACK_IDS with the blank track list above
 
 // ---------- Song name (project title) ----------
+// Shown twice in the master strip: an editable button in the expanded
+// .mstrip-body, and a plain (non-editable) span in the collapsed label —
+// each hidden by CSS when the other is showing, so the name stays visible
+// either way but is only clickable-to-rename while expanded.
 const songNameDisplay = document.getElementById('song-name-display');
+const mstripSongName = document.getElementById('mstrip-song-name');
 function updateSongNameUI() {
   songNameDisplay.textContent = state.songName;
+  mstripSongName.textContent = state.songName;
   document.title = 'Music Studio — ' + state.songName;
 }
 function renameSong() {
@@ -1652,13 +1655,6 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFileM
 fileMenu.addEventListener('click', (e) => {
   if (e.target.closest('.file-menu-item')) closeFileMenu();
 });
-function updateSongInfo() {
-  document.getElementById('info-tempo').textContent = state.tempo + ' BPM';
-  document.getElementById('info-meter').textContent = tsId(state.timeSig);
-  document.getElementById('info-length').textContent = round2(COLS / eighthsPerBar()) + ' bars';
-  document.getElementById('info-tracks').textContent = state.trackList.length;
-}
-
 // ---------- Undo/redo ----------
 const HISTORY_LIMIT = 100;
 const undoStack = [];
@@ -1933,7 +1929,6 @@ function render() {
   renderTracks();
   positionOverlays();
   renderInspector();
-  updateSongInfo();
   autosave();
   checkpointHistory();
 }
