@@ -701,7 +701,7 @@
 
       <h3>Tools</h3>
       <ul>
-        <li><b>✏️ Pen</b> — click an empty cell to add a note/hit.</li>
+        <li><b>✏️ Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
         <li><b>🧽 Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
         <li><b>✋ Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
@@ -1816,10 +1816,11 @@ function attachPitchWheel(el, track) {
   }, { passive: false });
 }
 
-function clearOverlaps(notes, start, len, exceptIdx = -1) {
+function clearOverlaps(notes, start, len, freq, exceptIdx = -1) {
   const end = start + len;
   return notes.filter((n, i) => {
     if (i === exceptIdx) return true;
+    if (n.freq !== freq) return true;
     const nEnd = n.start + n.len;
     return nEnd <= start || n.start >= end;
   });
@@ -3227,9 +3228,10 @@ function setActive(track, forceRender) {
 function onCellClick(track, midi, col) {
   const notes = state.tracks[track];
   const len = state.grid;
-  const cleared = clearOverlaps(notes, col, len);
+  const freq = round2(midiToFreq(midi));
+  const cleared = clearOverlaps(notes, col, len, freq);
   cleared.push({
-    start: col, len, freq: round2(midiToFreq(midi)), vel: 1,
+    start: col, len, freq, vel: 1,
     bend: null, vib: false, trem: false, duty: null, arp: null,
     porta: false, crush: false, echo: false, chorus: false, reverb: false
   });
@@ -3398,7 +3400,7 @@ function nudgeSelection(dCol, dRow) {
     const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
     note.freq = round2(midiToFreq(midi));
   }
-  const cleared = clearOverlaps(notes, note.start, note.len, notes.indexOf(note));
+  const cleared = clearOverlaps(notes, note.start, note.len, note.freq, notes.indexOf(note));
   state.tracks[track] = cleared;
   state.selected = { track, index: cleared.indexOf(note) };
   render();
@@ -3432,7 +3434,7 @@ function pasteClipboard() {
     const pasted = [];
     for (const it of clipboard.items) {
       const newStart = quant(Math.max(0, Math.min(COLS - it.len, it.start + anchor)));
-      notes = clearOverlaps(notes, newStart, it.len);
+      notes = clearOverlaps(notes, newStart, it.len, it.freq);
       const newNote = { ...it, start: newStart, arp: it.arp ? [...it.arp] : null };
       notes.push(newNote);
       pasted.push(newNote);

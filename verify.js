@@ -263,6 +263,24 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
     });
 
+    step('Pen: clicking a different pitch at the same time in a tonal track adds a chord tone, not a replacement', async () => {
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const hasLane = await cdp.evaluate(`!!document.querySelector('.track.active .lane')`);
+      if (!hasLane) throw new Error('expected an active tonal track with a .lane element');
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 20, clientY: rect.top + 20 }));
+      }`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 1`);
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 20, clientY: rect.top + 100 }));
+      }`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
