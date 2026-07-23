@@ -2019,19 +2019,9 @@ const nextTrackId = () => 'trk' + Date.now().toString(36) + (trackSeq++);
 // track so it previews/plays without needing a full teardown.
 function ensureChannelNodes(id) {
   if (!ctx || !masterGain || chanGain[id]) return;
-  chanPan[id] = ctx.createStereoPanner();
-  chanPan[id].pan.value = state.pan[id] || 0;
-  chanPan[id].connect(masterGain);
-  chanGain[id] = ctx.createGain();
-  chanGain[id].gain.value = audible(id) ? state.gains[id] : 0;
-  createChanComp(id);
-  createChanTremolo(id);
-  ensureTrackCrusher(id, ctx, chanComp[id], chanTremolo[id]);
-  chanTremolo[id].connect(chanPan[id]);
-  chanAnalyser[id] = ctx.createAnalyser();
-  chanAnalyser[id].fftSize = 256;
-  chanTremolo[id].connect(chanAnalyser[id]);
-  createTrackFxSends(id);
+  buildChannelChain(ctx, id, true);
+  applyGains(); // sets every channel's gain, but only this one is actually new
+  applyPan();
 }
 function addTrack() {
   const id = nextTrackId();
@@ -4503,50 +4493,19 @@ async function renderSongToWav() {
   const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
 
   ctx = offline;
-  masterGain = ctx.createGain();
-  masterGain.gain.value = state.masterVol;
-  duckGain = ctx.createGain();
-  masterGain.connect(duckGain);
-  crushBus = ctx.createGain();
-  masterFXNodes = buildMasterFXChain(ctx, duckGain, crushBus);
-  applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
-  // Unlike ensureCtx() (which must stay synchronous), renderSongToWav() is
-  // already async, so the worklet module can just be awaited cleanly instead
-  // of needing the bypass-then-upgrade dance ensureCrusher() does for live
-  // playback.
-  if (ctx.audioWorklet) {
-    await ctx.audioWorklet.addModule('js/downsample-processor.js');
-    crusherNode = new AudioWorkletNode(ctx, 'downsample-processor', {
-      parameterData: { hold: crushAmountToHold(getMasterCrush().amount) },
-    });
-    crushBus.connect(crusherNode).connect(ctx.destination);
-  } else {
-    crushBus.connect(ctx.destination);
-  }
-  createGlobalFxBuses();
-  // Per-track bitcrush also gets to await the module cleanly here (module was
-  // already loaded above for the master crusher, if supported — addModule()
-  // with the same URL again just resolves without re-fetching), rather than
-  // the bypass-then-upgrade dance ensureTrackCrusher() needs for live playback.
-  for (const ch of ALL_TRACKS) {
-    chanPan[ch] = ctx.createStereoPanner();
-    chanPan[ch].connect(masterGain);
-    chanGain[ch] = ctx.createGain();
-    createChanComp(ch);
-    createChanTremolo(ch);
-    if (ctx.audioWorklet) {
-      chanCrush[ch] = new AudioWorkletNode(ctx, 'downsample-processor', {
-        parameterData: { hold: crushAmountToHold(getTrackCrush(ch).amount) },
-      });
-      chanComp[ch].connect(chanCrush[ch]).connect(chanTremolo[ch]);
-    } else {
-      chanComp[ch].connect(chanTremolo[ch]);
-    }
-    chanTremolo[ch].connect(chanPan[ch]);
-    createTrackFxSends(ch);
-  }
+  // Same buildMasterBus()/buildChannelChain() every live context uses (see
+  // ensureCtx()) — the only difference offline is that we can afford to
+  // await the bitcrush worklets' upgrade promises before rendering, instead
+  // of the fire-and-forget bypass-then-upgrade live playback relies on:
+  // OfflineAudioContext.startRendering() runs once, deterministically, so
+  // "still bypassed when rendering starts" would silently skip the crush
+  // effect for the whole render rather than just a few inaudible/glitch-free
+  // milliseconds like it does live.
+  const crushReady = [buildMasterBus(ctx)];
+  for (const ch of ALL_TRACKS) crushReady.push(buildChannelChain(ctx, ch, false));
   applyGains();
   applyPan();
+  await Promise.all(crushReady);
 
   scheduleAutomationForChunk(0, eighthSec, 0, COLS);
   scheduleDucking(0, eighthSec, 0, COLS);
@@ -4839,16 +4798,19 @@ const crushAmountToHold = (amount) => 1 + Math.round(amount * 15);
 // (js/downsample-processor.js), the last stage before the speakers. Starts
 // bypassed (a direct connection) and, if the browser supports AudioWorklet,
 // asynchronously loads the processor module and swaps the direct connection
-// for the real AudioWorkletNode once it's ready. ensureCtx() itself has to
-// stay synchronous (too many call sites use ctx immediately), so this can't
-// just be awaited inline — but masterCrush defaults to amount=0 (a no-op
-// even through the direct connection), so the brief gap before the worklet
-// loads is inaudible in the common case. Falls back to staying bypassed
-// forever on browsers without AudioWorklet support (no crash either way).
+// for the real AudioWorkletNode once it's ready. buildMasterBus() (used by
+// both ensureCtx() and renderSongToWav()) has to stay synchronous for live
+// playback (too many call sites use ctx immediately), so this can't just be
+// awaited inline there — but masterCrush defaults to amount=0 (a no-op even
+// through the direct connection), so the brief gap before the worklet loads
+// is inaudible in the common case. Falls back to staying bypassed forever on
+// browsers without AudioWorklet support (no crash either way). Returns the
+// upgrade promise so a caller that CAN await cleanly (renderSongToWav(),
+// unlike live playback) can wait for the real worklet node before rendering.
 function ensureCrusher(c, inputNode, outputNode) {
   inputNode.connect(outputNode);
-  if (!c.audioWorklet) return;
-  c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
+  if (!c.audioWorklet) return Promise.resolve();
+  return c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
     if (c !== ctx || c.state === 'closed') return; // context replaced/torn down before this resolved
     const node = new AudioWorkletNode(c, 'downsample-processor', {
       parameterData: { hold: crushAmountToHold(getMasterCrush().amount) },
@@ -4932,20 +4894,22 @@ function createChanTremolo(id) {
   chanTremoloLfo[id].start();
 }
 // Per-track counterpart to ensureCrusher() above — same bypass-then-upgrade
-// dance (ensureCtx()/ensureChannelNodes() must stay synchronous) but one
-// AudioWorkletNode instance per track instead of one for the whole mix, each
-// holding its own state.crush[id] amount. Inserted between chanComp[id] and
-// chanTremolo[id] (the fixed anchor on both ends, so the bypass connection
-// and the eventual worklet route both land in the same place) — i.e. after
-// the compressor, before the tremolo and everything downstream (pan/
-// analyser/FX sends), so a bitcrushed track's send/meter/pan all reflect the
-// crushed signal, matching a real insert chain. `c` is the context captured
-// by the caller, compared against the live `ctx` once the promise resolves
-// to detect a context swapped out (or closed) in the meantime.
+// dance (needed for live playback, where buildChannelChain() must stay
+// synchronous) but one AudioWorkletNode instance per track instead of one
+// for the whole mix, each holding its own state.crush[id] amount. Inserted
+// between chanComp[id] and chanTremolo[id] (the fixed anchor on both ends,
+// so the bypass connection and the eventual worklet route both land in the
+// same place) — i.e. after the compressor, before the tremolo and
+// everything downstream (pan/analyser/FX sends), so a bitcrushed track's
+// send/meter/pan all reflect the crushed signal, matching a real insert
+// chain. `c` is the context captured by the caller, compared against the
+// live `ctx` once the promise resolves to detect a context swapped out (or
+// closed) in the meantime. Returns the upgrade promise, same reason as
+// ensureCrusher() — renderSongToWav() awaits it, live playback doesn't.
 function ensureTrackCrusher(id, c, inputNode, outputNode) {
   inputNode.connect(outputNode); // bypassed by default
-  if (!c.audioWorklet) return;
-  c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
+  if (!c.audioWorklet) return Promise.resolve();
+  return c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
     if (c !== ctx || c.state === 'closed' || !chanComp[id] || !chanTremolo[id]) return;
     const node = new AudioWorkletNode(c, 'downsample-processor', {
       parameterData: { hold: crushAmountToHold(getTrackCrush(id).amount) },
@@ -4958,8 +4922,7 @@ function ensureTrackCrusher(id, c, inputNode, outputNode) {
 // Per-track taps into the three buses above, from chanTremolo[id] — the last
 // insert in the chain (compressor -> bitcrush -> tremolo) — rather than
 // chanGain[id] directly. Called once per channel, right after chanTremolo[id]
-// exists, from every place that creates it (ensureCtx(), renderSongToWav(),
-// ensureChannelNodes()).
+// exists, from buildChannelChain() below.
 function createTrackFxSends(id) {
   trackDelaySend[id] = ctx.createGain();
   trackDelaySend[id].gain.value = getFxSend(id).delay;
@@ -4972,33 +4935,60 @@ function createTrackFxSends(id) {
   chanTremolo[id].connect(trackReverbSend[id]).connect(fxReverbBus);
 }
 
+// Builds the song-global part of the audio graph on a fresh context: the
+// master gain/ducking/EQ+compressor chain, the master bitcrush insert, and
+// the three shared send buses every track's FX sends tap into. Shared by
+// ensureCtx() (live playback) and renderSongToWav() (offline export) — the
+// two used to duplicate this setup line-for-line. Returns ensureCrusher()'s
+// upgrade promise; live playback ignores it (fire-and-forget, upgrades in
+// place once ready), renderSongToWav() awaits it before rendering since it
+// has no such synchronous constraint.
+function buildMasterBus(c) {
+  masterGain = c.createGain();
+  masterGain.gain.value = state.masterVol;
+  duckGain = c.createGain();
+  masterGain.connect(duckGain);
+  crushBus = c.createGain();
+  masterFXNodes = buildMasterFXChain(c, duckGain, crushBus);
+  applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
+  const crushReady = ensureCrusher(c, crushBus, c.destination); // last stage before the speakers — see ensureCrusher()
+  createGlobalFxBuses();
+  return crushReady;
+}
+// Builds one track's full channel chain — gain (fader) -> compressor ->
+// bitcrush? -> tremolo -> panner (connected to masterGain) + the three FX
+// sends, plus an optional VU-meter analyser tapped off the same
+// post-insert-chain point as the sends/panner. Shared by ensureCtx() and
+// ensureChannelNodes() (live playback, `withAnalyser: true`) and
+// renderSongToWav() (offline export, `withAnalyser: false` — no meter to
+// feed there) — the three used to duplicate this setup line-for-line.
+// Returns ensureTrackCrusher()'s upgrade promise, same reason as
+// buildMasterBus() above.
+function buildChannelChain(c, id, withAnalyser) {
+  chanPan[id] = c.createStereoPanner();
+  chanPan[id].connect(masterGain);
+  chanGain[id] = c.createGain();
+  createChanComp(id);
+  createChanTremolo(id);
+  const crushReady = ensureTrackCrusher(id, c, chanComp[id], chanTremolo[id]);
+  chanTremolo[id].connect(chanPan[id]);
+  if (withAnalyser) {
+    chanAnalyser[id] = c.createAnalyser();
+    chanAnalyser[id].fftSize = 256;
+    chanTremolo[id].connect(chanAnalyser[id]);
+  }
+  createTrackFxSends(id);
+  return crushReady;
+}
+
 function ensureCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (!masterGain) {
-    masterGain = ctx.createGain();
-    masterGain.gain.value = state.masterVol;
-    duckGain = ctx.createGain();
-    masterGain.connect(duckGain);
-    crushBus = ctx.createGain();
-    masterFXNodes = buildMasterFXChain(ctx, duckGain, crushBus);
-    applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
-    ensureCrusher(ctx, crushBus, ctx.destination); // last stage before the speakers — see ensureCrusher()
-    createGlobalFxBuses();
-    for (const ch of ALL_TRACKS) {
-      // Per channel: gain → compressor → panner → master, mirroring the game's audio graph.
-      chanPan[ch] = ctx.createStereoPanner();
-      chanPan[ch].connect(masterGain);
-      chanGain[ch] = ctx.createGain();
-      createChanComp(ch);
-      createChanTremolo(ch);
-      ensureTrackCrusher(ch, ctx, chanComp[ch], chanTremolo[ch]);
-      chanTremolo[ch].connect(chanPan[ch]);
-      // Tap the post-fader, post-insert-chain signal for the channel's VU meter (silent when muted).
-      chanAnalyser[ch] = ctx.createAnalyser();
-      chanAnalyser[ch].fftSize = 256;
-      chanTremolo[ch].connect(chanAnalyser[ch]);
-      createTrackFxSends(ch);
-    }
+    buildMasterBus(ctx);
+    // Per channel: gain → compressor → bitcrush? → tremolo → panner → master
+    // (plus the VU-meter analyser here — live playback only), mirroring the
+    // game's audio graph. See buildChannelChain().
+    for (const ch of ALL_TRACKS) buildChannelChain(ctx, ch, true);
     applyGains(); // set each channel to its audible gain (respecting mute/solo)
     applyPan();   // set each channel's stereo pan
     previewGain = ctx.createGain();

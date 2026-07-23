@@ -435,6 +435,28 @@ ett facit.
 
 ## Kvalitet
 
+- [x] **Ljudgrafens uppbyggnad var duplicerad på tre ställen** —
+  `ensureCtx()` (live-uppspelning), `renderSongToWav()` (WAV-export) och
+  `ensureChannelNodes()` (nytt spår mitt i sessionen) byggde var sin
+  nästan identiska kopia av både master-bussen (gain/ducking/EQ+komp/
+  bitcrush/de tre send-bussarna) och varje spårs kanalkedja (gain →
+  komp → bitcrush? → tremolo → panner/mätare/sänder). Efter en fråga om
+  vad som skulle designats annorlunda om appen byggdes om från grunden
+  pekade vi ut just detta som den konkreta punkten — det är exakt den
+  dupliceringen som gjort varje ny per-spårs-effekt (Crush, Tremolo)
+  riskabel att lägga till, eftersom man var tvungen att komma ihåg att
+  uppdatera kopplingen på alla tre ställen för hand. Bröts ut till två
+  delade funktioner, `buildMasterBus(ctx)` och
+  `buildChannelChain(ctx, id, withAnalyser)`, som nu anropas från alla
+  tre ställena istället. Enda skillnaden mellan live och offline är att
+  `ensureCrusher()`/`ensureTrackCrusher()` nu returnerar sitt
+  worklet-uppgraderings-`Promise` — `renderSongToWav()` väntar in det
+  innan `startRendering()` (en offline-rendering körs en gång,
+  deterministiskt, och behöver vara fullt kopplad från start), medan
+  live-uppspelning fortfarande struntar i det och låter bypass-kopplingen
+  uppgraderas i bakgrunden som förut. Nettoresultat: ~90 rader mindre
+  duplicerad kod, verifierat i webbläsaren (live-uppspelning, nytt spår
+  mitt i sessionen, WAV-export) utan nya konsol-fel.
 - [ ] **Inga automatiska tester.** CLAUDE.md bekräftar att det inte finns
   build/lint/test-kommando — all verifiering är manuell i webbläsaren.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
