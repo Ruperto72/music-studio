@@ -676,7 +676,7 @@
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b> or <b>Pan</b> over time: click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b> and <b>Chorus</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus toggles in the note inspector.</li>
+        <li>The <b>✨ FX</b> button (every track, rhythm included) opens a small panel with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1192,11 +1192,11 @@ const hzToSlider = (hz) => Math.log(hz / FILTER_MIN_HZ) / Math.log(FILTER_MAX_HZ
 // see addFmModulator).
 const DEFAULT_FM = { ratio: 2, depth: 0 };
 
-// Per-track continuous send to the two shared FX buses (see createGlobalFxBuses()
+// Per-track continuous send to the three shared FX buses (see createGlobalFxBuses()
 // below) — state.fxSend[track] absent -> this. 0 = silent/no-op, same "neutral
 // by default" contract as everything else here; unlike adsr/filter/fm this
 // applies to rhythm tracks too (see getFxSend/setFxSend).
-const DEFAULT_FX_SEND = { delay: 0, chorus: 0 };
+const DEFAULT_FX_SEND = { delay: 0, chorus: 0, reverb: 0 };
 
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
@@ -1419,7 +1419,7 @@ const state = {
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
-  fxSend: {},                // id -> { delay, chorus } (0..1 each, any track kind) — see DEFAULT_FX_SEND
+  fxSend: {},                // id -> { delay, chorus, reverb } (0..1 each, any track kind) — see DEFAULT_FX_SEND
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
@@ -1498,12 +1498,17 @@ function applySavedMix(data) {
   }
   if (data.fxSend && typeof data.fxSend === 'object') {
     // Unlike adsr/filter/fm above, this iterates ALL_TRACKS (not PITCH_TRACKS)
-    // since Delay/Chorus send works on rhythm tracks too.
+    // since Delay/Chorus/Reverb send works on rhythm tracks too. `reverb` is
+    // optional (defaults to 0) so files saved before it existed still load.
     for (const ch of ALL_TRACKS) {
       const s = data.fxSend[ch];
       if (!s || typeof s !== 'object') continue;
       if (['delay', 'chorus'].every(k => typeof s[k] === 'number')) {
-        state.fxSend[ch] = { delay: Math.max(0, Math.min(1, s.delay)), chorus: Math.max(0, Math.min(1, s.chorus)) };
+        state.fxSend[ch] = {
+          delay: Math.max(0, Math.min(1, s.delay)),
+          chorus: Math.max(0, Math.min(1, s.chorus)),
+          reverb: typeof s.reverb === 'number' ? Math.max(0, Math.min(1, s.reverb)) : 0,
+        };
       }
     }
   }
@@ -2043,7 +2048,7 @@ function removeTrack(id) {
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
   for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend]) delete map[id];
-  for (const nodes of [chanGain, chanPan, chanAnalyser, trackDelaySend, trackChorusSend]) {
+  for (const nodes of [chanGain, chanPan, chanAnalyser, trackDelaySend, trackChorusSend, trackReverbSend]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
@@ -2405,7 +2410,7 @@ function renderFxSendRow(track) {
 
   const header = el('div', 'track-header automation-header');
   const title = el('span', 'automation-title'); title.textContent = 'Track FX (send)';
-  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus send to 0';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset Delay/Chorus/Reverb send to 0';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.fxSend[track]; applyFxSend(); render(); autosave(); });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close FX panel';
@@ -2420,6 +2425,7 @@ function renderFxSendRow(track) {
   const FX_SEND_FIELDS = [
     ['delay', 'Delay', 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag'],
     ['chorus', 'Chorus', 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag'],
+    ['reverb', 'Reverb', 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag'],
   ];
   for (const [key, label, title_] of FX_SEND_FIELDS) {
     const field = el('div', 'adsr-field');
@@ -2547,7 +2553,7 @@ function buildHeader(track) {
   tools.append(autoBtn);
   const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
   fxBtn.textContent = '✨ FX';
-  fxBtn.title = 'Track effects — continuous Delay & Chorus send (separate from the per-note Echo/Chorus flags)';
+  fxBtn.title = 'Track effects — continuous Delay, Chorus & Reverb send (separate from the per-note Echo/Chorus/Reverb flags)';
   fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   fxBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -4423,9 +4429,10 @@ async function renderSongToWav() {
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
-  trackDelaySend = {}; trackChorusSend = {};
+  trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
   fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
   fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
+  fxReverbBus = fxReverb = fxReverbWet = null;
   resetAudioCaches();
 
   return rendered;
@@ -4623,6 +4630,7 @@ let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let trackDelaySend = {};  // id -> GainNode, chanGain[id] -> shared delay bus (see createTrackFxSends())
 let trackChorusSend = {}; // id -> GainNode, chanGain[id] -> shared chorus bus
+let trackReverbSend = {}; // id -> GainNode, chanGain[id] -> shared reverb bus
 let masterAnalyser = null;
 let spectrumAnalyser = null; // wider fftSize, post-FX — drives the spectrum canvas
 let lufsShelf = null, lufsHighpass = null, lufsAnalyser = null; // K-weighting chain — see computeLufs()
@@ -4630,11 +4638,13 @@ let masterFXNodes = null; // { low, mid, high, comp } — the master EQ/compress
 let duckGain = null; // GainNode ahead of masterFXNodes — see scheduleDucking()
 let crushBus = null; // GainNode between masterFXNodes.finalMix and the crusher/destination
 let crusherNode = null; // AudioWorkletNode once loaded — see ensureCrusher()
-// Two shared send/return FX buses (one delay-with-feedback, one LFO-modulated
-// short delay for chorus), fed by every track's own trackDelaySend/
-// trackChorusSend gain — see createGlobalFxBuses()/createTrackFxSends().
+// Three shared send/return FX buses (one delay-with-feedback, one LFO-modulated
+// short delay for chorus, one convolver reverb reusing ensureReverbImpulse()'s
+// impulse response), fed by every track's own trackDelaySend/trackChorusSend/
+// trackReverbSend gain — see createGlobalFxBuses()/createTrackFxSends().
 let fxDelayBus = null, fxDelay = null, fxDelayFeedback = null, fxDelayWet = null;
 let fxChorusBus = null, fxChorusDelay = null, fxChorusLfo = null, fxChorusLfoGain = null, fxChorusWet = null;
+let fxReverbBus = null, fxReverb = null, fxReverbWet = null;
 
 // Builds a 3-band EQ (low shelf / mid peaking / high shelf) + compressor +
 // parallel-compression chain on the given context, wired
@@ -4747,8 +4757,14 @@ function createGlobalFxBuses() {
   fxChorusLfo.start();
   fxChorusWet = ctx.createGain(); fxChorusWet.gain.value = 1;
   fxChorusBus.connect(fxChorusDelay).connect(fxChorusWet).connect(masterGain);
+
+  fxReverbBus = ctx.createGain();
+  fxReverb = ctx.createConvolver();
+  fxReverb.buffer = ensureReverbImpulse(); // same generated impulse response as the per-note reverb send
+  fxReverbWet = ctx.createGain(); fxReverbWet.gain.value = 1; // the per-track send gain is the level control now
+  fxReverbBus.connect(fxReverb).connect(fxReverbWet).connect(masterGain);
 }
-// Per-track taps into the two buses above. Called once per channel, right
+// Per-track taps into the three buses above. Called once per channel, right
 // after chanGain[id] exists, from every place that creates it (ensureCtx(),
 // renderSongToWav(), ensureChannelNodes()).
 function createTrackFxSends(id) {
@@ -4758,6 +4774,9 @@ function createTrackFxSends(id) {
   trackChorusSend[id] = ctx.createGain();
   trackChorusSend[id].gain.value = getFxSend(id).chorus;
   chanGain[id].connect(trackChorusSend[id]).connect(fxChorusBus);
+  trackReverbSend[id] = ctx.createGain();
+  trackReverbSend[id].gain.value = getFxSend(id).reverb;
+  chanGain[id].connect(trackReverbSend[id]).connect(fxReverbBus);
 }
 
 function ensureCtx() {
@@ -4947,6 +4966,7 @@ function applyFxSend() {
     const s = getFxSend(ch);
     if (trackDelaySend[ch]) trackDelaySend[ch].gain.value = s.delay;
     if (trackChorusSend[ch]) trackChorusSend[ch].gain.value = s.chorus;
+    if (trackReverbSend[ch]) trackReverbSend[ch].gain.value = s.reverb;
   }
 }
 
@@ -5648,9 +5668,10 @@ function stopPlayback() {
     duckGain = null;
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {};
-    trackDelaySend = {}; trackChorusSend = {};
+    trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
     fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
+    fxReverbBus = fxReverb = fxReverbWet = null;
     masterAnalyser = null;
     spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
     masterFXNodes = null;
