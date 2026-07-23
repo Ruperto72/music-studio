@@ -293,6 +293,38 @@ async function main() {
       if (!inspectorEmpty) throw new Error('expected the single-note inspector to close after the chord is selected as a group');
     });
 
+    step('Chord buttons: clamped interval matching the root pitch does not delete the root note', async () => {
+      // Push the pitch window's auto-fit all the way up first (a big
+      // negative-deltaY wheel scroll pans toward higher pitches, clamped at
+      // MIDI_MAX) so a click near the very top row lands on the instrument's
+      // actual ceiling — otherwise the auto-fit window for whatever notes
+      // this track happens to hold wouldn't reliably reach MIDI_MAX, and the
+      // "+4/+7 clamps back to the root" case below wouldn't reproduce.
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100000, clientX: rect.left + 10, clientY: rect.top + 10 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 100));
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 60, clientY: rect.top + 5 }));
+      }`);
+      const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await cdp.evaluate(`
+        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+      `);
+      await new Promise((r) => setTimeout(r, 100));
+      const after = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      // A major chord always adds exactly 2 new notes (third + fifth) and
+      // must never remove the root — so anything less than before+2 means a
+      // note (the root, when its clamped chord tone collides with it) got
+      // silently deleted.
+      if (after < before + 2) throw new Error(`expected 2 notes to be added (${before} -> ${before + 2}), got ${before} -> ${after} — a chord button deleted an existing note`);
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

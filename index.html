@@ -3704,7 +3704,10 @@ function renderInspector() {
       porta: false, crush: false, echo: false, chorus: false, reverb: false,
     }));
     let notes = state.tracks[track];
-    for (const n of newNotes) notes = clearOverlaps(notes, n.start, n.len, n.freq);
+    for (const n of newNotes) {
+      const exceptIdx = notes.indexOf(note);
+      notes = clearOverlaps(notes, n.start, n.len, n.freq, exceptIdx);
+    }
     notes.push(...newNotes);
     state.tracks[track] = notes;
     for (const n of newNotes) previewNote(track, n);
