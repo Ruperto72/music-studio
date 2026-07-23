@@ -53,7 +53,10 @@ self.addEventListener('fetch', (event) => {
   if (isNavigation || isSongData) {
     event.respondWith(
       fetch(req).then((res) => {
-        if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        }
         return res;
       }).catch(() => caches.match(req).then((cached) => {
         if (cached) return cached;
@@ -70,7 +73,10 @@ self.addEventListener('fetch', (event) => {
   // for speed — bump CACHE_NAME above to invalidate it on a redeploy.
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+      }
       return res;
     }))
   );
