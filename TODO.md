@@ -235,13 +235,21 @@ ett facit.
   oförändrade. Reverb lades till efter Delay/Chorus i en egen omgång;
   `reverb`-fältet i `state.fxSend` är valfritt vid inläsning (default 0)
   så låtar sparade innan det fanns fortfarande laddar korrekt.
-- [ ] **Fler spårnivå-effekter.** Naturliga fortsättningar på ovanstående:
-  - En riktig per-spårs **Compressor** — till skillnad från
-    Delay/Chorus/Reverb-sändarna ovan är detta en insert, inte en
-    send/return: en `DynamicsCompressorNode` behöver splitsas in i varje
-    kanals signalkedja (mellan `chanGain[id]` och `chanPan[id]`, eller
-    liknande) snarare än att tappa av en parallell buss — egen plumbing.
-  - Möjligen per-spårs **EQ**, i samma anda som master-EQ:n.
+- [x] **Compressor per spår** — till skillnad från Delay/Chorus/Reverb-
+  sändarna ovan är detta en insert, inte en send/return: `chanComp[id]`
+  (en `DynamicsCompressorNode`) splitsas in mellan `chanGain[id]` och allt
+  som tidigare tappade av den noden direkt (`chanPan[id]`, VU-mätaren,
+  och de tre FX-sändarna, som nu tappar av `chanComp[id]` istället —
+  `createChanComp()`/`createTrackFxSends()`). Samma fyra parametrar/
+  intervall/"neutral by default"-kontrakt (`ratio: 1`) som
+  master-kompressorn (`getTrackComp()`/`setTrackComp()`,
+  `state.comp[track] = { threshold, ratio, attack, release }`), i samma
+  ✨ FX-panel som sändarna, under en delare. Eftersom det bara sätts in i
+  kanalkedjan (ingen ändring i not- eller trumsyntesen, precis som
+  send-reglagen) fungerar det på rytmspår direkt.
+- [ ] Möjligen per-spårs **EQ**, i samma anda som master-EQ:n — enda
+  kvarvarande punkten på den ursprungliga önskelistan (delay/eko,
+  compressor, chorus, reverb är nu alla klara).
 
 ## Rytmspår
 
