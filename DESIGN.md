@@ -70,9 +70,9 @@ deliberately not built yet.
 
 - `.editor-layout` is a flex row: `.rolls-column` (the DAW surface + master
   bar) on the left, `.inspector-column` (just the Inspector — the project
-  name and Tempo/Meter/Length/Track-count summary live in the ☰ menu
-  instead, see A.3/A.10) on the right, both **`position: sticky`** so they
-  stay in view while the page scrolls vertically past a tall track list.
+  name lives in the Master strip instead, see A.10) on the right, both
+  **`position: sticky`** so they stay in view while the page scrolls
+  vertically past a tall track list.
 - `.daw` (the scrollable grid surface) has a **bounded `max-height`**
   computed from the viewport minus the sticky toolbar/master-bar heights, so
   it scrolls *internally* — the toolbar and master bar never move.
@@ -92,7 +92,7 @@ label) laid out left to right:
 
 | Panel | Contents |
 |---|---|
-| **Menu (☰)** | Project name + Tempo/Meter/Length/Track-count summary (see A.10), 🎵 Songs library, 💾 Save file, 📂 Load file, ⤓ Export code (toggles a code box open/closed), 🎹 Export MIDI, 🎼 Import MIDI, 🔊 Export WAV, ⛶ Fullscreen, ❓ Help |
+| **Menu (☰)** | 🎵 Songs library, 💾 Save file, 📂 Load file, ⤓ Export code (toggles a code box open/closed), 🎹 Export MIDI, 🎼 Import MIDI, 🔊 Export WAV, ＋ Add track, ＋ 🥁 Add rhythm track, ⛶ Fullscreen, ❓ Help |
 | **Transport** | Return-to-start (⏮), Stop (⏹), Play (▶), Loop toggle (↺) |
 | **Bars\|Beats** | LCD-style counter (bar\|beat\|sub-beat, plus mm:ss) |
 | **Tools** | Pen / Eraser / Grab tool segmented control; Undo/Redo |
@@ -202,7 +202,7 @@ groups, separated by thin dividers, driven generically by `TRACK_FX_REGISTRY`
   driven by a drawn curve from the Automation panel (A.6); the slider here
   is the value used wherever no curve point covers a column.
 - **Compressor** (Thr/Rat/Atk/Rel): a per-track insert, same four
-  parameters/ranges as the master Compressor (A.11) but applied before that
+  parameters/ranges as the master Compressor (A.10) but applied before that
   track's signal is summed into the mix.
 - **Bitcrush** (Amount %): a per-track lo-fi downsampler insert, reusing the
   same `AudioWorkletNode` processor as the master bus's own Downsample
@@ -256,24 +256,25 @@ a single note is selected, per-note controls grouped into:
 On narrow screens the inspector becomes a fixed bottom sheet that only
 appears while a note is selected (with a "✕ Done" pill to dismiss it).
 
-### A.10 Project info (☰ menu)
-
-Lives at the top of the **☰ Menu** dropdown (not a separate right-column
-panel — see A.2):
-
-- The current song's name, click-to-rename via a prompt (`renameSong()`).
-- A **read-only** at-a-glance summary below it: Tempo, Meter, Length, Track
-  count (the live controls for these stay in the master bar — this is a
-  summary, not a second set of controls).
-
-### A.11 Master bar
+### A.10 Master bar
 
 Sticky bottom strip, collapsible to a slim label bar (▾, remembered
-per-browser): **Master** volume + **Output** VU, **Tempo** (BPM number
-input), **Meter** (time-signature select), **Length** (±1 bar, trims/pads
-notes, hits, and markers past the new end when shrinking), **Grid** (note
-snap resolution — see A.5), **＋ Add track** (appends a new tonal track),
-and a **🎛️** toggle for the **Master FX** panel:
+per-browser): the project **Song** name, **Master** volume + **Output** VU,
+**Tempo** (BPM number input), **Meter** (time-signature select), **Length**
+(±1 bar, trims/pads notes, hits, and markers past the new end when
+shrinking), **Grid** (note snap resolution — see A.5), **Swing**, and a
+**🎛️** toggle for the **Master FX** panel.
+
+**Song** is the project name, click-to-rename via a prompt (`renameSong()`)
+while the strip is expanded; when the strip is collapsed the same name still
+shows in the slim label bar but as plain, non-editable text — it's the same
+underlying `state.songName`, just rendered as two different elements that
+CSS shows/hides based on collapsed state, so the name stays visible either
+way but is only editable when there's room for the "click to rename"
+affordance. (Adding/removing tracks is a ☰-menu action, not part of this
+strip — see A.3.)
+
+The **🎛️** toggle opens the **Master FX** panel:
 
 - **EQ**: 3-band (Lo shelf ~200Hz, Mid peak ~1kHz, Hi shelf ~4kHz, ±12dB).
 - **Comp**: a `DynamicsCompressorNode` (threshold, ratio, attack, release).
@@ -289,7 +290,7 @@ and a **🎛️** toggle for the **Master FX** panel:
 All defaults are neutral (0dB, ratio 1:1, sidechain/downsample off), so an
 untouched song's master bus is unaffected — see B.6 for the signal chain.
 
-### A.12 Songs library dialog
+### A.11 Songs library dialog
 
 Opened via 🎵; three sections:
 
@@ -304,7 +305,7 @@ Opened via 🎵; three sections:
 This dialog is the *only* way a song's content gets loaded into the editor
 — the page itself always boots into a blank project (see B.8).
 
-### A.13 Help dialog
+### A.12 Help dialog
 
 A single scrollable reference covering: overview, tracks & channel strips,
 tools, multi-select, note effects, the master bar, saving & exporting, and
@@ -312,7 +313,7 @@ a keyboard-shortcut table (Space play/stop; 1/2/3 tool select; Delete;
 arrow-key nudge; Ctrl/Cmd+C/V copy-paste; Ctrl/Cmd+Z / Shift+Z or Y
 undo/redo; Esc deselect/close).
 
-### A.14 Responsive / mobile / PWA UI
+### A.13 Responsive / mobile / PWA UI
 
 - Below ~760px, `.editor-layout` stacks vertically, the inspector becomes a
   bottom sheet, toolbar "extra" panels collapse behind "⋯ More", and a
@@ -367,7 +368,7 @@ state = {
   comp,        // id -> { threshold, ratio, attack, release } (any track kind) — DEFAULT_TRACK_COMP
   crush,       // id -> { amount } (0..1, any track kind) — DEFAULT_TRACK_CRUSH
   tremolo,     // id -> { rate, depth } (any track kind) — DEFAULT_TREMOLO
-  masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.11/B.6
+  masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
   swing,       // % (0 = straight 8ths, up to 75 ≈ triplet feel) — swingOffsetCols()
   selected,    // { track, index } | null — single-note inspector target
@@ -653,7 +654,7 @@ nodes for any track added/removed by the undo and reapplies all four
   back automatically. The page always boots into a blank project (just a
   Rhythm track; the `state` object's own initial literal, not seeded from
   any saved data), so song selection always goes through the explicit 🎵
-  Songs menu (A.12) rather than a reload-time prompt.
+  Songs menu (A.11) rather than a reload-time prompt.
 - **Local songs**: named saves under a second `localStorage` key, an
   object keyed by name; listed/loaded/deleted from the Songs dialog.
 - **File save/load**: `💾` downloads `currentSongData()` as a `.json` file
@@ -676,7 +677,7 @@ nodes for any track added/removed by the undo and reapplies all four
 |---|---|
 | `index.html` | The entire application — markup, CSS, and the single `<script type="module">` covering state, rendering, interaction, synthesis, and I/O. |
 | `js/song-data.js` | `TRACKS`/`RHYTHM_TRACKS`/`TEMPO_BPM` — the demo song's note data, in the same shape the code-export path produces; `index.html` only imports `TEMPO_BPM` from it (a fallback used in a couple of places) — the full demo song is loaded only via the 🎵 Songs menu's "Froggy Hop" example. The only other JS module besides `js/downsample-processor.js`. |
-| `js/downsample-processor.js` | The shared `AudioWorkletProcessor` behind the master bus's Downsample control and every per-track Bitcrush insert (A.7, A.11) — a sample-and-hold lo-fi downsampler. |
+| `js/downsample-processor.js` | The shared `AudioWorkletProcessor` behind the master bus's Downsample control and every per-track Bitcrush insert (A.7, A.10) — a sample-and-hold lo-fi downsampler. |
 | `songs/*.json` + `songs/index.json` | Bundled example songs and their Songs-dialog listing. |
 | `dev-server.js` | Dependency-free static file server, used for local development and by `verify.js`; stays plain (no auto-open) since it also runs headlessly. |
 | `dev.js` | Wraps `dev-server.js` for interactive use — spawns it, polls until it responds, then opens it in the default browser. |
