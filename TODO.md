@@ -389,6 +389,26 @@ ett facit.
 
 ## Lagring / delning
 
+- [x] **Sidan startar alltid tomt, inte med en fråga eller Froggy Hop** —
+  tidigare frågade sidan vid varje omladdning "Found an unsaved draft...
+  Restore it?" (om ett autosave-utkast fanns) eller laddade annars
+  spelets demo-låt (`js/song-data.js`s `TRACKS`/`RHYTHM_TRACKS`, via
+  `gameDefaults()`) tyst. Efter feedback om att frågan blivit ett
+  irritationsmoment vid varje omladdning (autosave triggar på varje
+  redigering, så frågan kom nästan alltid) tar sidan nu alltid emot ett
+  tomt projekt (bara Rhythm-spåret) direkt — `state`s startvärden själva,
+  inget separat steg efter. `autosave()` fortsätter spara i bakgrunden
+  som ett skydd mot en kraschad flik, men läses aldrig tillbaka
+  automatiskt (`loadAutosaveIfPresent()` och hela bekräftelsedialogen är
+  borttagna); ett gammalt utkast ligger kvar oanvänt i `localStorage`
+  tills det skrivs över av nästa redigering. Låtval sker istället
+  explicit via 🎵 Songs-menyn — Froggy Hop finns kvar där precis som
+  innan (`songs/froggy-hop.json`, en separat, mer fullständig fil än
+  `js/song-data.js`s råa exportformat). Eftersom `gameDefaults()` bara
+  användes för att bygga det startvärde som nu ändå alltid skrivs över
+  direkt, togs den och dess enda anropspunkt (`_gd`) samt den nu oanvända
+  `TRACKS`/`RHYTHM_TRACKS`-importen bort — `index.html` importerar bara
+  `TEMPO_BPM` från `js/song-data.js` numera.
 - [ ] **Bara lokalt.** Sparade låtar ligger i `localStorage` i webbläsaren;
   det finns ingen delning via länk/URL eller molnsynk mellan enheter.
 - [ ] **Ingen kollaborativ redigering** (flera personer på samma låt samtidigt).
