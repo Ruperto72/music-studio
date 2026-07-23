@@ -271,10 +271,40 @@ ett facit.
   reglagen i spårhuvudet redan gör. Compressorns fyra parametrar är
   medvetet fortfarande bara statiska reglage (mindre naturligt att
   automatisera ratio/attack/release).
+- [x] **Bitcrush och Tremolo per spår** — efter en fråga om vilka av
+  per-not-effekterna (bend/vibrato/duty/arpeggio/portamento/bitcrush) som
+  skulle passa som spår-nivå-effekt, valde vi de två som redan har
+  precedens i koden som "hel-kedja"-effekter snarare än ren
+  not-artikulation: bitcrush finns redan som en master-bus-insert
+  (`DEFAULT_MASTER_CRUSH`, `ensureCrusher()`), och tremolo är ett klassiskt
+  helspårs-pedal-insert i riktiga mixerkedjor. Bend/vibrato/duty/arpeggio/
+  portamento är genuint per-not-artikulation och fick ingen spår-variant.
+  Båda är inserts i samma kedja som Compressorn:
+  `chanGain[id] → chanComp[id] → chanCrush[id]? → chanTremolo[id] →
+  chanPan[id]/VU-mätaren/de tre FX-sändarna` — sändarna och VU-mätaren
+  tappar nu av `chanTremolo[id]` (kedjans sista led) istället för
+  `chanComp[id]` direkt, så en crushad/tremolo:ad signal hörs korrekt även
+  i sändarna och mätaren. Bitcrush (`state.crush[track] = { amount }`,
+  `getTrackCrush()`/`setTrackCrush()`) återanvänder samma
+  `AudioWorkletProcessor`/formel som master-crushern
+  (`crushAmountToHold()`, `js/downsample-processor.js`) — en instans per
+  spår istället för en för hela mixen, med samma bypass-tills-laddad-dans
+  (`ensureTrackCrusher()`, jfr `ensureCrusher()`) eftersom `ensureCtx()`
+  måste förbli synkron. Tremolo (`state.tremolo[track] = { rate, depth }`,
+  `getTrackTremolo()`/`setTrackTremolo()`) är en LFO kopplad till en vanlig
+  `GainNode`s egen `.gain`-`AudioParam` (`createChanTremolo()`) — samma
+  knep som chorus-bussen redan använder på `delayTime`, fast på gain;
+  `depth: 0` gör svängningen till noll så gain ligger fast på exakt 1
+  (rate då irrelevant), och vid `depth: 1` svänger gainen mellan 0 (tyst)
+  och 1 (spårets egen nivå), aldrig högre — klassiskt förstärkar-tremolo-
+  beteende. Independent av per-not-flaggan `note.crush` (en fast
+  16-stegs-`WaveShaperNode`, inget reglerbart "amount"); ingen
+  per-not-motsvarighet till tremolo finns alls. Båda är medvetet bara
+  statiska reglage (som Compressorn), inte automatiserbara över tid.
 - [ ] Möjligen per-spårs **EQ**, i samma anda som master-EQ:n — enda
   kvarvarande punkten på den ursprungliga önskelistan (delay/eko,
-  compressor, chorus, reverb är nu alla klara, och sändarna dessutom
-  automatiserbara över tid).
+  compressor, chorus, reverb, bitcrush och tremolo är nu alla klara, och
+  sändarna dessutom automatiserbara över tid).
 
 ## Rytmspår
 
