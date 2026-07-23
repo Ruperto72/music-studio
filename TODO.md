@@ -457,6 +457,33 @@ ett facit.
   uppgraderas i bakgrunden som förut. Nettoresultat: ~90 rader mindre
   duplicerad kod, verifierat i webbläsaren (live-uppspelning, nytt spår
   mitt i sessionen, WAV-export) utan nya konsol-fel.
+- [x] **Varje ny per-spårs-effekt krävde ~8 handpåförda ändringar** — punkt
+  #2 från samma retrospektiv-fråga som ovan. Delay/Chorus/Reverb-send,
+  Compressor, Bitcrush och Tremolo hade var sin nästan identisk
+  inläsnings-/valideringsblock i `applySavedMix()` (~45 rader) och var
+  sin nästan identisk fält-renderingskod i `buildFxPanel()` (~60 rader)
+  — fyra ställen som båda måste hållas synkade för hand vid varje ny
+  effekt eller parameter. Bröts ut till en enda tabell,
+  `TRACK_FX_REGISTRY` (en post per `state.*`-slice med `get`/`set`/
+  `apply`-funktioner plus varje fälts min/max/steg/format/
+  klipp-vid-inläsning-regler), som båda `applySavedMix()` och
+  `buildFxPanel()` nu itererar generiskt istället för att var och en
+  hårdkoda logiken. Bevarar alla befintliga särdrag exakt (Compressorns
+  fyra fält klipps INTE vid inläsning, till skillnad från de
+  procent-liknande fälten som klipps till [0,1]; `fxSend.reverb` är
+  fortfarande det enda valfria fältet med ett default-värde, för
+  bakåtkompatibilitet med låtar sparade innan Reverb-sändningen fanns).
+  Medvetet INTE utökat till att även driva ljudgraf-uppkopplingen
+  (`createChanComp()`/`createChanTremolo()`/`ensureTrackCrusher()`/
+  `createTrackFxSends()` är för olika i form — en vanlig nod jämfört
+  med en asynkron worklet-insert jämfört med tre send-tappar — för att
+  en delad abstraktion där ska löna sig) eller Song I/O:s andra
+  ställen (`currentSongData()`/`autosave()`/`snapshotSong()`/
+  `restoreSnapshot()` refererar redan bara `state.fxSend` osv. som
+  vanliga objekt-literal-nycklar, redan så enkelt det kan bli).
+  Verifierat i webbläsaren: alla fält i alla fyra grupper på både
+  tonalt och rytm-spår, spara/ladda-rundtur (inklusive
+  reverb-default-fallet), och Reset-knappen, allt utan nya konsol-fel.
 - [ ] **Inga automatiska tester.** CLAUDE.md bekräftar att det inte finns
   build/lint/test-kommando — all verifiering är manuell i webbläsaren.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på

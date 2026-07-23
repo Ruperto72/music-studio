@@ -1510,49 +1510,25 @@ function applySavedMix(data) {
       }
     }
   }
-  if (data.fxSend && typeof data.fxSend === 'object') {
-    // Unlike adsr/filter/fm above, this iterates ALL_TRACKS (not PITCH_TRACKS)
-    // since Delay/Chorus/Reverb send works on rhythm tracks too. `reverb` is
-    // optional (defaults to 0) so files saved before it existed still load.
+  // The four ✨ FX panel effects (Delay/Chorus/Reverb send, Compressor,
+  // Bitcrush, Tremolo) all live on every track kind (tonal and rhythm
+  // alike), so — unlike adsr/filter/fm above — this iterates ALL_TRACKS, not
+  // PITCH_TRACKS. Driven by TRACK_FX_REGISTRY (single source of truth also
+  // used by buildFxPanel()) rather than one hand-written block per effect.
+  for (const effect of TRACK_FX_REGISTRY) {
+    const src = data[effect.key];
+    if (!src || typeof src !== 'object') continue;
     for (const ch of ALL_TRACKS) {
-      const s = data.fxSend[ch];
-      if (!s || typeof s !== 'object') continue;
-      if (['delay', 'chorus'].every(k => typeof s[k] === 'number')) {
-        state.fxSend[ch] = {
-          delay: Math.max(0, Math.min(1, s.delay)),
-          chorus: Math.max(0, Math.min(1, s.chorus)),
-          reverb: typeof s.reverb === 'number' ? Math.max(0, Math.min(1, s.reverb)) : 0,
-        };
+      const v = src[ch];
+      if (!v || typeof v !== 'object') continue;
+      if (!effect.fields.every(f => f.optional || typeof v[f.param] === 'number')) continue;
+      const clean = {};
+      for (const f of effect.fields) {
+        let val = typeof v[f.param] === 'number' ? v[f.param] : f.default;
+        if (f.clamp) val = Math.max(f.min, Math.min(f.max, val));
+        clean[f.param] = val;
       }
-    }
-  }
-  if (data.comp && typeof data.comp === 'object') {
-    // Same validation as data.masterComp below (no clamping — matches that
-    // precedent), iterating ALL_TRACKS since the compressor works on rhythm
-    // tracks too.
-    const compKeys = ['threshold', 'ratio', 'attack', 'release'];
-    for (const ch of ALL_TRACKS) {
-      const c = data.comp[ch];
-      if (!c || typeof c !== 'object') continue;
-      if (compKeys.every(k => typeof c[k] === 'number')) {
-        state.comp[ch] = { threshold: c.threshold, ratio: c.ratio, attack: c.attack, release: c.release };
-      }
-    }
-  }
-  if (data.crush && typeof data.crush === 'object') {
-    for (const ch of ALL_TRACKS) {
-      const cr = data.crush[ch];
-      if (cr && typeof cr === 'object' && typeof cr.amount === 'number') {
-        state.crush[ch] = { amount: Math.max(0, Math.min(1, cr.amount)) };
-      }
-    }
-  }
-  if (data.tremolo && typeof data.tremolo === 'object') {
-    for (const ch of ALL_TRACKS) {
-      const tr = data.tremolo[ch];
-      if (tr && typeof tr === 'object' && typeof tr.rate === 'number' && typeof tr.depth === 'number') {
-        state.tremolo[ch] = { rate: tr.rate, depth: Math.max(0, Math.min(1, tr.depth)) };
-      }
+      state[effect.key][ch] = clean;
     }
   }
   if (data.masterEQ && typeof data.masterEQ === 'object') {
@@ -1872,6 +1848,73 @@ function getTrackCrush(track) { return state.crush[track] || DEFAULT_TRACK_CRUSH
 function setTrackCrush(track, patch) { state.crush[track] = { ...getTrackCrush(track), ...patch }; }
 function getTrackTremolo(track) { return state.tremolo[track] || DEFAULT_TREMOLO; }
 function setTrackTremolo(track, patch) { state.tremolo[track] = { ...getTrackTremolo(track), ...patch }; }
+const pctFormat = (v) => Math.round(v * 100) + '%';
+// Single source of truth for the ✨ FX panel's four per-track effects
+// (Delay/Chorus/Reverb send, Compressor, Bitcrush, Tremolo) — one entry per
+// state.* slice, in the order the panel renders them (a divider goes
+// between each group). Drives both applySavedMix()'s load/validate logic
+// and buildFxPanel()'s rendering, so adding a parameter to an existing
+// effect (or a whole new one) means editing this table once instead of
+// touching both places by hand — which used to be exactly the kind of edit
+// that was easy to update in one spot and forget in the other.
+//   apply()   — the fooApply() function to call after get/set changes a
+//               value or on Reset (each already loops over ALL_TRACKS).
+//   clamp     — per-field: whether a loaded value gets clamped to [min,max]
+//               (send/amount-style 0..1 "percentage" fields do; compressor
+//               and tremolo-rate don't, matching their pre-refactor
+//               behavior — those aren't hard technical limits the way a
+//               percentage is, e.g. DynamicsCompressorNode itself accepts a
+//               wider range than the slider's cosmetic bounds).
+//   optional  — field may be absent from saved data (only fxSend.reverb,
+//               for files saved before that send existed) and falls back
+//               to `default` rather than rejecting the whole group.
+// Deliberately does NOT also drive the audio-graph construction
+// (createChanComp()/createChanTremolo()/ensureTrackCrusher()/
+// createTrackFxSends()) — those differ too much in shape (a plain node vs.
+// an async worklet insert vs. three send taps) for a shared abstraction to
+// be worth the indirection there; see buildChannelChain() instead.
+const TRACK_FX_REGISTRY = [
+  {
+    key: 'fxSend', get: getFxSend, set: setFxSend, apply: applyFxSend,
+    fields: [
+      { param: 'delay', label: 'Delay', title: 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+      { param: 'chorus', label: 'Chorus', title: 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+      { param: 'reverb', label: 'Reverb', title: 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true, optional: true, default: 0 },
+    ],
+  },
+  {
+    // An insert (chanGain[track] -> chanComp[track] -> ...), not a send, so
+    // it has no 0-100% "amount" the way the sends above do; same four
+    // params/ranges/formatting as the master compressor (COMP_FIELDS).
+    key: 'comp', get: getTrackComp, set: setTrackComp, apply: applyTrackComp,
+    fields: [
+      { param: 'threshold', label: 'Thr', title: 'Threshold', min: -60, max: 0, step: 1, format: (v) => v.toFixed(0) + 'dB', clamp: false },
+      { param: 'ratio', label: 'Rat', title: 'Ratio (1:1 = off)', min: 1, max: 20, step: 0.5, format: (v) => v.toFixed(1) + ':1', clamp: false },
+      { param: 'attack', label: 'Atk', title: 'Attack', min: 0, max: 1, step: 0.01, format: (v) => v.toFixed(2) + 's', clamp: false },
+      { param: 'release', label: 'Rel', title: 'Release', min: 0.01, max: 1, step: 0.01, format: (v) => v.toFixed(2) + 's', clamp: false },
+    ],
+  },
+  {
+    // An insert (chanComp[track] -> chanCrush[track]? -> chanTremolo[track]),
+    // reusing the master bus crusher's own AudioWorkletProcessor/formula
+    // (crushAmountToHold(), js/downsample-processor.js), just one instance
+    // per track — independent of the per-note Crush flag (a fixed always-on
+    // 16-step WaveShaperNode, not an amount you can dial in).
+    key: 'crush', get: getTrackCrush, set: setTrackCrush, apply: applyTrackCrush,
+    fields: [
+      { param: 'amount', label: 'Crush', title: 'Lo-fi sample-and-hold downsampler insert, independent of the per-note Crush flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+    ],
+  },
+  {
+    // An insert (an LFO added onto a plain gain node's own gain AudioParam,
+    // see createChanTremolo()); Depth 0 is a true no-op regardless of Rate.
+    key: 'tremolo', get: getTrackTremolo, set: setTrackTremolo, apply: applyTrackTremolo,
+    fields: [
+      { param: 'rate', label: 'Rate', title: 'Tremolo LFO speed', min: 0.5, max: 20, step: 0.1, format: (v) => v.toFixed(1) + 'Hz', clamp: false },
+      { param: 'depth', label: 'Depth', title: 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+    ],
+  },
+];
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
@@ -2458,7 +2501,8 @@ function renderAdsrRow(track) {
 // track kind (tonal and rhythm alike), since the sends tap chanGain[track]
 // (via chanComp[track]) directly rather than any tonal-only synthesis state,
 // and the compressor/crush/tremolo are all plain channel inserts with no
-// tonal-only concept either.
+// tonal-only concept either. buildFxPanel() itself just renders whatever's
+// in TRACK_FX_REGISTRY — see that table for what each effect actually is.
 function addFxField(panel, track, label, title_, value, min, max, step, format, onInput) {
   const field = el('div', 'th-fx-field');
   const row1 = el('div', 'th-fx-row1');
@@ -2480,7 +2524,6 @@ function addFxField(panel, track, label, title_, value, min, max, step, format, 
 }
 function buildFxPanel(track) {
   const panel = el('div', 'th-fx-panel');
-  const pct = (v) => Math.round(v * 100) + '%';
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
@@ -2488,59 +2531,20 @@ function buildFxPanel(track) {
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    delete state.fxSend[track]; delete state.comp[track]; delete state.crush[track]; delete state.tremolo[track];
-    applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo();
+    for (const effect of TRACK_FX_REGISTRY) { delete state[effect.key][track]; effect.apply(); }
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);
   panel.appendChild(resetWrap);
 
-  const fx = getFxSend(track);
-  const FX_SEND_FIELDS = [
-    ['delay', 'Delay', 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag'],
-    ['chorus', 'Chorus', 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag'],
-    ['reverb', 'Reverb', 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag'],
-  ];
-  for (const [key, label, title_] of FX_SEND_FIELDS) {
-    addFxField(panel, track, label, title_, fx[key], 0, 1, 0.02, pct, (v) => { setFxSend(track, { [key]: v }); applyFxSend(); autosave(); });
-  }
-  panel.appendChild(el('div', 'th-fx-divider'));
-
-  // Compressor — an insert (chanGain[track] -> chanComp[track] -> ...), not
-  // a send, so it has no 0-100% "amount" the way the three fields above do;
-  // same four params/ranges/formatting as the master compressor (COMP_FIELDS).
-  const comp = getTrackComp(track);
-  const TRACK_COMP_FIELDS = [
-    ['threshold', 'Thr', 'dB', -60, 0, 1, 0],
-    ['ratio', 'Rat', ':1', 1, 20, 0.5, 1],
-    ['attack', 'Atk', 's', 0, 1, 0.01, 2],
-    ['release', 'Rel', 's', 0.01, 1, 0.01, 2],
-  ];
-  for (const [key, label, unit, min, max, step, decimals] of TRACK_COMP_FIELDS) {
-    const title_ = key.charAt(0).toUpperCase() + key.slice(1) + (key === 'ratio' ? ' (1:1 = off)' : '');
-    addFxField(panel, track, label, title_, comp[key], min, max, step, (v) => v.toFixed(decimals) + unit,
-      (v) => { setTrackComp(track, { [key]: v }); applyTrackComp(); autosave(); });
-  }
-  panel.appendChild(el('div', 'th-fx-divider'));
-
-  // Bitcrush — an insert (chanComp[track] -> chanCrush[track]? -> chanTremolo[track]),
-  // reusing the master bus crusher's own AudioWorkletProcessor/formula
-  // (crushAmountToHold(), js/downsample-processor.js), just one instance per
-  // track — independent of the per-note Crush flag (a fixed always-on
-  // 16-step WaveShaperNode, not an amount you can dial in).
-  const crush = getTrackCrush(track);
-  addFxField(panel, track, 'Crush', 'Lo-fi sample-and-hold downsampler insert, independent of the per-note Crush flag',
-    crush.amount, 0, 1, 0.02, pct, (v) => { setTrackCrush(track, { amount: v }); applyTrackCrush(); autosave(); });
-  panel.appendChild(el('div', 'th-fx-divider'));
-
-  // Tremolo — an insert (an LFO added onto a plain gain node's own gain
-  // AudioParam, see createChanTremolo()); Depth 0 is a true no-op regardless
-  // of Rate.
-  const trem = getTrackTremolo(track);
-  addFxField(panel, track, 'Rate', 'Tremolo LFO speed', trem.rate, 0.5, 20, 0.1, (v) => v.toFixed(1) + 'Hz',
-    (v) => { setTrackTremolo(track, { rate: v }); applyTrackTremolo(); autosave(); });
-  addFxField(panel, track, 'Depth', 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point',
-    trem.depth, 0, 1, 0.02, pct, (v) => { setTrackTremolo(track, { depth: v }); applyTrackTremolo(); autosave(); });
+  TRACK_FX_REGISTRY.forEach((effect, i) => {
+    const values = effect.get(track);
+    for (const f of effect.fields) {
+      addFxField(panel, track, f.label, f.title, values[f.param], f.min, f.max, f.step, f.format,
+        (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); });
+    }
+    if (i < TRACK_FX_REGISTRY.length - 1) panel.appendChild(el('div', 'th-fx-divider'));
+  });
 
   return panel;
 }
