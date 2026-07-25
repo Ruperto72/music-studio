@@ -658,8 +658,20 @@ ett facit.
   `maj7`→[0,4,7,11], `m7`→[0,3,7,10]. Ett nytt `verify.js`-steg täcker att hela
   tabellen renderas, att varje knapp har tooltip, och att `maj7` (den nya
   tre-tons-formen) röstas rätt — de äldre stegen provade bara `maj`.
-  Arpeggio-knapparna ovanför lämnades med sina två trioler; de skulle kunna
-  drivas av samma tabell om man vill ha samma palett även där.
+- [x] **Arpeggio-knapparna använder samma palett** — uppföljning på punkten
+  ovan. `note.arp` och `CHORD_PRESETS.intervals` råkade redan använda exakt
+  samma konvention (halvtonsavstånd *över* grundtonen — `scheduleTone()`
+  lägger själv till `note.freq` först när den cyklar arpeggiot), så det blev
+  en direkt mappning utan omräkning. Arpeggio-raden går från två trioler till
+  samma tio voicings som Chord-raden, och de delar nu CSS-klass
+  (`.arp-presets`/`.chord-presets` → en gemensam `.preset-grid`). Knapparna
+  taggas `data-arp` respektive `data-chord` så att både testerna och
+  CSS-selektorer kan skilja raderna åt trots delad klass. Skillnaden mellan
+  raderna är oförändrad och nu tydligare beskriven i hjälpen: arpeggiot
+  behåller *en* not som sveper genom ackordet, Chord lägger till riktiga
+  noter. Nytt `verify.js`-steg kollar att båda raderna erbjuder samma
+  voicings, att `m7` skriver `3,7,10` i Arpeggio-fältet, att inga noter
+  läggs till (det är skillnaden mot Chord) och att ♪-märket dyker upp.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 
