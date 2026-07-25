@@ -269,6 +269,16 @@ a single note is selected, per-note controls grouped into:
 - **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
 - **Delete note** button.
 
+Both preset grids sit behind a **`▸ presets`** disclosure and are collapsed by
+default, remembered per-browser (`openPalettes`, `localStorage`) the same way
+per-track collapse is. Expanded they were 384px of a 745px panel, which pushed
+everything below them off a 1366×768 screen; collapsed the inspector is 548px
+and fits without scrolling. The split is deliberate rather than uniform: the
+palettes are picked from once while building a part, whereas the toggles around
+them report state that has to stay readable at a glance — which is also why
+these are disclosures and not tabs, since a tab would hide an active Vibrato
+behind another tab.
+
 On narrow screens the inspector becomes a fixed bottom sheet that only
 appears while a note is selected (with a "✕ Done" pill to dismiss it).
 

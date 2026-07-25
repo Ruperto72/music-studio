@@ -672,6 +672,41 @@ ett facit.
   noter. Nytt `verify.js`-steg kollar att båda raderna erbjuder samma
   voicings, att `m7` skriver `3,7,10` i Arpeggio-fältet, att inga noter
   läggs till (det är skillnaden mot Chord) och att ♪-märket dyker upp.
+- [x] **Hopfällbara palettnät i notinspektorn** — efter frågan om högerpanelen
+  borde få ett fliksystem. Jag mätte panelen först i riktiga fönsterstorlekar:
+  745px innehåll, och sektionerna fördelade sig `Selected note` 91px,
+  `Modulation` 93px, `Pitch` 235px, `Chord` 149px, `Texture/FX` 93px. Alltså
+  var **Pitch + Chord 52% av panelen**, och det var de två tio-knappars-näten
+  som just tillkommit. På 1920×1080 och 1440×900 fick den plats med 2px till
+  godo; på 1366×768 scrollade den 106px och på 1280×720 154px.
+  Slutsatsen blev att problemet inte var "fem sektioner är för många" utan två
+  nät, så flikar vore fel verktyg: panelens viktigaste egenskap är att man ser
+  på en blick vad som är påslaget (knapparna lyser), och en flik hade gömt ett
+  aktivt Vibrato bakom en annan flik. Näten ligger nu bakom en
+  `▸ presets`-fällning, förvalt stängd och ihågkommen per webbläsare
+  (`openPalettes`/`localStorage`, samma mönster som `collapsedTracks`).
+  Resultat: 745px → **548px**, får plats utan scroll på alla testade
+  storlekar, och varje tillståndsbärande knapp förblir synlig.
+  `togglePalette()` anropar bara `renderInspector()` och inte `render()` —
+  inget utanför inspektorn ändras, och en ren UI-växling ska inte bygga om
+  griden (5760 celler per rytmspår).
+  Två testsaker föll ut: ett kollapsat nät renderar **inga** knappar alls, så
+  `verify.js` måste fälla ut paletten först (`openPalette()`) — annars hade
+  stegen klickat på element användaren inte kan nå, och `element.click()`
+  fungerar även på dolda noder. Och när jag lade till det avslöjades att
+  arpeggio-stegets etikettjämförelse passerade **tomt mot tomt**: föregående
+  steg stänger inspektorn (ackordknappen nollar `state.selected`), så båda
+  listorna var tomma och likhetstestet höll av fel anledning. Steget markerar
+  nu en not först och kräver att listan inte är tom.
+- [ ] **Fliksystem i inspektorn** — inte gjort, och inte motiverat vid fem
+  grupper. Om panelen växer till 8–10 grupper vinner flikar, eftersom man då
+  scrollar förbi en växande hög med stängda rubriker. Skissen som togs fram:
+  `Selected note` och `Delete` ligger kvar utanför flikarna (identitet
+  respektive destruktiv handling), och resten delas i **Sound** (Modulation +
+  Texture/FX — alla booleska på/av), **Pitch** (bend/duty/arpeggio) och
+  **Chord** (den enda handlingen som skapar noter, till skillnad från allt
+  annat som är egenskaper). En prick på fliken när något i den är aktivt
+  återställer en del av överblicken, men bara att *något* är på, inte vad.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 
