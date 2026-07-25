@@ -1,4 +1,4 @@
-# 🎵 Music Studio
+# 🎵 Web Audio Studio
 
 Try it: https://ruperto72.github.io/music-studio/
 

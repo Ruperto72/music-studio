@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Music Studio — a browser-based 8-bit chiptune editor. Everything is synthesised live with the Web Audio API: no audio files, no dependencies, no build step. The entire app is a single self-contained `index.html` (HTML + CSS + JS in one file) plus a small song-data module.
+Web Audio Studio — a browser-based 8-bit chiptune editor. Everything is synthesised live with the Web Audio API: no audio files, no dependencies, no build step. The entire app is a single self-contained `index.html` (HTML + CSS + JS in one file) plus a small song-data module.
 
 It was extracted from the [Frog vs Toad](https://github.com/Ruperto72/frogger-multiplayer) game; that game's soundtrack ships here as the demo song.
 

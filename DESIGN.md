@@ -1,6 +1,6 @@
-# Music Studio — Design Specification
+# Web Audio Studio — Design Specification
 
-This document specifies the design of **Music Studio**, a browser-based 8-bit
+This document specifies the design of **Web Audio Studio**, a browser-based 8-bit
 chiptune editor, in two parts: the **GUI** (what the user sees and touches)
 and the **backend** (the client-side data model, rendering pipeline, and
 audio engine that drive it — there is no server-side backend; "backend" here
