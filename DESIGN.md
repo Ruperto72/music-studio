@@ -252,14 +252,17 @@ a single note is selected, per-note controls grouped into:
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
   (pulse-width for square waves), Arpeggio (comma-separated semitone
   offsets, with Major/Minor-triad quick-fill buttons).
-- **Chord**: "Add Major Chord" / "Add Minor Chord" — unlike the Arpeggio
-  presets above (which only flag this one note to sweep through its chord
-  tones), these add *real, separate* notes a third and a fifth above, at the
-  same start/length in the same track, then multi-select the whole chord as
-  a group (which closes this single-note inspector). Chord tones are added
-  with neutral effect flags, so each can be tuned individually afterward.
-  An interval that clamps at the pitch ceiling onto a pitch already sounding
-  is skipped rather than stacked as a duplicate.
+- **Chord**: a grid of quick-add voicings — `5` (power chord), `maj`, `min`,
+  `dim`, `aug`, `sus2`, `sus4`, `7`, `maj7`, `m7`. Unlike the Arpeggio presets
+  above (which only flag this one note to sweep through its chord tones),
+  these add *real, separate* notes above the selected root, at the same
+  start/length in the same track, then multi-select the whole chord as a group
+  (which closes this single-note inspector). Chord tones are added with
+  neutral effect flags, so each can be tuned individually afterward. An
+  interval that clamps at the pitch ceiling onto a pitch already sounding is
+  skipped rather than stacked as a duplicate. The voicings are a data table
+  (`CHORD_PRESETS`) and `addChordAbove()` is generic over the interval list,
+  so adding one is a row rather than another hand-wired button.
 - **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
 - **Delete note** button.
 

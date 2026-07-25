@@ -600,6 +600,11 @@
   .insp-field select { padding: 6px 6px; }
   .arp-presets { display: flex; gap: 5px; }
   .arp-presets button { flex: 1; font-size: 11px; padding: 6px 4px; }
+  /* Ten short chord labels rather than two long ones — auto-fill so they
+     reflow instead of overflowing the inspector's fixed width (and the
+     narrower bottom-sheet it becomes on mobile). */
+  .chord-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
+  .chord-presets button { font-size: 11px; padding: 6px 2px; }
   .insp-field input[type=range] { flex: 1; min-width: 0; margin: 0 8px; cursor: pointer; }
   .insp-velval { min-width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   .insp-del { background: #3a1414; border-color: #5a1e1e; color: #ff9a9a; }
@@ -719,6 +724,14 @@
       <p>
         Select a single note to edit vibrato, tremolo, bend, duty cycle, arpeggio, portamento,
         bitcrush, echo, chorus and reverb in the inspector on the right.
+      </p>
+      <p>
+        The inspector's <b>Chord</b> row builds a chord on the selected note: <b>5</b> (power chord),
+        <b>maj</b>, <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b>
+        and <b>m7</b> add the chord's other notes as <i>real</i> notes above it, in the same track and
+        at the same length (hover a button for its full name). That's different from the
+        <b>Arpeggio</b> presets just above, which leave one note that sweeps through the chord tones
+        instead. The new notes start with no effects of their own, so each can be tweaked afterwards.
       </p>
 
       <h3>Bottom bar (Song · Tempo · Length · Grid · Master)</h3>
@@ -1097,6 +1110,26 @@ const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', si
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
 const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
+
+// Quick-add chords for the note inspector's Chord panel — semitone intervals
+// above the selected root. addChordAbove() is generic over the list, so a new
+// voicing is one row here and nothing else. Ordered roughly by how often a
+// chiptune/game part reaches for them: power chord and triads, then the
+// suspended pair, then sevenths. Kept to shapes that read clearly on an 11px
+// grid; extended voicings (9ths, 11ths, altered) would stack past the lane's
+// usual pitch window without being much use at this register.
+const CHORD_PRESETS = [
+  { label: '5',    name: 'Power chord (root + fifth)', intervals: [7] },
+  { label: 'maj',  name: 'Major triad',                intervals: [4, 7] },
+  { label: 'min',  name: 'Minor triad',                intervals: [3, 7] },
+  { label: 'dim',  name: 'Diminished triad',           intervals: [3, 6] },
+  { label: 'aug',  name: 'Augmented triad',            intervals: [4, 8] },
+  { label: 'sus2', name: 'Suspended 2nd',              intervals: [2, 7] },
+  { label: 'sus4', name: 'Suspended 4th',              intervals: [5, 7] },
+  { label: '7',    name: 'Dominant 7th',               intervals: [4, 7, 10] },
+  { label: 'maj7', name: 'Major 7th',                  intervals: [4, 7, 11] },
+  { label: 'm7',   name: 'Minor 7th',                  intervals: [3, 7, 10] },
+];
 
 // Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
 // (4/4) resolution — insertPatternIntoRhythm() scales the `start` columns to
@@ -3711,12 +3744,14 @@ function renderInspector() {
   // Unlike the Arpeggio presets above (which just flag this single note to
   // play its notes in quick succession), these add real, separate notes at
   // the same start/len in this track — a true simultaneous chord, the way
-  // e.g. songs/cinematic.json's Strings track is authored.
+  // e.g. songs/cinematic.json's Strings track is authored. The voicings come
+  // from CHORD_PRESETS; addChordAbove() below is generic over the interval
+  // list, so adding one is a table row rather than another button here.
   const chordPanel = panel('Chord');
   const chordHint = el('div', 'insp-sub');
-  chordHint.textContent = 'Adds real notes a third and fifth above, in this track.';
+  chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
   chordPanel.appendChild(chordHint);
-  const chordRow = el('div', 'arp-presets');
+  const chordRow = el('div', 'chord-presets');
   const addChordAbove = (semitoneIntervals) => {
     const rootMidi = freqToMidi(note.freq);
     // Clamping at MIDI_MAX can collapse an interval onto a pitch that's
@@ -3752,13 +3787,14 @@ function renderInspector() {
     state.selected = null;
     render();
   };
-  const majorChordBtn = document.createElement('button');
-  majorChordBtn.textContent = 'Add Major Chord';
-  majorChordBtn.addEventListener('click', () => addChordAbove([4, 7]));
-  const minorChordBtn = document.createElement('button');
-  minorChordBtn.textContent = 'Add Minor Chord';
-  minorChordBtn.addEventListener('click', () => addChordAbove([3, 7]));
-  chordRow.append(majorChordBtn, minorChordBtn);
+  for (const preset of CHORD_PRESETS) {
+    const btn = document.createElement('button');
+    btn.textContent = preset.label;
+    btn.dataset.chord = preset.label;
+    btn.title = `${preset.name} — adds ${preset.intervals.length} note${preset.intervals.length > 1 ? 's' : ''} above the root`;
+    btn.addEventListener('click', () => addChordAbove(preset.intervals));
+    chordRow.appendChild(btn);
+  }
   chordPanel.appendChild(chordRow);
 
   // --- Texture / FX ---
