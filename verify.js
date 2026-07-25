@@ -200,6 +200,23 @@ async function main() {
       throw new Error(`Timed out waiting for: ${expr}`);
     }
 
+    // The inspector's preset palettes collapse by default and remember it, so
+    // their buttons aren't in the DOM until disclosed. Open one before clicking
+    // through it — otherwise these checks would exercise buttons no user could
+    // actually reach (element.click() works on hidden nodes, and would have
+    // worked on detached-by-default markup too, quietly proving nothing).
+    async function openPalette(kind) {
+      const attr = kind === 'chord' ? 'data-chord' : 'data-arp';
+      if (await cdp.evaluate(`!!document.querySelector('.preset-grid button[${attr}]')`)) return;
+      const cap = kind === 'chord' ? 'Chord' : 'Pitch';
+      await cdp.evaluate(`(() => {
+        const panel = Array.from(document.querySelectorAll('.insp-panel'))
+          .find((p) => p.querySelector('.insp-cap')?.textContent === ${JSON.stringify(cap)});
+        panel.querySelector('.palette-toggle').click();
+      })()`);
+      await waitFor(`!!document.querySelector('.preset-grid button[${attr}]')`);
+    }
+
     step('loads with no console errors, boots into a blank project', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('#file-menu-toggle')`);
@@ -281,8 +298,30 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
     });
 
+    step('Note inspector: both preset palettes start collapsed', async () => {
+      // Expanded, the two ten-button grids were 384px of a 745px inspector,
+      // which pushed the panels below them off a 1366x768 screen. They collapse
+      // by default and remember the choice; this must run before any other step
+      // discloses one. A palette renders no buttons at all while collapsed —
+      // element.click() would happily fire on merely-hidden ones.
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      const toggles = await cdp.evaluate(`document.querySelectorAll('.palette-toggle').length`);
+      if (toggles !== 2) throw new Error(`expected an Arpeggio and a Chord disclosure, got ${toggles}`);
+      const grids = await cdp.evaluate(`document.querySelectorAll('.inspector .preset-grid').length`);
+      if (grids !== 0) throw new Error(`expected both palettes collapsed by default, ${grids} were open`);
+      const collapsed = await cdp.evaluate(`Array.from(document.querySelectorAll('.palette-toggle')).every(b => b.getAttribute('aria-expanded') === 'false')`);
+      if (!collapsed) throw new Error('collapsed palettes should report aria-expanded="false"');
+      // And the inspector now fits without scrolling on a small laptop.
+      const fits = await cdp.evaluate(`(() => {
+        const col = document.querySelector('.inspector-column');
+        return { content: document.querySelector('.inspector').scrollHeight, visible: col.clientHeight };
+      })()`);
+      if (fits.content > 620) throw new Error(`collapsed inspector should stay compact, measured ${fits.content}px`);
+    });
+
     step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
@@ -309,6 +348,7 @@ async function main() {
       }`);
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
@@ -346,6 +386,7 @@ async function main() {
       })()`);
       if (!before.rootKey) throw new Error('expected the just-placed note to be the selected root');
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
@@ -395,6 +436,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       const col = await cdp.evaluate(`(() => { const s = document.querySelector('.track.active .lane .note.selected'); return s ? s.style.left : null; })()`);
       if (!col) throw new Error('expected the placed note to be selected');
+      await openPalette('chord');
       await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj7"]').click()`);
       await new Promise((r) => setTimeout(r, 300));
       // ROW_H is 11px per semitone; measure upward from the lowest note.
@@ -413,22 +455,29 @@ async function main() {
       // Both rows read CHORD_PRESETS, so they must offer the same voicings —
       // but an arpeggio only rewrites this one note's `arp` list rather than
       // adding notes, and the Arpeggio field is where that shows up.
-      const arpLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).map(b => b.dataset.arp)`);
-      const chordLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).map(b => b.dataset.chord)`);
-      if (arpLabels.join(',') !== chordLabels.join(',')) {
-        throw new Error(`Arpeggio and Chord rows should offer the same voicings — arp [${arpLabels}] vs chord [${chordLabels}]`);
-      }
-      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).every(b => b.title.length > 0)`)) {
-        throw new Error('every arpeggio button needs a tooltip — the labels alone are abbreviations');
-      }
-      // Place a note, then check a three-tone voicing lands in the Arpeggio field.
+      //
+      // Select a note before comparing: the previous step ends on a chord
+      // button, which multi-selects the new group and so closes the single-note
+      // inspector. Reading the two palettes with no inspector rendered would
+      // compare one empty list against another and pass for the wrong reason.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`{
         const lane = document.querySelector('.track.active .lane');
         const rect = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 300, clientY: rect.top + 120 }));
       }`);
-      await new Promise((r) => setTimeout(r, 250));
+      await waitFor(`!!document.querySelector('.track.active .lane .note.selected')`);
+      await openPalette('arp');
+      await openPalette('chord');
+      const arpLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).map(b => b.dataset.arp)`);
+      const chordLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).map(b => b.dataset.chord)`);
+      if (!arpLabels.length) throw new Error('no Arpeggio presets rendered — is a note selected?');
+      if (arpLabels.join(',') !== chordLabels.join(',')) {
+        throw new Error(`Arpeggio and Chord rows should offer the same voicings — arp [${arpLabels}] vs chord [${chordLabels}]`);
+      }
+      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).every(b => b.title.length > 0)`)) {
+        throw new Error('every arpeggio button needs a tooltip — the labels alone are abbreviations');
+      }
       const notesBefore = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
       await cdp.evaluate(`document.querySelector('.preset-grid button[data-arp="m7"]').click()`);
       await new Promise((r) => setTimeout(r, 300));

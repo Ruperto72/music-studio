@@ -604,6 +604,11 @@
      bottom sheet it becomes on mobile). */
   .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
   .preset-grid button { font-size: 11px; padding: 6px 2px; }
+  .palette-toggle {
+    align-self: start; background: transparent; border: none; padding: 2px 0;
+    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .palette-toggle:hover:not(:disabled) { color: var(--ink); border-color: transparent; }
   .insp-field input[type=range] { flex: 1; min-width: 0; margin: 0 8px; cursor: pointer; }
   .insp-velval { min-width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   .insp-del { background: #3a1414; border-color: #5a1e1e; color: #ff9a9a; }
@@ -727,7 +732,10 @@
       <p>
         Two rows in the inspector offer the same ten chords — <b>5</b> (power chord), <b>maj</b>,
         <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b> and
-        <b>m7</b> (hover a button for its full name). They differ in what you get:
+        <b>m7</b> (hover a button for its full name). Click <b>▸ presets</b> under
+        <b>Arpeggio</b> or <b>Chord</b> to show them; they stay hidden until you ask, so the
+        panel doesn't push the rest off-screen, and each remembers whether you left it open.
+        They differ in what you get:
       </p>
       <ul>
         <li><b>Arpeggio</b> keeps <i>one</i> note and sweeps it through the chord's tones in quick
@@ -2202,6 +2210,36 @@ function toggleTrackCollapsed(track) {
   if (collapsedTracks.has(track)) collapsedTracks.delete(track); else collapsedTracks.add(track);
   try { localStorage.setItem(COLLAPSED_TRACKS_KEY, JSON.stringify([...collapsedTracks])); } catch { /* ignore */ }
   render();
+}
+
+// The inspector's two ten-button palettes (Arpeggio and Chord) are picked from
+// once while building a part, unlike the effect toggles around them, which are
+// read at a glance the whole time. Together they were 384px of a 745px panel —
+// enough to push the rest off-screen on a 1366x768 laptop — so they collapse by
+// default and remember it per browser, the same view-preference treatment
+// per-track collapse gets above.
+const OPEN_PALETTES_KEY = 'music-studio-open-palettes';
+let openPalettes = new Set();
+try { openPalettes = new Set(JSON.parse(localStorage.getItem(OPEN_PALETTES_KEY) || '[]')); } catch { /* ignore */ }
+function togglePalette(name) {
+  if (openPalettes.has(name)) openPalettes.delete(name); else openPalettes.add(name);
+  try { localStorage.setItem(OPEN_PALETTES_KEY, JSON.stringify([...openPalettes])); } catch { /* ignore */ }
+  renderInspector(); // nothing outside the inspector changes — skip the full grid rebuild
+}
+// Builds "▸ presets" / "▾ presets" plus the grid it discloses, and appends both
+// to `parent`. `fill(grid)` adds the buttons.
+function appendPalette(parent, name, fill) {
+  const open = openPalettes.has(name);
+  const toggle = el('button', 'palette-toggle');
+  toggle.textContent = (open ? '▾' : '▸') + ' presets';
+  toggle.title = (open ? 'Hide' : 'Show') + ' the chord presets';
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.addEventListener('click', () => togglePalette(name));
+  parent.appendChild(toggle);
+  if (!open) return;
+  const grid = el('div', 'preset-grid');
+  parent.appendChild(grid); // attached first so fill() can insert a hint with grid.before()
+  fill(grid);
 }
 
 // ---------- Automation (volume/pan curves over time) ----------
@@ -3739,25 +3777,25 @@ function renderInspector() {
   // prepends note.freq itself when it cycles an arpeggio. The two rows differ
   // only in what they do with the voicing — one note sweeping through it here,
   // real separate notes there.
-  // The Chord panel below renders an identical-looking grid, so say what this
-  // one does — otherwise the only cue is which heading you happen to be under.
-  const arpHint = el('div', 'insp-sub');
-  arpHint.textContent = 'Sweeps this one note through the chord.';
-  pitch.appendChild(arpHint);
-  const presets = el('div', 'preset-grid');
-  for (const preset of CHORD_PRESETS) {
-    const btn = document.createElement('button');
-    btn.textContent = preset.label;
-    btn.dataset.arp = preset.label;
-    btn.title = `${preset.name} — sweeps this one note through the chord`;
-    btn.addEventListener('click', () => {
-      note.arp = [...preset.intervals]; // copied: the preset table must stay immutable
-      note.bend = null; note.porta = false;
-      render();
-    });
-    presets.appendChild(btn);
-  }
-  pitch.appendChild(presets);
+  appendPalette(pitch, 'arp', (grid) => {
+    // The Chord panel below discloses an identical-looking grid, so say what
+    // this one does — otherwise the only cue is the heading it sits under.
+    const arpHint = el('div', 'insp-sub');
+    arpHint.textContent = 'Sweeps this one note through the chord.';
+    grid.before(arpHint);
+    for (const preset of CHORD_PRESETS) {
+      const btn = document.createElement('button');
+      btn.textContent = preset.label;
+      btn.dataset.arp = preset.label;
+      btn.title = `${preset.name} — sweeps this one note through the chord`;
+      btn.addEventListener('click', () => {
+        note.arp = [...preset.intervals]; // copied: the preset table must stay immutable
+        note.bend = null; note.porta = false;
+        render();
+      });
+      grid.appendChild(btn);
+    }
+  });
 
   // --- Chord ---
   // Unlike the Arpeggio presets above (which just flag this single note to
@@ -3767,10 +3805,6 @@ function renderInspector() {
   // from CHORD_PRESETS; addChordAbove() below is generic over the interval
   // list, so adding one is a table row rather than another button here.
   const chordPanel = panel('Chord');
-  const chordHint = el('div', 'insp-sub');
-  chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
-  chordPanel.appendChild(chordHint);
-  const chordRow = el('div', 'preset-grid');
   const addChordAbove = (semitoneIntervals) => {
     const rootMidi = freqToMidi(note.freq);
     // Clamping at MIDI_MAX can collapse an interval onto a pitch that's
@@ -3806,15 +3840,19 @@ function renderInspector() {
     state.selected = null;
     render();
   };
-  for (const preset of CHORD_PRESETS) {
-    const btn = document.createElement('button');
-    btn.textContent = preset.label;
-    btn.dataset.chord = preset.label;
-    btn.title = `${preset.name} — adds ${preset.intervals.length} note${preset.intervals.length > 1 ? 's' : ''} above the root`;
-    btn.addEventListener('click', () => addChordAbove(preset.intervals));
-    chordRow.appendChild(btn);
-  }
-  chordPanel.appendChild(chordRow);
+  appendPalette(chordPanel, 'chord', (grid) => {
+    const chordHint = el('div', 'insp-sub');
+    chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
+    grid.before(chordHint);
+    for (const preset of CHORD_PRESETS) {
+      const btn = document.createElement('button');
+      btn.textContent = preset.label;
+      btn.dataset.chord = preset.label;
+      btn.title = `${preset.name} — adds ${preset.intervals.length} note${preset.intervals.length > 1 ? 's' : ''} above the root`;
+      btn.addEventListener('click', () => addChordAbove(preset.intervals));
+      grid.appendChild(btn);
+    }
+  });
 
   // --- Texture / FX ---
   const fx = panel('Texture / FX');
