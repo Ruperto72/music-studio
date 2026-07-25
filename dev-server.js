@@ -33,5 +33,5 @@ http.createServer((req, res) => {
     res.end(data);
   });
 }).listen(PORT, () => {
-  console.log(`Music Studio on http://localhost:${PORT}`);
+  console.log(`Web Audio Studio on http://localhost:${PORT}`);
 });

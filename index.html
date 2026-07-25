@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Music Studio — 8-bit chiptune editor</title>
+<title>Web Audio Studio — 8-bit chiptune editor</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
 <meta name="description" content="A browser-based 8-bit chiptune music editor — compose looping tracks with the Web Audio API, no plugins.">
 <meta name="color-scheme" content="dark">
@@ -15,7 +15,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Music Studio">
+<meta name="apple-mobile-web-app-title" content="Web Audio Studio">
 <style>
   :root {
     --rhythm: #39ff6a;
@@ -703,7 +703,7 @@
 
   <dialog id="help-dialog">
     <div class="help-head">
-      <h2>🎛️ Music Studio — Help</h2>
+      <h2>🎛️ Web Audio Studio — Help</h2>
       <button id="help-close">Close ✕</button>
     </div>
     <div class="help-body">
@@ -893,7 +893,7 @@
     </div>
   </dialog>
 
-  <h1 class="sr-only">Music Studio — 8-bit chiptune editor</h1>
+  <h1 class="sr-only">Web Audio Studio — 8-bit chiptune editor</h1>
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
   <p id="a11y-status" class="sr-only" role="status" aria-live="polite"></p>
@@ -1737,7 +1737,7 @@ const mstripSongName = document.getElementById('mstrip-song-name');
 function updateSongNameUI() {
   songNameDisplay.textContent = state.songName;
   mstripSongName.textContent = state.songName;
-  document.title = 'Music Studio — ' + state.songName;
+  document.title = 'Web Audio Studio — ' + state.songName;
 }
 function renameSong() {
   const name = prompt('Song name:', state.songName);
