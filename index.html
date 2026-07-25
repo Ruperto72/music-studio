@@ -3242,7 +3242,12 @@ function onCellClick(track, midi, col) {
 }
 function onRhythmCellClick(track, row, col) {
   const type = RHYTHM_ROWS[row];
-  const hits = state.tracks[track].filter(h => h.start !== col);
+  // Only a hit of the *same* type in this column is a duplicate to replace.
+  // Filtering on `start` alone would wipe every other row's hit in the column,
+  // making a plain kick-plus-hi-hat beat impossible to place by hand — the
+  // rhythm-side counterpart of the same-pitch rule notes follow (see
+  // clearOverlaps()).
+  const hits = state.tracks[track].filter(h => h.start !== col || h.type !== type);
   hits.push({ start: col, type });
   state.tracks[track] = hits;
   previewHit(type);
@@ -3286,8 +3291,19 @@ function insertPatternIntoRhythm(pattern) {
 }
 function selectNote(track, idx) { state.selected = { track, index: idx }; state.multiSelected.clear(); previewNote(track, state.tracks[track][idx]); render(); }
 function deleteNote(track, idx) {
+  // state.selected holds an *index*, so removing an earlier element shifts the
+  // selected note's index down by one — leaving it untouched would silently
+  // re-point the inspector (and the .selected highlight) at a different note,
+  // and the next edit would land on that one instead. Re-anchor by identity.
+  const selectedNote = state.selected && state.selected.track === track
+    ? state.tracks[track][state.selected.index]
+    : null;
+  const deleted = state.tracks[track][idx];
   state.tracks[track] = state.tracks[track].filter((_, i) => i !== idx);
-  if (state.selected && state.selected.track === track && state.selected.index === idx) state.selected = null;
+  if (selectedNote) {
+    const newIndex = selectedNote === deleted ? -1 : state.tracks[track].indexOf(selectedNote);
+    state.selected = newIndex === -1 ? null : { track, index: newIndex };
+  }
   render();
 }
 
@@ -3554,7 +3570,10 @@ function startMoveHit(e, track, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
+    // Only a hit of the same type (row) in the same column is displaced by the
+    // drop — matching on `start` alone would clear every other row's hit in the
+    // landing column, the same over-delete onCellClick used to do.
+    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start && g.type === h.type));
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -5821,15 +5840,37 @@ function swingOffsetCols(col) {
 }
 function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState, fmState) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
-  for (let i = 0; i < sorted.length; i++) {
-    const n = sorted[i];
+  // A portamento note glides into the note starting exactly where it ends, and
+  // that note is *not* retriggered — the two share one continuous oscillator.
+  // The target can't be found as `sorted[i + 1]`: notes in a chord share a
+  // start, so the next array element is usually a same-start sibling rather
+  // than the next note in time. That made portamento silently do nothing on a
+  // chord tone, and made a glide *into* a chord swallow whichever tone
+  // happened to sit next in the array. Search by time instead, and pick the
+  // pitch nearest the gliding note (the shortest, most natural glide, and
+  // deterministic where array order was not). Consumed targets are tracked
+  // explicitly so they aren't also scheduled as a voice of their own.
+  const consumed = new Set();
+  const glideTarget = (n) => {
+    const end = n.start + n.len;
+    let best = null;
+    for (const t of sorted) {
+      if (t === n || consumed.has(t) || Math.abs(t.start - end) > EPS) continue;
+      if (!best || Math.abs(t.freq - n.freq) < Math.abs(best.freq - n.freq)) best = t;
+    }
+    return best;
+  };
+  for (const n of sorted) {
+    if (consumed.has(n)) continue;
     if (n.start < fromCol || n.start >= toCol) continue;
     const at = startAt + (n.start - fromCol + swingOffsetCols(n.start)) * eighthSec;
     if (n.porta) {
-      const next = sorted[i + 1];
-      if (next && Math.abs(next.start - (n.start + n.len)) < EPS && next.start < toCol) {
+      // A target past this chunk's end is left alone — it gets scheduled
+      // normally by the next chunk, same as before.
+      const next = glideTarget(n);
+      if (next && next.start < toCol) {
+        consumed.add(next);
         schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState, fmState);
-        i++;
         continue;
       }
     }

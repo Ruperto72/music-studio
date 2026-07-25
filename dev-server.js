@@ -22,7 +22,11 @@ const MIME = {
 http.createServer((req, res) => {
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
   const file = path.normalize(path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
+  // Compare against ROOT + separator, not ROOT alone: a bare prefix check also
+  // admits sibling directories whose name merely starts with it (a `..` path
+  // resolving to `<root>-notes/secret`), which matters because this listens on
+  // every interface.
+  if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' });

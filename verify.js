@@ -369,6 +369,116 @@ async function main() {
       }
     });
 
+    step('Eraser: deleting a note does not move the selection to a different note', async () => {
+      // state.selected is an index, so removing an earlier note shifts it —
+      // leaving it alone silently re-points the inspector at another note.
+      // Runs on a freshly added track: the previous step pans the pitch window
+      // to the ceiling, and notes scrolled out of view render at a clamped row,
+      // so on that track several notes would share one style.top and the
+      // identity comparison below couldn't tell them apart.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add track')).click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Identify notes by column (style.left) alone, NOT by pitch row: removing
+      // a note re-fits the lane's pitch window, which shifts every remaining
+      // note's style.top even though nothing about them changed. A note's
+      // column is unaffected by a deletion, so it stays a valid identity here.
+      const key = `(n => n.style.left)`;
+      const byColumn = `(() => { const n = Array.from(document.querySelectorAll('.track.active .lane .note'));
+        n.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left)); return n; })()`;
+      // Place four notes left-to-right, so array order matches column order.
+      // Four, not three: the selected index has to stay *in bounds* after the
+      // deletion for the bug to be visible. Selecting the last of three would
+      // leave a stale index past the end, which renders as no selection at all
+      // — indistinguishable from the acceptable "selection cleared" outcome.
+      for (const [dx, dy] of [[20, 30], [120, 50], [220, 70], [320, 90]]) {
+        await cdp.evaluate(`{
+          const lane = document.querySelector('.track.active .lane');
+          const rect = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + ${dx}, clientY: rect.top + ${dy} }));
+        }`);
+        await new Promise((r) => setTimeout(r, 180));
+      }
+      const columns = await cdp.evaluate(`${byColumn}.map(${key})`);
+      if (columns.length !== 4) throw new Error(`expected 4 notes on the fresh track, got ${columns.length}`);
+      if (new Set(columns).size !== 4) throw new Error(`expected 4 distinct columns, got ${columns.join(', ')}`);
+      // Select the third note, then erase the first (index 0) — the stale index
+      // would then land on the fourth.
+      const selected = await cdp.evaluate(`(() => { const n = ${byColumn}; n[2].click(); return ${key}(n[2]); })()`);
+      await new Promise((r) => setTimeout(r, 150));
+      const before = await cdp.evaluate(`(() => { const s = document.querySelector('.track.active .lane .note.selected'); return s ? ${key}(s) : null; })()`);
+      if (before !== selected) throw new Error(`clicking a note did not select it (wanted ${selected}, got ${before})`);
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      await new Promise((r) => setTimeout(r, 100));
+      await cdp.evaluate(`${byColumn}[0].click()`);
+      await new Promise((r) => setTimeout(r, 200));
+      const after = await cdp.evaluate(`(() => { const s = document.querySelector('.track.active .lane .note.selected'); return s ? ${key}(s) : null; })()`);
+      // Following the same note is right; clearing would be acceptable too —
+      // silently landing on a *different* note is the bug.
+      if (after !== null && after !== selected) {
+        throw new Error(`the selection jumped to a different note after erasing another (was ${selected}, now ${after})`);
+      }
+    });
+
+    step('Rhythm: placing a hit keeps the other rows in that column', async () => {
+      // The rhythm counterpart of the same-pitch rule for notes: only a hit of
+      // the same *type* in a column is a duplicate. Filtering on start alone
+      // wiped the whole column, making kick+hi-hat on one beat unplaceable.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const rhythmLane = `document.querySelector('.track[data-track="rhythm"] .lane')`;
+      const hasLane = await cdp.evaluate(`!!${rhythmLane}`);
+      if (!hasLane) throw new Error('expected a rhythm track lane');
+      await cdp.evaluate(`${rhythmLane}.click()`); // make the rhythm track active
+      await new Promise((r) => setTimeout(r, 150));
+      const clickRow = (yOffset) => cdp.evaluate(`{
+        const lane = ${rhythmLane};
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 200, clientY: rect.top + ${yOffset} }));
+      }`);
+      const countHits = `document.querySelectorAll('.track[data-track="rhythm"] .lane .hit').length`;
+      const start = await cdp.evaluate(countHits);
+      await clickRow(8);   // row 0 — kick
+      await new Promise((r) => setTimeout(r, 200));
+      const afterFirst = await cdp.evaluate(countHits);
+      if (afterFirst !== start + 1) throw new Error(`expected one hit to be added, got ${start} -> ${afterFirst}`);
+      await clickRow(25);  // row 1 — snare, same column
+      await new Promise((r) => setTimeout(r, 200));
+      const afterSecond = await cdp.evaluate(countHits);
+      if (afterSecond !== start + 2) {
+        throw new Error(`placing a second hit in the same column wiped the first (${afterFirst} -> ${afterSecond}, expected ${start + 2})`);
+      }
+      // Re-clicking the same row+column must still replace, not stack.
+      await clickRow(8);
+      await new Promise((r) => setTimeout(r, 200));
+      const afterRepeat = await cdp.evaluate(countHits);
+      if (afterRepeat !== start + 2) {
+        throw new Error(`re-placing the same hit type stacked a duplicate (${afterSecond} -> ${afterRepeat})`);
+      }
+
+      // Same rule on drop: dragging a hit into an occupied column must displace
+      // only a hit of its own type, not clear the whole column.
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
+      const dragged = await cdp.evaluate(`(() => {
+        const hits = Array.from(document.querySelectorAll('.track[data-track="rhythm"] .lane .hit'));
+        const snare = hits.find((h) => h.className.includes('snare'));
+        if (!snare) return false;
+        const r = snare.getBoundingClientRect();
+        const opts = { bubbles: true, pointerId: 1, clientX: r.left + 3, clientY: r.top + 3 };
+        snare.dispatchEvent(new PointerEvent('pointerdown', opts));
+        window.dispatchEvent(new PointerEvent('pointermove', { ...opts, clientX: r.left + 3 - 64 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { ...opts, clientX: r.left + 3 - 64 }));
+        return true;
+      })()`);
+      if (!dragged) throw new Error('expected a snare hit to drag');
+      await new Promise((r) => setTimeout(r, 300));
+      const afterDrag = await cdp.evaluate(countHits);
+      if (afterDrag !== start + 2) {
+        throw new Error(`dragging a hit into another row's column destroyed it (${afterRepeat} -> ${afterDrag})`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
