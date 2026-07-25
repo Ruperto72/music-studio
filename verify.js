@@ -293,7 +293,31 @@ async function main() {
       if (!inspectorEmpty) throw new Error('expected the single-note inspector to close after the chord is selected as a group');
     });
 
-    step('Chord buttons: clamped interval matching the root pitch does not delete the root note', async () => {
+    step('Chord buttons: re-running on the same root adds nothing (no stacked duplicates)', async () => {
+      // The chord tones from the previous step are already there, so asking
+      // for the same chord again must be a no-op rather than stacking exact
+      // duplicates on top of them. Done here, before the pitch-window pan
+      // below, so every note is still inside the visible window — a note
+      // scrolled outside it renders at a clamped row (renderPitchTrack's
+      // `Math.max(0, Math.min(pitchCount - 1, ...))`), which would make two
+      // different pitches share one style.top and break the comparison.
+      // The chord group is multi-selected; its root is the lowest pitch of
+      // the three, i.e. the largest style.top.
+      await cdp.evaluate(`{
+        const chord = Array.from(document.querySelectorAll('.track.active .lane .note.multi-selected'));
+        chord.sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top))[0].click();
+      }`);
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      await cdp.evaluate(`
+        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+      `);
+      await new Promise((r) => setTimeout(r, 150));
+      const after = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      if (after !== before) throw new Error(`expected the repeat chord to be a no-op, got ${before} -> ${after} notes`);
+    });
+
+    step('Chord buttons at the pitch ceiling: root survives, nothing is deleted', async () => {
       // Push the pitch window's auto-fit all the way up first (a big
       // negative-deltaY wheel scroll pans toward higher pitches, clamped at
       // MIDI_MAX) so a click near the very top row lands on the instrument's
@@ -311,18 +335,38 @@ async function main() {
         const rect = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 60, clientY: rect.top + 5 }));
       }`);
-      const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      // The root sits on row 0 here, the one row the render clamp can't
+      // ambiguate (notes panned out of view clamp to the *bottom* row), so
+      // its style.top/left pair identifies it reliably without reaching into
+      // the app's module-private state.
+      const rootKey = `(n => n.style.top + '|' + n.style.left)`;
+      const before = await cdp.evaluate(`(() => {
+        const root = document.querySelector('.track.active .lane .note.selected');
+        return { count: document.querySelectorAll('.track.active .lane .note').length, rootKey: root ? ${rootKey}(root) : null };
+      })()`);
+      if (!before.rootKey) throw new Error('expected the just-placed note to be the selected root');
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await cdp.evaluate(`
         Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
       `);
-      await new Promise((r) => setTimeout(r, 100));
-      const after = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
-      // A major chord always adds exactly 2 new notes (third + fifth) and
-      // must never remove the root — so anything less than before+2 means a
-      // note (the root, when its clamped chord tone collides with it) got
-      // silently deleted.
-      if (after < before + 2) throw new Error(`expected 2 notes to be added (${before} -> ${before + 2}), got ${before} -> ${after} — a chord button deleted an existing note`);
+      await new Promise((r) => setTimeout(r, 150));
+      const after = await cdp.evaluate(`(() => {
+        const keys = Array.from(document.querySelectorAll('.track.active .lane .note')).map(${rootKey});
+        return { count: keys.length, keys };
+      })()`);
+      // At the ceiling both +4 and +7 clamp back onto the root's own pitch, so
+      // there is no chord to add and the click is a no-op — what must never
+      // happen is the root (or any other note) being deleted on the way, or
+      // a duplicate being stacked on the root's own pitch.
+      if (!after.keys.includes(before.rootKey)) {
+        throw new Error(`the root note was deleted by a chord button (root at ${before.rootKey} is gone)`);
+      }
+      if (after.keys.filter((k) => k === before.rootKey).length !== 1) {
+        throw new Error(`a chord button stacked a duplicate on the root's own pitch (${before.rootKey})`);
+      }
+      if (after.count < before.count) {
+        throw new Error(`a chord button deleted an existing note (${before.count} -> ${after.count})`);
+      }
     });
 
     for (const s of steps) await s();

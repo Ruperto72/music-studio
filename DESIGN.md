@@ -146,8 +146,10 @@ just name/M/S/VU — a slim overview strip so many tracks fit on screen;
   always stay grouped together after every tonal track in `trackList`, and
   at least one always exists — it can't be removed below one, only added to.
 - **Tools**: Pen (click an empty cell to add a note/hit at the current grid
-  resolution), Eraser (click to remove), Grab (drag to move, drag the right
-  edge to resize, drag empty space to marquee-select).
+  resolution — clicking a *different* pitch in a column that already has a
+  note adds a chord tone rather than replacing it, see B.5), Eraser (click
+  to remove), Grab (drag to move, drag the right edge to resize, drag empty
+  space to marquee-select).
 - **Multi-select**: Shift+click adds/removes from selection in any tool;
   marquee-select (Grab tool) rubber-bands a rectangular region; a selection
   moves/deletes/copies-pastes as a group.
@@ -250,6 +252,14 @@ a single note is selected, per-note controls grouped into:
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
   (pulse-width for square waves), Arpeggio (comma-separated semitone
   offsets, with Major/Minor-triad quick-fill buttons).
+- **Chord**: "Add Major Chord" / "Add Minor Chord" — unlike the Arpeggio
+  presets above (which only flag this one note to sweep through its chord
+  tones), these add *real, separate* notes a third and a fifth above, at the
+  same start/length in the same track, then multi-select the whole chord as
+  a group (which closes this single-note inspector). Chord tones are added
+  with neutral effect flags, so each can be tuned individually afterward.
+  An interval that clamps at the pitch ceiling onto a pitch already sounding
+  is skipped rather than stacked as a duplicate.
 - **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
 - **Delete note** button.
 
@@ -389,9 +399,9 @@ eighth is the finest shared lattice, so triplet and straight subdivisions
 never drift). A `Hit` is `{ start, type }` where `type` is one of
 `RHYTHM_ROWS`. Multiple hits (or, in the pad/strings/stab style, multiple
 tonal notes) can share the same `start` in one track to voice a chord or
-layer percussion — the editor's own click-to-place UI is monophonic-in-time
-per track (`clearOverlaps`), but the data model and playback don't require
-it, and several bundled example songs deliberately stack notes this way.
+layer percussion — and the editor creates them that way too: every
+note-editing interaction is **pitch-aware**, so a note only ever conflicts
+with another note at the *same* pitch overlapping it in time (see B.5).
 
 ### B.3 Song data schema (JSON, `version: 2`)
 
@@ -503,6 +513,16 @@ bounds from neighboring points/notes), applies `scheduleRender()` during
 automation point) deliberately skips the render/commit step — necessary so
 a `dblclick` (used to delete) doesn't get its target element swapped out
 mid-gesture by an intervening rebuild.
+
+**Pitch-aware overlap.** On tonal tracks a note conflicts with another note
+only when they share a pitch *and* overlap in time — different pitches
+overlapping in time are exactly what a chord is, so they're never
+auto-removed. `clearOverlaps(notes, start, len, freq, exceptIdx)` is the
+shared implementation (used by `onCellClick` and `pasteClipboard`);
+`nudgeSelection`, `startMoveNote`'s pointerup and `startResize`'s `maxLen`
+computation each apply the same same-pitch condition to their own inline
+filters. Rhythm tracks are unaffected — hits are already keyed by `type`
+(which row), so two hits in one column coexist across rows.
 
 ### B.6 Audio synthesis engine
 
