@@ -381,7 +381,7 @@ state = {
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
   swing,       // % (0 = straight 8ths, up to 75 ≈ triplet feel) — swingOffsetCols()
-  selected,    // { track, index } | null — single-note inspector target
+  selected,    // { track, note } | null — the note object, never an index (B.5)
   multiSelected, // Set<Note|Hit> — group selection within activeTrack
   playhead, loopStart, loopEnd,
   marquee,     // { col0, col1, track } | null, mid-drag only
@@ -514,16 +514,35 @@ automation point) deliberately skips the render/commit step — necessary so
 a `dblclick` (used to delete) doesn't get its target element swapped out
 mid-gesture by an intervening rebuild.
 
-**Pitch-aware overlap.** On tonal tracks a note conflicts with another note
-only when they share a pitch *and* overlap in time — different pitches
-overlapping in time are exactly what a chord is, so they're never
-auto-removed. `clearOverlaps(notes, start, len, freq, exceptIdx)` is the
-shared implementation (used by `onCellClick` and `pasteClipboard`);
-`nudgeSelection`, `startMoveNote`'s pointerup and `startResize`'s `maxLen`
-computation each apply the same same-pitch condition to their own inline
-filters. Rhythm tracks follow the same shape one level up: `onRhythmCellClick`
-treats only a hit of the same `type` (row) in the same column as a duplicate to
-replace, so hits stack freely across rows — a kick and a hi-hat on one beat.
+**What counts as a collision.** Two predicates decide it, and nothing
+re-derives the rule locally:
+
+- `notesConflict(a, b)` — same pitch *and* overlapping in time. Different
+  pitches overlapping in time are exactly what a chord is, so they are never
+  auto-removed. `clearOverlaps(notes, probe, keep)` wraps it for the common
+  "drop this note in, displacing what it collides with" case, where `keep` is
+  the note being edited in place so it survives its own check.
+- `hitsConflict(a, b)` — same drum type *and* same column, so hits stack
+  freely across rows: a kick and a hi-hat on one beat.
+
+Every editing path routes through these — placing (`onCellClick`,
+`onRhythmCellClick`), dragging (`startMoveNote`, `startMoveHit`), nudging
+(`nudgeSelection`), pasting (`pasteClipboard`) and the Chord buttons
+(`addChordAbove`). That centralisation is load-bearing rather than cosmetic:
+when each site spelled the comparison out inline the variants drifted, and
+every drift silently deleted the user's notes or hits — five distinct bugs
+traced back to it.
+
+**Selection identity.** `state.selected` is `{ track, note }` and holds the
+note *object*; it is never an array index, since deleting or reordering
+anything earlier in a track would otherwise silently re-point it at a
+different note. `renderInspector()` still confirms the note is present in the
+track before editing it, because a paste, drag or undo can remove it.
+`state.multiSelected` is a Set of objects implicitly scoped to
+`state.activeTrack`, so every track switch has to clear it — go through
+`activateTrack()` (or `setActive()`, which wraps it) rather than assigning
+`state.activeTrack` directly, or a later nudge will pull the previous track's
+items into the new one.
 
 ### B.6 Audio synthesis engine
 

@@ -479,6 +479,81 @@ async function main() {
       }
     });
 
+    // Both steps below run on a rhythm track added here: the song's own rhythm
+    // lane already holds hundreds of hits, so a marquee over it would sweep up
+    // unrelated ones and the counts would mean nothing. A fresh track starts
+    // empty and is made active by addRhythmTrack().
+    step('Rhythm: pasting a stacked kick+snare keeps both hits', async () => {
+      // The clipboard path keyed hits on their column alone, so one row of a
+      // copied stack was dropped and the landing column's other rows cleared.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add rhythm track')).click()`);
+      await new Promise((r) => setTimeout(r, 350));
+      const lane = `document.querySelector('.track.active .lane')`;
+      const countHits = `document.querySelectorAll('.track.active .lane .hit').length`;
+      if (await cdp.evaluate(countHits) !== 0) throw new Error('expected the new rhythm track to start empty');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      for (const y of [8, 25]) {
+        await cdp.evaluate(`{
+          const l = ${lane};
+          const rect = l.getBoundingClientRect();
+          l.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 200, clientY: rect.top + ${y} }));
+        }`);
+        await new Promise((r) => setTimeout(r, 180));
+      }
+      const before = await cdp.evaluate(countHits);
+      if (before !== 2) throw new Error(`expected a two-row stack, got ${before} hits`);
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`{
+        const l = ${lane};
+        const rect = l.getBoundingClientRect();
+        const o = { bubbles: true, pointerId: 21, clientY: rect.top + 40 };
+        l.dispatchEvent(new PointerEvent('pointerdown', { ...o, clientX: rect.left + 180 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { ...o, clientX: rect.left + 230 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { ...o, clientX: rect.left + 230 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 250));
+      const picked = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .hit.multi-selected').length`);
+      if (picked !== 2) throw new Error(`expected the marquee to select both hits, got ${picked}`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`{
+        const t = document.querySelector('.timeline');
+        const rect = t.getBoundingClientRect();
+        t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 22, clientX: rect.left + 600, clientY: rect.top + 5 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 22, clientX: rect.left + 600, clientY: rect.top + 5 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 250));
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 350));
+      const after = await cdp.evaluate(countHits);
+      if (after !== before + 2) {
+        throw new Error(`pasting a two-row stack should add both hits (${before} -> ${before + 2}), got ${after}`);
+      }
+    });
+
+    step('Adding a track does not carry the previous track\'s selection into it', async () => {
+      // state.multiSelected is scoped to the active track, but addTrack() set
+      // state.activeTrack directly and setActive() then early-returned, so the
+      // old track's group stayed selected — and the next nudge copied those
+      // items into the new track.
+      const selected = `document.querySelectorAll('.hit.multi-selected, .note.multi-selected').length`;
+      if (await cdp.evaluate(selected) === 0) throw new Error('expected the pasted hits to still be selected');
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await new Promise((r) => setTimeout(r, 350));
+      const afterAdd = await cdp.evaluate(selected);
+      if (afterAdd !== 0) throw new Error(`adding a track kept ${afterAdd} item(s) selected from the previous track`);
+      const notesBefore = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 300));
+      const notesAfter = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      if (notesAfter !== notesBefore) {
+        throw new Error(`nudging after adding a track pulled items into it (${notesBefore} -> ${notesAfter} notes)`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

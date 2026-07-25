@@ -613,6 +613,34 @@ ett facit.
   efter en för snabb läsning — filtret fanns, det var bara för brett.
   Jämför nu på `start` **och** `type`, och `verify.js`-steget för rytm
   täcker även drag-fallet.
+- [x] **Kollisionsregeln och markeringen centraliserade** — uppföljning på
+  frågan om GUI:t borde skrivas om i React. Slutsatsen blev nej: ingen av de
+  buggar vi hittat låg i renderingen, utan i domänlogiken. Två mönster gick
+  igen, och båda är nu åtgärdade i stället.
+  1. **Kollisionsregeln var handkopierad på sju ställen.** Samma-tonhöjd-
+     villkoret fanns i fyra varianter, samma-typ-villkoret i två, och varje
+     gång någon skrev om det för hand drev det isär — fem av de buggar vi
+     rättat i den här omgången var exakt det. Nu finns `notesConflict(a, b)`
+     och `hitsConflict(a, b)` som enda sanning, med `clearOverlaps(notes,
+     probe, keep)` som omslag för det vanliga fallet. Alla vägar som placerar,
+     drar, knuffar, klistrar in eller släpper går genom dem.
+     Refaktoreringen avslöjade en sjätte instans direkt: `pasteClipboard()`s
+     rytmgren nycklade på kolumn i stället för kolumn+typ, så en kopierad
+     kick+snare-stapel tappade ena raden vid inklistring *och* rensade
+     landningskolumnens övriga rader.
+  2. **`state.selected` var ett index.** Nu `{ track, note }` med
+     notobjektet självt. `renderInspector()` kontrollerar fortfarande att
+     noten faktiskt finns kvar i spåret innan den visar reglage, eftersom
+     ångra/inklistring/drag kan ha tagit bort den.
+  Under verifieringen föll ytterligare en bugg ut, av samma familj:
+  `state.multiSelected` är underförstått knuten till `state.activeTrack`, men
+  `addTrack()`/`addRhythmTrack()`/MIDI-importen satte `state.activeTrack`
+  direkt förbi `setActive()` — som sedan tidig-returnerade eftersom id:t redan
+  stämde. Markeringen från det gamla spåret låg alltså kvar, och nästa
+  piltangent-knuff **kopierade in rytmspårets slag i det nya tonspåret** som
+  trasiga noter (`freq` undefined). Alla tre går nu via `activateTrack()`.
+  Fyra nya steg i `verify.js` (12 → 14 totalt), alla verifierade att de
+  fäller den ostädade koden.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 

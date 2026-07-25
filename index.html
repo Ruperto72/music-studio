@@ -1816,14 +1816,27 @@ function attachPitchWheel(el, track) {
   }, { passive: false });
 }
 
-function clearOverlaps(notes, start, len, freq, exceptIdx = -1) {
-  const end = start + len;
-  return notes.filter((n, i) => {
-    if (i === exceptIdx) return true;
-    if (n.freq !== freq) return true;
-    const nEnd = n.start + n.len;
-    return nEnd <= start || n.start >= end;
-  });
+// ---------- What counts as a collision ----------
+// The single place that decides whether two items in one track can coexist.
+// Every path that places, drags, nudges, pastes or drops something asks these
+// two, so the rule can't drift between them — it repeatedly did when each site
+// spelled the comparison out inline, and each drift silently deleted the user's
+// notes or hits.
+//
+// Notes collide only at the *same pitch* overlapping in time; different
+// pitches sharing a column are a chord, not a conflict.
+function notesConflict(a, b) {
+  return a.freq === b.freq && a.start < b.start + b.len && b.start < a.start + a.len;
+}
+// Hits collide only as the *same drum* in the same column; different rows
+// sharing a column are a kick and a hi-hat on one beat.
+function hitsConflict(a, b) {
+  return a.type === b.type && a.start === b.start;
+}
+// Drops `probe` into `notes`, removing whatever it collides with. `keep` is the
+// note being edited in place (it must survive its own conflict check).
+function clearOverlaps(notes, probe, keep = null) {
+  return notes.filter(n => n === keep || !notesConflict(n, probe));
 }
 
 // ---------- Mute/solo audibility ----------
@@ -2072,7 +2085,7 @@ function addTrack() {
   state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
   refreshTrackArrays();
   ensureChannelNodes(id);
-  state.activeTrack = id;
+  activateTrack(id);
   render(); autosave();
 }
 // Mirrors addTrack() for a new rhythm-kind track (same fixed 10-piece kit as
@@ -2087,7 +2100,7 @@ function addRhythmTrack() {
   state.gains[id] = 0.9; state.waveform[id] = 'kit'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
   refreshTrackArrays();
   ensureChannelNodes(id);
-  state.activeTrack = id;
+  activateTrack(id);
   render(); autosave();
 }
 // Swaps a track with its neighbor, tonal or rhythm. Tracks only ever swap
@@ -2851,7 +2864,7 @@ function renderPitchTrack(track) {
     const midi = freqToMidi(note.freq);
     const p = Math.max(0, Math.min(pitchCount - 1, win.max - midi));
     const div = el('div');
-    const isSelected = state.selected && state.selected.track === track && state.selected.index === idx;
+    const isSelected = state.selected && state.selected.track === track && state.selected.note === note;
     div.className = 'note ' + track +
       (note.bend ? ' bend' : '') + (note.vib ? ' vib' : '') + (note.trem ? ' trem' : '') +
       (note.porta ? ' porta' : '') + (note.crush ? ' crush' : '') +
@@ -2872,8 +2885,8 @@ function renderPitchTrack(track) {
       setActive(track);
       if (state.tool === 'eraser') {
         if (state.multiSelected.size > 1 && state.multiSelected.has(note)) deleteSelection();
-        else deleteNote(track, idx);
-      } else if (state.tool === 'pen') selectNote(track, idx);
+        else deleteNote(track, note);
+      } else if (state.tool === 'pen') selectNote(track, note);
     });
     if (note.arp && note.arp.length) { const badge = el('span', 'arp-badge'); badge.textContent = '♪'; div.appendChild(badge); }
     if (state.tool === 'grab') {
@@ -3218,39 +3231,44 @@ function startLoopDrag(e, which) {
 }
 
 // ---------- Editing ----------
+// state.multiSelected is implicitly scoped to state.activeTrack — every
+// consumer reads it as "the group inside the active track" — so switching
+// tracks has to drop it. Paths that assigned state.activeTrack directly
+// (adding a track, MIDI import) bypassed setActive() and left a foreign group
+// selected, and since setActive() then early-returns on an already-matching id,
+// nothing ever cleared it: an arrow-key nudge afterwards copied the *old*
+// track's items into the new one. state.selected is left alone on purpose — it
+// carries its own track id, so it stays valid across a switch.
+function activateTrack(id) {
+  if (state.activeTrack === id) return;
+  state.activeTrack = id;
+  state.multiSelected.clear();
+}
 function setActive(track, forceRender) {
   if (state.activeTrack === track) { if (forceRender) render(); return; }
-  state.activeTrack = track;
-  state.multiSelected.clear();
+  activateTrack(track);
   render();
 }
 
 function onCellClick(track, midi, col) {
-  const notes = state.tracks[track];
-  const len = state.grid;
-  const freq = round2(midiToFreq(midi));
-  const cleared = clearOverlaps(notes, col, len, freq);
-  cleared.push({
-    start: col, len, freq, vel: 1,
+  const note = {
+    start: col, len: state.grid, freq: round2(midiToFreq(midi)), vel: 1,
     bend: null, vib: false, trem: false, duty: null, arp: null,
     porta: false, crush: false, echo: false, chorus: false, reverb: false
-  });
+  };
+  const cleared = clearOverlaps(state.tracks[track], note);
+  cleared.push(note);
   state.tracks[track] = cleared;
-  state.selected = { track, index: cleared.length - 1 };
-  previewNote(track, cleared[cleared.length - 1]);
+  state.selected = { track, note };
+  previewNote(track, note);
   render();
 }
 function onRhythmCellClick(track, row, col) {
-  const type = RHYTHM_ROWS[row];
-  // Only a hit of the *same* type in this column is a duplicate to replace.
-  // Filtering on `start` alone would wipe every other row's hit in the column,
-  // making a plain kick-plus-hi-hat beat impossible to place by hand — the
-  // rhythm-side counterpart of the same-pitch rule notes follow (see
-  // clearOverlaps()).
-  const hits = state.tracks[track].filter(h => h.start !== col || h.type !== type);
-  hits.push({ start: col, type });
+  const hit = { start: col, type: RHYTHM_ROWS[row] };
+  const hits = state.tracks[track].filter(h => !hitsConflict(h, hit));
+  hits.push(hit);
   state.tracks[track] = hits;
-  previewHit(type);
+  previewHit(hit.type);
   render();
 }
 function removeHit(track, hit) { state.tracks[track] = state.tracks[track].filter(h => h !== hit); render(); }
@@ -3289,21 +3307,10 @@ function insertPatternIntoRhythm(pattern) {
   render();
   autosave();
 }
-function selectNote(track, idx) { state.selected = { track, index: idx }; state.multiSelected.clear(); previewNote(track, state.tracks[track][idx]); render(); }
-function deleteNote(track, idx) {
-  // state.selected holds an *index*, so removing an earlier element shifts the
-  // selected note's index down by one — leaving it untouched would silently
-  // re-point the inspector (and the .selected highlight) at a different note,
-  // and the next edit would land on that one instead. Re-anchor by identity.
-  const selectedNote = state.selected && state.selected.track === track
-    ? state.tracks[track][state.selected.index]
-    : null;
-  const deleted = state.tracks[track][idx];
-  state.tracks[track] = state.tracks[track].filter((_, i) => i !== idx);
-  if (selectedNote) {
-    const newIndex = selectedNote === deleted ? -1 : state.tracks[track].indexOf(selectedNote);
-    state.selected = newIndex === -1 ? null : { track, index: newIndex };
-  }
+function selectNote(track, note) { state.selected = { track, note }; state.multiSelected.clear(); previewNote(track, note); render(); }
+function deleteNote(track, note) {
+  state.tracks[track] = state.tracks[track].filter(n => n !== note);
+  if (state.selected && state.selected.note === note) state.selected = null;
   render();
 }
 
@@ -3354,8 +3361,7 @@ function toggleMultiSelect(track, item) {
     state.activeTrack = track;
     state.multiSelected.clear();
   } else if (state.selected && state.selected.track === track) {
-    const selNote = state.tracks[track][state.selected.index];
-    if (selNote) state.multiSelected.add(selNote);
+    state.multiSelected.add(state.selected.note);
   }
   if (state.multiSelected.has(item)) state.multiSelected.delete(item);
   else state.multiSelected.add(item);
@@ -3376,7 +3382,7 @@ function deleteSelection() {
     state.multiSelected.clear();
     render();
   } else if (state.selected) {
-    deleteNote(state.selected.track, state.selected.index);
+    deleteNote(state.selected.track, state.selected.note);
   }
 }
 function nudgeSelection(dCol, dRow) {
@@ -3401,30 +3407,26 @@ function nudgeSelection(dCol, dRow) {
       sel.forEach((n, i) => { n.start = quant(n.start + dc); if (dr) n.freq = round2(midiToFreq(midis[i] + dr)); });
       const selSet = state.multiSelected;
       let rest = notes.filter(n => !selSet.has(n));
-      for (const n of sel) rest = rest.filter(o => o.freq !== n.freq || o.start + o.len <= n.start || o.start >= n.start + n.len);
+      for (const n of sel) rest = rest.filter(o => !notesConflict(o, n));
       state.tracks[state.activeTrack] = [...rest, ...sel];
     }
     render();
     return;
   }
   if (!state.selected) return;
-  const { track, index } = state.selected;
-  const notes = state.tracks[track];
-  const note = notes[index];
+  const { track, note } = state.selected;
   note.start = quant(Math.max(0, Math.min(COLS - note.len, note.start + dCol)));
   if (dRow) {
     const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
     note.freq = round2(midiToFreq(midi));
   }
-  const cleared = clearOverlaps(notes, note.start, note.len, note.freq, notes.indexOf(note));
-  state.tracks[track] = cleared;
-  state.selected = { track, index: cleared.indexOf(note) };
+  state.tracks[track] = clearOverlaps(state.tracks[track], note, note);
   render();
 }
 function copySelection() {
   let items, track;
   if (state.multiSelected.size > 0) { items = [...state.multiSelected]; track = state.activeTrack; }
-  else if (state.selected) { items = [state.tracks[state.selected.track][state.selected.index]]; track = state.selected.track; }
+  else if (state.selected) { items = [state.selected.note]; track = state.selected.track; }
   else return;
   const minStart = Math.min(...items.map(n => n.start));
   clipboard = { track, items: items.map(n => ({ ...n, start: n.start - minStart, arp: n.arp ? [...n.arp] : null })) };
@@ -3435,23 +3437,24 @@ function pasteClipboard() {
   if (clipIsRhythm !== isRhythm(state.activeTrack)) return;
   const anchor = state.playhead;
   if (clipIsRhythm) {
-    const seen = new Set();
     const pasted = [];
     for (const it of clipboard.items) {
-      const start = quant(Math.max(0, Math.min(COLS - state.grid, it.start + anchor)));
-      if (seen.has(start)) continue;
-      seen.add(start);
-      pasted.push({ start, type: it.type });
+      const hit = { start: quant(Math.max(0, Math.min(COLS - state.grid, it.start + anchor))), type: it.type };
+      // Keyed on the column alone this dropped every row but one of a copied
+      // kick+hi-hat stack, and then cleared the other rows of the landing
+      // columns as well.
+      if (pasted.some(p => hitsConflict(p, hit))) continue;
+      pasted.push(hit);
     }
-    state.tracks[state.activeTrack] = [...state.tracks[state.activeTrack].filter(h => !seen.has(h.start)), ...pasted];
+    const kept = state.tracks[state.activeTrack].filter(h => !pasted.some(p => hitsConflict(p, h)));
+    state.tracks[state.activeTrack] = [...kept, ...pasted];
     state.multiSelected = new Set(pasted);
   } else {
     let notes = state.tracks[state.activeTrack];
     const pasted = [];
     for (const it of clipboard.items) {
-      const newStart = quant(Math.max(0, Math.min(COLS - it.len, it.start + anchor)));
-      notes = clearOverlaps(notes, newStart, it.len, it.freq);
-      const newNote = { ...it, start: newStart, arp: it.arp ? [...it.arp] : null };
+      const newNote = { ...it, start: quant(Math.max(0, Math.min(COLS - it.len, it.start + anchor))), arp: it.arp ? [...it.arp] : null };
+      notes = clearOverlaps(notes, newNote);
       notes.push(newNote);
       pasted.push(newNote);
     }
@@ -3529,16 +3532,16 @@ function startMoveNote(e, track, idx) {
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
-    if (!moved) { selectNote(track, idx); return; }
+    if (!moved) { selectNote(track, note); return; }
     const groupSet = new Set(group);
     // Read state.tracks[track] fresh here rather than reusing the `notes` closure
     // captured at gesture start — a concurrent touch drag on another note of this
     // same track may have already committed its own array replacement, and filtering
     // against the stale `notes` snapshot would silently discard that other commit.
     let rest = state.tracks[track].filter(n => !groupSet.has(n));
-    for (const n of group) rest = rest.filter(o => o.freq !== n.freq || o.start + o.len <= n.start || o.start >= n.start + n.len);
+    for (const n of group) rest = rest.filter(o => !notesConflict(o, n));
     state.tracks[track] = [...rest, ...group];
-    state.selected = { track, index: state.tracks[track].indexOf(note) };
+    state.selected = { track, note };
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -3570,10 +3573,7 @@ function startMoveHit(e, track, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    // Only a hit of the same type (row) in the same column is displaced by the
-    // drop — matching on `start` alone would clear every other row's hit in the
-    // landing column, the same over-delete onCellClick used to do.
-    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start && g.type === h.type));
+    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => hitsConflict(g, h)));
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -3584,14 +3584,17 @@ function startMoveHit(e, track, hit) {
 // ---------- Inspector ----------
 function renderInspector() {
   const sel = state.selected;
-  const note = sel && state.tracks[sel.track] && state.tracks[sel.track][sel.index];
+  // The selection holds the note itself, but it can still have been removed
+  // from the track since (undo, a paste that displaced it, another drag), so
+  // confirm it's actually still there before showing controls that edit it.
+  const track = sel && sel.track;
+  const note = sel && state.tracks[track] && state.tracks[track].includes(sel.note) ? sel.note : null;
   document.body.classList.toggle('has-sel', !!note); // drives the mobile close button
   if (!note) {
     inspector.className = 'inspector empty';
     inspector.textContent = 'No note selected. Pen a cell in the Rhythm track (Kick/Snare/Rim/Hi-hat/Open hi-hat/Shaker/Tom/Clap/Crash/Ride) to add a hit.';
     return;
   }
-  const { track, index } = sel;
   inspector.className = 'inspector';
   inspector.innerHTML = '';
 
@@ -3722,7 +3725,7 @@ function renderInspector() {
     // a note there would stack an exact duplicate on top of an existing one,
     // inaudible but doubling that voice's level and cluttering the lane, so
     // skip it instead. clearOverlaps() below can't catch this on its own: it
-    // protects the root via exceptIdx and never sees the siblings at all,
+    // keeps the root alive deliberately and never sees the siblings at all,
     // since they aren't in the track array yet.
     const takenFreqs = new Set([note.freq]);
     const newNotes = [];
@@ -3741,10 +3744,7 @@ function renderInspector() {
     // rather than closing the inspector for a no-op.
     if (!newNotes.length) return;
     let notes = state.tracks[track];
-    for (const n of newNotes) {
-      const exceptIdx = notes.indexOf(note);
-      notes = clearOverlaps(notes, n.start, n.len, n.freq, exceptIdx);
-    }
+    for (const n of newNotes) notes = clearOverlaps(notes, n, note);
     notes.push(...newNotes);
     state.tracks[track] = notes;
     for (const n of newNotes) previewNote(track, n);
@@ -3772,11 +3772,7 @@ function renderInspector() {
 
   const del = el('button', 'insp-del');
   del.textContent = '🗑 Delete note';
-  del.addEventListener('click', () => {
-    state.tracks[track] = state.tracks[track].filter((_, i) => i !== index);
-    state.selected = null;
-    render();
-  });
+  del.addEventListener('click', () => deleteNote(track, note));
   inspector.appendChild(del);
 }
 
@@ -4502,7 +4498,7 @@ function importMidiIntoSong(buffer) {
   }
   const neededBar = Math.ceil(maxCol / eighthsPerBar()) * eighthsPerBar();
   if (neededBar > COLS) COLS = clampCols(neededBar);
-  if (lastNewId) state.activeTrack = lastNewId;
+  if (lastNewId) activateTrack(lastNewId);
   updateLengthUI();
   render();
   autosave();
