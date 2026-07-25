@@ -241,6 +241,30 @@ ett facit.
   `<textarea id="exportBox">` (tofflar den synlig/dold vid upprepade
   klick) och markerar texten — men saknar en "Kopiera"-knapp
   (`navigator.clipboard`) eller nedladdning av filen direkt.
+- [x] **Neon Cathedral knastrade — den klippte.** Mätt, inte gissat: genom att
+  patcha `OfflineAudioContext.prototype.startRendering` och läsa
+  float-bufferten *före* 16-bitars-avrundningen låg sann topp på **1.2895
+  (+2.21 dBFS)** med 1070 sampel över 1.0 (680 klippta i WAV-filen, längsta
+  serien 38 sampel) — allt inom Climax-avsnittet (takt 41–56, tätast med 47
+  händelser per takt). Låten hade högst summerad spårvolym av alla medföljande
+  (5.45) och `masterVol: 0.5`; masterbussens EQ-boost och den parallella
+  kompressionsblandningen ovanpå det tryckte den över taket. Fixad genom att
+  sänka enbart `masterVol` till **0.26** (0.25 vore snarlikt men ligger inte på
+  reglagets `step="0.02"`-rutnät, så det skulle visas som 0.26 ändå): fyra
+  renderingar gav −1.5 till −2.3 dBFS med **noll** sampel över.
+  Sänkningen är inte linjär — masterkompressorn ligger efter `masterGain`, så
+  lägre insignal ger mindre kompression; 0.38 och 0.34 klippte fortfarande.
+  Två saker undersöktes och avfärdades: sidechain-duckningen var *inte*
+  orsaken (stängd av blev det värre — klippningen gick från 680 till 1316
+  sampel, duckningen höll alltså tillbaka nivån), och de "diskontinuiteter"
+  som först såg ut som defekter var master-bitcrushen (`masterCrush.amount:
+  0.06` → håll 2 sampel) som gör exakt vad den är inställd på.
+- [ ] **Reverb-impulsen är slumpad vid varje sidladdning.**
+  `ensureReverbImpulse()` bygger sitt impulssvar med `Math.random()`, så två
+  exporter av samma låt blir inte bitidentiska och topparna varierar ~1 dB
+  mellan körningar (vilket är varför headroom-mätningen ovan gjordes över
+  flera renderingar i stället för en). En seedad PRNG skulle göra exporten
+  reproducerbar utan att ändra hur reverbet låter.
 
 ## Spår-effekter
 
