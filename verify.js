@@ -281,10 +281,10 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
     });
 
-    step('Note inspector: "Add Major Chord" adds two real notes and multi-selects the whole chord', async () => {
+    step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await cdp.evaluate(`
-        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+        document.querySelector('.chord-presets button[data-chord="maj"]').click();
       `);
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 4`);
       const multiCount = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note.multi-selected').length`);
@@ -310,7 +310,7 @@ async function main() {
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
       await cdp.evaluate(`
-        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+        document.querySelector('.chord-presets button[data-chord="maj"]').click();
       `);
       await new Promise((r) => setTimeout(r, 150));
       const after = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
@@ -347,7 +347,7 @@ async function main() {
       if (!before.rootKey) throw new Error('expected the just-placed note to be the selected root');
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await cdp.evaluate(`
-        Array.from(document.querySelectorAll('.insp-panel button')).find(b => b.textContent === 'Add Major Chord').click();
+        document.querySelector('.chord-presets button[data-chord="maj"]').click();
       `);
       await new Promise((r) => setTimeout(r, 150));
       const after = await cdp.evaluate(`(() => {
@@ -369,13 +369,53 @@ async function main() {
       }
     });
 
+    step('Chord presets: every voicing is offered, and a 7th adds all three tones', async () => {
+      // The other chord steps only exercise `maj` (two tones). A seventh is the
+      // three-tone shape, and the power chord the one-tone shape, so check the
+      // table is fully wired and that a longer interval list lands correctly.
+      const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.chord-presets button')).map(b => b.dataset.chord)`);
+      const expected = ['5', 'maj', 'min', 'dim', 'aug', 'sus2', 'sus4', '7', 'maj7', 'm7'];
+      if (labels.join(',') !== expected.join(',')) {
+        throw new Error(`chord presets should be ${expected.join(',')}, got ${labels.join(',')}`);
+      }
+      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.chord-presets button')).every(b => b.title.length > 0)`)) {
+        throw new Error('every chord button needs a tooltip — the labels alone are abbreviations');
+      }
+      // Fresh track so the root's own column is empty and the lane's pitch
+      // window is not panned; rows are then a direct read of the intervals.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await new Promise((r) => setTimeout(r, 350));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 100, clientY: rect.top + 120 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 250));
+      const col = await cdp.evaluate(`(() => { const s = document.querySelector('.track.active .lane .note.selected'); return s ? s.style.left : null; })()`);
+      if (!col) throw new Error('expected the placed note to be selected');
+      await cdp.evaluate(`document.querySelector('.chord-presets button[data-chord="maj7"]').click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      // ROW_H is 11px per semitone; measure upward from the lowest note.
+      const offsets = await cdp.evaluate(`(() => {
+        const tops = Array.from(document.querySelectorAll('.track.active .lane .note'))
+          .filter(n => n.style.left === ${JSON.stringify(col)})
+          .map(n => parseFloat(n.style.top)).sort((a, b) => b - a);
+        return tops.map(t => Math.round((tops[0] - t) / 11));
+      })()`);
+      if (offsets.join(',') !== '0,4,7,11') {
+        throw new Error(`maj7 should voice root/+4/+7/+11 semitones, got ${offsets.join(',')}`);
+      }
+    });
+
     step('Eraser: deleting a note does not move the selection to a different note', async () => {
-      // state.selected is an index, so removing an earlier note shifts it —
-      // leaving it alone silently re-points the inspector at another note.
-      // Runs on a freshly added track: the previous step pans the pitch window
-      // to the ceiling, and notes scrolled out of view render at a clamped row,
-      // so on that track several notes would share one style.top and the
-      // identity comparison below couldn't tell them apart.
+      // state.selected used to be an index, so removing an earlier note
+      // shifted it and silently re-pointed the inspector at another note.
+      // Runs on its own freshly added track so earlier steps' notes (and the
+      // ceiling step's panned pitch window, where off-screen notes render at a
+      // clamped row and several can share one style.top) can't confuse the
+      // identity comparison below.
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add track')).click()`);
       await new Promise((r) => setTimeout(r, 300));

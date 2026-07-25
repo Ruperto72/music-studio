@@ -641,6 +641,25 @@ ett facit.
   trasiga noter (`freq` undefined). Alla tre går nu via `activateTrack()`.
   Fyra nya steg i `verify.js` (12 → 14 totalt), alla verifierade att de
   fäller den ostädade koden.
+- [x] **Fler ackordvarianter i notinspektorn** — den ursprungliga specen lämnade
+  uttryckligen dörren öppen ("7ths, sus, dim, aug … can be added later as more
+  buttons in the same panel"). Nu tio: `5` (kvintackord), `maj`, `min`, `dim`,
+  `aug`, `sus2`, `sus4`, `7`, `maj7`, `m7`. Eftersom `addChordAbove()` redan
+  var generisk över intervall-listan blev det en datatabell (`CHORD_PRESETS`)
+  plus layout — ingen ny logik, och nästa ackord är en rad i tabellen.
+  De två breda knapparna ("Add Major Chord") ersattes av ett kompakt rutnät
+  med korta etiketter och `title`-tooltips för de fullständiga namnen, samma
+  grepp som ✨ FX-panelen redan använder för Thr/Rat/Atk/Rel. `auto-fill` i
+  grid:en gör att knapparna flödar om i stället för att spilla över, vilket
+  behövs eftersom inspektorn blir en bredare bottenplatta på mobil.
+  Verifierat i webbläsaren att alla tio ger rätt intervall (mätt som radavstånd
+  i pianorullen, 11px per halvton): `5`→[0,7], `maj`→[0,4,7], `min`→[0,3,7],
+  `dim`→[0,3,6], `aug`→[0,4,8], `sus2`→[0,2,7], `sus4`→[0,5,7], `7`→[0,4,7,10],
+  `maj7`→[0,4,7,11], `m7`→[0,3,7,10]. Ett nytt `verify.js`-steg täcker att hela
+  tabellen renderas, att varje knapp har tooltip, och att `maj7` (den nya
+  tre-tons-formen) röstas rätt — de äldre stegen provade bara `maj`.
+  Arpeggio-knapparna ovanför lämnades med sina två trioler; de skulle kunna
+  drivas av samma tabell om man vill ha samma palett även där.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 
