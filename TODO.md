@@ -595,12 +595,24 @@ ett facit.
   automatiskt — den verifierades mot sex scenarier med en fristående
   simulering av schemaläggningsloopen (inte incheckad, eftersom en kopia av
   algoritmen skulle glida isär från `index.html` och ge falsk trygghet).
-- [ ] **`dev-server.js` sökvägskontroll är för slapp** — `file.startsWith(ROOT)`
-  släpper igenom en systermapp med samma prefix (`…/music-studio-anteckningar`)
-  via `..`. Bara utvecklingsservern, men den lyssnar på 0.0.0.0. Fix:
-  `startsWith(ROOT + path.sep)`.
-- [ ] **`startMoveHit()` deduplicerar inte** — drar man ett slag ovanpå ett
-  annat av samma typ och kolumn blir det två staplade i stället för ett.
+- [x] **`dev-server.js` sökvägskontroll var för slapp** — `file.startsWith(ROOT)`
+  släppte igenom en systermapp med samma prefix via `..`: en förfrågan om
+  `/../music-studio-anteckningar/secret.txt` normaliserades till
+  `/home/user/music-studio-anteckningar/secret.txt`, som mycket riktigt
+  börjar med `/home/user/music-studio` och alltså serverades. Bara
+  utvecklingsservern, men den lyssnar på alla gränssnitt. Jämför nu mot
+  `ROOT + path.sep`. Verifierat båda hållen mot en riktig systermapp
+  (403 efter, 200 före).
+- [x] **`startMoveHit()` raderade hela landningskolumnen** — samma buggfamilj
+  som `onRhythmCellClick()` ovan, fast vid släpp i stället för vid klick:
+  `filter(h => groupSet.has(h) || !group.some(g => g.start === h.start))`
+  jämförde bara `start`, inte `type`. Drog man snaren till kickens kolumn
+  försvann kicken, trots att de ligger på olika rader. Verifierat i
+  webbläsaren: två slag → drag → ett slag kvar. Notera att jag först
+  beskrev det här som motsatsen ("deduplicerar inte, staplar dubbletter")
+  efter en för snabb läsning — filtret fanns, det var bara för brett.
+  Jämför nu på `start` **och** `type`, och `verify.js`-steget för rytm
+  täcker även drag-fallet.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 

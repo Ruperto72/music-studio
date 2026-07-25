@@ -3570,7 +3570,10 @@ function startMoveHit(e, track, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start));
+    // Only a hit of the same type (row) in the same column is displaced by the
+    // drop — matching on `start` alone would clear every other row's hit in the
+    // landing column, the same over-delete onCellClick used to do.
+    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => g.start === h.start && g.type === h.type));
     render();
   }
   window.addEventListener('pointermove', onMove);

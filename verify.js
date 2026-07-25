@@ -455,6 +455,28 @@ async function main() {
       if (afterRepeat !== start + 2) {
         throw new Error(`re-placing the same hit type stacked a duplicate (${afterSecond} -> ${afterRepeat})`);
       }
+
+      // Same rule on drop: dragging a hit into an occupied column must displace
+      // only a hit of its own type, not clear the whole column.
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
+      const dragged = await cdp.evaluate(`(() => {
+        const hits = Array.from(document.querySelectorAll('.track[data-track="rhythm"] .lane .hit'));
+        const snare = hits.find((h) => h.className.includes('snare'));
+        if (!snare) return false;
+        const r = snare.getBoundingClientRect();
+        const opts = { bubbles: true, pointerId: 1, clientX: r.left + 3, clientY: r.top + 3 };
+        snare.dispatchEvent(new PointerEvent('pointerdown', opts));
+        window.dispatchEvent(new PointerEvent('pointermove', { ...opts, clientX: r.left + 3 - 64 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { ...opts, clientX: r.left + 3 - 64 }));
+        return true;
+      })()`);
+      if (!dragged) throw new Error('expected a snare hit to drag');
+      await new Promise((r) => setTimeout(r, 300));
+      const afterDrag = await cdp.evaluate(countHits);
+      if (afterDrag !== start + 2) {
+        throw new Error(`dragging a hit into another row's column destroyed it (${afterRepeat} -> ${afterDrag})`);
+      }
     });
 
     for (const s of steps) await s();
