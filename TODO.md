@@ -561,6 +561,46 @@ ett facit.
   beskrivning av "inget testkommando" uppdaterad till att nämna
   `verify.js` som det närmaste som finns, fortfarande inget
   build/lint-kommando.
+- [x] **Tre buggar hittade vid en genomgång av hela koden** (efterfrågad inför
+  en merge). Alla tre var äldre än ackord-arbetet, men de två första blev
+  åtkomliga/synliga först i och med det:
+  1. **Rytmspår raderade hela kolumnen vid placering** —
+     `onRhythmCellClick()` filtrerade på `h.start !== col` utan att titta på
+     `h.type`, så ett nytt slag tog bort alla andra slag i samma kolumn. Det
+     gjorde det omöjligt att för hand lägga kick och hihat på samma slag.
+     Syntes inte tidigare eftersom inbyggda 🥁-mallar
+     (`insertPatternIntoRhythm()`) skriver arrayen direkt och inlästa låtar
+     aldrig går via klick-vägen. Notera att både `DESIGN.md` och ackord-specen
+     *påstod* att slag redan samexisterade över rader — det stämde alltså inte
+     för klick-vägen. Nu filtreras på `start` **och** `type`, rytm-motsvarigheten
+     till samma-tonhöjd-regeln för noter.
+  2. **Portamento gick sönder runt ackord** — `scheduleTrackNotes()` letade
+     mål som `sorted[i + 1]` i en array sorterad på `start`. Med ackord är
+     nästa element oftast ett syskon med samma `start`, vilket gav två fel:
+     porta på en ackordton ignorerades helt (spelades som vanlig not), och en
+     porta-not som gled in i ett ackord "åt upp" en godtycklig ackordton via
+     `i++` så att den bara ljöd som glidningens svans i stället för som egen
+     stämma. Nu söks målet på *tid* i stället, tonen närmast i tonhöjd väljs
+     (kortaste glidningen, och deterministiskt där array-ordningen inte var),
+     och konsumerade mål spåras i ett `Set` i stället för med `i++`.
+  3. **Radering kunde flytta markeringen till fel not** — `deleteNote()`
+     nollställde `state.selected` bara vid exakt index-träff, men `selected`
+     är ett *index* och radering skiftar alla efterföljande ett steg ner.
+     Markera not 3, sudda not 1 → inspektorn och `.selected` hoppade till
+     not 4, och nästa redigering (velocity, effekter, Delete) träffade fel
+     not. Nu återankras markeringen på identitet i stället för index.
+  Två regressionstester tillagda i `verify.js` (rytm-kolumnen och
+  markeringen), båda verifierade att de faktiskt fäller den ostädade koden.
+  Portamento-fixen har ingen DOM-observerbar effekt och testas inte
+  automatiskt — den verifierades mot sex scenarier med en fristående
+  simulering av schemaläggningsloopen (inte incheckad, eftersom en kopia av
+  algoritmen skulle glida isär från `index.html` och ge falsk trygghet).
+- [ ] **`dev-server.js` sökvägskontroll är för slapp** — `file.startsWith(ROOT)`
+  släpper igenom en systermapp med samma prefix (`…/music-studio-anteckningar`)
+  via `..`. Bara utvecklingsservern, men den lyssnar på 0.0.0.0. Fix:
+  `startsWith(ROOT + path.sep)`.
+- [ ] **`startMoveHit()` deduplicerar inte** — drar man ett slag ovanpå ett
+  annat av samma typ och kolumn blir det två staplade i stället för ett.
 - [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
   knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
 

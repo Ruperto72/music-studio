@@ -9,45 +9,95 @@ dependencies**. It's a single self-contained `index.html` plus a small song-data
 module.
 
 It was extracted from the [Frog vs Toad](https://github.com/Ruperto72/frogger-multiplayer)
-game, whose soundtrack ships here as the **demo song**.
+game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 ## Features
 
+### Composing
+
 - Stacked **tracks** with a shared timeline and playhead
-- **Add / rename / remove** tonal tracks (Rhythm is a fixed drum kit)
-- Per-track **waveform** (square / triangle / saw / sine), **pan**, **volume**, **mute/solo** and a live **VU meter**
-- Per-note **velocity** and effects: bend, vibrato, tremolo, pulse width (duty), arpeggio, portamento, bitcrush, echo, chorus
-- Selectable **grid** resolution — 1/4, 1/8, 1/16 and triplets
+- **Add / rename / remove / reorder** tonal tracks, plus one or more **rhythm**
+  tracks sharing a fixed 10-piece kit (kick, snare, rim, hi-hat, open hat,
+  shaker, tom, clap, crash, ride)
+- **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
+  drag empty space to marquee-select
+- **Chords** — place several pitches in one column, or build a triad from a
+  selected note with **Add Major / Minor Chord**
+- Selectable **grid** resolution (1/4, 1/8, 1/16 and triplets) and a **swing**
+  control for a shuffled 8th feel
 - **Time signature** (4/4, 3/4, 6/8, …) and named **timeline markers**
 - **Loop** range, zoom, multi-select, copy/paste, undo/redo
-- **Song library** — load examples or your own saved songs (see below)
-- **Export** the current song as `TRACKS` / `RHYTHM_TRACK` JS to drop into a game
+- Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
+  Breakbeat) you can audition and stamp into a rhythm track
+
+### Sound design
+
+- Per-track **waveform** — square, triangle, saw, sine, an **NES triangle**
+  wavetable, and **FM** (with modulator ratio/depth)
+- Per-track **ADSR envelope** and a resonant **lowpass filter** with its own
+  envelope amount; save any track's synth settings as a reusable **preset**
+- Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a
+  **compressor**, a **bitcrush** downsampler and a **tremolo** — all neutral by
+  default
+- Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
+  arpeggio, portamento, bitcrush, echo, chorus and reverb
+- **Automation curves** per track — draw Volume, Pan, or Delay/Chorus/Reverb
+  send over time
+- **Master bus**: 3-band EQ, compressor with a parallel ("New York") blend,
+  kick/snare **sidechain** ducking, a lo-fi downsampler, and a live spectrum
+  plus approximate LUFS meter
+
+### Saving & exporting
+
+- **Song library** — bundled examples or your own songs saved in this browser
+- **💾 / 📂** download/upload a song as `.json`
+- **🎹 / 🎼** export/import a Standard MIDI File (format 1)
+- **🔊** render the whole song offline and download a `.wav`
+- **⤓** export the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
+  a game
 - **Installable PWA** — works offline once loaded, and can be added to the
-  home screen as a standalone/fullscreen app (Android and other browsers
-  that support the install prompt); a **⛶** toolbar button also toggles
-  plain browser fullscreen
+  home screen as a standalone/fullscreen app; a **⛶** toolbar button also
+  toggles plain browser fullscreen
 
 ## Roadmap
 
-Planned audio-engine work, roughly in order of effort (see `TODO.md` for the
-full breakdown and the specific Web Audio API interfaces each item builds
-on — `AudioWorklet`, `ConvolverNode`, `PeriodicWave`, `AnalyserNode`, and so on):
+Most of the original audio-engine roadmap is now built — voice pooling,
+wavetable synthesis, FM, a per-track resonant filter, aux sends for
+reverb/delay, custom DSP via `AudioWorklet`, spectrum + LUFS metering,
+parallel compression and sidechain ducking all ship today.
 
-1. **Quality basics** — 48 kHz export, voice pooling, simple wavetable synthesis
-2. **Pro synthesis** — FM synthesis, a resonant filter per track, aux-sends for reverb/delay
-3. **Pro mixing** — custom DSP via AudioWorklet, a spectrum analyzer + LUFS metering, parallel compression, sidechain
-4. **Sampling & collaboration** — sample playback/granular synthesis, cloud sync and live collaboration
+Still open (see `TODO.md` for the full breakdown):
+
+- **Sampling** — sample playback and granular synthesis
+- **Collaboration** — cloud sync and live multi-user editing
+- **Per-track EQ**, in the same spirit as the master EQ
+- **Accessibility** — there's no screen-reader path through the piano roll yet
 
 ## Run it locally
 
-No build step. Serve the folder over http:// (ES modules don't work from
-`file://`):
+No build step, nothing to install. Serve the folder over http:// (ES modules
+don't work from `file://`):
 
 ```bash
-node dev-server.js        # then open http://localhost:8080
+node dev.js               # starts the server and opens a browser
+node dev-server.js        # server only — then open http://localhost:8080
 ```
 
+On Windows you can double-click `start.cmd` instead of opening a terminal.
 Any static server works too, e.g. `python3 -m http.server 8080`.
+
+There's no build or lint step and no test framework. The closest thing to a
+test command is:
+
+```bash
+node verify.js            # headless-browser smoke test
+```
+
+It starts its own server, drives the app through a set of core interactions in
+a real headless Chromium over the Chrome DevTools Protocol, and fails if any
+expectation is wrong *or* if the page logs a console error at any point. It
+needs a Chromium-family browser on the machine (`CHROME_PATH=…` to point at a
+specific one).
 
 ## Songs: examples vs. your own
 
@@ -58,6 +108,10 @@ Any static server works too, e.g. `python3 -m http.server 8080`.
   name, and Load/Delete them from the same menu.
 - **💾 / 📂** in the toolbar download/upload a song as a `.json` file.
 
+The page always starts as a blank project; pick a song explicitly from the
+**🎵 Songs** menu. Work is autosaved to this browser in the background purely
+as crash recovery — it's never restored automatically.
+
 ### Add an example song
 
 1. In the editor, build a song and click **💾** to download its `.json`.
@@ -66,9 +120,11 @@ Any static server works too, e.g. `python3 -m http.server 8080`.
    ```json
    { "file": "my-tune.json", "name": "My Tune", "desc": "One-line description." }
    ```
+4. Bump `CACHE_NAME` in `sw.js` so installed clients pick up the change.
 
-The included examples are `froggy-hop.json` (the game demo), `cinematic.json`
-and `techno.json`.
+The bundled examples are `froggy-hop.json` (the game demo), `cinematic.json`,
+`techno.json`, `neon-drive.json`, `popcorn.json`, `space-miner.json` and
+`neon-cathedral.json`.
 
 ## Deploy to GitHub Pages
 
@@ -95,11 +151,20 @@ in-app **⛶** button toggles fullscreen for regular browser tabs too.
 ## Layout
 
 ```
-index.html            the editor (self-contained: HTML + CSS + JS + synthesis)
-js/song-data.js       the demo song's note data (TRACKS, RHYTHM_TRACK, TEMPO_BPM)
-songs/                example songs + index.json
-manifest.webmanifest  PWA manifest (name, icons, display mode)
-sw.js                 service worker: offline cache for the app shell
-icons/                generated app icons (see manifest.webmanifest)
-dev-server.js         tiny static server for local use
+index.html                  the editor (self-contained: HTML + CSS + JS + synthesis)
+js/song-data.js             the demo song's note data (TRACKS, RHYTHM_TRACKS, TEMPO_BPM)
+js/downsample-processor.js  AudioWorklet behind the master and per-track bitcrush
+songs/                      example songs + index.json
+manifest.webmanifest        PWA manifest (name, icons, display mode)
+sw.js                       service worker: offline cache for the app shell
+icons/                      generated app icons (see manifest.webmanifest)
+dev-server.js               tiny static server for local use
+dev.js                      starts dev-server.js and opens a browser
+start.cmd                   Windows double-click entry point
+verify.js                   headless-browser smoke test
+docs/                       design notes and implementation plans
 ```
+
+For a deeper tour, `DESIGN.md` specifies the GUI and the internal architecture,
+`CLAUDE.md` is a shorter orientation for editing the code, and `TODO.md` tracks
+what's deliberately not built yet.

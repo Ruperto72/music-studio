@@ -521,8 +521,9 @@ auto-removed. `clearOverlaps(notes, start, len, freq, exceptIdx)` is the
 shared implementation (used by `onCellClick` and `pasteClipboard`);
 `nudgeSelection`, `startMoveNote`'s pointerup and `startResize`'s `maxLen`
 computation each apply the same same-pitch condition to their own inline
-filters. Rhythm tracks are unaffected — hits are already keyed by `type`
-(which row), so two hits in one column coexist across rows.
+filters. Rhythm tracks follow the same shape one level up: `onRhythmCellClick`
+treats only a hit of the same `type` (row) in the same column as a duplicate to
+replace, so hits stack freely across rows — a kick and a hi-hat on one beat.
 
 ### B.6 Audio synthesis engine
 
