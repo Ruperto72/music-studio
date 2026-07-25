@@ -115,7 +115,7 @@ with distinct rows, each independently hideable when the track is collapsed:
 3. **Tools row** (hidden when collapsed): **〰 Auto** (toggles the
    automation-curve row), **E Env** (toggles the envelope/filter/FM row,
    tonal tracks only — drum hits use fixed per-type envelopes), **✨ FX**
-   (toggles the Delay/Chorus/Reverb-send + Compressor + Bitcrush + Tremolo
+   (toggles the Delay/Chorus/Reverb-send + EQ + Compressor + Bitcrush + Tremolo
    panel — see A.7), and **🎚 Preset** (saves/loads that track's
    waveform+envelope+filter+FM as a named preset, shared across songs via
    `localStorage`).
@@ -193,7 +193,7 @@ Automation/Envelope, this does **not** add a full-width timeline row — every
 field in it is a static per-track knob with nothing tied to a timeline
 column, so it renders as a compact two-column grid (`buildFxPanel()`)
 appended directly into the track header itself, expanding the header's
-height in place. Available on every track, tonal or rhythm alike. Four
+height in place. Available on every track, tonal or rhythm alike. Five
 groups, separated by thin dividers, driven generically by `TRACK_FX_REGISTRY`
 (see B.6):
 
@@ -203,6 +203,10 @@ groups, separated by thin dividers, driven generically by `TRACK_FX_REGISTRY`
   per-track level, not a per-note flag. Any of the three can instead be
   driven by a drawn curve from the Automation panel (A.6); the slider here
   is the value used wherever no curve point covers a column.
+- **EQ** (Lo/Mid/Hi, ±12dB): a per-track 3-band insert with the same bands as
+  the master EQ (A.10) — 200Hz low shelf, 1kHz peak, 4kHz high shelf. First in
+  the insert chain, so the compressor after it reacts to the shaped signal
+  rather than the raw one, the usual console order.
 - **Compressor** (Thr/Rat/Atk/Rel): a per-track insert, same four
   parameters/ranges as the master Compressor (A.10) but applied before that
   track's signal is summed into the mix.
@@ -214,7 +218,7 @@ groups, separated by thin dividers, driven generically by `TRACK_FX_REGISTRY`
 - **Tremolo** (Rate Hz / Depth %): a per-track amplitude-modulation LFO.
   `Depth: 0%` (default) leaves the level unmodulated regardless of rate.
 
-A **Reset** button restores every field in all four groups to its default
+A **Reset** button restores every field in all five groups to its default
 (neutral) value in one click; **✕** closes the panel without changing
 anything.
 
@@ -394,6 +398,7 @@ state = {
   comp,        // id -> { threshold, ratio, attack, release } (any track kind) — DEFAULT_TRACK_COMP
   crush,       // id -> { amount } (0..1, any track kind) — DEFAULT_TRACK_CRUSH
   tremolo,     // id -> { rate, depth } (any track kind) — DEFAULT_TREMOLO
+  eq,          // id -> { low, mid, high } dB (any track kind) — DEFAULT_TRACK_EQ
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
   swing,       // % (0 = straight 8ths, up to 75 ≈ triplet feel) — swingOffsetCols()
@@ -446,6 +451,7 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
   "comp": { "lead": { "threshold": -24, "ratio": 1, "attack": 0.01, "release": 0.25 } },
   "crush": { "lead": { "amount": 0 } },
   "tremolo": { "lead": { "rate": 5, "depth": 0 } },
+  "eq": { "lead": { "low": 0, "mid": 0, "high": 0 } },
   "sidechain": { "enabled": false, "depth": 0.5 },
   "masterEQ": { "low": 0, "mid": 0, "high": 0 },
   "masterComp": { "threshold": -24, "ratio": 1, "attack": 0.01, "release": 0.25 },
@@ -583,17 +589,18 @@ WaveShaper / detuned 2nd osc for chorus)
         │                                        the note-level Echo/Reverb
         │                                        toggles — A.9)
         └─► chanGain[track] (◄───────────────────┘)
-              └─► chanComp[track] (insert)
-                    └─► chanCrush[track]? (insert, AudioWorklet, bypassed
-                    │     until loaded — ensureTrackCrusher())
-                    └─► chanTremolo[track] (insert, LFO on a GainNode's own
-                          gain param)
-                          ├─► chanPan[track] ─► masterGain
-                          ├─► chanAnalyser[track] (VU meter)
-                          ├─► trackDelaySend[track] ─► fxDelayBus  ─┐
-                          ├─► trackChorusSend[track] ─► fxChorusBus ┤ (continuous
-                          └─► trackReverbSend[track] ─► fxReverbBus┘  per-track
-                                                                       sends — A.7)
+              └─► chanEq[track] (insert, 3 biquads: lo shelf/mid peak/hi shelf)
+                    └─► chanComp[track] (insert)
+                          └─► chanCrush[track]? (insert, AudioWorklet, bypassed
+                          │     until loaded — ensureTrackCrusher())
+                          └─► chanTremolo[track] (insert, LFO on a GainNode's
+                                own gain param)
+                                ├─► chanPan[track] ─► masterGain
+                                ├─► chanAnalyser[track] (VU meter)
+                                ├─► trackDelaySend[track] ─► fxDelayBus  ─┐
+                                ├─► trackChorusSend[track] ─► fxChorusBus ┤ (cont.
+                                └─► trackReverbSend[track] ─► fxReverbBus┘  per-track
+                                                                            sends — A.7)
 fxDelayBus/fxChorusBus/fxReverbBus each feed their own effect (delay+feedback,
 LFO-modulated chorus delay, convolver reverb) and return their wet signal to
 masterGain.
@@ -626,7 +633,7 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   building fresh ones each time — bitcrushed notes are excluded (their
   `WaveShaperNode.curve` can't be safely reused for a future-scheduled note)
   and get an ad-hoc node set instead.
-- **Per-track insert chain** (`chanGain[id] → chanComp[id] → chanCrush[id]? →
+- **Per-track insert chain** (`chanGain[id] → chanEq[id] → chanComp[id] → chanCrush[id]? →
   chanTremolo[id]`, built by `buildChannelChain()`): a `DynamicsCompressorNode`
   (`createChanComp()`), an optional bitcrush `AudioWorkletNode` reusing the
   master bus's own downsample processor (`ensureTrackCrusher()` — same
@@ -636,7 +643,7 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   fixed downstream anchor that `chanPan[id]`, the VU meter, and the three FX
   sends all connect from, so a bitcrushed/tremolo'd track's pan, meter, and
   sends all reflect the final processed signal. All four (Delay/Chorus/
-  Reverb send, Compressor, Bitcrush, Tremolo) share one state-shape/UI
+  Reverb send, EQ, Compressor, Bitcrush, Tremolo) share one state-shape/UI
   registry, `TRACK_FX_REGISTRY` (get/set/apply functions plus each field's
   range/format/clamp-on-load rules per group) — both `applySavedMix()`
   (Song I/O load/validate) and `buildFxPanel()` (A.7's UI) iterate this one
@@ -690,7 +697,8 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
 
 `snapshotSong()` serializes the undo-relevant subset of state — `tempo`,
 `cols`, `tracks`, `trackList`, `gains`/`waveform`/`pan`/`mute`/`solo`,
-`automation`, `adsr`, `filter`, `fm`, `fxSend`, `comp`, `crush`, `tremolo`
+`automation`, `adsr`, `filter`, `fm`, `fxSend`, `comp`, `crush`, `tremolo`,
+`eq`
 — to a JSON string (*not* `songName`, `markers`, the song-global `masterEQ`/
 `masterComp`/`masterParallel`/`sidechain`/`masterCrush`/`swing` settings, or
 view-only state like collapsed tracks — these are treated as project-level

@@ -351,10 +351,24 @@ ett facit.
   återanvänds oförändrat — bara renderingen skrevs om, ingen ändring i
   ljudgrafen. En liten `addFxField()`-hjälpfunktion konsoliderar det
   som tidigare var fyra nästan identiska fält-byggande loopar.
-- [ ] Möjligen per-spårs **EQ**, i samma anda som master-EQ:n — enda
-  kvarvarande punkten på den ursprungliga önskelistan (delay/eko,
-  compressor, chorus, reverb, bitcrush och tremolo är nu alla klara, och
-  sändarna dessutom automatiserbara över tid).
+- [x] **Per-spårs EQ** — sista punkten på den ursprungliga önskelistan
+  (delay/eko, compressor, chorus, reverb, bitcrush och tremolo var redan
+  klara). Tre biquads per kanal med samma band som master-EQ:n (200Hz
+  low shelf, 1kHz peak, 4kHz high shelf, ±12dB), placerade **först** i
+  insert-kedjan: `chanGain[id]` → `chanEq[id]` → `chanComp[id]` → …, så
+  kompressorn reagerar på den formade signalen i stället för råsignalen —
+  vanlig konsolordning. `TRACK_FX_REGISTRY` gjorde jobbet den byggdes för:
+  en tabellrad gav både panel-UI, inläsning/validering och Reset gratis;
+  bara ljudgrafen (`createChanEq()`/`applyTrackEq()`) och Song I/O:s
+  handskrivna objektliteraler behövde röras. Två detaljer värda att minnas:
+  `chanEq[id]` är ett `{low, mid, high}`-objekt och inte en nod, så
+  `removeTrack()`s generiska `disconnect()`-loop kan inte städa den — den
+  hanteras explicit. Och formateringen följer master-EQ:ns `6.0dB` i
+  stället för `+6.0dB`; ett `+` på boost hade varit lite tydligare på en
+  bipolär kontroll, men två olika dB-format i samma app är värre.
+  Verifierat att de verkliga `BiquadFilterNode`-instanserna får rätt
+  gain genom att patcha `createBiquadFilter` före sidladdning — DOM-testet
+  ser bara reglagen, inte ljudgrafen.
 
 ## Rytmspår
 
