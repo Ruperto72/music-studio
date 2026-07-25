@@ -190,6 +190,36 @@ etablerade DAW:ar. `[x]` = klart och verifierat i `index.html`, `[ ]` =
   taktarter. Swing/Shuffle-mallen sätter även Swing-reglaget till 60% för
   den klassiska "spang-a-lang"-känslan.
 
+- [x] **Ackord i pianorullen** — spåren och ljudmotorn klarade polyfoni sedan
+  länge (`songs/cinematic.json`s Strings-spår har tre noter per ackord, och
+  `VOICE_POOL_SIZE` är uttryckligen tilltagen "generous for chords/arps"),
+  men det gick inte att *skapa* ett ackord från editorn: varje ställe som
+  la till/flyttade/storleksändrade en not behandlade "vilken annan not som
+  helst som överlappar i tid, oavsett tonhöjd" som något att radera.
+  Ackorden i exempelsångerna fanns bara för att de handskrivits direkt i
+  JSON. Två delar: (1) all överlappslogik är nu **tonhöjdsmedveten** — en
+  not krockar bara med en annan not på *samma* tonhöjd som överlappar i
+  tid, vilket är exakt vad ett ackord inte är. `clearOverlaps()` fick en
+  `freq`-parameter, och de tre ställen som hade egna inline-kopior av
+  tidsfiltret (`nudgeSelection`, `startMoveNote`s pointerup,
+  `startResize`s `maxLen` via `nextNoteStart`) fick samma villkor.
+  Rytmspår är oberörda — hits är redan nycklade på `type` (vilken rad), så
+  två hits i samma kolumn samexisterar över rader sedan tidigare. (2) Ett
+  nytt **Chord**-fält i notinspektorn med "Add Major/Minor Chord" som
+  lägger till riktiga, separata noter på tersen och kvinten vid samma
+  start/längd — till skillnad från Arpeggio-knapparna ovanför, som bara
+  sätter en flagga på den enda noten så att den sveper genom ackordtonerna
+  i snabb följd. Kantfall vid tonhöjdstaket: om ett intervall klampas mot
+  `MIDI_MAX` och landar på en tonhöjd som redan låter (grundtonen, eller
+  den andra ackordtonen när båda klampas dit) hoppas den över istället för
+  att staplas som en exakt dubblett — `clearOverlaps()` kan inte fånga det
+  själv, eftersom den skyddar grundtonen via `exceptIdx` och aldrig ser de
+  nya syskontonerna, som ännu inte ligger i spårets array. Ligger
+  grundtonen exakt på taket blir knappen en no-op istället för att stänga
+  inspektorn i onödan. Tre nya steg i `verify.js` täcker Pen-ackord,
+  Add Major Chord, upprepat klick på samma grundton, och taket-fallet
+  (verifierat att taket-testet faktiskt fäller den ostädade koden).
+
 ## Inspirerat av etablerade DAW:ar (Pro Tools m.fl.)
 
 Genomgång av vad ett "riktigt" DAW (Pro Tools, Ableton, FL Studio) har som

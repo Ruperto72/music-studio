@@ -3697,12 +3697,30 @@ function renderInspector() {
   const chordRow = el('div', 'arp-presets');
   const addChordAbove = (semitoneIntervals) => {
     const rootMidi = freqToMidi(note.freq);
-    const newNotes = semitoneIntervals.map((semis) => ({
-      start: note.start, len: note.len,
-      freq: round2(midiToFreq(Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semis)))),
-      vel: note.vel, bend: null, vib: false, trem: false, duty: null, arp: null,
-      porta: false, crush: false, echo: false, chorus: false, reverb: false,
-    }));
+    // Clamping at MIDI_MAX can collapse an interval onto a pitch that's
+    // already sounding — onto the root itself (root within 7 semitones of the
+    // ceiling), or onto the other chord tone (both clamp to MIDI_MAX). Adding
+    // a note there would stack an exact duplicate on top of an existing one,
+    // inaudible but doubling that voice's level and cluttering the lane, so
+    // skip it instead. clearOverlaps() below can't catch this on its own: it
+    // protects the root via exceptIdx and never sees the siblings at all,
+    // since they aren't in the track array yet.
+    const takenFreqs = new Set([note.freq]);
+    const newNotes = [];
+    for (const semis of semitoneIntervals) {
+      const freq = round2(midiToFreq(Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semis))));
+      if (takenFreqs.has(freq)) continue;
+      takenFreqs.add(freq);
+      newNotes.push({
+        start: note.start, len: note.len, freq,
+        vel: note.vel, bend: null, vib: false, trem: false, duty: null, arp: null,
+        porta: false, crush: false, echo: false, chorus: false, reverb: false,
+      });
+    }
+    // Every interval collapsed onto the root (root sitting at MIDI_MAX) —
+    // there's no chord to add, so leave the selection and the track alone
+    // rather than closing the inspector for a no-op.
+    if (!newNotes.length) return;
     let notes = state.tracks[track];
     for (const n of newNotes) {
       const exceptIdx = notes.indexOf(note);
