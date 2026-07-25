@@ -717,6 +717,56 @@ async function main() {
       }
     });
 
+    step('Accessibility: landmarks, labelled grid and keyboard note selection', async () => {
+      const structure = await cdp.evaluate(`({
+        h1: document.querySelectorAll('h1').length,
+        main: document.querySelectorAll('main').length,
+        aside: document.querySelectorAll('aside').length,
+        toolbar: document.querySelectorAll('[role=toolbar]').length,
+        skip: !!document.querySelector('.skip-link'),
+        live: !!document.querySelector('#a11y-status[aria-live]'),
+      })`);
+      for (const [k, v] of Object.entries(structure)) {
+        if (!v) throw new Error(`missing ${k} — screen readers need the page structure`);
+      }
+      // Every note and hit is a positioned div; unlabelled they are just boxes.
+      const labelled = await cdp.evaluate(`(() => {
+        const items = [...document.querySelectorAll('.note, .hit')];
+        const lanes = [...document.querySelectorAll('.lane')];
+        return {
+          total: items.length,
+          named: items.filter((n) => n.getAttribute('aria-label')).length,
+          lanesNamed: lanes.length > 0 && lanes.every((l) => l.getAttribute('aria-label')),
+          tabStops: items.filter((n) => n.tabIndex === 0).length,
+        };
+      })()`);
+      if (labelled.total === 0) throw new Error('expected a populated grid to check');
+      if (labelled.named !== labelled.total) throw new Error(`${labelled.total - labelled.named} grid items have no accessible name`);
+      if (!labelled.lanesNamed) throw new Error('every lane needs an accessible name');
+      // Roving tabindex: the grid must not put hundreds of stops in Tab order.
+      if (labelled.tabStops > 1) throw new Error(`expected at most one grid tab stop, got ${labelled.tabStops}`);
+      // Keyboard is the only way in without a mouse: Home selects, Shift+arrow steps.
+      // Click a real note to make its track active — clicking the row itself
+      // doesn't, and by this point an empty added track holds focus.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`document.querySelector('.note').click()`);
+      await waitFor(`!!document.querySelector('.note.selected')`);
+      const press = (key, shift) => cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, shiftKey: ${!!shift}, bubbles: true }))`);
+      await press('Home');
+      await new Promise((r) => setTimeout(r, 350));
+      const atFirst = await cdp.evaluate(`document.querySelector('#a11y-status').textContent`);
+      if (!atFirst) throw new Error('Home should select an item and announce it');
+      await press('ArrowRight', true);
+      await new Promise((r) => setTimeout(r, 350));
+      const stepped = await cdp.evaluate(`document.querySelector('#a11y-status').textContent`);
+      if (!stepped || stepped === atFirst) throw new Error(`Shift+Right should move the selection (${atFirst} -> ${stepped})`);
+      // Plain arrows must still nudge rather than navigate.
+      await press('ArrowRight');
+      await new Promise((r) => setTimeout(r, 300));
+      const afterNudge = await cdp.evaluate(`document.querySelector('#a11y-status').textContent`);
+      if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

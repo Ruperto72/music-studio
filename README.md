@@ -55,6 +55,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - **🔊** render the whole song offline and download a `.wav`
 - **⤓** export the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
   a game
+- **Keyboard & screen reader**: Tab reaches every control with a visible focus
+  ring, Shift+←/→ walks the notes of a track and Home/End jump to its ends,
+  with each selection announced as pitch and bar/beat
 - **Installable PWA** — works offline once loaded, and can be added to the
   home screen as a standalone/fullscreen app; a **⛶** toolbar button also
   toggles plain browser fullscreen
@@ -70,7 +73,8 @@ Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Accessibility** — there's no screen-reader path through the piano roll yet
+- **Accessibility** — the grid is now labelled and keyboard-navigable, but
+  notes still can't be *created* without a pointer
 
 ## Run it locally
 

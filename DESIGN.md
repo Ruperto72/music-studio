@@ -343,7 +343,40 @@ a keyboard-shortcut table (Space play/stop; 1/2/3 tool select; Delete;
 arrow-key nudge; Ctrl/Cmd+C/V copy-paste; Ctrl/Cmd+Z / Shift+Z or Y
 undo/redo; Esc deselect/close).
 
-### A.13 Responsive / mobile / PWA UI
+### A.13 Accessibility
+
+The editor is a grid of positioned `<div>`s, so nothing about it is accessible
+by default — these are the deliberate additions:
+
+- **Structure**: a visually-hidden `<h1>`, a skip link to the grid, and
+  `<main>`/`<aside>`/`role="toolbar"` landmarks, so the page can be navigated
+  by region instead of only linearly.
+- **Focus**: a high-contrast `:focus-visible` ring (`#7fd4ff`, 11.3:1 on the
+  page background). The browser default all but vanishes on this palette, and
+  one `outline: none` on the active tool button had removed it entirely.
+- **Names**: every lane carries an `aria-label` (track name + what it is +
+  how many items), and every note and hit carries one describing pitch or drum
+  plus bar and beat — `noteAriaLabel()`/`hitAriaLabel()`. Repeated icon buttons
+  that only made sense positionally (**M**/**S**/**✕** per track) name their
+  track.
+- **State**: Mute/Solo and the per-note effect toggles expose `aria-pressed`;
+  the Pen/Eraser/Grab cluster is a `role="radiogroup"` with `aria-checked`,
+  since it is a single choice rather than three independent toggles. All of
+  these previously carried their state only in a CSS class.
+- **Keyboard grid access**: **Shift+←/→** steps the selection through the
+  active track and **Home**/**End** jump to its ends, with the selected item
+  announced through a polite live region (`announce()`). Plain arrows still
+  nudge, so nothing already in muscle memory changed. Notes use a **roving
+  tabindex** — only the selected one is a tab stop — so Tab reaches the grid
+  without walking through hundreds of blocks.
+- **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
+  5.32:1. Body and muted text already passed AA.
+
+Not solved: there is no way to *create* a note from the keyboard, and no
+spatial model of the grid for a screen reader — you can reach and edit what
+exists, but composing from scratch still needs a pointer.
+
+### A.14 Responsive / mobile / PWA UI
 
 - Below ~760px, `.editor-layout` stacks vertically, the inspector becomes a
   bottom sheet, toolbar "extra" panels collapse behind "⋯ More", and a
