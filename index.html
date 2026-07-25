@@ -356,7 +356,7 @@
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
   .track.silent .lane { opacity: 0.32; }
 
-  /* Track FX panel (Delay/Chorus/Reverb send, Compressor, Bitcrush, Tremolo)
+  /* Track FX panel (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo)
      — unlike Automation/Envelope this needs no timeline column width, so it
      lives right inside the header as a compact 2-column grid instead of a
      full-width row (see buildFxPanel()). */
@@ -1278,6 +1278,11 @@ const DEFAULT_TRACK_CRUSH = { amount: 0 };
 // depth: 0 collapses the oscillation to nothing (gain pinned at 1, rate then
 // irrelevant), the usual "neutral by default" contract; rate is in Hz.
 const DEFAULT_TREMOLO = { rate: 5, depth: 0 };
+// Per-track 3-band EQ insert (state.eq[track] absent -> this). Same bands and
+// ±12dB range as the master EQ, just one instance per channel and placed first
+// in the insert chain, so the compressor after it reacts to the shaped signal
+// rather than the raw one — the usual console order.
+const DEFAULT_TRACK_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
 
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
@@ -1429,7 +1434,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1476,6 +1481,7 @@ const state = {
   comp: {},                  // id -> { threshold, ratio, attack, release } (any track kind) — see DEFAULT_TRACK_COMP
   crush: {},                 // id -> { amount } (0..1, any track kind) — see DEFAULT_TRACK_CRUSH
   tremolo: {},               // id -> { rate, depth } (any track kind) — see DEFAULT_TREMOLO
+  eq: {},                    // id -> { low, mid, high } dB (any track kind) — see DEFAULT_TRACK_EQ
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
@@ -1709,7 +1715,7 @@ const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
   automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp,
-  crush: state.crush, tremolo: state.tremolo
+  crush: state.crush, tremolo: state.tremolo, eq: state.eq
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1739,9 +1745,10 @@ function restoreSnapshot(s) {
     state.comp = data.comp && typeof data.comp === 'object' ? data.comp : {};
     state.crush = data.crush && typeof data.crush === 'object' ? data.crush : {};
     state.tremolo = data.tremolo && typeof data.tremolo === 'object' ? data.tremolo : {};
+    state.eq = data.eq && typeof data.eq === 'object' ? data.eq : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
-    applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo();
+    applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
   }
   state.tempo = data.tempo;
   tempoInput.value = state.tempo;
@@ -1903,9 +1910,14 @@ function getTrackCrush(track) { return state.crush[track] || DEFAULT_TRACK_CRUSH
 function setTrackCrush(track, patch) { state.crush[track] = { ...getTrackCrush(track), ...patch }; }
 function getTrackTremolo(track) { return state.tremolo[track] || DEFAULT_TREMOLO; }
 function setTrackTremolo(track, patch) { state.tremolo[track] = { ...getTrackTremolo(track), ...patch }; }
+function getTrackEq(track) { return state.eq[track] || DEFAULT_TRACK_EQ; }
+function setTrackEq(track, patch) { state.eq[track] = { ...getTrackEq(track), ...patch }; }
 const pctFormat = (v) => Math.round(v * 100) + '%';
-// Single source of truth for the ✨ FX panel's four per-track effects
-// (Delay/Chorus/Reverb send, Compressor, Bitcrush, Tremolo) — one entry per
+// Same rendering as the master EQ's readouts (see syncMasterFxUI/EQ_FIELDS), so
+// the two EQ panels don't show the same unit two different ways.
+const dbFormat = (v) => v.toFixed(1) + 'dB';
+// Single source of truth for the ✨ FX panel's five per-track effects
+// (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo) — one entry per
 // state.* slice, in the order the panel renders them (a divider goes
 // between each group). Drives both applySavedMix()'s load/validate logic
 // and buildFxPanel()'s rendering, so adding a parameter to an existing
@@ -1938,7 +1950,20 @@ const TRACK_FX_REGISTRY = [
     ],
   },
   {
-    // An insert (chanGain[track] -> chanComp[track] -> ...), not a send, so
+    // Three biquads at the head of the insert chain (chanGain[track] ->
+    // chanEq[track] -> chanComp[track] -> ...), so the compressor after it
+    // reacts to the shaped signal. Same bands and range as the master EQ;
+    // not clamped on load, for the same reason the compressor isn't — the
+    // slider bounds are cosmetic, BiquadFilterNode takes more.
+    key: 'eq', get: getTrackEq, set: setTrackEq, apply: applyTrackEq,
+    fields: [
+      { param: 'low', label: 'Lo', title: 'Low shelf (~200Hz)', min: -12, max: 12, step: 0.5, format: dbFormat, clamp: false },
+      { param: 'mid', label: 'Mid', title: 'Mid peak (~1kHz)', min: -12, max: 12, step: 0.5, format: dbFormat, clamp: false },
+      { param: 'high', label: 'Hi', title: 'High shelf (~4kHz)', min: -12, max: 12, step: 0.5, format: dbFormat, clamp: false },
+    ],
+  },
+  {
+    // An insert (chanEq[track] -> chanComp[track] -> ...), not a send, so
     // it has no 0-100% "amount" the way the sends above do; same four
     // params/ranges/formatting as the master compressor (COMP_FIELDS).
     key: 'comp', get: getTrackComp, set: setTrackComp, apply: applyTrackComp,
@@ -2184,9 +2209,15 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend, state.comp, state.crush, state.tremolo]) delete map[id];
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend, state.comp, state.crush, state.tremolo, state.eq]) delete map[id];
   for (const nodes of [chanGain, chanPan, chanAnalyser, chanComp, chanCrush, chanTremolo, trackDelaySend, trackChorusSend, trackReverbSend]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
+  }
+  // chanEq[id] holds three biquads in a plain object, so the loop above (which
+  // calls .disconnect() on the value itself) can't clean it up.
+  if (chanEq[id]) {
+    for (const band of Object.values(chanEq[id])) { try { band.disconnect(); } catch { /* already gone */ } }
+    delete chanEq[id];
   }
   // chanTremoloLfo[id] is a running OscillatorNode, not covered by the
   // disconnect loop above — dropping the reference alone would leave it
@@ -2576,7 +2607,7 @@ function renderAdsrRow(track) {
   return row;
 }
 
-// Continuous Delay/Chorus/Reverb send + Compressor + Bitcrush + Tremolo panel
+// Continuous Delay/Chorus/Reverb send + EQ + Compressor + Bitcrush + Tremolo panel
 // — unlike renderAdsrRow()/renderAutomationRow() this doesn't need the wide
 // piano-roll area at all (every field here is a plain static per-track knob,
 // nothing tied to timeline columns), so unlike those two it renders as a
@@ -2611,7 +2642,7 @@ function buildFxPanel(track) {
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
-  resetBtn.title = 'Reset Delay/Chorus/Reverb send, Compressor, Bitcrush and Tremolo to their defaults';
+  resetBtn.title = 'Reset Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush and Tremolo to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2735,7 +2766,7 @@ function buildHeader(track) {
   tools.append(autoBtn);
   const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
   fxBtn.textContent = '✨ FX';
-  fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags), a Compressor, a Bitcrush downsampler and a Tremolo';
+  fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags), a 3-band EQ, a Compressor, a Bitcrush downsampler and a Tremolo';
   fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   fxBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -4189,6 +4220,7 @@ function createNewSong(withStarterTracks, name) {
   state.comp = {};
   state.crush = {};
   state.tremolo = {};
+  state.eq = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
@@ -4206,6 +4238,7 @@ function createNewSong(withStarterTracks, name) {
   applyTrackComp();
   applyTrackCrush();
   applyTrackTremolo();
+  applyTrackEq();
   state.masterEQ = { ...DEFAULT_MASTER_EQ };
   state.masterComp = { ...DEFAULT_MASTER_COMP };
   state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
@@ -4277,7 +4310,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -4320,6 +4353,7 @@ function applySongData(data, name) {
   applyTrackComp();
   applyTrackCrush();
   applyTrackTremolo();
+  applyTrackEq();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(getMasterCrush().amount);
   state.selected = null;
@@ -4679,7 +4713,7 @@ async function renderSongToWav() {
 
   const rendered = await offline.startRendering();
 
-  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
+  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
   chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {};
@@ -4882,7 +4916,8 @@ let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
-let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanGain[id] -> chanComp[id] -> chanCrush[id]? -> chanTremolo[id] -> chanPan[id]/chanAnalyser[id]/the FX sends
+let chanEq = {}; // id -> { low, mid, high } BiquadFilterNodes, the first insert: chanGain[id] -> chanEq[id].low -> .mid -> .high -> chanComp[id]
+let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanEq[id] -> chanComp[id] -> chanCrush[id]? -> chanTremolo[id] -> chanPan[id]/chanAnalyser[id]/the FX sends
 let chanCrush = {}; // id -> AudioWorkletNode (downsample-processor) once loaded, inserted chanComp[id] -> chanCrush[id] -> chanTremolo[id] — see ensureTrackCrusher()
 let chanTremolo = {}; // id -> GainNode, the last insert before chanPan[id]/chanAnalyser[id]/the FX sends — see createChanTremolo()
 let chanTremoloLfo = {}, chanTremoloLfoGain = {}; // id -> OscillatorNode/GainNode driving chanTremolo[id].gain
@@ -5029,6 +5064,25 @@ function createGlobalFxBuses() {
 // Called right after chanGain[id] exists, before the rest of the insert chain
 // (createChanTremolo()/ensureTrackCrusher(), then chanPan[id]/chanAnalyser[id]/
 // createTrackFxSends() downstream of those) connects from it.
+// Per-track 3-band EQ: the first insert after the channel fader, so everything
+// downstream (compressor, bitcrush, tremolo, the meter and the FX sends) sees
+// the shaped signal. Same band layout as buildMasterFXChain()'s master EQ, one
+// instance per channel. All three default to 0dB, so an untouched track is a
+// no-op apart from three extra nodes in the graph.
+function createChanEq(id) {
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowshelf'; low.frequency.value = 200;
+  const mid = ctx.createBiquadFilter();
+  mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 0.7;
+  const high = ctx.createBiquadFilter();
+  high.type = 'highshelf'; high.frequency.value = 4000;
+  const e = getTrackEq(id);
+  low.gain.value = e.low; mid.gain.value = e.mid; high.gain.value = e.high;
+  chanGain[id].connect(low).connect(mid).connect(high);
+  chanEq[id] = { low, mid, high };
+}
+// Takes its input from the EQ's last band rather than chanGain directly, so
+// createChanEq() must have run first (buildChannelChain() orders them).
 function createChanComp(id) {
   chanComp[id] = ctx.createDynamicsCompressor();
   const c = getTrackComp(id);
@@ -5036,7 +5090,7 @@ function createChanComp(id) {
   chanComp[id].ratio.value = c.ratio;
   chanComp[id].attack.value = c.attack;
   chanComp[id].release.value = c.release;
-  chanGain[id].connect(chanComp[id]);
+  chanEq[id].high.connect(chanComp[id]);
 }
 // Per-track amplitude-modulation tremolo insert: an LFO added onto a plain
 // GainNode's own gain AudioParam — the same "connect an oscillator into a
@@ -5134,6 +5188,7 @@ function buildChannelChain(c, id, withAnalyser) {
   chanPan[id] = c.createStereoPanner();
   chanPan[id].connect(masterGain);
   chanGain[id] = c.createGain();
+  createChanEq(id);
   createChanComp(id);
   createChanTremolo(id);
   const crushReady = ensureTrackCrusher(id, c, chanComp[id], chanTremolo[id]);
@@ -5319,6 +5374,15 @@ function applyFxSend() {
     if (trackDelaySend[ch]) trackDelaySend[ch].gain.value = s.delay;
     if (trackChorusSend[ch]) trackChorusSend[ch].gain.value = s.chorus;
     if (trackReverbSend[ch]) trackReverbSend[ch].gain.value = s.reverb;
+  }
+}
+function applyTrackEq() {
+  for (const ch of ALL_TRACKS) {
+    if (!chanEq[ch]) continue;
+    const e = getTrackEq(ch);
+    chanEq[ch].low.gain.value = e.low;
+    chanEq[ch].mid.gain.value = e.mid;
+    chanEq[ch].high.gain.value = e.high;
   }
 }
 function applyTrackComp() {
@@ -6069,7 +6133,7 @@ function stopPlayback() {
     masterGain = null;
     duckGain = null;
     previewGain = null;
-    chanGain = {}; chanPan = {}; chanAnalyser = {}; chanComp = {};
+    chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {};
     chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {};
     trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;

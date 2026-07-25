@@ -264,6 +264,43 @@ async function main() {
       if (text !== '50%') throw new Error(`expected Delay to show 50%, got ${text}`);
     });
 
+    step('FX panel: per-track EQ sits ahead of the compressor and survives a reload', async () => {
+      const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.th-fx-panel .th-fx-label')).map(e => e.textContent)`);
+      for (const band of ['Lo', 'Mid', 'Hi']) {
+        if (!labels.includes(band)) throw new Error(`expected an EQ ${band} field, got ${labels.join(',')}`);
+      }
+      // The registry order is the audio order: EQ feeds the compressor, so a
+      // band must render before Thr rather than after it.
+      if (labels.indexOf('Hi') > labels.indexOf('Thr')) {
+        throw new Error(`EQ should render before the compressor, got ${labels.join(',')}`);
+      }
+      const setBand = (band, value) => cdp.evaluate(`(() => {
+        const field = Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === ${JSON.stringify(band)});
+        const slider = field.querySelector('input[type=range]');
+        slider.value = ${value};
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        return field.querySelector('.th-fx-val').textContent;
+      })()`);
+      const shown = await setBand('Lo', 6);
+      if (shown !== '6.0dB') throw new Error(`expected Lo to read 6.0dB, got ${shown}`);
+      const cut = await setBand('Hi', -4.5);
+      if (cut !== '-4.5dB') throw new Error(`expected Hi to read -4.5dB, got ${cut}`);
+      // Round-trip through the song payload the same way a save/load would.
+      await new Promise((r) => setTimeout(r, 500)); // autosave is debounced
+      const stored = await cdp.evaluate(`(() => {
+        const key = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!key) return null;
+        const eq = (JSON.parse(localStorage.getItem(key)) || {}).eq || {};
+        return eq[Object.keys(eq)[0]] || null;
+      })()`);
+      if (!stored || stored.low !== 6 || stored.high !== -4.5) {
+        throw new Error(`EQ should be part of the saved song, got ${JSON.stringify(stored)}`);
+      }
+      // Reset is registry-driven, so it must clear the new group too.
+      await cdp.evaluate(`document.querySelector('.th-fx-reset').click()`);
+      await waitFor(`Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === 'Lo').querySelector('.th-fx-val').textContent === '0.0dB'`);
+    });
+
     step('plays back for a moment with no errors', async () => {
       const before = errors.length;
       await cdp.evaluate(`document.querySelector('#play').click()`);

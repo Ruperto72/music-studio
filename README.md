@@ -36,9 +36,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   wavetable, and **FM** (with modulator ratio/depth)
 - Per-track **ADSR envelope** and a resonant **lowpass filter** with its own
   envelope amount; save any track's synth settings as a reusable **preset**
-- Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a
-  **compressor**, a **bitcrush** downsampler and a **tremolo** — all neutral by
-  default
+- Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a 3-band
+  **EQ**, a **compressor**, a **bitcrush** downsampler and a **tremolo** — all
+  neutral by default
 - Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
   arpeggio, portamento, bitcrush, echo, chorus and reverb
 - **Automation curves** per track — draw Volume, Pan, or Delay/Chorus/Reverb
@@ -70,7 +70,6 @@ Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Per-track EQ**, in the same spirit as the master EQ
 - **Accessibility** — there's no screen-reader path through the piano roll yet
 
 ## Run it locally
