@@ -721,8 +721,36 @@ ett facit.
   **Chord** (den enda handlingen som skapar noter, till skillnad från allt
   annat som är egenskaper). En prick på fliken när något i den är aktivt
   återställer en del av överblicken, men bara att *något* är på, inte vad.
-- [ ] **Ingen tillgänglighetsgenomgång** utöver enstaka `aria-*`-attribut på
-  knappar; ingen skärmläsarväg för själva pianorullen/rytmgriden.
+- [x] **Tillgänglighetsgenomgång** — mätte först i webbläsaren i stället för att
+  gissa. Utfallet var blandat: alla 14 reglage, 7 selects och alla knappar
+  hade redan tillgängliga namn (via `title`), alla fyra dialoger hade
+  rubriker, och `lang="en"` fanns. Fyra verkliga luckor:
+  1. **Ingen synlig fokusmarkering.** Ingen `:focus`-regel alls i CSS:en, och
+     `outline: none` på det aktiva verktyget tog bort webbläsarens egen. På
+     den här paletten försvinner default-ringen ändå. Nu en
+     `:focus-visible`-ring i `#7fd4ff` (11.3:1 mot bakgrunden).
+  2. **Inga landmärken.** `main:0 nav:0 header:0 aside:0`, ingen `h1`. Nu
+     `<main>`/`<aside>`/`role="toolbar"`, en dold `h1` och en skip-länk.
+  3. **Griden var osynlig för hjälpmedel** — 1025 noter och 349 slag, noll med
+     roll, namn eller fokuserbarhet. Nu har varje lane, not och slag ett
+     `aria-label` (tonhöjd/trumma + takt och slag), och **Shift+←/→** stegar
+     markeringen genom aktivt spår medan **Home**/**End** hoppar till
+     ändarna, annonserat via en `aria-live`-region. Vanliga piltangenter
+     knuffar fortfarande, så inget inarbetat ändrades — Shift+piltangenter
+     var lediga. Noter använder *roving tabindex* så Tab inte vandrar genom
+     hundratals block.
+  4. **Tillstånd låg bara i CSS-klasser.** Mute/Solo och per-not-växlarna har
+     nu `aria-pressed`; Pen/Eraser/Grab blev en `role="radiogroup"` med
+     `aria-checked` eftersom det är ett val och inte tre oberoende växlar.
+     Ikonknappar som bara gick att tolka positionellt (M/S/✕ per spår) namnger
+     nu sitt spår.
+  Dessutom: panelrubrikerna låg på 3.23:1 kontrast (under AA) och är nu
+  5.32:1. Brödtext och dämpad text klarade redan AA.
+- [ ] **Skapa noter från tangentbordet** — går fortfarande inte. Man kan nå,
+  välja och redigera det som finns, men själva komponerandet kräver pekdon.
+  Skulle behöva en rumslig modell av griden (markör-position, oktav, kolumn)
+  snarare än bara en markering — betydligt större arbete än den här
+  genomgången.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 
