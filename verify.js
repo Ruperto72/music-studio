@@ -284,7 +284,7 @@ async function main() {
     step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await cdp.evaluate(`
-        document.querySelector('.chord-presets button[data-chord="maj"]').click();
+        document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 4`);
       const multiCount = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note.multi-selected').length`);
@@ -310,7 +310,7 @@ async function main() {
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
       await cdp.evaluate(`
-        document.querySelector('.chord-presets button[data-chord="maj"]').click();
+        document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
       await new Promise((r) => setTimeout(r, 150));
       const after = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
@@ -347,7 +347,7 @@ async function main() {
       if (!before.rootKey) throw new Error('expected the just-placed note to be the selected root');
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await cdp.evaluate(`
-        document.querySelector('.chord-presets button[data-chord="maj"]').click();
+        document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
       await new Promise((r) => setTimeout(r, 150));
       const after = await cdp.evaluate(`(() => {
@@ -373,12 +373,12 @@ async function main() {
       // The other chord steps only exercise `maj` (two tones). A seventh is the
       // three-tone shape, and the power chord the one-tone shape, so check the
       // table is fully wired and that a longer interval list lands correctly.
-      const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.chord-presets button')).map(b => b.dataset.chord)`);
+      const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).map(b => b.dataset.chord)`);
       const expected = ['5', 'maj', 'min', 'dim', 'aug', 'sus2', 'sus4', '7', 'maj7', 'm7'];
       if (labels.join(',') !== expected.join(',')) {
         throw new Error(`chord presets should be ${expected.join(',')}, got ${labels.join(',')}`);
       }
-      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.chord-presets button')).every(b => b.title.length > 0)`)) {
+      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).every(b => b.title.length > 0)`)) {
         throw new Error('every chord button needs a tooltip — the labels alone are abbreviations');
       }
       // Fresh track so the root's own column is empty and the lane's pitch
@@ -395,7 +395,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       const col = await cdp.evaluate(`(() => { const s = document.querySelector('.track.active .lane .note.selected'); return s ? s.style.left : null; })()`);
       if (!col) throw new Error('expected the placed note to be selected');
-      await cdp.evaluate(`document.querySelector('.chord-presets button[data-chord="maj7"]').click()`);
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj7"]').click()`);
       await new Promise((r) => setTimeout(r, 300));
       // ROW_H is 11px per semitone; measure upward from the lowest note.
       const offsets = await cdp.evaluate(`(() => {
@@ -407,6 +407,43 @@ async function main() {
       if (offsets.join(',') !== '0,4,7,11') {
         throw new Error(`maj7 should voice root/+4/+7/+11 semitones, got ${offsets.join(',')}`);
       }
+    });
+
+    step('Arpeggio presets: same palette as Chord, writing intervals into the note', async () => {
+      // Both rows read CHORD_PRESETS, so they must offer the same voicings —
+      // but an arpeggio only rewrites this one note's `arp` list rather than
+      // adding notes, and the Arpeggio field is where that shows up.
+      const arpLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).map(b => b.dataset.arp)`);
+      const chordLabels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).map(b => b.dataset.chord)`);
+      if (arpLabels.join(',') !== chordLabels.join(',')) {
+        throw new Error(`Arpeggio and Chord rows should offer the same voicings — arp [${arpLabels}] vs chord [${chordLabels}]`);
+      }
+      if (!await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-arp]')).every(b => b.title.length > 0)`)) {
+        throw new Error('every arpeggio button needs a tooltip — the labels alone are abbreviations');
+      }
+      // Place a note, then check a three-tone voicing lands in the Arpeggio field.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 300, clientY: rect.top + 120 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 250));
+      const notesBefore = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-arp="m7"]').click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const arpValue = await cdp.evaluate(`(() => {
+        const f = Array.from(document.querySelectorAll('.insp-field')).find(x => x.textContent.includes('Arpeggio'));
+        return f ? f.querySelector('input').value : null;
+      })()`);
+      if (arpValue !== '3,7,10') throw new Error(`m7 should write 3,7,10 into the Arpeggio field, got ${arpValue}`);
+      // An arpeggio is one note sweeping — unlike the Chord row it must not add any.
+      const notesAfter = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      if (notesAfter !== notesBefore) {
+        throw new Error(`an arpeggio preset should not add notes (${notesBefore} -> ${notesAfter})`);
+      }
+      const badged = await cdp.evaluate(`!!document.querySelector('.track.active .lane .note .arp-badge')`);
+      if (!badged) throw new Error('expected the arpeggiated note to show its ♪ badge');
     });
 
     step('Eraser: deleting a note does not move the selection to a different note', async () => {

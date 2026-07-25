@@ -251,7 +251,9 @@ a single note is selected, per-note controls grouped into:
   (glides into the next contiguous note).
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
   (pulse-width for square waves), Arpeggio (comma-separated semitone
-  offsets, with Major/Minor-triad quick-fill buttons).
+  offsets, with the same ten `CHORD_PRESETS` quick-fill buttons the Chord
+  panel below uses — both store offsets above the root, so one voicing table
+  serves both).
 - **Chord**: a grid of quick-add voicings — `5` (power chord), `maj`, `min`,
   `dim`, `aug`, `sus2`, `sus4`, `7`, `maj7`, `m7`. Unlike the Arpeggio presets
   above (which only flag this one note to sweep through its chord tones),
@@ -261,8 +263,9 @@ a single note is selected, per-note controls grouped into:
   neutral effect flags, so each can be tuned individually afterward. An
   interval that clamps at the pitch ceiling onto a pitch already sounding is
   skipped rather than stacked as a duplicate. The voicings are a data table
-  (`CHORD_PRESETS`) and `addChordAbove()` is generic over the interval list,
-  so adding one is a row rather than another hand-wired button.
+  (`CHORD_PRESETS`) shared with the Arpeggio row above, and `addChordAbove()`
+  is generic over the interval list, so adding one is a row in that table
+  rather than another hand-wired button in either place.
 - **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
 - **Delete note** button.
 

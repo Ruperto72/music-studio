@@ -598,13 +598,12 @@
   .insp-field > span { color: var(--muted); font-size: 11px; }
   .insp-field input[type=text] { width: 84px; text-align: center; }
   .insp-field select { padding: 6px 6px; }
-  .arp-presets { display: flex; gap: 5px; }
-  .arp-presets button { flex: 1; font-size: 11px; padding: 6px 4px; }
-  /* Ten short chord labels rather than two long ones — auto-fill so they
-     reflow instead of overflowing the inspector's fixed width (and the
-     narrower bottom-sheet it becomes on mobile). */
-  .chord-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
-  .chord-presets button { font-size: 11px; padding: 6px 2px; }
+  /* Shared by the Arpeggio and Chord rows — both offer the same ten CHORD_PRESETS
+     voicings, so they get the same compact grid of short labels. auto-fill lets
+     them reflow rather than overflow the inspector's fixed width (and the wider
+     bottom sheet it becomes on mobile). */
+  .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
+  .preset-grid button { font-size: 11px; padding: 6px 2px; }
   .insp-field input[type=range] { flex: 1; min-width: 0; margin: 0 8px; cursor: pointer; }
   .insp-velval { min-width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   .insp-del { background: #3a1414; border-color: #5a1e1e; color: #ff9a9a; }
@@ -726,13 +725,18 @@
         bitcrush, echo, chorus and reverb in the inspector on the right.
       </p>
       <p>
-        The inspector's <b>Chord</b> row builds a chord on the selected note: <b>5</b> (power chord),
-        <b>maj</b>, <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b>
-        and <b>m7</b> add the chord's other notes as <i>real</i> notes above it, in the same track and
-        at the same length (hover a button for its full name). That's different from the
-        <b>Arpeggio</b> presets just above, which leave one note that sweeps through the chord tones
-        instead. The new notes start with no effects of their own, so each can be tweaked afterwards.
+        Two rows in the inspector offer the same ten chords — <b>5</b> (power chord), <b>maj</b>,
+        <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b> and
+        <b>m7</b> (hover a button for its full name). They differ in what you get:
       </p>
+      <ul>
+        <li><b>Arpeggio</b> keeps <i>one</i> note and sweeps it through the chord's tones in quick
+          succession — the classic chiptune way to imply a chord on a single voice. It fills in the
+          Arpeggio box, which you can then edit by hand.</li>
+        <li><b>Chord</b> adds the chord's other notes as <i>real</i>, separate notes above the
+          selected one, in the same track and at the same length. They start with no effects of
+          their own, so each can be tweaked afterwards.</li>
+      </ul>
 
       <h3>Bottom bar (Song · Tempo · Length · Grid · Master)</h3>
       <p>
@@ -3730,14 +3734,29 @@ function renderInspector() {
   arpField.append(arpLbl, arpInput);
   pitch.appendChild(arpField);
 
-  const presets = el('div', 'arp-presets');
-  const arpMajor = document.createElement('button');
-  arpMajor.textContent = 'Major triad';
-  arpMajor.addEventListener('click', () => { note.arp = [4, 7]; note.bend = null; note.porta = false; render(); });
-  const arpMinor = document.createElement('button');
-  arpMinor.textContent = 'Minor triad';
-  arpMinor.addEventListener('click', () => { note.arp = [3, 7]; note.bend = null; note.porta = false; render(); });
-  presets.append(arpMajor, arpMinor);
+  // Same CHORD_PRESETS palette as the Chord panel below, and the same
+  // convention: both hold semitone offsets *above* the root, since scheduleTone
+  // prepends note.freq itself when it cycles an arpeggio. The two rows differ
+  // only in what they do with the voicing — one note sweeping through it here,
+  // real separate notes there.
+  // The Chord panel below renders an identical-looking grid, so say what this
+  // one does — otherwise the only cue is which heading you happen to be under.
+  const arpHint = el('div', 'insp-sub');
+  arpHint.textContent = 'Sweeps this one note through the chord.';
+  pitch.appendChild(arpHint);
+  const presets = el('div', 'preset-grid');
+  for (const preset of CHORD_PRESETS) {
+    const btn = document.createElement('button');
+    btn.textContent = preset.label;
+    btn.dataset.arp = preset.label;
+    btn.title = `${preset.name} — sweeps this one note through the chord`;
+    btn.addEventListener('click', () => {
+      note.arp = [...preset.intervals]; // copied: the preset table must stay immutable
+      note.bend = null; note.porta = false;
+      render();
+    });
+    presets.appendChild(btn);
+  }
   pitch.appendChild(presets);
 
   // --- Chord ---
@@ -3751,7 +3770,7 @@ function renderInspector() {
   const chordHint = el('div', 'insp-sub');
   chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
   chordPanel.appendChild(chordHint);
-  const chordRow = el('div', 'chord-presets');
+  const chordRow = el('div', 'preset-grid');
   const addChordAbove = (semitoneIntervals) => {
     const rootMidi = freqToMidi(note.freq);
     // Clamping at MIDI_MAX can collapse an interval onto a pitch that's
