@@ -1135,7 +1135,7 @@ async function main() {
         desc: (r.querySelector('.song-desc') || {}).textContent || '',
         buttons: [...r.querySelectorAll('button')].map(b => b.textContent),
       }))`);
-      if (rows.length < 10) throw new Error(`expected at least 10 grooves in the library, got ${rows.length}`);
+      if (rows.length < 12) throw new Error(`expected at least 12 grooves in the library, got ${rows.length}`);
       for (const r of rows) {
         if (!r.desc.trim()) throw new Error(`pattern "${r.name}" has no description`);
         if (!r.buttons.includes('▶ fill')) throw new Error(`pattern "${r.name}" has no fill`);
@@ -1230,6 +1230,45 @@ async function main() {
       }
       if ((bossa.bars['4'] || []).join('|') === (bossa.bars['1'] || []).join('|')) {
         throw new Error('Bossa Nova still needs a fill bar even without the crash');
+      }
+
+      // Reggae's one drop is defined by an absence, which no count or spread
+      // would catch: beat 1 carries no kick at all. Anything there and this is
+      // a slow rock beat with a different hi-hat.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const reggae = await insertAndRead('Reggae (one drop)');
+      const onOne = reggae.labels.filter((l) => /^Kick, bar [123] beat 1$/.test(l));
+      if (onOne.length) throw new Error(`the one drop leaves beat 1 empty, found ${onOne.length} kick(s) there`);
+      if (!reggae.labels.some((l) => /^Kick, bar 1 beat 3$/.test(l))) {
+        throw new Error('the one drop puts its kick on beat 3');
+      }
+
+      // Trap is the only pattern mixing two subdivisions, so it is the only one
+      // that can show the lattice really carries both. Measured off the drawn
+      // positions rather than asserted from the table: a 16th gap and a triplet
+      // gap stand in a 3:2 ratio, and nothing else in the app produces that.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await insertAndRead('Trap');
+      const trapGrid = await cdp.evaluate(`document.getElementById('grid-select').value`);
+      if (trapGrid !== '1/16T') throw new Error(`inserting Trap should switch the grid to 1/16T, got ${trapGrid}`);
+      const gaps = await cdp.evaluate(`(() => {
+        const xs = [...document.querySelectorAll('.lane .hit')]
+          .filter(h => (h.getAttribute('aria-label') || '').startsWith('Hi-hat, bar 1 '))
+          .map(h => parseFloat(h.style.left))
+          .sort((a, b) => a - b);
+        const g = [];
+        for (let i = 1; i < xs.length; i++) g.push(+(xs[i] - xs[i - 1]).toFixed(2));
+        return [...new Set(g)].sort((a, b) => a - b);
+      })()`);
+      if (gaps.length < 2) throw new Error(`Trap's hi-hats sit at one spacing only: ${JSON.stringify(gaps)}`);
+      // A zero gap is two hi-hats in one column, which hitsConflict calls a
+      // collision — worth its own message rather than an Infinity ratio.
+      if (gaps[0] === 0) throw new Error(`two of Trap's hi-hats landed in the same column: ${JSON.stringify(gaps)}`);
+      const ratio = gaps[1] / gaps[0];
+      if (Math.abs(ratio - 1.5) > 0.05) {
+        throw new Error(`Trap should mix triplets with 16ths (a 3:2 gap ratio), measured ${ratio.toFixed(3)} from ${JSON.stringify(gaps)}`);
       }
 
       // Fills off: every bar identical again, which is what the patterns did

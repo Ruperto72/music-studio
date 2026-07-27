@@ -420,18 +420,25 @@ the same groove without it:
 - `swing` → `state.swing`. Shuffle only reads as shuffle once the off-8th
   is pushed toward the triplet position.
 - `grid` → `state.grid`. A `start` may be fractional (the column unit is an
-  eighth, positions re-lattice to 1/6 of one, so `0.5` is a 16th), but a
-  hit's block is drawn one *grid step* wide — on the default 1/8 grid two
-  16ths would render one on top of the other. Funk sets `grid: 0.5`; its
-  ghost notes are the groove and they have to be visible and editable.
+  eighth, positions re-lattice to 1/6 of one, so `0.5` is a 16th and `1/3`
+  a 16th triplet), but a hit's block is drawn one *grid step* wide — on the
+  default 1/8 grid two 16ths would render one on top of the other. Funk
+  sets `grid: 0.5`; its ghost notes are the groove and they have to be
+  visible and editable. Trap is the one pattern using two subdivisions at
+  once, and it sets `grid: 1/3` rather than `0.5` for that reason: at 1/3
+  every block is a third of a column, so its 16ths and its triplet roll are
+  both readable, whereas at 0.5 the triplets (1/3 apart) would overlap.
+  32nds are not available — a quarter of an eighth is off the 1/6 lattice
+  and `quant()` snaps it onto the triplet — so trap's roll is written as
+  triplets, which is a real trap rate rather than an approximation.
 - `crashAfterFill: false`. Bossa nova's fill flips the clave to its other
   side rather than building to anything, and a crash on top of that is
   simply the wrong genre.
 
-The library covers ten grooves: Rock, Techno, Disco, Swing/Shuffle,
-Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova. Each is one table
-row — nothing about phrasing, velocity or grid handling is per-pattern
-code.
+The library covers twelve grooves: Rock, Techno, Disco, Swing/Shuffle,
+Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae (one drop)
+and Trap. Each is one table row — nothing about phrasing, velocity or grid
+handling is per-pattern code.
 
 ### A.12 Help dialog
 
