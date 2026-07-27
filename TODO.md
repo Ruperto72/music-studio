@@ -807,6 +807,29 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   också att ett nollavstånd — två hi-hats i samma kolumn, vilket `hitsConflict`
   räknar som krock — förtjänar ett eget felmeddelande i stället för en
   Infinity-kvot, så det lades till.
+- [x] **Dokumentationen beskrev fortfarande den gamla emoji-ikonografin — och
+  koden gjorde det på ett ställe också.** `DESIGN.md` §A.1 påstod rakt ut
+  "Iconography: emoji throughout (🎵 💾 📂 ⤓ ⛶ ✏️ 🧽 ✋ 🚩 🔍 ▾ ▸ ✕ ✨)", vilket
+  motsade §A.14 två hundra rader längre ner som beskriver `GLYPHS` korrekt. Och
+  genom alla tre dokumenten namngavs kontroller med tecken som inte finns kvar
+  i gränssnittet — "✨ FX-panelen", "🎵 Songs-menyn", "🎛️ Master FX", "🥁-knappen",
+  "💾 / 📂", "⧉ Repeat", "☰-menyn". En läsare som letar efter dem hittar ingenting.
+  **Genomsökningen hittade två riktiga fel i koden:**
+  1. **Export WAV tappade sin ikon efter första exporten.** Knappens
+     upptagen-läge skrevs innan glyph-systemet fanns och gjorde
+     `btn.textContent = '⏳'` — vilket raderar `<svg>`-barnet — och återställde
+     sedan bara texten. Mätt i webbläsaren: `svgs: 1` före exporten, `svgs: 0`
+     efter, resten av sessionen. Dessutom en fullfärgs-emoji på en kontroll,
+     alltså precis det beslut §A.14 säger att appen tagit. Går genom
+     `setGlyphLabel()` nu och säger "Rendering…" i klartext.
+  2. **Hjälprutan namngav `⧉ Repeat`**, men knappen visar `repeat`-glyfen och
+     texten "Repeat".
+  Ikon-revisionen i `verify.js` kunde inte se nummer 1: den granskar knappar i
+  vila och körs innan något exporterats. Nytt påstående i vågformssteget, som
+  ändå kör tio WAV-exporter, om att knappen kommer tillbaka ur sitt
+  upptagen-läge med både svg och etikett i behåll.
+  Kvar med flit: `↝`/`⌒`/`♪` på noter (märken på rutnätsobjekt, inte kontroller)
+  och `🎵` i README:ns rubrik, som inte utger sig för att vara någon knapp.
 - [ ] **Frog vs Toad-spelets `audio.js` behöver uppdateras manuellt.**
   Ovanstående formatbrott (`RHYTHM_TRACK` → `RHYTHM_TRACKS`) gör att en
   färsk "⤓ Export code"-output inte längre går att klistra in rakt av i

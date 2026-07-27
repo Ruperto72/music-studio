@@ -47,7 +47,7 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   envelope amount, and a **duty cycle** (pulse width) for square-wave tracks
   that any single note can override; save a track's synth settings as a
   reusable **preset**
-- Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a 3-band
+- Per-track **FX**: continuous Delay / Chorus / Reverb sends, a 3-band
   **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
   **vibrato** on tonal tracks — all neutral by default
 - Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
@@ -64,16 +64,16 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 ### Saving & exporting
 
 - **Song library** — bundled examples or your own songs saved in this browser
-- **💾 / 📂** download/upload a song as `.json`
-- **🎹 / 🎼** export/import a Standard MIDI File (format 1)
-- **🔊** render the whole song offline and download a `.wav`
-- **⤓** export the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
+- **Save file / Load file** download/upload a song as `.json`
+- **Export / Import MIDI** move a Standard MIDI File (format 1)
+- **Export WAV** renders the whole song offline and downloads a `.wav`
+- **Export code** writes the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
   a game
 - **Keyboard & screen reader**: Tab reaches every control with a visible focus
   ring, Shift+←/→ walks the notes of a track and Home/End jump to its ends,
   with each selection announced as pitch and bar/beat
 - **Installable PWA** — works offline once loaded, and can be added to the
-  home screen as a standalone/fullscreen app; a **⛶** toolbar button also
+  home screen as a standalone/fullscreen app; a **Fullscreen** menu item also
   toggles plain browser fullscreen
 
 ## Roadmap
@@ -119,19 +119,19 @@ specific one).
 ## Songs: examples vs. your own
 
 - **Examples** live in `songs/` and are listed in `songs/index.json`. They load
-  over the network (from this site) via the **🎵 Songs** menu.
+  over the network (from this site) via the **Songs** menu.
 - **Your songs** are saved in the browser's `localStorage` — nothing is
-  uploaded. Use **🎵 Songs → Save current** to store the current song under a
+  uploaded. Use **Songs → Save current** to store the current song under a
   name, and Load/Delete them from the same menu.
-- **💾 / 📂** in the toolbar download/upload a song as a `.json` file.
+- **Save file / Load file** in the menu download/upload a song as a `.json` file.
 
 The page always starts as a blank project; pick a song explicitly from the
-**🎵 Songs** menu. Work is autosaved to this browser in the background purely
+**Songs** menu. Work is autosaved to this browser in the background purely
 as crash recovery — it's never restored automatically.
 
 ### Add an example song
 
-1. In the editor, build a song and click **💾** to download its `.json`.
+1. In the editor, build a song and click **Save file** to download its `.json`.
 2. Drop the file into `songs/` (e.g. `songs/my-tune.json`).
 3. Add an entry to `songs/index.json`:
    ```json
@@ -163,7 +163,7 @@ installed app opens without browser chrome and keeps working offline once
 it's been loaded once, since `sw.js` precaches the app shell and the bundled
 example songs. `manifest.webmanifest` requests fullscreen display where the
 browser supports it (falling back to a standalone app window otherwise); the
-in-app **⛶** button toggles fullscreen for regular browser tabs too.
+in-app **Fullscreen** menu item toggles fullscreen for regular browser tabs too.
 
 ## Layout
 
