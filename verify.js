@@ -872,6 +872,133 @@ async function main() {
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
     });
 
+    // Last on purpose: this step reloads the page to install its createGain
+    // patch, which drops the loaded example song every step above depends on.
+    step('Rhythm: a hit carries a velocity that reaches the audio graph and the saved file', async () => {
+      // A quiet hit looks identical in the DOM to a loud one apart from an
+      // opacity, so the DOM alone cannot show that velocity is actually
+      // applied. Patch createGain before the page loads and record every
+      // `.value =` assignment: the ten drum schedulers all use
+      // setValueAtTime, so what lands in this array is exactly the velocity
+      // stage scheduleDrum inserts, and nothing else.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          window.__velGains = [];
+          const origCreate = AudioContext.prototype.createGain;
+          AudioContext.prototype.createGain = function () {
+            const g = origCreate.call(this);
+            const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            try {
+              Object.defineProperty(g.gain, 'value', {
+                get() { return d.get.call(this); },
+                set(v) { window.__velGains.push(v); d.set.call(this, v); },
+                configurable: true,
+              });
+            } catch {}
+            return g;
+          };
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track .lane')`);
+
+      // Pen a hit; it should select itself so its velocity is editable at once.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 100, clientY: r.top + 8 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.inspector input[type=range]')`);
+      const placed = await cdp.evaluate(`(() => {
+        const insp = document.querySelector('.inspector');
+        return {
+          cap: insp.querySelector('.insp-cap')?.textContent,
+          vel: insp.querySelector('.insp-velval')?.textContent,
+          selected: document.querySelectorAll('.hit.selected').length,
+          del: insp.querySelector('.insp-del')?.textContent,
+        };
+      })()`);
+      if (placed.cap !== 'Selected hit' || placed.vel !== '100%' || placed.selected !== 1) {
+        throw new Error(`penning a hit should select it and show a full Velocity: ${JSON.stringify(placed)}`);
+      }
+      if (!/hit/i.test(placed.del || '')) throw new Error(`the delete button should say hit: ${placed.del}`);
+
+      const lowered = await cdp.evaluate(`(() => {
+        const s = document.querySelector('.inspector input[type=range]');
+        s.value = 0.3;
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+        const hit = document.querySelector('.hit.selected');
+        return { opacity: hit?.style.opacity, label: hit?.getAttribute('aria-label') };
+      })()`);
+      // 0.4 + 0.6 * 0.3 — the same mapping tonal notes use for velocity.
+      if (lowered.opacity !== '0.58') throw new Error(`velocity should dim the hit: ${JSON.stringify(lowered)}`);
+      if (!/velocity 30%/.test(lowered.label || '')) {
+        throw new Error(`a reduced velocity must be in the accessible name: ${lowered.label}`);
+      }
+
+      // Preview path (previewHit -> scheduleDrum).
+      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const previewed = await cdp.evaluate(`window.__velGains.slice()`);
+      if (!previewed.some((v) => Math.abs(v - 0.3) < 1e-6)) {
+        throw new Error(`previewing a 30% hit should build a 0.3 gain stage, saw ${JSON.stringify(previewed)}`);
+      }
+
+      // Playback path (playOnce -> scheduleDrum) — a different call site, so
+      // exercise it too rather than assuming the preview covers both.
+      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 900));
+      const played = await cdp.evaluate(`window.__velGains.slice()`);
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+      if (!played.some((v) => Math.abs(v - 0.3) < 1e-6)) {
+        throw new Error(`playback should apply the hit's velocity, saw ${JSON.stringify(played)}`);
+      }
+
+      // At full velocity no stage is inserted at all, so an untouched song
+      // builds exactly the graph it did before hits had a velocity.
+      await cdp.evaluate(`(() => {
+        const s = document.querySelector('.inspector input[type=range]');
+        s.value = 1; s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const full = await cdp.evaluate(`window.__velGains.slice()`);
+      if (full.length !== 0) throw new Error(`a full-velocity hit should add no gain stage, saw ${JSON.stringify(full)}`);
+
+      // ...and it must not leave `vel: 1` behind in the song data either.
+      const serialized = await cdp.evaluate(`(() => {
+        const hit = [...document.querySelectorAll('.hit')].length;
+        const s = document.querySelector('.inspector input[type=range]');
+        s.value = 0.45; s.dispatchEvent(new Event('change', { bubbles: true }));
+        return hit;
+      })()`);
+      if (serialized !== 1) throw new Error(`expected exactly one hit, got ${serialized}`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => (localStorage.getItem(k) || '').includes('trackList'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        const h = d.tracks[id][0];
+        return h && Math.abs(h.vel - 0.45) < 1e-6;
+      })()`, 4000);
+
+      // A single selected hit must nudge — this path used to assume a tonal
+      // note and would have read len/freq off a hit.
+      const nudged = await cdp.evaluate(`(() => {
+        const before = document.querySelector('.hit.selected')?.style.left;
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        return { before, after: document.querySelector('.hit.selected')?.style.left };
+      })()`);
+      if (!nudged.before || nudged.before === nudged.after) {
+        throw new Error(`a selected hit should nudge with the arrow keys: ${JSON.stringify(nudged)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

@@ -403,13 +403,40 @@ binära flaggor med hårdkodade värden, per spår reglerbara sends/inserts,
 och de är avsiktligt additiva (se `TRACK_FX_REGISTRY`). Det som återstår
 är asymmetrierna, i den ordning de bedöms vara värda att bygga:
 
-- [ ] **Velocity per trumslag.** Störst musikalisk effekt av allt här: ett
-  trumspår utan accenter låter mekaniskt. Rytmspår har i dag *inget*
-  per-not-lager alls — `state.selected` sätts bara från tonala notvägar,
-  så ett slag öppnar aldrig inspektorn och kan inte ens få en velocity.
-  Spår-FX fungerar däremot på trummor precis som på tonala spår, eftersom
-  de tappar `chanGain[id]` som allt ljud passerar, så spårnivån är i dag
-  inte bara det bekvämare stället för trummor — det är det enda.
+- [x] **Velocity per trumslag.** Rytmspår hade inget per-not-lager alls:
+  `state.selected` sattes bara från tonala notvägar, så ett slag öppnade
+  aldrig inspektorn. Nu är slag valbara (klick, penna, Shift+piltangent) och
+  får en egen kort inspektorpanel — trumma, takt/slag, **Velocity** (10–100%,
+  samma intervall/steg/format som den tonala) och Radera. Det är hela listan
+  med flit: ett slag har varken tonhöjd, längd eller per-not-flaggor, och för
+  trummor bor de effekterna på spårets ✨ FX-panel ändå.
+  Tre saker gjordes medvetet:
+  1. **`vel` saknas = full.** Inspektorn *tar bort* egenskapen vid 100% i
+     stället för att skriva `vel: 1`, så en låt som aldrig rört velocity
+     serialiseras byte för byte som förut. `hitVel()` är enda läsaren och
+     klampar där, så en handredigerad fil inte kan ge en trasig gain.
+  2. **En anropspunkt, inte tio.** All uppspelning går genom
+     `scheduleDrum(type, startAt, destGain, vel)`, som lägger velocity som en
+     vanlig `GainNode` framför destinationen. Att i stället tråda ett
+     `vel`-argument in i de tio schemaläggarna hade betytt att skala varje
+     `exponentialRampToValueAtTime` för hand — snaran har två envelopper,
+     klappen tre — alltså tio chanser för samma faktor att glida isär. Vid
+     full velocity läggs ingen nod in alls, så en orörd låt bygger exakt
+     samma graf som förut (viktigt när en offline-rendering schemalägger
+     tusentals slag).
+  3. **`state.selected` heter nu `{ track, item }`.** Den kan hålla en not
+     *eller* ett slag, och `selectItem()`/`deleteItem()` hanterar bägge — en
+     tonal och en rytmisk kopia hade bara drivit isär. Omdöpningen avslöjade
+     direkt en destrukturering (`const { track, note } = state.selected`) som
+     tyst blivit `undefined`; enkelnots-nudgen läste `len`/`freq` och behövde
+     en egen rytmgren.
+  På vägen: MIDI-velocity round-trippar nu åt bägge håll för både noter och
+  slag (parsern läste note-on-velocity och slängde den, så allt importerades
+  på full nivå och trummor exporterades med hårdkodat 100), och
+  multi-nudgen av slag jämförde `s.start === h.start` inline i stället för
+  `hitsConflict` — att flytta en kick in i en kolumn raderade alltså en
+  omarkerad hi-hat som redan låg där. Sjätte instansen av precis den bugg de
+  delade predikaten finns för.
 - [ ] **Vibrato per spår.** Spåret har en tremolo-LFO (amplitud) men ingen
   vibrato-LFO (tonhöjd), trots att `addVibrato()` och `addTremolo()` är
   nästan identiska funktioner längs olika axlar. Billigast av punkterna

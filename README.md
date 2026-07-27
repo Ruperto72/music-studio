@@ -41,6 +41,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   neutral by default
 - Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
   arpeggio, portamento, bitcrush, echo, chorus and reverb
+- **Per-hit velocity** on rhythm tracks — click a drum hit to set how hard
+  it's struck, so a pattern can have accents instead of sounding mechanical;
+  quieter notes and hits are drawn dimmer
 - **Automation curves** per track — draw Volume, Pan, or Delay/Chorus/Reverb
   send over time
 - **Master bus**: 3-band EQ, compressor with a parallel ("New York") blend,

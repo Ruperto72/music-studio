@@ -498,7 +498,7 @@
     border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2;
   }
-  .note.selected { outline: 2px solid #fff; z-index: 3; }
+  .note.selected, .hit.selected { outline: 2px solid #fff; z-index: 3; }
   .note.multi-selected, .hit.multi-selected { outline: 2px dashed #ffcc00; z-index: 3; }
   .marquee {
     position: absolute; top: 0; background: rgba(255, 204, 0, 0.12);
@@ -768,6 +768,7 @@
         <li><b>✋ Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
+        <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit's only setting is <b>Velocity</b> (10–100%) — how hard it's struck — which is what turns a mechanical drum pattern into one with accents. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too.</li>
       </ul>
 
       <h3>Selecting several notes</h3>
@@ -1494,9 +1495,20 @@ function noteAriaLabel(note) {
   return `${midiToName(freqToMidi(note.freq))}, ${colToBarBeat(note.start)}`
     + (effects.length ? `, ${effects.join(' ')}` : '');
 }
-function hitAriaLabel(hit) {
-  return `${RHYTHM_LABELS[hit.type] || hit.type}, ${colToBarBeat(hit.start)}`;
+// How hard a drum hit is struck, 0.1-1. Absent means full, matching how notes
+// treat note.vel, so every song written before hits had a velocity keeps
+// sounding identical. Clamped here rather than at load time so one function
+// makes every caller safe against a hand-edited file.
+function hitVel(hit) {
+  const v = hit.vel;
+  return v == null ? 1 : Math.max(0.1, Math.min(1, v));
 }
+function hitAriaLabel(hit) {
+  const v = hitVel(hit);
+  const vel = v < 1 ? `, velocity ${Math.round(v * 100)}%` : '';
+  return `${RHYTHM_LABELS[hit.type] || hit.type}, ${colToBarBeat(hit.start)}${vel}`;
+}
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Speaks a short message through the polite live region. Keyboard selection
 // moves focus to a <div>, which on its own announces nothing useful.
 let announceEl = null;
@@ -1532,7 +1544,7 @@ function toColumnNotes(seq) {
 function toColumnHits(seq) {
   const hits = [];
   let col = 0;
-  for (const n of seq) { hits.push({ start: col, type: n.type }); col += n.d; }
+  for (const n of seq) { hits.push({ start: col, type: n.type, ...(n.vel != null ? { vel: n.vel } : {}) }); col += n.d; }
   return hits;
 }
 function fromColumnNotes(notes) {
@@ -1566,7 +1578,10 @@ function fromColumnHits(hits) {
   const out = [];
   for (let i = 0; i < sorted.length; i++) {
     const next = i + 1 < sorted.length ? sorted[i + 1].start : sorted[0].start + COLS;
-    out.push({ type: sorted[i].type, d: round4(next - sorted[i].start) });
+    // Only emit vel when it isn't full, exactly as fromColumnNotes does — a
+    // song that never touched velocity serialises byte-for-byte as before.
+    const v = sorted[i].vel;
+    out.push({ type: sorted[i].type, d: round4(next - sorted[i].start), ...(v != null && v < 1 ? { vel: round2(v) } : {}) });
   }
   return out;
 }
@@ -1654,7 +1669,8 @@ const state = {
   sidechain: { ...DEFAULT_SIDECHAIN },    // song-global kick/snare-triggered ducking
   masterCrush: { ...DEFAULT_MASTER_CRUSH }, // song-global AudioWorklet lo-fi downsampler
   swing: DEFAULT_SWING,      // % — see swingOffsetCols()
-  selected: null,            // { track, note } — holds the note object itself, never an index; drives the inspector
+  selected: null,            // { track, item } — the selected note OR rhythm hit, held as the object itself
+                             // (never an index); drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
   loopStart: 0, loopEnd: COLS,
@@ -3185,7 +3201,7 @@ function renderPitchTrack(track) {
     const midi = freqToMidi(note.freq);
     const p = Math.max(0, Math.min(pitchCount - 1, win.max - midi));
     const div = el('div');
-    const isSelected = state.selected && state.selected.track === track && state.selected.note === note;
+    const isSelected = state.selected && state.selected.track === track && state.selected.item === note;
     div.className = 'note ' + track +
       (note.bend ? ' bend' : '') + (note.vib ? ' vib' : '') + (note.trem ? ' trem' : '') +
       (note.porta ? ' porta' : '') + (note.crush ? ' crush' : '') +
@@ -3209,8 +3225,8 @@ function renderPitchTrack(track) {
     const isTabStop = active && (isSelected || (!state.selected && idx === 0));
     div.tabIndex = isTabStop ? 0 : -1;
     div.addEventListener('focus', () => {
-      if (state.selected && state.selected.note === note) return; // already there
-      selectNote(track, note);
+      if (state.selected && state.selected.item === note) return; // already there
+      selectItem(track, note);
     });
     div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveNote(e, track, idx); });
     div.addEventListener('click', (e) => {
@@ -3219,8 +3235,8 @@ function renderPitchTrack(track) {
       setActive(track);
       if (state.tool === 'eraser') {
         if (state.multiSelected.size > 1 && state.multiSelected.has(note)) deleteSelection();
-        else deleteNote(track, note);
-      } else if (state.tool === 'pen') selectNote(track, note);
+        else deleteItem(track, note);
+      } else if (state.tool === 'pen') selectItem(track, note);
     });
     if (note.arp && note.arp.length) { const badge = el('span', 'arp-badge'); badge.textContent = '♪'; div.appendChild(badge); }
     if (state.tool === 'grab') {
@@ -3288,14 +3304,21 @@ function renderRhythmTrack(track) {
 
   for (const hit of state.tracks[track]) {
     const r = RHYTHM_ROWS.indexOf(hit.type);
-    const div = el('div', 'hit' + (hit.type !== 'kick' ? ' ' + hit.type : '') + (state.multiSelected.has(hit) ? ' multi-selected' : ''));
+    const isSelected = state.selected && state.selected.track === track && state.selected.item === hit;
+    const div = el('div', 'hit' + (hit.type !== 'kick' ? ' ' + hit.type : '')
+      + (isSelected ? ' selected' : '') + (state.multiSelected.has(hit) ? ' multi-selected' : ''));
     div.style.position = 'absolute';
     div.style.left = (hit.start * colPx) + 'px';
     div.style.width = Math.max(6, gridPx()) + 'px';
     div.style.top = (r * RHY_H + (RHY_H - 12) / 2) + 'px';
+    // Same mapping as a tonal note's velocity, so a quiet hit and a quiet note
+    // read as equally quiet across the two grids.
+    div.style.opacity = (0.4 + 0.6 * hitVel(hit)).toFixed(2);
     div.setAttribute('role', 'button');
     div.setAttribute('aria-label', hitAriaLabel(hit));
-    div.tabIndex = -1; // reachable by script/AT, but not a tab stop of its own
+    // Roving tabindex, matching the pitch lanes: only the selected hit is a tab
+    // stop, so Tab doesn't walk through every hit in the song.
+    div.tabIndex = isSelected ? 0 : -1;
     div.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab' || e.shiftKey) return; setActive(track); startMoveHit(e, track, hit); });
     div.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -3304,7 +3327,7 @@ function renderRhythmTrack(track) {
       if (state.tool === 'eraser') {
         if (state.multiSelected.size > 1 && state.multiSelected.has(hit)) deleteSelection();
         else removeHit(track, hit);
-      }
+      } else selectItem(track, hit);
     });
     rollEl.appendChild(div);
   }
@@ -3598,7 +3621,7 @@ function onCellClick(track, midi, col) {
   const cleared = clearOverlaps(state.tracks[track], note);
   cleared.push(note);
   state.tracks[track] = cleared;
-  state.selected = { track, note };
+  state.selected = { track, item: note };
   previewNote(track, note);
   render();
 }
@@ -3607,7 +3630,9 @@ function onRhythmCellClick(track, row, col) {
   const hits = state.tracks[track].filter(h => !hitsConflict(h, hit));
   hits.push(hit);
   state.tracks[track] = hits;
-  previewHit(hit.type);
+  state.selected = { track, item: hit }; // so the new hit's Velocity is editable straight away
+  state.multiSelected.clear();
+  previewHit(hit.type, hitVel(hit));
   render();
 }
 function removeHit(track, hit) { state.tracks[track] = state.tracks[track].filter(h => h !== hit); render(); }
@@ -3620,7 +3645,7 @@ function previewPattern(pattern) {
     const startAt = ctx.currentTime + 0.05;
     const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
     for (const h of pattern.hits) {
-      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + h.start * scale * eighthSec, previewGain);
+      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h));
     }
   } catch { /* audio unavailable */ }
 }
@@ -3672,7 +3697,7 @@ function stepSelection(dir) {
   const track = state.activeTrack;
   const items = orderedItems(track);
   if (!items.length) { announce('This track is empty'); return; }
-  const current = state.selected && state.selected.track === track ? state.selected.note : null;
+  const current = state.selected && state.selected.track === track ? state.selected.item : null;
   const at = current ? items.indexOf(current) : -1;
   const next = items[Math.max(0, Math.min(items.length - 1, at + dir))] || items[dir > 0 ? 0 : items.length - 1];
   selectItemForKeyboard(track, next);
@@ -3682,24 +3707,26 @@ function jumpSelection(which) {
   if (!items.length) { announce('This track is empty'); return; }
   selectItemForKeyboard(state.activeTrack, which === 'first' ? items[0] : items[items.length - 1]);
 }
-// Rhythm hits have no single-selection inspector, so they go through
-// multiSelected instead — the same group the arrow-key nudge already edits.
+// Hits used to be routed through multiSelected here because they had no
+// single-selection inspector; now they do, so both kinds take the same path
+// and Shift+arrow reaches a drum hit's Velocity slider like any note's.
 function selectItemForKeyboard(track, item) {
   const label = isRhythm(track) ? hitAriaLabel(item) : noteAriaLabel(item);
-  if (isRhythm(track)) {
-    state.selected = null;
-    state.multiSelected = new Set([item]);
-    previewHit(item.type);
-    render();
-  } else {
-    selectNote(track, item);
-  }
+  selectItem(track, item);
   focusSelectedItem(track, item, label);
 }
-function selectNote(track, note) { state.selected = { track, note }; state.multiSelected.clear(); previewNote(track, note); render(); }
-function deleteNote(track, note) {
-  state.tracks[track] = state.tracks[track].filter(n => n !== note);
-  if (state.selected && state.selected.note === note) state.selected = null;
+// Selecting and deleting work the same for a note and a rhythm hit — only the
+// preview differs — so both go through one pair of functions rather than a
+// tonal and a rhythm copy that could drift apart.
+function selectItem(track, item) {
+  state.selected = { track, item };
+  state.multiSelected.clear();
+  if (isRhythm(track)) previewHit(item.type, hitVel(item)); else previewNote(track, item);
+  render();
+}
+function deleteItem(track, item) {
+  state.tracks[track] = state.tracks[track].filter(n => n !== item);
+  if (state.selected && state.selected.item === item) state.selected = null;
   render();
 }
 
@@ -3750,7 +3777,7 @@ function toggleMultiSelect(track, item) {
     state.activeTrack = track;
     state.multiSelected.clear();
   } else if (state.selected && state.selected.track === track) {
-    state.multiSelected.add(state.selected.note);
+    state.multiSelected.add(state.selected.item);
   }
   if (state.multiSelected.has(item)) state.multiSelected.delete(item);
   else state.multiSelected.add(item);
@@ -3771,7 +3798,7 @@ function deleteSelection() {
     state.multiSelected.clear();
     render();
   } else if (state.selected) {
-    deleteNote(state.selected.track, state.selected.note);
+    deleteItem(state.selected.track, state.selected.item);
   }
 }
 function nudgeSelection(dCol, dRow) {
@@ -3785,7 +3812,10 @@ function nudgeSelection(dCol, dRow) {
       const dr = Math.max(Math.max(...rows) - (RHYTHM_ROWS.length - 1), Math.min(Math.min(...rows), dRow));
       sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
       const selSet = state.multiSelected;
-      state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(h => selSet.has(h) || !sel.some(s => s.start === h.start));
+      // Keyed on the column alone this also removed unselected hits on *other*
+      // rows of the landing column — hitsConflict is the one place that
+      // comparison belongs.
+      state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(h => selSet.has(h) || !sel.some(s => hitsConflict(s, h)));
     } else {
       const notes = state.tracks[state.activeTrack];
       const minStart = Math.min(...sel.map(n => n.start));
@@ -3803,7 +3833,18 @@ function nudgeSelection(dCol, dRow) {
     return;
   }
   if (!state.selected) return;
-  const { track, note } = state.selected;
+  const { track, item } = state.selected;
+  if (isRhythm(track)) {
+    // A hit has no length and no pitch: it moves by column, and by row through
+    // the fixed 10-piece kit.
+    const row = RHYTHM_ROWS.indexOf(item.type);
+    item.start = quant(Math.max(0, Math.min(COLS - state.grid, item.start + dCol)));
+    if (dRow) item.type = RHYTHM_ROWS[Math.max(0, Math.min(RHYTHM_ROWS.length - 1, row - dRow))];
+    state.tracks[track] = state.tracks[track].filter(h => h === item || !hitsConflict(h, item));
+    render();
+    return;
+  }
+  const note = item;
   note.start = quant(Math.max(0, Math.min(COLS - note.len, note.start + dCol)));
   if (dRow) {
     const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
@@ -3815,7 +3856,7 @@ function nudgeSelection(dCol, dRow) {
 function copySelection() {
   let items, track;
   if (state.multiSelected.size > 0) { items = [...state.multiSelected]; track = state.activeTrack; }
-  else if (state.selected) { items = [state.selected.note]; track = state.selected.track; }
+  else if (state.selected) { items = [state.selected.item]; track = state.selected.track; }
   else return;
   const minStart = Math.min(...items.map(n => n.start));
   clipboard = { track, items: items.map(n => ({ ...n, start: n.start - minStart, arp: n.arp ? [...n.arp] : null })) };
@@ -3921,7 +3962,7 @@ function startMoveNote(e, track, idx) {
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
-    if (!moved) { selectNote(track, note); return; }
+    if (!moved) { selectItem(track, note); return; }
     const groupSet = new Set(group);
     // Read state.tracks[track] fresh here rather than reusing the `notes` closure
     // captured at gesture start — a concurrent touch drag on another note of this
@@ -3930,7 +3971,7 @@ function startMoveNote(e, track, idx) {
     let rest = state.tracks[track].filter(n => !groupSet.has(n));
     for (const n of group) rest = rest.filter(o => !notesConflict(o, n));
     state.tracks[track] = [...rest, ...group];
-    state.selected = { track, note };
+    state.selected = { track, item: note };
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -3963,6 +4004,7 @@ function startMoveHit(e, track, hit) {
     interacting = false;
     const groupSet = new Set(group);
     state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => hitsConflict(g, h)));
+    if (group.length === 1) { selectItem(track, hit); return; } // a click-without-drag selects, like a note
     render();
   }
   window.addEventListener('pointermove', onMove);
@@ -3977,15 +4019,20 @@ function renderInspector() {
   // from the track since (undo, a paste that displaced it, another drag), so
   // confirm it's actually still there before showing controls that edit it.
   const track = sel && sel.track;
-  const note = sel && state.tracks[track] && state.tracks[track].includes(sel.note) ? sel.note : null;
-  document.body.classList.toggle('has-sel', !!note); // drives the mobile close button
-  if (!note) {
+  const item = sel && state.tracks[track] && state.tracks[track].includes(sel.item) ? sel.item : null;
+  document.body.classList.toggle('has-sel', !!item); // drives the mobile close button
+  if (!item) {
     inspector.className = 'inspector empty';
-    inspector.textContent = 'No note selected. Pen a cell in the Rhythm track (Kick/Snare/Rim/Hi-hat/Open hi-hat/Shaker/Tom/Clap/Crash/Ride) to add a hit.';
+    inspector.textContent = 'Nothing selected. Click a note or a drum hit to edit it, or pen a cell to add one.';
     return;
   }
   inspector.className = 'inspector';
   inspector.innerHTML = '';
+  // A rhythm hit has none of the pitch/modulation properties below — the only
+  // thing to edit on it is how hard it's struck — so it gets its own short
+  // panel rather than a tonal inspector with most of it disabled.
+  if (isRhythm(track)) { renderHitInspector(track, item); return; }
+  const note = item;
 
   const panel = (cap) => {
     const p = el('div', 'insp-panel');
@@ -4187,7 +4234,57 @@ function renderInspector() {
 
   const del = el('button', 'insp-del');
   del.textContent = '🗑 Delete note';
-  del.addEventListener('click', () => deleteNote(track, note));
+  del.addEventListener('click', () => deleteItem(track, note));
+  inspector.appendChild(del);
+}
+
+// The rhythm counterpart of renderInspector's tonal body. Velocity is the whole
+// panel: a hit has no pitch, no length and no per-note effect flags — those all
+// live on the track's ✨ FX panel for drums, since every drum sound on a track
+// passes through the one channel node those effects insert into.
+function renderHitInspector(track, hit) {
+  inspector.innerHTML = '';
+  const p = el('div', 'insp-panel');
+  const cap = el('div', 'insp-cap'); cap.textContent = 'Selected hit';
+  p.appendChild(cap);
+
+  const row = el('div', 'insp-head');
+  const badge = el('span', 'insp-badge');
+  badge.textContent = trackName(track);
+  badge.style.background = trackColor(track);
+  const lcd = el('span', 'insp-note');
+  lcd.textContent = RHYTHM_LABELS[hit.type] || hit.type;
+  row.append(badge, lcd);
+  p.appendChild(row);
+  const sub = el('div', 'insp-sub');
+  sub.textContent = cap1(colToBarBeat(hit.start));
+  p.appendChild(sub);
+
+  // Same 10–100% range, step and formatting as the tonal Velocity slider, so
+  // the two read as one control at two scopes rather than two similar ones.
+  const field = el('div', 'insp-field');
+  const label = el('span'); label.textContent = 'Velocity';
+  const input = document.createElement('input');
+  input.type = 'range'; input.min = 0.1; input.max = 1; input.step = 0.05;
+  input.value = hitVel(hit);
+  const val = el('span', 'insp-velval'); val.textContent = Math.round(input.value * 100) + '%';
+  input.addEventListener('input', () => { val.textContent = Math.round(parseFloat(input.value) * 100) + '%'; });
+  input.addEventListener('change', () => {
+    const v = parseFloat(input.value);
+    // Absent means full, so drop the property at 100% rather than storing it.
+    // Otherwise dragging a slider to the top and back would leave `vel: 1` in
+    // the saved file, which reads as "someone set this" when nobody did.
+    if (v >= 1) delete hit.vel; else hit.vel = v;
+    previewHit(hit.type, v); // audition at the new level, like the tonal slider does
+    render(); autosave();
+  });
+  field.append(label, input, val);
+  p.appendChild(field);
+  inspector.appendChild(p);
+
+  const del = el('button', 'insp-del');
+  del.textContent = '🗑 Delete hit';
+  del.addEventListener('click', () => deleteItem(track, hit));
   inspector.appendChild(del);
 }
 
@@ -4746,7 +4843,8 @@ function exportMidiBytes() {
       for (const h of state.tracks[t.id] || []) {
         const note = GM_DRUM_NOTE[h.type] ?? 38;
         const startTick = Math.round(h.start * ticksPerEighth);
-        events.push({ tick: startTick, prio: 1, data: [0x99, note, 100] });
+        const vel = Math.max(1, Math.min(127, Math.round(hitVel(h) * 127)));
+        events.push({ tick: startTick, prio: 1, data: [0x99, note, vel] });
         events.push({ tick: startTick + hitDurTick, prio: 0, data: [0x89, note, 0] });
       }
     }
@@ -4870,20 +4968,27 @@ function importMidiIntoSong(buffer) {
     const notes = [], hits = [];
     for (const e of track.events) {
       if (e.type === 'on') {
-        onNotes.set(e.channel + ':' + e.note, e.tick);
+        // Keep the velocity, not just the tick — it was parsed and then thrown
+        // away here, so every imported note and hit came in at full level.
+        onNotes.set(e.channel + ':' + e.note, { tick: e.tick, velocity: e.velocity });
       } else if (e.type === 'off') {
         const key = e.channel + ':' + e.note;
-        const startTick = onNotes.get(key);
-        if (startTick == null) continue;
+        const on = onNotes.get(key);
+        if (on == null) continue;
+        const startTick = on.tick;
+        // MIDI velocity is 1-127; map onto the 0.1-1 the editor uses and round
+        // to the same 0.05 step the Velocity sliders offer, so an imported hit
+        // lands on a value the slider can actually represent.
+        const vel = Math.max(0.1, Math.min(1, Math.round((on.velocity / 127) * 20) / 20));
         onNotes.delete(key);
         const startCol = quant(startTick / ticksPerEighth);
         const endCol = quant(e.tick / ticksPerEighth);
         const lenCol = Math.max(MICRO, endCol - startCol);
         if (e.channel === 9) {
-          hits.push({ start: startCol, type: GM_DRUM_REVERSE[e.note] || 'hihat' });
+          hits.push({ start: startCol, type: GM_DRUM_REVERSE[e.note] || 'hihat', ...(vel < 1 ? { vel } : {}) });
         } else {
           notes.push({
-            start: startCol, len: lenCol, freq: round2(midiToFreq(e.note)), vel: 1,
+            start: startCol, len: lenCol, freq: round2(midiToFreq(e.note)), vel,
             bend: null, vib: false, trem: false, duty: null, arp: null,
             porta: false, crush: false, echo: false, chorus: false, reverb: false
           });
@@ -5656,12 +5761,12 @@ function previewNote(track, note) {
     scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track), getFmState(track));
   } catch { /* audio unavailable */ }
 }
-function previewHit(type) {
+function previewHit(type, vel) {
   try {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const at = ctx.currentTime + 0.005;
-    (DRUM_SCHEDULERS[type] || scheduleHihat)(at, previewGain);
+    scheduleDrum(type, at, previewGain, vel);
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
@@ -6281,6 +6386,24 @@ const DRUM_SCHEDULERS = {
   kick: scheduleKick, snare: scheduleSnare, rim: scheduleRim, tom: schedulePuka, hihat: scheduleHihat,
   openhat: scheduleOpenHat, shaker: scheduleShaker, clap: scheduleClap, crash: scheduleCrash, ride: scheduleRide,
 };
+// Plays one kit sound at `vel` (0.1-1, default full). Velocity is a plain gain
+// stage in front of the destination rather than a parameter threaded through
+// all ten schedulers: each of those hand-writes its own multi-stage envelope
+// (the snare alone has two, the clap three), so scaling every
+// exponentialRampToValueAtTime by hand would be ten chances for the same value
+// to drift. At full velocity no node is inserted at all, so the common case —
+// and every song written before hits had a velocity — builds exactly the graph
+// it did before, which matters when an offline render schedules thousands of
+// these. Every drum sound goes through here: playback, preview and patterns.
+function scheduleDrum(type, startAt, destGain, vel) {
+  const fn = DRUM_SCHEDULERS[type] || scheduleHihat;
+  const v = vel == null ? 1 : vel;
+  if (v >= 1) { fn(startAt, destGain); return; }
+  const g = ctx.createGain();
+  g.gain.value = v;
+  g.connect(destGain);
+  fn(startAt, g);
+}
 // Classic 8th-note swing: delays the off-beat 8th (the "and") within each beat,
 // sliding it toward the triplet position as the amount rises to 100%. Only
 // applies to simple meters (beat = 2 eighths) and only to notes/hits landing
@@ -6341,7 +6464,7 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;
     for (const h of state.tracks[id].filter(n => n.start >= fromCol && n.start < toCol)) {
-      (DRUM_SCHEDULERS[h.type] || scheduleHihat)(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id]);
+      scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id], hitVel(h));
     }
   }
 }
@@ -6463,7 +6586,7 @@ loopBtn.addEventListener('click', () => {
 
 // ---------- Export ----------
 function formatSeqLine(entry, isRhythm) {
-  if (isRhythm) return `{ type: '${entry.type}', d: ${entry.d} }`;
+  if (isRhythm) return `{ type: '${entry.type}', d: ${entry.d}${entry.vel != null ? `, vel: ${entry.vel}` : ''} }`;
   const parts = [`f: ${entry.f}`, `d: ${entry.d}`];
   if (entry.vel != null) parts.push(`vel: ${entry.vel}`);
   if (entry.bend) parts.push(`bend: ${entry.bend}`);
