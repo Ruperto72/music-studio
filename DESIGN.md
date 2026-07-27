@@ -813,6 +813,18 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   before hits had a velocity — which matters when an offline render schedules
   thousands of them. Each rhythm track routes to its own `chanGain[id]`, so
   multiple rhythm tracks mix, pan, and get FX-processed independently.
+- **Seeded noise**: the reverb impulse (`ensureReverbImpulse()`) and the two
+  drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
+  `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from
+  `mulberry32()` streams with fixed seeds, not `Math.random()`. They used to be
+  random per page load, which meant the same song never exported the same bytes
+  twice and its true peak wandered about a decibel between renders — enough
+  that measuring headroom took several passes to trust. Each buffer gets its
+  **own** generator rather than sharing one stream: a shared one would make
+  each buffer's contents depend on which others had already been built, and
+  that order varies with which sounds a song uses. `mulberry32` relies only on
+  `Math.imul` and `>>>`, both exactly specified, so the stream is identical in
+  every engine.
 - **Global FX buses** (`createGlobalFxBuses()`, part of `buildMasterBus()`):
   a shared tempo-synced delay, a shared LFO-modulated chorus, and a shared
   convolver reverb (reusing `ensureReverbImpulse()`'s impulse response) —

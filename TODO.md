@@ -259,12 +259,25 @@ ett facit.
   sampel, duckningen höll alltså tillbaka nivån), och de "diskontinuiteter"
   som först såg ut som defekter var master-bitcrushen (`masterCrush.amount:
   0.06` → håll 2 sampel) som gör exakt vad den är inställd på.
-- [ ] **Reverb-impulsen är slumpad vid varje sidladdning.**
-  `ensureReverbImpulse()` bygger sitt impulssvar med `Math.random()`, så två
-  exporter av samma låt blir inte bitidentiska och topparna varierar ~1 dB
-  mellan körningar (vilket är varför headroom-mätningen ovan gjordes över
-  flera renderingar i stället för en). En seedad PRNG skulle göra exporten
-  reproducerbar utan att ändra hur reverbet låter.
+- [x] **Allt brus är seedat — exporten är reproducerbar.** Punkten skrevs om
+  reverb-impulsen, men den var inte den enda källan: `Math.random()` fyllde
+  *tre* buffertar — impulssvaret plus de två trumbrusbuffertarna
+  (`ensureNoiseBuffer()` för hi-hat/virvel/rim/shaker,
+  `ensureCrashNoiseBuffer()` för crash/öppen hi-hat/ride). Att bara seeda
+  reverbet hade alltså inte gett bitidentiska exporter, som var hela poängen.
+  Alla tre fylls nu från `mulberry32()`-strömmar med fasta seeds.
+  **Varje buffert får en egen generator**, inte en delad ström: en delad hade
+  gjort varje bufferts innehåll beroende av vilka andra som råkat byggas
+  först, och den ordningen varierar med vilka ljud en låt faktiskt använder —
+  en låt utan crash hade fått ett annat reverb. Reverbet får dessutom en egen
+  ström per kanal, annars blir de två kanalerna identiska och svansen låter
+  mono. `mulberry32` använder bara `Math.imul` och `>>>`, bägge exakt
+  specificerade, så strömmen blir densamma i alla motorer.
+  Beteendeändringen är värd att notera: reverbet låter nu som *en bestämd*
+  slumpsekvens i stället för vilken man råkade få den här sidladdningen. Ingen
+  kunde ha förlitat sig på en viss, eftersom den ändrades varje gång — men det
+  betyder också att en låt kan låta aningen annorlunda än den gjorde vid ett
+  specifikt tillfälle.
 
 ## Spår-effekter
 
