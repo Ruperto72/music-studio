@@ -28,7 +28,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - **Time signature** (4/4, 3/4, 6/8, …) and named **timeline markers**
 - **Loop** range, zoom, multi-select, copy/paste, undo/redo
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
-  Breakbeat) you can audition and stamp into a rhythm track
+  Breakbeat) you can audition and stamp into a rhythm track. Every hit lands
+  with its own velocity, so the groove has accents rather than a flat machine
+  pulse, and each pattern carries a **fill** bar used on the last bar of every
+  phrase (2, 4 or 8 bars, or off), with a crash on the downbeat after it
 
 ### Sound design
 

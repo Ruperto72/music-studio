@@ -952,6 +952,101 @@ async function main() {
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
     });
 
+    step('Rhythm patterns: accented hits, a fill on the phrase\'s last bar, a crash after it', async () => {
+      await goto(APP_URL); // a blank project, so the insert has the whole song to tile
+      await waitFor(`!!document.querySelector('.track')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+
+      const choices = await cdp.evaluate(`(() => {
+        const s = document.getElementById('pattern-fill-every');
+        return { value: s.value, count: s.options.length };
+      })()`);
+      if (choices.value !== '4' || choices.count !== 4) {
+        throw new Error(`expected a 4-option phrase length defaulting to 4 bars, got ${JSON.stringify(choices)}`);
+      }
+
+      // Read the inserted groove back out of the grid's own aria-labels: they
+      // carry the drum, the bar and the velocity, which is exactly the three
+      // things this step is about — and reading them also keeps the labels
+      // honest, since a hit with no label would simply vanish from the count.
+      const insertAndRead = async (name) => {
+        await cdp.evaluate(`(() => {
+          const row = [...document.querySelectorAll('#pattern-list .song-item')].find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(name)});
+          [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+        })()`);
+        await new Promise((r) => setTimeout(r, 400));
+        const labels = await cdp.evaluate(`[...document.querySelectorAll('.lane .hit')].map(h => h.getAttribute('aria-label'))`);
+        const bars = {};
+        for (const l of labels) {
+          const m = l.match(/bar (\d+)/);
+          if (!m) throw new Error(`a hit has no bar in its label: ${l}`);
+          // The bar number comes out so two bars can be compared at all; what
+          // is left is drum + beat + velocity. Labels name the beat, not the
+          // 8th, so this compares bars at beat granularity — enough to tell a
+          // fill from a groove bar, and it is the only per-hit description the
+          // grid actually exposes.
+          (bars[m[1]] = bars[m[1]] || []).push(l.replace(/bar \d+ /, ''));
+        }
+        // Sorted so a bar is compared by content, not by the order render()
+        // happened to emit it in.
+        for (const k of Object.keys(bars)) bars[k].sort();
+        return { labels, bars };
+      };
+
+      const rock = await insertAndRead('Rock');
+      // Not `.some(...)`: a single accented hit would pass that while the rest
+      // of the groove stayed flat. The point is that most of it is shaded.
+      const accented = rock.labels.filter((l) => /velocity/.test(l));
+      if (accented.length < rock.labels.length / 3) {
+        throw new Error(`only ${accented.length} of ${rock.labels.length} hits carry a velocity — the groove is still flat`);
+      }
+      // ...and the loud ones must still be *absent*, not stored as vel: 1, or
+      // every inserted pattern grows the saved file for nothing.
+      if (!rock.labels.some((l) => !/velocity/.test(l))) {
+        throw new Error('every hit carries an explicit velocity — full-strength hits should leave it off');
+      }
+      const barNums = Object.keys(rock.bars).map(Number).sort((a, b) => a - b);
+      if (barNums.length < 6) throw new Error(`expected the pattern to tile several bars, got ${barNums.length}`);
+      const key = (n) => (rock.bars[n] || []).join('|');
+      if (key(1) !== key(2) || key(2) !== key(3)) {
+        throw new Error('bars 1-3 of a phrase should be the same groove bar');
+      }
+      if (key(4) === key(1)) throw new Error('bar 4 should be the fill, not another groove bar');
+      if (key(5) === key(4)) throw new Error('bar 5 should be back to the groove');
+      const crashBars = rock.labels.filter((l) => /^Crash/.test(l)).map((l) => Number(l.match(/bar (\d+)/)[1]));
+      if (!crashBars.includes(5)) throw new Error(`the bar after a fill should open with a crash, crashes landed on ${JSON.stringify(crashBars)}`);
+      if (crashBars.some((b) => b <= 4)) throw new Error(`a crash landed before the first fill: ${JSON.stringify(crashBars)}`);
+
+      // Breakbeat already crashes on its own downbeat. The crash-after-fill
+      // must go through hitsConflict rather than being appended blindly, or
+      // bar 5 gets two crashes stacked in one cell.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const breaks = await insertAndRead('Breakbeat');
+      const bar5Crashes = (breaks.bars['5'] || []).filter((l) => /^Crash/.test(l));
+      if (bar5Crashes.length !== 1) {
+        throw new Error(`expected exactly one crash on bar 5 of Breakbeat, got ${bar5Crashes.length}`);
+      }
+
+      // Fills off: every bar identical again, which is what the patterns did
+      // before fills existed — and the only setting that keeps a pattern from
+      // commenting on an arrangement it is being tiled underneath.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const s = document.getElementById('pattern-fill-every');
+        s.value = '0';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      const flat = await insertAndRead('Rock');
+      const flatKeys = new Set(Object.values(flat.bars).map((b) => b.join('|')));
+      if (flatKeys.size !== 1) {
+        throw new Error(`with fills off every bar should be identical, got ${flatKeys.size} distinct bars`);
+      }
+      if (flat.labels.some((l) => /^Crash/.test(l))) throw new Error('fills off should insert no crashes');
+    });
+
     step('Noise buffers are seeded: identical across two page loads', async () => {
       // The reverb tail and the six noise-based drum sounds used to be filled
       // from Math.random(), so they differed on every page load. Checksum the

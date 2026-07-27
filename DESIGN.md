@@ -379,6 +379,41 @@ Opened via 🎵; three sections:
 This dialog is the *only* way a song's content gets loaded into the editor
 — the page itself always boots into a blank project (see B.8).
 
+### A.11b Rhythm patterns dialog
+
+Opened from the 🥁 button on a rhythm track's header (rhythm tracks only —
+`insertPatternIntoRhythm()` refuses anything else). Lists the built-in
+grooves from `RHYTHM_PATTERNS`, each with a name, a one-line description
+and three buttons: **▶** auditions the groove bar, **▶ fill** the fill bar,
+**Insert** stamps the pattern from the playhead's bar to the end of the
+song, replacing whatever was there.
+
+Above the list, one **Fill every** dropdown (`FILL_EVERY_CHOICES`: never /
+2 / 4 / 8 bars, default 4) sets the phrase length for the insert. It is a
+single control rather than a per-row one because it is a property of *this
+insert*, not of a groove — every pattern has a fill, and which one you pick
+does not change how long a phrase should be.
+
+Two things carry the musical weight here, both data rather than code:
+
+- **Velocity.** Every hit in every pattern is authored with an intended
+  strength — backbeat and kick full, hats accented on the beat and ghosted
+  off it, textures (shaker, a jazz kick) well below. A groove where every
+  hit lands at full is the one thing that reads as a machine no matter how
+  good the placement is. The authored values follow `hitVel()`'s **absent
+  means full** rule, and `patternHitAt()` only writes `vel` through when it
+  is actually below 1 — so a stamped pattern serialises no larger than the
+  same hits placed by hand.
+- **Fills.** Each pattern carries a second one-bar authoring, `fill`, used
+  on the last bar of each phrase. Fills keep the groove through the first
+  half of the bar and then crescendo, and the bar *after* a fill opens with
+  a crash — that is what a fill is for, and leaving the crash out makes it
+  sound like a mistake rather than a lead-in. The crash goes in through
+  `hitsConflict()`, since Breakbeat already crashes on its own downbeat.
+
+Phrases are counted from the bar the insert starts on, not from bar 1 of
+the song, so the phrasing lines up with wherever the playhead was left.
+
 ### A.12 Help dialog
 
 A single scrollable reference covering: overview, tracks & channel strips,
