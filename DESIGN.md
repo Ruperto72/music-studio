@@ -109,12 +109,13 @@ with distinct rows, each independently hideable when the track is collapsed:
 1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
    track name (click-to-... double-click-to-rename, ellipsis-truncated),
    **M**ute, **S**olo, and (hidden when collapsed) **✕** remove.
-2. **Waveform row** (hidden when collapsed): for tonal tracks, nine icon
-   buttons over **two rows** — Square/Triangle/Saw/Sine/Half sine/NES Tri
-   (wavetable)/Noise/Ring/FM, each drawn as the shape it produces — with the
-   selected one's name spelled out underneath. Nine across a single row would
-   leave each button about 19px, too small for the shape to read; a
-   five-column grid keeps them at ~35px, wider than the six were; rhythm tracks get a static "Kit" label with its own glyph
+2. **Waveform row** (hidden when collapsed): for tonal tracks, ten icon
+   buttons over **two rows** of five — Square/PWM/Triangle/Saw/Sine on the
+   first, Half sine/NES Tri (wavetable)/Noise/Ring/FM on the second, each drawn
+   as the shape it produces — with the selected one's name spelled out
+   underneath. Ten across a single row would leave each button about 17px, too
+   small for the shape to read; the five-column grid keeps them at ~35px, wider
+   than the original six were; rhythm tracks get a static "Kit" label with its own glyph
    instead. The buttons form a `role="radiogroup"` with `aria-checked`
    (the same pattern as the Pen/Eraser/Grab tool group, since this is one
    choice out of a set), and each carries the waveform's name as its
@@ -833,6 +834,18 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   without a second copy of the scheduling code: absolute targets convert
   directly, and depths expressed as a fraction of the note's own frequency
   convert by the same factor.
+  **PWM** is the classic analogue trick: a sawtooth minus a delayed copy of
+  itself is a pulse train whose width is that delay as a fraction of the
+  period, so sweeping the delay sweeps the width. An LFO on `delayTime` does
+  the sweeping — the same trick the chorus bus uses. Crucially the delayed path
+  is fed from the *same* oscillator rather than a second one started alongside
+  it: two oscillators would have to stay in phase for the width to hold steady,
+  which Web Audio does not promise, and splitting one makes it exact by
+  construction. The delay is set from the note's starting frequency, so a bend
+  or vibrato moves the pitch without moving the duty proportionally — the same
+  compromise ring modulation's fixed modulator makes. The sweep restarts with
+  each note, as per-note vibrato does; a free-running per-track sweep would be
+  a different (and larger) change.
   The noise buffer is scaled to 0.57 rather than full ±1: resampling a random
   step sequence overshoots, and unscaled it measured about 5 dB above the
   oscillators, so switching a track to Noise jumped in level.

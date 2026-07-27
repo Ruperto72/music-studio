@@ -812,7 +812,7 @@ async function main() {
       })()`);
       if (wave.missing) throw new Error('no tonal track waveform picker found');
       if (wave.role !== 'radiogroup') throw new Error(`waveform picker should be a radiogroup, got ${wave.role}`);
-      if (wave.count !== 9) throw new Error(`expected 9 waveforms, got ${wave.count}`);
+      if (wave.count !== 10) throw new Error(`expected 10 waveforms, got ${wave.count}`);
       if (wave.count === 0 || !wave.named || !wave.drawn || !wave.hidden) {
         throw new Error(`every waveform button needs a name and a decorative glyph: ${JSON.stringify(wave)}`);
       }
@@ -1046,8 +1046,8 @@ async function main() {
       }
     });
 
-    step('Waveforms: all nine build a distinct sound, and none is off in level', async () => {
-      // The DOM can only show that nine buttons exist. What matters is that each
+    step('Waveforms: all ten build a distinct sound, none is off in level, and PWM sweeps', async () => {
+      // The DOM can only show that ten buttons exist. What matters is that each
       // one produces different audio — a waveform that silently fell through to
       // `square` would look perfect and sound wrong — so render a note per
       // waveform offline and compare the PCM.
@@ -1086,6 +1086,26 @@ async function main() {
       })()`);
       await waitFor(`document.querySelectorAll('.lane .note').length === 1`);
 
+      // PWM's sweep is an LFO on the delay that sets the pulse width. Nothing in
+      // the DOM or the PCM hash shows whether it is still connected, and a crude
+      // duty-over-time metric is too noisy to assert on — so check the wiring,
+      // the same way the vibrato step checks an LFO reaches osc.frequency.
+      await cdp.evaluate(`(() => {
+        window.__delayMod = 0;
+        window.__delayParams = new WeakSet();
+        const origDelay = BaseAudioContext.prototype.createDelay;
+        BaseAudioContext.prototype.createDelay = function (...a) {
+          const d = origDelay.apply(this, a);
+          window.__delayParams.add(d.delayTime);
+          return d;
+        };
+        const origConnect = AudioNode.prototype.connect;
+        AudioNode.prototype.connect = function (dest, ...rest) {
+          try { if (dest instanceof AudioParam && window.__delayParams.has(dest)) window.__delayMod++; } catch {}
+          return origConnect.call(this, dest, ...rest);
+        };
+      })()`);
+
       const layout = await cdp.evaluate(`(() => {
         const g = document.querySelector('.th-wave-group');
         const btns = [...g.querySelectorAll('.th-wave-btn')];
@@ -1104,17 +1124,34 @@ async function main() {
       if (layout.minWidth < 29) throw new Error(`waveform buttons shrank to ${layout.minWidth}px`);
 
       const results = {};
+      const delayMods = {};
       for (const label of layout.labels) {
         const before = await cdp.evaluate(`window.__waveRenders.length`);
         await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === ${JSON.stringify('')} + ${JSON.stringify(label)}).click()`);
         await new Promise((r) => setTimeout(r, 300));
         await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        // Reset here, not before the waveform click: clicking a waveform button
+        // auditions a note, which spins up the live context and its chorus bus,
+        // so counting from there makes the baseline depend on whether that
+        // context already existed.
+        await cdp.evaluate(`window.__delayMod = 0`);
         await cdp.evaluate(`document.getElementById('export-wav').click()`);
         await waitFor(`window.__waveRenders.length > ${before}`, 90000);
         results[label] = await cdp.evaluate(`window.__waveRenders[${before}]`);
+        delayMods[label] = await cdp.evaluate(`window.__delayMod`);
+      }
+      // Not "PWM is the only one" — the shared chorus bus legitimately sweeps its
+      // own delay on every render, so the baseline is non-zero. What must hold
+      // is that every other waveform shares one baseline and PWM sits above it.
+      const baseline = Object.keys(delayMods).filter((n) => n !== 'PWM').map((n) => delayMods[n]);
+      if (new Set(baseline).size !== 1) {
+        throw new Error(`waveforms other than PWM should all modulate the same number of delays: ${JSON.stringify(delayMods)}`);
+      }
+      if (delayMods['PWM'] <= baseline[0]) {
+        throw new Error(`PWM built no LFO on its pulse-width delay — the sweep is gone: ${JSON.stringify(delayMods)}`);
       }
       const names = Object.keys(results);
-      if (names.length !== 9) throw new Error(`rendered ${names.length} waveforms, expected 9`);
+      if (names.length !== 10) throw new Error(`rendered ${names.length} waveforms, expected 10`);
       const silent = names.filter((n) => results[n].peak <= 0.001);
       if (silent.length) throw new Error(`waveform(s) produced no sound: ${JSON.stringify(silent)}`);
       // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
