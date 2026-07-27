@@ -161,9 +161,13 @@
 
   #song-name-display {
     font-size: 13px; font-weight: 700; color: var(--ink); max-width: 220px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
   }
-  #song-name-display::after { content: ' ✎'; color: var(--muted); font-weight: 400; font-size: 11px; }
+  /* The name itself keeps the ellipsis truncation the button used to own; the
+     pencil must stay visible however long the name is, so it never shrinks. */
+  #song-name-display > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #song-name-display .glyph-sq { width: 12px; height: 12px; opacity: 0.55; }
+  #song-name-display:hover .glyph-sq { opacity: 1; }
   #song-name-display:hover { border-color: #55555f; color: #fff; }
 
   /* Counter LCD */
@@ -1969,7 +1973,15 @@ refreshTrackArrays(); // sync PITCH_TRACKS/ALL_TRACKS/RHYTHM_TRACK_IDS with the 
 const songNameDisplay = document.getElementById('song-name-display');
 const mstripSongName = document.getElementById('mstrip-song-name');
 function updateSongNameUI() {
-  songNameDisplay.textContent = state.songName;
+  // The rename affordance is a real glyph from GLYPHS, not a ::after character:
+  // the button is an element, so it can hold one, and as a child it inherits
+  // currentColor and brightens with the label on hover — which the fixed muted
+  // pseudo-element never did. Rebuilt here because this assignment used to be a
+  // textContent write, which would wipe an appended child on every rename.
+  songNameDisplay.textContent = '';
+  const label = document.createElement('span');
+  label.textContent = state.songName;
+  songNameDisplay.append(label, glyph('pen'));
   mstripSongName.textContent = state.songName;
   document.title = 'Web Audio Studio — ' + state.songName;
 }

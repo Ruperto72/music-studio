@@ -682,6 +682,18 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   deras emoji ("🎵 Songs…"), vilket blev inaktuellt — den namnger dem nu med
   sina etiketter i stället. Markörflaggan är ett CSS-pseudoelement och kan
   inte anropa `glyph()`, så den fick samma form som en inbäddad data-URI.
+  **Efterföljare:** rename-pennan efter låtnamnet (`✎` i ett `::after`) blev
+  kvar första omgången — knappen är ett riktigt element, så den bär nu en äkta
+  `glyph('pen')`, vilket också gör att den ärver `currentColor` och tänds med
+  etiketten vid hover (det gjorde det fasta dämpade pseudoelementet aldrig).
+  `updateSongNameUI()` skrev tidigare `textContent`, vilket hade raderat ett
+  tillagt barn vid varje namnbyte, så namnet ligger i ett eget `<span>` med
+  ellipsen på sig — pennan krymper inte hur långt namnet än är.
+  Att den överlevde första omgången berodde på två luckor i granskningen, bägge
+  nu täppta: den läste bara verktygsfält, meny och spårhuvuden (masterremsan
+  och dialogerna låg utanför), och den läste bara `textContent`, som aldrig ser
+  ett `::before`/`::after`. Dessutom stod `✎` i undantagslistan från när den
+  var avsiktlig — negativtestet passerade tyst tills den togs bort därifrån.
 
 - [x] **Ljudgrafens uppbyggnad var duplicerad på tre ställen** —
   `ensureCtx()` (live-uppspelning), `renderSongToWav()` (WAV-export) och

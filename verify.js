@@ -730,15 +730,23 @@ async function main() {
         // pictures, and a stroked play triangle looks worse than the filled one
         // everybody expects. Listing them here is what keeps that a decision
         // rather than an oversight.
-        const KEEP = '✕⏮■▶↺↶↷▾▸▲▼＋+−-⋯✎♪…';
+        // ✎ was on this list while the song-name button still used it as a
+        // ::after; it is a real glyph now, so it comes off — otherwise this
+        // check would happily let the old pencil back in.
+        const KEEP = '✕⏮■▶↺↶↷▾▸▲▼＋+−-⋯♪…';
         const emoji = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
         const strip = (t) => [...t].filter(c => !KEEP.includes(c)).join('');
         const offenders = [];
         const nameless = [];
+        // The master strip and the dialogs are in scope too: the first pass at
+        // this only covered the toolbar, menu and track headers, and the rename
+        // pencil on the song-name button sat outside all three and survived.
         const scope = [
           ...document.querySelectorAll('#file-menu button'),
           ...document.querySelectorAll('.toolbar button'),
           ...document.querySelectorAll('.track-header button'),
+          ...document.querySelectorAll('#master-track button'),
+          ...document.querySelectorAll('dialog button'),
         ];
         for (const b of scope) {
           const text = b.textContent || '';
@@ -746,10 +754,21 @@ async function main() {
           const named = text.trim() || b.getAttribute('aria-label') || b.getAttribute('title');
           if (!named) nameless.push(b.id || b.className);
         }
+        // A ::before/::after character is invisible to textContent — which is how
+        // the pencil and the marker flag hid from the first version of this
+        // check. Both are background images now; assert nothing has gone back.
+        const pseudo = [];
+        for (const el of document.querySelectorAll('*')) {
+          for (const which of ['::before', '::after']) {
+            const c = getComputedStyle(el, which).content;
+            if (c && c !== 'none' && emoji.test(strip(c))) pseudo.push((el.id || el.className || el.tagName) + which + ' ' + c);
+          }
+        }
         return {
           count: scope.length,
           offenders,
           nameless,
+          pseudo,
           // Every menu item should now carry a glyph rather than a character.
           menuItems: document.querySelectorAll('#file-menu .file-menu-item').length,
           menuGlyphs: document.querySelectorAll('#file-menu .file-menu-item svg.glyph-sq').length,
@@ -758,6 +777,7 @@ async function main() {
       })()`);
       if (audit.count < 20) throw new Error(`expected to audit the whole toolbar and menu, saw ${audit.count} buttons`);
       if (audit.offenders.length) throw new Error(`emoji left on controls: ${JSON.stringify(audit.offenders)}`);
+      if (audit.pseudo.length) throw new Error(`emoji left in CSS content: ${JSON.stringify(audit.pseudo)}`);
       if (audit.nameless.length) throw new Error(`controls with no accessible name: ${JSON.stringify(audit.nameless)}`);
       if (audit.menuItems === 0 || audit.menuGlyphs !== audit.menuItems) {
         throw new Error(`every menu item needs a glyph: ${audit.menuGlyphs}/${audit.menuItems}`);
