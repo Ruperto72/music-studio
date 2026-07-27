@@ -109,9 +109,18 @@ with distinct rows, each independently hideable when the track is collapsed:
 1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
    track name (click-to-... double-click-to-rename, ellipsis-truncated),
    **M**ute, **S**olo, and (hidden when collapsed) **✕** remove.
-2. **Waveform row** (hidden when collapsed): a `<select>` of Square/
-   Triangle/Saw/Sine/NES Tri (wavetable)/FM for tonal tracks, or a static
-   "Kit" label for rhythm tracks.
+2. **Waveform row** (hidden when collapsed): for tonal tracks, six icon
+   buttons — Square/Triangle/Saw/Sine/NES Tri (wavetable)/FM, each drawn
+   as the shape it produces — with the selected one's name spelled out
+   underneath; rhythm tracks get a static "Kit" label with its own glyph
+   instead. The buttons form a `role="radiogroup"` with `aria-checked`
+   (the same pattern as the Pen/Eraser/Grab tool group, since this is one
+   choice out of a set), and each carries the waveform's name as its
+   `aria-label` because the glyph itself is `aria-hidden`. This replaced a
+   `<select>`: the choice is "which of these shapes", which a dropdown can
+   only ever show one of at a time — and a native `<option>` cannot carry
+   an SVG at all. The six buttons are sized `flex: 1 1 0` so they divide
+   the fixed 200px header (`--header-w`) however many waveforms exist.
 3. **Tools row** (hidden when collapsed): **〰 Auto** (toggles the
    automation-curve row), **E Env** (toggles the envelope/filter/FM row,
    tonal tracks only — drum hits use fixed per-type envelopes), **✨ FX**
@@ -194,8 +203,11 @@ field in it is a static per-track knob with nothing tied to a timeline
 column, so it renders as a compact two-column grid (`buildFxPanel()`)
 appended directly into the track header itself, expanding the header's
 height in place. Available on every track, tonal or rhythm alike. Five
-groups, separated by thin dividers, driven generically by `TRACK_FX_REGISTRY`
-(see B.6):
+groups, driven generically by `TRACK_FX_REGISTRY` (see B.6). Each group
+opens with a heading — its glyph plus its name — which doubles as the
+separator between groups; these replaced the thin dividers that used to
+stand there, because abbreviations like Thr/Rat/Atk/Rel only read as a
+compressor once you can see which group you are in:
 
 - **Delay / Chorus / Reverb send** (0–100% each): continuous sends to three
   shared global effect buses, independent of the per-note Echo/Chorus/
@@ -252,7 +264,8 @@ a single note is selected, per-note controls grouped into:
 - **Selected note**: track-color badge, pitch name + frequency, note length,
   Velocity slider.
 - **Modulation**: Vibrato / Tremolo toggle buttons, Portamento toggle
-  (glides into the next contiguous note).
+  (glides into the next contiguous note). Each toggle draws its effect as a
+  small glyph above its label — see A.14.
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
   (pulse-width for square waves), Arpeggio (comma-separated semitone
   offsets, with the same ten `CHORD_PRESETS` quick-fill buttons the Chord
@@ -270,7 +283,7 @@ a single note is selected, per-note controls grouped into:
   (`CHORD_PRESETS`) shared with the Arpeggio row above, and `addChordAbove()`
   is generic over the interval list, so adding one is a row in that table
   rather than another hand-wired button in either place.
-- **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons.
+- **Texture / FX**: Bitcrush, Echo, Chorus, Reverb toggle buttons, glyphed the same way.
 - **Delete note** button.
 
 Both preset grids sit behind a **`▸ presets`** disclosure and are collapsed by
@@ -360,9 +373,10 @@ by default — these are the deliberate additions:
   that only made sense positionally (**M**/**S**/**✕** per track) name their
   track.
 - **State**: Mute/Solo and the per-note effect toggles expose `aria-pressed`;
-  the Pen/Eraser/Grab cluster is a `role="radiogroup"` with `aria-checked`,
-  since it is a single choice rather than three independent toggles. All of
-  these previously carried their state only in a CSS class.
+  the Pen/Eraser/Grab cluster and the waveform picker are each a
+  `role="radiogroup"` with `aria-checked`, since both are a single choice
+  rather than a row of independent toggles. All of these previously carried
+  their state only in a CSS class.
 - **Keyboard grid access**: **Shift+←/→** steps the selection through the
   active track and **Home**/**End** jump to its ends, with the selected item
   announced through a polite live region (`announce()`). Plain arrows still
@@ -371,12 +385,39 @@ by default — these are the deliberate additions:
   without walking through hundreds of blocks.
 - **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
   5.32:1. Body and muted text already passed AA.
+- **Icons**: every glyph (A.14) is `aria-hidden`, and the control around it
+  keeps its own text label or `aria-label`. The waveform picker, whose buttons
+  are icon-only, additionally spells the selected shape's name out below the
+  row, so no information is available *only* as a picture.
+
+### A.14 Icon glyphs
+
+One table, `GLYPHS`, holds every inline-SVG shape in the app as a list of
+path `d` strings in a 24×12 viewBox with y=6 as the zero line (a list rather
+than one string because chorus is two detuned waves and reverb an impulse
+plus its tail). `glyph(name)` builds the `<svg>`. They are used in three
+places: the waveform picker (A.4), the per-note effect toggles (A.9) and the
+✨ FX panel's group headings (A.7).
+
+Two properties make one table enough. The paths are stroked with
+`currentColor`, so a single copy works on a lit blue toggle, a muted grey
+heading and a hover state without recoloured variants. And where a per-note
+flag and a per-track control mean the same effect — Crush, Tremolo, Chorus,
+Reverb, and per-note Echo against per-track Delay — they deliberately share a
+glyph, so the two panels read as the same effect at two scopes; that one is
+a fixed flag and the other a dial-able amount is what the `title` text says.
+
+The waveform glyphs are literal: the NES triangle is drawn as the 16-step
+staircase that makes it sound unlike a plain triangle, and FM as a carrier
+whose period keeps compressing. The EQ glyph is a response curve rather than
+three miniature faders — the faders' knob marks turned into specks at the
+18px the panel headings render at.
 
 Not solved: there is no way to *create* a note from the keyboard, and no
 spatial model of the grid for a screen reader — you can reach and edit what
 exists, but composing from scratch still needs a pointer.
 
-### A.14 Responsive / mobile / PWA UI
+### A.15 Responsive / mobile / PWA UI
 
 - Below ~760px, `.editor-layout` stacks vertically, the inspector becomes a
   bottom sheet, toolbar "extra" panels collapse behind "⋯ More", and a

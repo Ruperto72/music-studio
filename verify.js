@@ -717,6 +717,111 @@ async function main() {
       }
     });
 
+    step('Icons: waveform picker, per-note toggles and FX headings are glyphed and still labelled', async () => {
+      // The glyphs are aria-hidden decoration, so the risk isn't that they fail
+      // to draw — it's that adding them quietly costs a control its accessible
+      // name, or that the six-button picker overflows the fixed-width header.
+      // Check both, plus that clicking still writes through to state.
+      const wave = await cdp.evaluate(`(() => {
+        const g = document.querySelector('.th-wave-group');
+        if (!g) return { missing: true };
+        const btns = [...g.querySelectorAll('.th-wave-btn')];
+        return {
+          role: g.getAttribute('role'),
+          count: btns.length,
+          named: btns.every(b => b.getAttribute('aria-label')),
+          drawn: btns.every(b => b.querySelectorAll('svg.glyph path').length > 0),
+          hidden: btns.every(b => b.querySelector('svg.glyph').getAttribute('aria-hidden') === 'true'),
+          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
+          name: g.closest('.th-wave-row').querySelector('.th-wave-name')?.textContent,
+          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
+        };
+      })()`);
+      if (wave.missing) throw new Error('no tonal track waveform picker found');
+      if (wave.role !== 'radiogroup') throw new Error(`waveform picker should be a radiogroup, got ${wave.role}`);
+      if (wave.count === 0 || !wave.named || !wave.drawn || !wave.hidden) {
+        throw new Error(`every waveform button needs a name and a decorative glyph: ${JSON.stringify(wave)}`);
+      }
+      // The glyph carries no accessible name of its own, so the selected
+      // waveform must still be readable as text somewhere.
+      if (wave.checked.length !== 1 || wave.name !== wave.checked[0]) {
+        throw new Error(`exactly one waveform should be checked and spelled out: ${JSON.stringify(wave)}`);
+      }
+      if (!wave.fits) throw new Error('the waveform buttons overflow the track header');
+      // Scope to one track's picker: by this point the song has several tonal
+      // tracks, each with its own group, so an unscoped query would mix their
+      // states together and read as many checked buttons as there are tracks.
+      const switched = await cdp.evaluate(`(() => {
+        const row = document.querySelector('.th-wave-group').closest('.th-wave-row');
+        [...row.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Saw').click();
+        const row2 = document.querySelector('.th-wave-group').closest('.th-wave-row');
+        const btns = [...row2.querySelectorAll('.th-wave-btn')];
+        return {
+          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
+          name: row2.querySelector('.th-wave-name')?.textContent,
+        };
+      })()`);
+      if (switched.checked.join() !== 'Saw' || switched.name !== 'Saw') {
+        throw new Error(`picking Saw should move both the checked state and the caption: ${JSON.stringify(switched)}`);
+      }
+
+      // Per-note pills: select a note, then confirm each toggle still reads as
+      // its own label rather than as an unnamed icon.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`document.querySelector('.note')?.click()`);
+      await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
+      const pills = await cdp.evaluate(`(() => {
+        const btns = [...document.querySelectorAll('.inspector .fx-toggle')];
+        return {
+          count: btns.length,
+          drawn: btns.every(b => b.querySelectorAll('svg.glyph path').length > 0),
+          // The accessible name comes from the pill's text, so assert the
+          // actual names. Comparing .textContent against the label element
+          // instead would only prove the two agree — which they still do when
+          // both are empty, so an unnamed icon-only pill would pass.
+          names: btns.map(b => b.textContent.trim()).sort(),
+          pressed: btns.filter(b => b.getAttribute('aria-pressed')).length,
+        };
+      })()`);
+      // .every() is true for an empty list, so an inspector that rendered no
+      // pills at all would otherwise sail through every check above.
+      if (pills.count !== 7) throw new Error(`expected 7 per-note effect pills, got ${pills.count}`);
+      const wantPills = ['Bitcrush', 'Chorus', 'Echo', 'Portamento', 'Reverb', 'Tremolo', 'Vibrato'];
+      if (pills.names.join('|') !== wantPills.join('|')) {
+        throw new Error(`per-note pills lost their labels: ${JSON.stringify(pills.names)}`);
+      }
+      if (!pills.drawn || pills.pressed !== 7) {
+        throw new Error(`pills must keep their glyph and aria-pressed: ${JSON.stringify(pills)}`);
+      }
+
+      // FX panel: one glyphed heading per TRACK_FX_REGISTRY group, and all 13
+      // sliders still present now that the headings share their grid.
+      // An earlier step may already have opened an FX panel, in which case
+      // clicking the button would close it — open one only if none is showing.
+      await cdp.evaluate(`(() => {
+        if (document.querySelector('.th-fx-panel')) return;
+        [...document.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.th-fx-group')`);
+      const fx = await cdp.evaluate(`(() => {
+        // Same scoping caution as the waveform picker above — read one panel.
+        const panel = document.querySelector('.th-fx-panel');
+        const heads = [...panel.querySelectorAll('.th-fx-group')];
+        return {
+          labels: heads.map(h => h.textContent.trim()),
+          drawn: heads.every(h => h.querySelectorAll('svg.glyph path').length > 0),
+          fields: panel.querySelectorAll('.th-fx-field').length,
+          fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
+        };
+      })()`);
+      if (fx.labels.join('|') !== 'Sends|EQ|Comp|Bitcrush|Tremolo') {
+        throw new Error(`unexpected FX group headings: ${JSON.stringify(fx.labels)}`);
+      }
+      if (!fx.drawn) throw new Error('every FX group heading needs a glyph');
+      if (fx.fields !== 13) throw new Error(`expected 13 FX sliders, got ${fx.fields}`);
+      if (!fx.fits) throw new Error('the FX panel overflows the track header');
+    });
+
     step('Accessibility: landmarks, labelled grid and keyboard note selection', async () => {
       const structure = await cdp.evaluate(`({
         h1: document.querySelectorAll('h1').length,

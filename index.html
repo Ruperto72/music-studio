@@ -340,10 +340,28 @@
   }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
   .th-wave-row { margin-top: 2px; }
-  .th-wave {
-    width: 100%; box-sizing: border-box; font-size: 10px; color: #cfcfd8; background: #26262d;
-    border: 1px solid #3a3a44; border-radius: 4px; padding: 2px 4px; cursor: pointer;
+  /* Shared by every inline SVG from GLYPHS. Stroked with currentColor so one
+     glyph works on a lit toggle, a muted panel caption and a hover state
+     without needing a recoloured copy per context. */
+  .glyph { display: block; width: 22px; height: 11px; flex: 0 0 auto; }
+  .glyph path {
+    fill: none; stroke: currentColor; stroke-width: 1.4;
+    stroke-linecap: round; stroke-linejoin: round;
   }
+  /* Waveform picker: six shapes shown at once rather than hidden behind a
+     <select>, since the whole point is to compare them. Sized to share the
+     200px header (--header-w) minus its padding, so `flex: 1 1 0` splits the
+     row evenly however many WAVEFORMS there are. */
+  .th-wave-group { display: flex; gap: 2px; }
+  .th-wave-btn {
+    flex: 1 1 0; min-width: 0; padding: 3px 1px; display: flex; justify-content: center;
+    background: #26262d; border: 1px solid #3a3a44; border-radius: 4px;
+    color: #8f8f9b; cursor: pointer;
+  }
+  .th-wave-btn:hover { border-color: #55555f; color: #cfcfd8; }
+  .th-wave-btn.on { background: #3a6bd6; border-color: #2a55b5; color: #fff; }
+  .th-wave-btn .glyph { width: 100%; height: 12px; }
+  .th-wave-name { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; text-align: center; }
   .th-pan { display: flex; align-items: center; gap: 6px; }
   .th-pan input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-pan .pan-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -391,7 +409,13 @@
     font-size: 10px; padding: 2px 6px; cursor: pointer;
   }
   .th-fx-reset:hover { border-color: #55555f; }
-  .th-fx-divider { grid-column: 1 / -1; height: 1px; background: #3a3a44; margin: 1px 0; }
+  .th-fx-group {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 5px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+    color: #8f8f9b; border-top: 1px solid #3a3a44; padding-top: 5px; margin-top: 2px;
+  }
+  .th-fx-group.first { border-top: 0; padding-top: 0; margin-top: 0; }
+  .th-fx-group .glyph { width: 18px; height: 9px; }
   .th-fx-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .th-fx-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
   .th-fx-label { font-size: 10px; font-weight: 700; color: var(--muted); }
@@ -613,9 +637,14 @@
   .insp-sub { font-size: 10px; color: var(--muted); text-align: center; }
   .fx-row { display: flex; flex-wrap: wrap; gap: 5px; }
   .fx-toggle {
-    flex: 1 1 auto; min-width: 62px; text-align: center; padding: 7px 8px; border-radius: 5px;
+    flex: 1 1 auto; min-width: 62px; text-align: center; padding: 6px 8px; border-radius: 5px;
     background: #22222a; border: 1px solid #101014; color: #b8b8c2; font-size: 11px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
   }
+  /* The glyph stretches to the pill's width so the shape stays readable in the
+     wider mobile bottom sheet, where these pills grow well past their 62px. */
+  .fx-toggle .glyph { width: 100%; max-width: 34px; height: 12px; }
+  .fx-toggle-label { line-height: 1.1; }
   .fx-toggle:hover { border-color: #55555f; }
   .fx-toggle.on { background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4); }
   .insp-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -784,7 +813,7 @@
       <h3>Mixing</h3>
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
-        <li>The <b>waveform</b> picker (Square / Triangle / Saw / Sine / <b>NES Tri</b> wavetable / <b>FM</b>) and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / Triangle / Saw / Sine / <b>NES Tri</b> wavetable / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>🔊 Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
@@ -1158,6 +1187,75 @@ const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
 const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri', 'fm']; // selectable per tonal track
 const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', fm: 'FM', kit: 'Kit' };
+
+// ---------- Icon glyphs ----------
+// One table of tiny inline-SVG shapes, so the same concept looks the same
+// everywhere it appears: a waveform in the track header's picker, an effect on
+// a per-note toggle pill, and the same effect again as a group heading in the
+// track's ✨ FX panel. Each entry is a list of path `d` strings drawn in a
+// 24x12 viewBox with y=6 as the zero line — a list rather than a single string
+// because a few glyphs need more than one stroke (chorus is two detuned waves,
+// reverb an impulse plus its spreading tail).
+//
+// Where a per-note flag and a per-track control mean the *same* effect, they
+// deliberately share one glyph (crush/tremolo/chorus/reverb, and the per-note
+// Echo shares the per-track Delay's), because a user reading the two panels
+// should see them as the same effect at two scopes. They are not the same
+// implementation — see TRACK_FX_REGISTRY — but they are the same idea, and
+// the fixed/dial-able difference is what the `title` text is for.
+const GLYPHS = {
+  // Waveforms: literally the shape the oscillator produces.
+  square:   ['M1 9 V3 H7 V9 H13 V3 H19 V9 H23'],
+  triangle: ['M1 9 L6 3 L12 9 L18 3 L23 8'],
+  sawtooth: ['M1 9 L7 3 V9 L13 3 V9 L19 3 V9 L23 7'],
+  sine:     ['M1 6 Q4 0.5 7 6 T13 6 T19 6 T25 6'],
+  // NES triangle is a 16-step staircase rather than a smooth ramp, which is
+  // exactly what makes it sound different from `triangle` — so draw the steps.
+  nestri:   ['M1 10 h3 v-2 h3 v-2 h3 v-2 h2 v-2 h2 v2 h2 v2 h3 v2 h3 v2 h1'],
+  // FM has no one waveform, so show what it does to one: a carrier whose
+  // period keeps compressing.
+  fm:       ['M1 6 q2 -5 4 0 t4 0 q1.5 -5 3 0 t3 0 q1 -5 2 0 t2 0 q0.75 -5 1.5 0 t1.5 0'],
+  kit:      ['M2 9 h20', 'M5 9 a3.5 3.5 0 0 1 7 0', 'M14 9 a2.5 2.5 0 0 1 5 0'],
+
+  // Effects.
+  vibrato:  ['M1 6 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0 t3 0'],          // pitch wobble: a tight, even wave
+  tremolo:  ['M2 2 V10', 'M6 4 V8', 'M10 1 V11', 'M14 4 V8', 'M18 2 V10', 'M22 4 V8'], // amplitude pumping up and down
+  porta:    ['M1 10 h6 l8 -8 h8'],                                        // glide: one level ramping into the next
+  crush:    ['M1 9 h3 v-3 h3 v-3 h3 v-2 h3 v2 h3 v3 h3 v3 h4'],           // a curve quantised into steps
+  echo:     ['M2 2 V10', 'M8 3.5 V8.5', 'M14 4.5 V7.5', 'M20 5.2 V6.8'],  // repeats dying away
+  chorus:   ['M1 4 q3 -3 6 0 t6 0 t6 0 t6 0', 'M1 8 q3 3 6 0 t6 0 t6 0 t6 0'], // two detuned copies of one wave
+  reverb:   ['M3 1 V11', 'M7 3 a4.5 4.5 0 0 1 0 6', 'M12 4 a3 3 0 0 1 0 4', 'M16.5 4.8 a2 2 0 0 1 0 2.4'],
+  // A response curve, not three little faders: the panel renders this at 18px
+  // wide, where the fader version's knob marks read as specks rather than
+  // controls. A curve stays legible at any size.
+  eq:       ['M1 9.5 C5 9.5 6 1.5 12 1.5 C18 1.5 19 9.5 23 9.5'],
+  comp:     ['M1 2 L23 5', 'M1 10 L23 7'],                                // dynamic range squeezed into a wedge
+  send:     ['M1 6 h14', 'M11 2 l4 4 l-4 4'],                             // signal tapped off to a shared bus
+};
+// Which glyph illustrates each per-note effect flag, keyed by the note property
+// the inspector's toggle writes to (see renderInspector's addFxToggle).
+const NOTE_FX_GLYPH = {
+  vib: 'vibrato', trem: 'tremolo', porta: 'porta',
+  crush: 'crush', echo: 'echo', chorus: 'chorus', reverb: 'reverb',
+};
+// Builds one glyph as an <svg>. Always aria-hidden: every control that uses one
+// also carries its own text label or aria-label, so announcing the shape too
+// would just be noise. focusable="false" keeps legacy engines from making the
+// SVG inside a <button> its own tab stop.
+function glyph(name, cls) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 12');
+  svg.setAttribute('class', 'glyph' + (cls ? ' ' + cls : ''));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  for (const d of GLYPHS[name] || []) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+}
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
 const RHYTHM_TITLES = { openhat: 'Open hi-hat' };
@@ -1541,7 +1639,7 @@ const state = {
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
   markers: [],               // [{ col, name }] editor-only timeline markers
-  automation: {},            // id -> { gain?: [{col, value}], pan?: [{col, value}] } — sorted by col
+  automation: {},            // id -> { <param>: [{col, value}] } for any AUTOMATION_PARAMS key — each sorted by col
   adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
@@ -1556,7 +1654,7 @@ const state = {
   sidechain: { ...DEFAULT_SIDECHAIN },    // song-global kick/snare-triggered ducking
   masterCrush: { ...DEFAULT_MASTER_CRUSH }, // song-global AudioWorklet lo-fi downsampler
   swing: DEFAULT_SWING,      // % — see swingOffsetCols()
-  selected: null,            // { track, index } — single note, drives the inspector
+  selected: null,            // { track, note } — holds the note object itself, never an index; drives the inspector
   multiSelected: new Set(),  // marquee-selected group in state.activeTrack
   playhead: 0,
   loopStart: 0, loopEnd: COLS,
@@ -2010,7 +2108,8 @@ const dbFormat = (v) => v.toFixed(1) + 'dB';
 // be worth the indirection there; see buildChannelChain() instead.
 const TRACK_FX_REGISTRY = [
   {
-    key: 'fxSend', get: getFxSend, set: setFxSend, apply: applyFxSend,
+    key: 'fxSend', label: 'Sends', icon: 'send',
+    get: getFxSend, set: setFxSend, apply: applyFxSend,
     fields: [
       { param: 'delay', label: 'Delay', title: 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
       { param: 'chorus', label: 'Chorus', title: 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
@@ -2023,7 +2122,8 @@ const TRACK_FX_REGISTRY = [
     // reacts to the shaped signal. Same bands and range as the master EQ;
     // not clamped on load, for the same reason the compressor isn't — the
     // slider bounds are cosmetic, BiquadFilterNode takes more.
-    key: 'eq', get: getTrackEq, set: setTrackEq, apply: applyTrackEq,
+    key: 'eq', label: 'EQ', icon: 'eq',
+    get: getTrackEq, set: setTrackEq, apply: applyTrackEq,
     fields: [
       { param: 'low', label: 'Lo', title: 'Low shelf (~200Hz)', min: -12, max: 12, step: 0.5, format: dbFormat, clamp: false },
       { param: 'mid', label: 'Mid', title: 'Mid peak (~1kHz)', min: -12, max: 12, step: 0.5, format: dbFormat, clamp: false },
@@ -2034,7 +2134,8 @@ const TRACK_FX_REGISTRY = [
     // An insert (chanEq[track] -> chanComp[track] -> ...), not a send, so
     // it has no 0-100% "amount" the way the sends above do; same four
     // params/ranges/formatting as the master compressor (COMP_FIELDS).
-    key: 'comp', get: getTrackComp, set: setTrackComp, apply: applyTrackComp,
+    key: 'comp', label: 'Comp', icon: 'comp',
+    get: getTrackComp, set: setTrackComp, apply: applyTrackComp,
     fields: [
       { param: 'threshold', label: 'Thr', title: 'Threshold', min: -60, max: 0, step: 1, format: (v) => v.toFixed(0) + 'dB', clamp: false },
       { param: 'ratio', label: 'Rat', title: 'Ratio (1:1 = off)', min: 1, max: 20, step: 0.5, format: (v) => v.toFixed(1) + ':1', clamp: false },
@@ -2048,7 +2149,8 @@ const TRACK_FX_REGISTRY = [
     // (crushAmountToHold(), js/downsample-processor.js), just one instance
     // per track — independent of the per-note Crush flag (a fixed always-on
     // 16-step WaveShaperNode, not an amount you can dial in).
-    key: 'crush', get: getTrackCrush, set: setTrackCrush, apply: applyTrackCrush,
+    key: 'crush', label: 'Bitcrush', icon: 'crush',
+    get: getTrackCrush, set: setTrackCrush, apply: applyTrackCrush,
     fields: [
       { param: 'amount', label: 'Crush', title: 'Lo-fi sample-and-hold downsampler insert, independent of the per-note Crush flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
     ],
@@ -2056,7 +2158,8 @@ const TRACK_FX_REGISTRY = [
   {
     // An insert (an LFO added onto a plain gain node's own gain AudioParam,
     // see createChanTremolo()); Depth 0 is a true no-op regardless of Rate.
-    key: 'tremolo', get: getTrackTremolo, set: setTrackTremolo, apply: applyTrackTremolo,
+    key: 'tremolo', label: 'Tremolo', icon: 'tremolo',
+    get: getTrackTremolo, set: setTrackTremolo, apply: applyTrackTremolo,
     fields: [
       { param: 'rate', label: 'Rate', title: 'Tremolo LFO speed', min: 0.5, max: 20, step: 0.1, format: (v) => v.toFixed(1) + 'Hz', clamp: false },
       { param: 'depth', label: 'Depth', title: 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
@@ -2724,13 +2827,22 @@ function buildFxPanel(track) {
   resetWrap.appendChild(resetBtn);
   panel.appendChild(resetWrap);
 
+  // Each group gets a heading with its own glyph, rather than the bare hairline
+  // rule that used to separate them: the panel is 13 sliders in a two-column
+  // grid, and abbreviations like Thr/Rat/Atk/Rel only read as a compressor once
+  // you know which group you're looking at. The heading doubles as the
+  // separator, so the old .th-fx-divider is gone.
   TRACK_FX_REGISTRY.forEach((effect, i) => {
+    const head = el('div', 'th-fx-group' + (i === 0 ? ' first' : ''));
+    head.appendChild(glyph(effect.icon));
+    const cap = el('span'); cap.textContent = effect.label;
+    head.appendChild(cap);
+    panel.appendChild(head);
     const values = effect.get(track);
     for (const f of effect.fields) {
       addFxField(panel, track, f.label, f.title, values[f.param], f.min, f.max, f.step, f.format,
         (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); });
     }
-    if (i < TRACK_FX_REGISTRY.length - 1) panel.appendChild(el('div', 'th-fx-divider'));
   });
 
   return panel;
@@ -2803,29 +2915,53 @@ function buildHeader(track) {
   // hidden while collapsed.
   const waveRow = el('div', 'th-wave-row');
   if (isRhythm(track)) {
-    const osc = el('span', 'th-osc'); osc.textContent = WAVE_LABEL.kit;
-    waveRow.append(osc);
+    const kit = el('span', 'th-osc');
+    kit.append(glyph('kit'), document.createTextNode(' ' + WAVE_LABEL.kit));
+    kit.style.display = 'flex'; kit.style.alignItems = 'center'; kit.style.gap = '4px';
+    waveRow.append(kit);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
     // via the exported VOICES config.
-    const wave = el('select', 'th-wave');
-    wave.title = 'Waveform (VOICES ' + track + ')';
+    //
+    // Six icon buttons rather than the <select> this used to be: the choice is
+    // "which of these shapes", and a dropdown only ever showed one shape at a
+    // time (and a native <option> can't carry an SVG at all, so the shapes had
+    // nowhere to go while it stayed a select). Same role="radiogroup" +
+    // aria-checked pattern as the Pen/Eraser/Grab tool group, since this is
+    // likewise one choice out of a set and not a row of independent toggles.
+    // The glyphs are aria-hidden, so each button carries the waveform's name as
+    // its aria-label; the name of the *selected* one is also spelled out below
+    // the row, so nothing depends on recognising an icon.
+    const group = el('div', 'th-wave-group');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Waveform for ' + trackName(track));
     for (const w of WAVEFORMS) {
-      const opt = document.createElement('option');
-      opt.value = w; opt.textContent = WAVE_LABEL[w];
-      if (state.waveform[track] === w) opt.selected = true;
-      wave.append(opt);
+      const on = state.waveform[track] === w;
+      const btn = el('button', 'th-wave-btn' + (on ? ' on' : ''));
+      btn.type = 'button';
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', String(on));
+      btn.setAttribute('aria-label', WAVE_LABEL[w]);
+      btn.title = WAVE_LABEL[w] + ' (VOICES ' + track + ')';
+      btn.appendChild(glyph(w));
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.waveform[track] = w;
+        const n = state.tracks[track][0];
+        if (n) previewNote(track, n);
+        autosave();
+        // Always re-render now, not only when the Envelope panel is open (which
+        // is what the old <select> did): the picker itself has to restyle to
+        // move the lit state onto the clicked button, and the note inspector's
+        // Duty cycle field only exists while the waveform is `square`.
+        render();
+      });
+      group.appendChild(btn);
     }
-    wave.addEventListener('mousedown', (e) => e.stopPropagation());
-    wave.addEventListener('change', (e) => {
-      e.stopPropagation();
-      state.waveform[track] = wave.value;
-      const n = state.tracks[track][0];
-      if (n) previewNote(track, n);
-      if (adsrOpen.has(track)) render(); // Envelope panel's FM sliders show/hide based on waveform
-      autosave();
-    });
-    waveRow.append(wave);
+    const name = el('span', 'th-wave-name');
+    name.textContent = WAVE_LABEL[state.waveform[track]] || state.waveform[track];
+    waveRow.append(group, name);
   }
 
   // A third row for the (less-frequently-used) automation/envelope toggles —
@@ -3859,9 +3995,16 @@ function renderInspector() {
     return p;
   };
   // Pill toggle button (replaces the old checkboxes) — lights up when active.
+  // The glyph is looked up from the note property rather than passed in, so a
+  // toggle can't be added without one; it's aria-hidden and sits above the
+  // label it illustrates, so the accessible name is unchanged from when these
+  // were text-only.
   const addFxToggle = (container, labelText, key, title, extra) => {
     const btn = el('button', 'fx-toggle' + (note[key] ? ' on' : ''));
-    btn.textContent = labelText;
+    const icon = NOTE_FX_GLYPH[key];
+    if (icon) btn.appendChild(glyph(icon));
+    const cap = el('span', 'fx-toggle-label'); cap.textContent = labelText;
+    btn.appendChild(cap);
     if (title) btn.title = title;
     btn.setAttribute('aria-pressed', String(!!note[key]));
     btn.addEventListener('click', () => { note[key] = !note[key]; if (extra) extra(note[key]); render(); });
