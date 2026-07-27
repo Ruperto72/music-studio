@@ -297,8 +297,46 @@ ett facit.
   respektive 31 %, vilket är precis vad man väntar sig av en liten kaotisk
   numerisk effekt snarare än av ett systematiskt fel.)
   Sidofynd: `Popcorn` toppar på **+0,4 dBFS** med 3 klippta sampel av 8,8
-  miljoner. Långt ifrån Neon Cathedrals 680, och ohörbart — men värt att veta
-  om fler låtar ska gås igenom för headroom.
+  miljoner. Långt ifrån Neon Cathedrals 680, och ohörbart — men det blev
+  ingången till headroom-genomgången nedan.
+- [x] **Headroom-genomgång av alla sju medföljande låtar.** Varje låt renderad
+  offline, sann topp avläst i flyttalsbufferten *före* 16-bitars-klampningen,
+  plus antal sampel över fullskala och längsta obrutna serie. Den sista siffran
+  är den som avgör om något faktiskt låter förvrängt — en enstaka topp hörs
+  inte, en serie på tjugo gör det.
+  **Fyra av sju klippte**, och Neon Cathedral var inte den värsta:
+
+  | låt | masterVol | topp före | över före | längsta | → masterVol | topp efter | över efter |
+  |---|---|---|---|---|---|---|---|
+  | Cinematic | 0.50 | +3.14 dB | 933 | 16 | **0.30** | −1.13 dB | 0 |
+  | Froggy Hop | 0.50 | +2.31 dB | 264 | 27 | **0.34** | −0.93 dB | 0 |
+  | Techno | 0.50 | +1.42 dB | 12 | 1 | **0.38** | −0.89 dB | 0 |
+  | Popcorn | 0.45 | +0.41 dB | 3 | 1 | **0.38** | −1.01 dB | 0 |
+  | Neon Drive | 0.45 | −0.67 dB | 0 | 0 | 0.46 | −0.48 dB | 0 |
+  | Deep Vacuum | 0.45 | −1.09 dB | 0 | 0 | 0.46 | −0.94 dB | 0 |
+  | Neon Cathedral | 0.26 | −3.54 dB | 0 | 0 | — | −3.54 dB | 0 |
+
+  `Cinematic` klippte alltså värre än `Neon Cathedral` gjorde före sin fix (933
+  sampel mot 680, +3.14 mot +2.21 dBFS), och `Froggy Hop` hade serier på 27
+  sampel i följd. Bägge är dessutom bland de första låtar någon öppnar.
+  **Till skillnad från Neon Cathedral skalade de här linjärt.** Den låten har
+  en kompressor på masterbussen, så lägre insignal gav mindre kompression och
+  sänkningen krävde tre försök; de fyra här har helt neutral masterbuss (ratio
+  1:1, platt EQ, ingen parallellblandning), så toppen är proportionell mot
+  `masterVol`. Förutsagt 0.861/0.887/0.895/0.886, uppmätt 0.878/0.899/0.903/
+  0.890 — modellen höll, men den *kontrollerades* innan värdena fick stå kvar.
+  Två val värda att stå för: `Techno` och `Popcorn` var i praktiken ohörbara
+  (12 respektive 3 isolerade sampel, längsta serie 1) och sänktes ändå, för att
+  "ingen medföljande låt går över 0 dBFS" är en regel som går att upprätthålla
+  medan "lite klippning är okej" inte är det — det kostar dem ~2 dB nivå. Och
+  `Neon Drive`/`Deep Vacuum` klippte inte alls men lagrade 0.45, vilket ligger
+  utanför masterreglagets `step="0.02"`-rutnät och visas som 0.46; nu lagrar de
+  0.46, alltså exakt vad reglaget redan visade. Samma skäl som gjorde att Neon
+  Cathedral hamnade på 0.26 i stället för 0.25.
+  Kvar att fundera på: `Neon Cathedral` ligger nu klart lägst av alla (−3.54
+  dBFS topp), eftersom dess värde sattes innan det fanns någon uppsättning att
+  jämföra mot. Den skulle tåla en höjning, men kompressorn gör det olinjärt så
+  det kräver ny mätning — inte gjort.
 - [ ] **Var den återstående avvikelsen kommer ifrån är fortfarande okänt.** När jag
   seedade bruset skrev jag att exporten därmed blev reproducerbar. Det stämde
   inte, och jag hann skriva in det i README och DESIGN innan jag hade
