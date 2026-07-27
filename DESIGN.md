@@ -837,7 +837,15 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   **PWM** is the classic analogue trick: a sawtooth minus a delayed copy of
   itself is a pulse train whose width is that delay as a fraction of the
   period, so sweeping the delay sweeps the width. An LFO on `delayTime` does
-  the sweeping — the same trick the chorus bus uses. Crucially the delayed path
+  the sweeping — the same trick the chorus bus uses. That LFO lives on the
+  *channel* (`chanPwmLfo`), not the note: one free-running oscillator per
+  track, started when the channel is built and never restarted, which each
+  `pwm` note scales into its own period. A per-note LFO starts at phase 0 every
+  time, so every note began at the same 50% width and only notes long enough to
+  cover much of a 0.8Hz cycle moved at all — a run of eighth notes was a plain
+  square wave. Measured over eight consecutive notes, the per-note version
+  started them all within 0.02 duty of each other; the shared one spreads them
+  across 0.28–0.74, the full sweep. Crucially the delayed path
   is fed from the *same* oscillator rather than a second one started alongside
   it: two oscillators would have to stay in phase for the width to hold steady,
   which Web Audio does not promise, and splitting one makes it exact by

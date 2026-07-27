@@ -32,8 +32,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 ### Sound design
 
-- Per-track **waveform** — square, **PWM** (a pulse width that sweeps through
-  each note), triangle, saw, sine, **half sine**, an **NES triangle**
+- Per-track **waveform** — square, **PWM** (a pulse width that sweeps
+  continuously across the part, so every note picks the sweep up where the
+  last one left off), triangle, saw, sine, **half sine**, an **NES triangle**
   wavetable, pitched **noise** (a chip's noise channel, so it buzzes at the
   note rather than just hissing), **ring modulation**, and **FM** (with
   modulator ratio/depth)
