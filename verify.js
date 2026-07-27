@@ -1088,6 +1088,107 @@ async function main() {
       if (flat.labels.some((l) => /^Crash/.test(l))) throw new Error('fills off should insert no crashes');
     });
 
+    // The autosave draft is currentSongData()'s own payload, so reading it back
+    // is a faithful read-out of everything a save would write — which is what
+    // both steps below need, and is also why autosave building its own copy of
+    // that field list was worth removing.
+    const draft = () => cdp.evaluate(`JSON.parse(localStorage.getItem('frogger-music-editor-autosave'))`);
+    const loadExample = async (name) => {
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        [...document.querySelectorAll('#file-menu-panel button')].find(b => b.textContent.includes('Songs')).click();
+      })()`);
+      await waitFor(`[...document.querySelectorAll('.song-item .song-title')].some(t => t.textContent === ${JSON.stringify(name)})`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('.song-item')].find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(name)});
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Load').click();
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === ${JSON.stringify(name)}`);
+      await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
+    };
+
+    step('Song I/O: loading a song does not inherit the previous song\'s track settings', async () => {
+      // applySavedMix() only *sets* what the file contains, so anything the
+      // previous song left in a sparse per-track map survives on every track id
+      // the two share — and every song has a `rhythm`. Neon Cathedral is the
+      // one example that uses the FX panel, so it is the one that leaks.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await loadExample('Neon Cathedral');
+      const dirty = await draft();
+      if (!Object.keys(dirty.comp || {}).length || !Object.keys(dirty.filter || {}).length) {
+        throw new Error('Neon Cathedral should carry per-track comp and filter settings — the check below proves nothing without them');
+      }
+      await loadExample('Techno');
+      const after = await draft();
+      const file = await cdp.evaluate(`fetch('songs/techno.json').then(r => r.json())`);
+      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq'];
+      for (const k of maps) {
+        const got = Object.keys(after[k] || {}).sort();
+        const want = Object.keys(file[k] || {}).sort();
+        if (got.join(',') !== want.join(',')) {
+          throw new Error(`state.${k} after loading Techno is ${JSON.stringify(got)}, the file says ${JSON.stringify(want)}`);
+        }
+      }
+    });
+
+    step('Song I/O: a per-track Duty survives a save, a reload and a load', async () => {
+      // Duty was written to every saved file and never read back — it is the
+      // one per-track setting that is a bare number instead of an object, so
+      // it rode along in no shared loop. Checked through the real Save/Load
+      // path rather than by poking state, since the gap was in that path.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`[...document.querySelectorAll('#file-menu-panel button')].find(b => b.textContent.trim().startsWith('Add track')).click()`);
+      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      // The Env panel's Duty picker: the only select offering pulse widths.
+      const dutySel = `[...document.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent === '12.5%'))`;
+      await waitFor(`!!(${dutySel})`);
+      await cdp.evaluate(`(() => {
+        const s = ${dutySel};
+        s.value = [...s.options].map(o => o.value).find(v => parseFloat(v) === 0.25);
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 700));
+      const saved = await draft();
+      const dutyIds = Object.keys(saved.duty || {});
+      if (dutyIds.length !== 1 || saved.duty[dutyIds[0]] !== 0.25) {
+        throw new Error(`the saved payload should carry one 25% duty, got ${JSON.stringify(saved.duty)}`);
+      }
+      // Save it under a name through the Songs dialog, reload the page (so
+      // nothing survives in memory), then load it back.
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        [...document.querySelectorAll('#file-menu-panel button')].find(b => b.textContent.includes('Songs')).click();
+      })()`);
+      await waitFor(`!!document.getElementById('song-name')`);
+      await cdp.evaluate(`(() => {
+        document.getElementById('song-name').value = 'DutyRoundTrip';
+        document.getElementById('song-save-local').click();
+      })()`);
+      await waitFor(`[...document.querySelectorAll('.song-item .song-title')].some(t => t.textContent === 'DutyRoundTrip')`);
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await loadExample('DutyRoundTrip');
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!(${dutySel})`);
+      const restored = await cdp.evaluate(`(${dutySel}).value`);
+      // Cleared before the assertion so a failure still leaves the browser
+      // profile clean for the steps after this one.
+      await cdp.evaluate(`localStorage.removeItem('music-studio-songs')`);
+      if (parseFloat(restored) !== 0.25) {
+        throw new Error(`the track's Duty should come back as 25%, the picker shows ${JSON.stringify(restored)}`);
+      }
+    });
+
     step('Noise buffers are seeded: identical across two page loads', async () => {
       // The reverb tail and the six noise-based drum sounds used to be filled
       // from Math.random(), so they differed on every page load. Checksum the
@@ -1759,8 +1860,12 @@ async function main() {
         return hit;
       })()`);
       if (serialized !== 1) throw new Error(`expected exactly one hit, got ${serialized}`);
+      // The autosave key by name, not "whichever key mentions trackList": the
+      // saved-songs key mentions it too, nested one level deeper, so the fuzzy
+      // lookup started reading the wrong object as soon as another step saved
+      // a song.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => (localStorage.getItem(k) || '').includes('trackList'));
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;

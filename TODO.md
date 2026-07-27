@@ -832,6 +832,51 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
 
 ## Lagring / delning
 
+- [x] **Spårinställningar sparades och lästes in fel — en lista i stället för
+  sex handskrivna.** Frågan var enkel ("sparas allt i master och spåren?") och
+  svaret visade sig vara *nästan*. Genomgången av `currentSongData()` mot
+  `applySavedMix()` gav två fel, det andra värre än det första:
+  1. **Duty sparades men lästes aldrig tillbaka.** `data.duty` förekom på
+     exakt ett ställe i hela `index.html` — i `restoreSnapshot()`. Alltså
+     bevarade undo/redo pulsbredden, men att ladda en sparad låt gjorde det
+     inte. Verifierat i webbläsaren: sätt 25 %, spara, ladda om, ladda in →
+     tillbaka på Square 50 %. Duty är den enda spårinställningen som är ett
+     rent tal i stället för ett objekt, vilket är precis därför den inte åkte
+     med i någon delad loop (`TRACK_FX_REGISTRY` hanterar bara objekten).
+  2. **Låt A:s inställningar läckte in i låt B.** `restoreTrackList()`
+     nollställde `automation` och `adsr` — men inte `filter`, `fm`, `fxSend`,
+     `comp`, `crush`, `tremolo`, `vibrato`, `duty` eller `eq`. Och
+     `applySavedMix()` *sätter* bara det filen innehåller, den rensar aldrig.
+     Alltså överlevde allt det på varje spår-id de två låtarna delade — och
+     **varje låt har ett `rhythm`**. Mätt: ladda Neon Cathedral, ladda sedan
+     Techno, läs ut vad state faktiskt innehåller och jämför mot
+     `techno.json`:
+     ```
+     fxSend  -> ["pad","lead","brass","bass","rhythm","perc"]
+     comp    -> ["brass","bass","rhythm"]
+     crush   -> ["lead","rhythm"]
+     tremolo -> ["pad"]
+     filter  -> ["pad","lead","brass","bass"]
+     fm      -> ["brass"]
+     ```
+     Technos trumspår ärvde alltså Neon Cathedrals kompressor och crush, och
+     dess lead/bas ärvde filter. Hörbart, inte teoretiskt.
+  Samma lista fanns handskriven på sex ställen och fyra hade drivit isär:
+  `restoreTrackList()` rensade två av elva, `createNewSong()` nio (glömde
+  `filter` och `fm`), `removeTrack()` tio (glömde `filter`) och
+  `applySavedMix()` läste tio (aldrig `duty`). Nu finns `SPARSE_TRACK_MAPS`
+  och alla sex går igenom den; `autosave()` skriver `currentSongData()` självt
+  i stället för en andra kopia av fältlistan.
+  Två nya teststeg, bägge verifierade mot orörd kod: nyckelmängderna efter
+  Neon Cathedral → Techno måste vara exakt filens (*"state.fxSend after
+  loading Techno is [...]"*), och en Duty måste överleva spara → ladda om →
+  ladda in. Det första steget asserterar dessutom **först** att Neon Cathedral
+  faktiskt *har* comp och filter — annars hade "inga läckor" varit sant av fel
+  skäl på en tom mängd.
+  Ett tredje fel dök upp på köpet: velocity-steget letade upp autosave-nyckeln
+  som "första nyckeln vars värde innehåller `trackList`". Så fort Duty-steget
+  sparade en låt matchade den nyckeln först, en nivå djupare, och steget föll.
+  Letar efter `autosave` i nyckelnamnet nu.
 - [x] **Sidan startar alltid tomt, inte med en fråga eller Froggy Hop** —
   tidigare frågade sidan vid varje omladdning "Found an unsaved draft...
   Restore it?" (om ett autosave-utkast fanns) eller laddade annars
