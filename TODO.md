@@ -394,6 +394,39 @@ ett facit.
   gain genom att patcha `createBiquadFilter` före sidladdning — DOM-testet
   ser bara reglagen, inte ljudgrafen.
 
+### Luckor mellan per-not och per-spår
+
+Efter en genomgång av bägge uppsättningarna: fem effekter finns på bägge
+ställena (Tremolo, Bitcrush, Chorus, Reverb, och per-notens Echo mot
+spårets Delay), men aldrig som samma implementation — per not är de
+binära flaggor med hårdkodade värden, per spår reglerbara sends/inserts,
+och de är avsiktligt additiva (se `TRACK_FX_REGISTRY`). Det som återstår
+är asymmetrierna, i den ordning de bedöms vara värda att bygga:
+
+- [ ] **Velocity per trumslag.** Störst musikalisk effekt av allt här: ett
+  trumspår utan accenter låter mekaniskt. Rytmspår har i dag *inget*
+  per-not-lager alls — `state.selected` sätts bara från tonala notvägar,
+  så ett slag öppnar aldrig inspektorn och kan inte ens få en velocity.
+  Spår-FX fungerar däremot på trummor precis som på tonala spår, eftersom
+  de tappar `chanGain[id]` som allt ljud passerar, så spårnivån är i dag
+  inte bara det bekvämare stället för trummor — det är det enda.
+- [ ] **Vibrato per spår.** Spåret har en tremolo-LFO (amplitud) men ingen
+  vibrato-LFO (tonhöjd), trots att `addVibrato()` och `addTremolo()` är
+  nästan identiska funktioner längs olika axlar. Billigast av punkterna
+  här: en rad i `TRACK_FX_REGISTRY` plus en LFO i kanalkedjan.
+- [ ] **Duty cycle-default per spår.** Vågformen väljs redan per spår, men
+  pulsbredden går bara att sätta per not (och bara när spårets vågform är
+  `square`). Ett spår-default är den naturliga platsen; per-not-värdet får
+  fortsätta åsidosätta det.
+- [ ] **Pan per not.** Varje annan mixparameter har en per-not-motsvarighet
+  (volym via Velocity), men panorering har ingen — en enskild ton kan inte
+  placeras i stereobilden utan att flyttas till ett eget spår. Dyrast av
+  punkterna här och den enda jag inte är övertygad om behövs; ligger sist
+  medvetet.
+
+Åt andra hållet saknar per-not-lagret EQ, kompressor, ADSR, filter, FM och
+vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
+
 ## Rytmspår
 
 - [x] **Fler slagverksljud i kittet** — utökat från 6 till 10 ljud:
@@ -520,6 +553,34 @@ ett facit.
 - [ ] **Ingen kollaborativ redigering** (flera personer på samma låt samtidigt).
 
 ## Kvalitet
+
+- [x] **Vågformer och effekter är ritade i stället för enbart namngivna.**
+  En tabell, `GLYPHS`, håller små inline-SVG:er i en 24×12-viewBox med y=6
+  som nollinje, ritade med `currentColor` så samma glyf funkar på en tänd
+  knapp, en dämpad panelrubrik och ett hover-läge utan omfärgade kopior.
+  Tre användningar: (1) vågformsväljaren är nu sex ikonknappar
+  (`role="radiogroup"` + `aria-checked`, samma mönster som
+  Pen/Eraser/Grab) i stället för en `<select>` — valet *är* "vilken av de
+  här formerna", och en rullgardin visade bara en form i taget, dessutom
+  kan en `<option>` inte bära SVG över huvud taget; (2) per-not-växlarna
+  har fått sin effekt ritad ovanför etiketten; (3) ✨ FX-panelens fem
+  grupper har fått rubriker med glyf i stället för anonyma hårstreck —
+  förkortningar som Thr/Rat/Atk/Rel läser sig som en kompressor först när
+  man vet vilken grupp man tittar på.
+  Där en per-not-flagga och en per-spårs-kontroll betyder *samma* effekt
+  delar de medvetet glyf, för att de ska läsas som samma sak i två
+  omfattningar; att den ena är fast och den andra reglerbar är vad
+  `title`-texten är till för.
+  Glyferna är `aria-hidden` — varje kontroll behåller sitt eget textnamn,
+  och det valda vågformsnamnet skrivs dessutom ut under knappraden, så
+  ingenting hänger på att känna igen en ikon. Två fällor upptäcktes när
+  regressionstestet skrevs: en assertion som jämförde knappens
+  `textContent` mot dess etikettelement passerade när *bägge* var tomma
+  (den kollade konsekvens, inte att namnet fanns — nu jämförs de sju
+  faktiska namnen), och avläsningar som inte var begränsade till ett spår
+  läste ihop alla spårs väljare till en enda lista.
+  EQ-glyfen ritades först som tre reglage men blev till daggar i 18px, och
+  är nu en responskurva som håller sig läsbar i vilken storlek som helst.
 
 - [x] **Ljudgrafens uppbyggnad var duplicerad på tre ställen** —
   `ensureCtx()` (live-uppspelning), `renderSongToWav()` (WAV-export) och
