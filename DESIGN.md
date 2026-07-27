@@ -420,12 +420,31 @@ by default — these are the deliberate additions:
 
 ### A.14 Icon glyphs
 
-One table, `GLYPHS`, holds every inline-SVG shape in the app as a list of
-path `d` strings in a 24×12 viewBox with y=6 as the zero line (a list rather
-than one string because chorus is two detuned waves and reverb an impulse
-plus its tail). `glyph(name)` builds the `<svg>`. They are used in three
-places: the waveform picker (A.4), the per-note effect toggles (A.9) and the
-✨ FX panel's group headings (A.7).
+One table, `GLYPHS`, holds every inline-SVG shape in the app, and `glyph(name)`
+builds the `<svg>`. An entry is either a bare list of path `d` strings — the
+wide **24×12** box with y=6 as the zero line, used by the waveform and effect
+shapes — or `{ box, paths }` for the square **24×24** interface icons. Which
+box a glyph uses is therefore a property of the glyph, not something every
+caller has to know. (A list rather than one string because chorus is two
+detuned waves and reverb an impulse plus its tail.)
+
+They cover the waveform picker (A.4), the per-note effect toggles (A.9), the
+FX panel's group headings (A.7), and the whole toolbar, ☰ menu and dialog set.
+Static markup carries `data-glyph="name"` and one boot pass fills them in;
+buttons built in JS use `setGlyphLabel(btn, name, label)`. Either way the label
+stays a real text node, so the accessible name is what it always was.
+
+**Emoji were removed from controls on purpose.** They rendered in the system's
+own colour and style — full-colour pictures pasted into a monochrome stroked
+UI — and looked nothing like the rest of the app. What stayed is the plain
+geometric characters that already matched: the transport (`⏮ ■ ▶ ↺`), undo and
+redo, the `▾`/`▸` disclosures, the `✕` closes and the `+`/`−` steppers. A
+stroked play triangle reads worse than the filled one everyone expects.
+`verify.js` audits every button in the toolbar, menu and track headers for
+leftover emoji against an explicit keep-list, so that split is a recorded
+decision rather than an oversight — and checks in the same pass that no button
+lost its accessible name, since a glyph is `aria-hidden` and an icon-only
+button with neither text nor `aria-label` would be nameless.
 
 Two properties make one table enough. The paths are stroked with
 `currentColor`, so a single copy works on a lit blue toggle, a muted grey

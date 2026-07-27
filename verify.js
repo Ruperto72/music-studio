@@ -462,7 +462,7 @@ async function main() {
       // Fresh track so the root's own column is empty and the lane's pitch
       // window is not panned; rows are then a direct read of the intervals.
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
       await new Promise((r) => setTimeout(r, 350));
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`{
@@ -704,7 +704,7 @@ async function main() {
       const selected = `document.querySelectorAll('.hit.multi-selected, .note.multi-selected').length`;
       if (await cdp.evaluate(selected) === 0) throw new Error('expected the pasted hits to still be selected');
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
       await new Promise((r) => setTimeout(r, 350));
       const afterAdd = await cdp.evaluate(selected);
       if (afterAdd !== 0) throw new Error(`adding a track kept ${afterAdd} item(s) selected from the previous track`);
@@ -715,6 +715,59 @@ async function main() {
       if (notesAfter !== notesBefore) {
         throw new Error(`nudging after adding a track pulled items into it (${notesBefore} -> ${notesAfter} notes)`);
       }
+    });
+
+    step('Interface icons: drawn from GLYPHS, no emoji, and every control still named', async () => {
+      // The point of replacing the emoji was one visual language, so the check
+      // is twofold: no pictographic character is left on a control, and nothing
+      // lost its accessible name on the way (a glyph is aria-hidden, so a
+      // button with no text and no aria-label would be nameless).
+      const audit = await cdp.evaluate(`(() => {
+        // Codepoint ranges for emoji and the dingbat/misc-symbol blocks they
+        // came from, minus the plain geometric characters the UI keeps on
+        // purpose: the transport, undo/redo, disclosure triangles, the closes
+        // and the +/- steppers. Those read as typography, not as pasted-in
+        // pictures, and a stroked play triangle looks worse than the filled one
+        // everybody expects. Listing them here is what keeps that a decision
+        // rather than an oversight.
+        const KEEP = '✕⏮■▶↺↶↷▾▸▲▼＋+−-⋯✎♪…';
+        const emoji = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
+        const strip = (t) => [...t].filter(c => !KEEP.includes(c)).join('');
+        const offenders = [];
+        const nameless = [];
+        const scope = [
+          ...document.querySelectorAll('#file-menu button'),
+          ...document.querySelectorAll('.toolbar button'),
+          ...document.querySelectorAll('.track-header button'),
+        ];
+        for (const b of scope) {
+          const text = b.textContent || '';
+          if (emoji.test(strip(text))) offenders.push(text.trim().slice(0, 24));
+          const named = text.trim() || b.getAttribute('aria-label') || b.getAttribute('title');
+          if (!named) nameless.push(b.id || b.className);
+        }
+        return {
+          count: scope.length,
+          offenders,
+          nameless,
+          // Every menu item should now carry a glyph rather than a character.
+          menuItems: document.querySelectorAll('#file-menu .file-menu-item').length,
+          menuGlyphs: document.querySelectorAll('#file-menu .file-menu-item svg.glyph-sq').length,
+          hidden: [...document.querySelectorAll('svg.glyph')].every(g => g.getAttribute('aria-hidden') === 'true'),
+        };
+      })()`);
+      if (audit.count < 20) throw new Error(`expected to audit the whole toolbar and menu, saw ${audit.count} buttons`);
+      if (audit.offenders.length) throw new Error(`emoji left on controls: ${JSON.stringify(audit.offenders)}`);
+      if (audit.nameless.length) throw new Error(`controls with no accessible name: ${JSON.stringify(audit.nameless)}`);
+      if (audit.menuItems === 0 || audit.menuGlyphs !== audit.menuItems) {
+        throw new Error(`every menu item needs a glyph: ${audit.menuGlyphs}/${audit.menuItems}`);
+      }
+      if (!audit.hidden) throw new Error('every glyph must stay decorative (aria-hidden)');
+      // Each glyph must actually have drawn paths — a typo in a data-glyph name
+      // would otherwise produce a silent empty <svg>.
+      const empty = await cdp.evaluate(
+        `[...document.querySelectorAll('svg.glyph')].filter(g => g.querySelectorAll('path').length === 0).length`);
+      if (empty) throw new Error(`${empty} glyph(s) resolved to no paths — check the data-glyph names`);
     });
 
     step('Icons: waveform picker, per-note toggles and FX headings are glyphed and still labelled', async () => {
@@ -1000,7 +1053,7 @@ async function main() {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.track')`);
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
       await waitFor(`document.querySelectorAll('.track').length > 1`);
 
       // A new tonal track is `square`, so its Envelope panel must offer Duty.
@@ -1118,7 +1171,7 @@ async function main() {
 
       // A tonal track must offer it.
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
       await waitFor(`document.querySelectorAll('.track').length > 1`);
       await cdp.evaluate(`(() => {
         const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
