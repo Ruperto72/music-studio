@@ -836,9 +836,13 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
   `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from
   `mulberry32()` streams with fixed seeds, not `Math.random()`. They used to be
-  random per page load, which meant the same song never exported the same bytes
-  twice and its true peak wandered about a decibel between renders — enough
-  that measuring headroom took several passes to trust. Each buffer gets its
+  random per page load, so the reverb tail and every noise-based drum sounded
+  slightly different on every reload, and a song's true peak wandered about a
+  decibel between renders — enough that measuring headroom took several passes
+  to trust. **This does not make a render byte-reproducible**, and the buffers
+  were never the only source: two exports of the same song still differ, even
+  within one page load. See TODO.md for what that investigation ruled out.
+  Each buffer gets its
   **own** generator rather than sharing one stream: a shared one would make
   each buffer's contents depend on which others had already been built, and
   that order varies with which sounds a song uses. `mulberry32` relies only on

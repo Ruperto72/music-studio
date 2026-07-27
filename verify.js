@@ -951,12 +951,16 @@ async function main() {
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
     });
 
-    step('Noise buffers are seeded, so two page loads build byte-identical audio', async () => {
+    step('Noise buffers are seeded: identical across two page loads', async () => {
       // The reverb tail and the six noise-based drum sounds used to be filled
-      // from Math.random(), so the same song never exported the same bytes
-      // twice. A full render each way would take minutes, so checksum the
-      // buffers themselves as they are handed to the nodes that play them —
-      // if those match across two loads, everything downstream is determined.
+      // from Math.random(), so they differed on every page load. Checksum the
+      // buffers themselves as they are handed to the nodes that play them,
+      // across two loads.
+      //
+      // This asserts the buffers, not the export. An earlier version of this
+      // comment claimed that identical buffers meant an identical render; they
+      // do not. Two exports of the same song still differ, even back to back in
+      // one page load — see TODO.md for what that investigation ruled out.
       await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
         source: `
           (() => {

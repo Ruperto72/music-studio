@@ -259,7 +259,7 @@ ett facit.
   sampel, duckningen höll alltså tillbaka nivån), och de "diskontinuiteter"
   som först såg ut som defekter var master-bitcrushen (`masterCrush.amount:
   0.06` → håll 2 sampel) som gör exakt vad den är inställd på.
-- [x] **Allt brus är seedat — exporten är reproducerbar.** Punkten skrevs om
+- [x] **Allt brus är seedat.** Punkten skrevs om
   reverb-impulsen, men den var inte den enda källan: `Math.random()` fyllde
   *tre* buffertar — impulssvaret plus de två trumbrusbuffertarna
   (`ensureNoiseBuffer()` för hi-hat/virvel/rim/shaker,
@@ -278,6 +278,29 @@ ett facit.
   kunde ha förlitat sig på en viss, eftersom den ändrades varje gång — men det
   betyder också att en låt kan låta aningen annorlunda än den gjorde vid ett
   specifikt tillfälle.
+- [ ] **Exporten är fortfarande inte bitidentisk — jag påstod fel.** När jag
+  seedade bruset skrev jag att exporten därmed blev reproducerbar. Det stämde
+  inte, och jag hann skriva in det i README och DESIGN innan jag hade
+  end-to-end-beviset (bägge är rättade nu). Två fullständiga exporter av samma
+  låt skiljer sig fortfarande — **även två i rad i samma sidladdning**, vilket
+  visar att det som återstår sitter i själva renderingen och inte i vad sidan
+  bygger vid uppstart.
+  Vad mätningen visar för `Popcorn` (92 s): de första 6 sekunderna är exakt
+  lika, sedan skiljer sig 36 av 92 sekunder. Alltså ingen genomgående
+  nivåskillnad, utan något som slår till för vissa ljud.
+  **Uteslutet, med mätning:** de seedade buffertarna (hashade *under* varje
+  rendering — bitidentiska, så seedningen gör exakt vad den ska),
+  AudioWorklet-nedsamplaren (blockerad modulladdning → 0 worklets, ändå olika),
+  `ConvolverNode` (ersatt med en gain-nod, ändå olika), `DynamicsCompressorNode`
+  (likaså) och röstpoolningen (`acquireVoice` tvingad att returnera null, ändå
+  olika). Och: **två enkla toner i ett tomt projekt renderas identiskt**, så
+  webbläsarens offline-rendering är reproducerbar i sig — det är något låten
+  använder som inte är det.
+  Kvar att undersöka: per-not-effekterna (echo/chorus/crush-vägarna),
+  sidechain-duckningen, automationsramperna, och trumschemaläggningen.
+  Storleken på skillnaden är inte mätt — jag vet att den finns, inte om den är
+  hörbar. Skripten som användes ligger inte i repot; de renderar en låt två
+  gånger och jämför FNV-hashar per kanal och per sekund.
 
 ## Spår-effekter
 
