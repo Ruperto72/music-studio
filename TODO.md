@@ -458,10 +458,30 @@ och de är avsiktligt additiva (se `TRACK_FX_REGISTRY`). Det som återstår
   `apply` är en medveten no-op: en nots LFO skapas med noten, så en ändring
   slår igenom vid nästa schemalagda chunk, precis som en ändring av vågform,
   ADSR eller filter.
-- [ ] **Duty cycle-default per spår.** Vågformen väljs redan per spår, men
-  pulsbredden går bara att sätta per not (och bara när spårets vågform är
-  `square`). Ett spår-default är den naturliga platsen; per-not-värdet får
-  fortsätta åsidosätta det.
+- [x] **Duty cycle-default per spår.** Ligger i Envelope-panelen (`E Env`) och
+  visas bara för `square`-spår, efter samma regel som FM-reglagen bredvid: en
+  vågformsspecifik per-spårs-synthinställning visas bara för den vågform den
+  gäller. Notens eget värde vinner fortfarande; `null` på noten betyder ärv.
+  Två saker föll ut av det här som är värda att notera:
+  1. **Inspektorns två identiska alternativ betyder nu olika saker.** Duty-
+     listan hade både `null → "Standard (50%)"` och `0.5 → "50%"`, som gjorde
+     exakt samma sak. Nu ärver det första spårets värde och heter "Track
+     default (…)" med spårets aktuella siffra i, medan det explicita 50%
+     tvingar en vanlig fyrkant oavsett vad spåret står på.
+  2. **Vågformsvalet var handskrivet på tre ställen** — huvudoscillatorn,
+     chorus-oscillatorn bredvid den, och portamento-schemaläggarens — så att
+     lägga till spår-defaulten hade gjort det till tre nästan identiska
+     fyrgrenskedjor. Nu en funktion, `setOscWave()`, och upplösningen mellan
+     not och spår sker på exakt ett ställe, `effectiveDuty()`.
+  Dessutom bundlades de fem sakerna ett spår bidrar med till en nots ljud
+  (ADSR, filter, FM, vibrato, duty) till ett `voice`-objekt
+  (`getTrackVoice()`). Schemaläggarna tog dem som en svans av fem valfria
+  positionsparametrar — duty hade blivit den sjätte, och det är så ett
+  argument hamnar ett steg fel. En ny per-spårs-inställning är nu ett fält i
+  stället för ännu en plats i ordningen. Duty ingår också i spår-presetarna
+  (`'duty' in preset`, inte sanningsvärde — `null` är ett riktigt värde här,
+  och presetar sparade före duty saknar nyckeln helt och ska inte nollställa
+  den).
 - [ ] **Pan per not.** Varje annan mixparameter har en per-not-motsvarighet
   (volym via Velocity), men panorering har ingen — en enskild ton kan inte
   placeras i stereobilden utan att flyttas till ett eget spår. Dyrast av
