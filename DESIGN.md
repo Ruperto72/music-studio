@@ -258,11 +258,21 @@ with the timeline:
 
 ### A.9 Note/effects inspector
 
-The right-hand `.inspector` panel shows either an empty-state hint or, when
-a single note is selected, per-note controls grouped into:
+The right-hand `.inspector` panel shows either an empty-state hint or the
+controls for whatever single item is selected. A **rhythm hit** gets a short
+panel of its own (`renderHitInspector()`): the drum's name, its bar and beat,
+a **Velocity** slider (10–100%, the same range/step/formatting as the tonal
+one below) and Delete. That is the whole list on purpose — a hit has no pitch,
+no length and no per-note effect flags, and for drums those effects live on
+the track's ✨ FX panel instead, since every kit sound on a track passes
+through the one channel node those inserts and sends tap.
+
+A **note** gets the fuller set, grouped into:
 
 - **Selected note**: track-color badge, pitch name + frequency, note length,
-  Velocity slider.
+  Velocity slider. Velocity is drawn on the grid as brightness (opacity
+  `0.4 + 0.6 × vel`) for notes and hits alike, so an accent is visible without
+  opening anything.
 - **Modulation**: Vibrato / Tremolo toggle buttons, Portamento toggle
   (glides into the next contiguous note). Each toggle draws its effect as a
   small glyph above its label — see A.14.
@@ -476,7 +486,7 @@ state = {
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
   swing,       // % (0 = straight 8ths, up to 75 ≈ triplet feel) — swingOffsetCols()
-  selected,    // { track, note } | null — the note object, never an index (B.5)
+  selected,    // { track, item } | null — the note OR hit object, never an index (B.5)
   multiSelected, // Set<Note|Hit> — group selection within activeTrack
   playhead, loopStart, loopEnd,
   marquee,     // { col0, col1, track } | null, mid-drag only
@@ -491,8 +501,12 @@ changes.
 A `Note` is `{ start, len, freq, vel, bend, vib, trem, duty, arp, porta,
 crush, echo, chorus, reverb }` (columns are in eighth-note units; `MICRO = 1/6`
 eighth is the finest shared lattice, so triplet and straight subdivisions
-never drift). A `Hit` is `{ start, type }` where `type` is one of
-`RHYTHM_ROWS`. Multiple hits (or, in the pad/strings/stab style, multiple
+never drift). A `Hit` is `{ start, type, vel? }` where `type` is one of
+`RHYTHM_ROWS` and `vel` (0.1–1) is how hard it's struck; **absent means full**,
+so every song written before hits had a velocity loads and sounds unchanged,
+and the inspector deletes the property rather than writing `vel: 1` back.
+`hitVel()` is the one reader, and clamps there so a hand-edited file can't
+produce a broken gain. Multiple hits (or, in the pad/strings/stab style, multiple
 tonal notes) can share the same `start` in one track to voice a chord or
 layer percussion — and the editor creates them that way too: every
 note-editing interaction is **pitch-aware**, so a note only ever conflicts
@@ -629,11 +643,14 @@ when each site spelled the comparison out inline the variants drifted, and
 every drift silently deleted the user's notes or hits — five distinct bugs
 traced back to it.
 
-**Selection identity.** `state.selected` is `{ track, note }` and holds the
-note *object*; it is never an array index, since deleting or reordering
-anything earlier in a track would otherwise silently re-point it at a
-different note. `renderInspector()` still confirms the note is present in the
-track before editing it, because a paste, drag or undo can remove it.
+**Selection identity.** `state.selected` is `{ track, item }` and holds the
+selected *object* — a note or a rhythm hit, since both are selectable; it is
+never an array index, since deleting or reordering anything earlier in a
+track would otherwise silently re-point it at a different item.
+`renderInspector()` still confirms the item is present in the track before
+editing it, because a paste, drag or undo can remove it. `selectItem()` and
+`deleteItem()` handle both kinds — only the audition preview differs — so
+there is no separate tonal and rhythm copy to drift apart.
 `state.multiSelected` is a Set of objects implicitly scoped to
 `state.activeTrack`, so every track switch has to clear it — go through
 `activateTrack()` (or `setActive()`, which wraps it) rather than assigning
@@ -737,7 +754,17 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   `scheduleOpenHat`/`scheduleShaker`/`schedulePuka`(tom)/`scheduleClap`/
   `scheduleCrash`/`scheduleRide`) — filtered noise bursts and/or short
   pitch-swept oscillators, no shared "drum" abstraction since each sound's
-  shape is bespoke. Each rhythm track routes to its own `chanGain[id]`, so
+  shape is bespoke. They are all reached through one dispatch point,
+  `scheduleDrum(type, startAt, destGain, vel)`, used by playback, the
+  click-to-place preview and the pattern auditions alike. That is also where
+  per-hit **velocity** is applied — as a plain `GainNode` in front of the
+  destination, deliberately *not* as an argument threaded into the ten
+  functions: each hand-writes its own multi-stage envelope (the snare has two,
+  the clap three), so scaling every `exponentialRampToValueAtTime` by hand
+  would be ten chances for the same factor to drift. At full velocity no node
+  is inserted at all, so an untouched song builds the identical graph it built
+  before hits had a velocity — which matters when an offline render schedules
+  thousands of them. Each rhythm track routes to its own `chanGain[id]`, so
   multiple rhythm tracks mix, pan, and get FX-processed independently.
 - **Global FX buses** (`createGlobalFxBuses()`, part of `buildMasterBus()`):
   a shared tempo-synced delay, a shared LFO-modulated chorus, and a shared
@@ -805,7 +832,12 @@ nodes for any track added/removed by the undo and reapplies all four
 - **MIDI**: 🎹/🎼 export/import a Standard MIDI File (format 1, own SMF
   writer/parser, no library). Per-note effects have no MIDI equivalent and
   aren't round-tripped; import merges all channel-9 (drum) events in a file
-  into the song's first rhythm track.
+  into the song's first rhythm track. Velocity *does* round-trip in both
+  directions for notes and hits alike — the parser had always read the
+  note-on velocity and then discarded it, so before this everything came in
+  at full level and drum hits went out at a hardcoded 100. Imported values
+  are rounded to the 0.05 step the Velocity sliders offer, so an imported
+  item lands on a value the slider can actually represent.
 - **Code export**: see B.3 — a distinct, narrower serialization for pasting
   into the originating game's own audio module.
 
