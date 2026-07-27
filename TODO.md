@@ -832,6 +832,31 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
 
 ## Lagring / delning
 
+- [x] **Granskning av exempellåtarna, inlagd som första steget i `verify.js`.**
+  Efter #96 låg frågan kvar om de sju medföljande låtarna själva bar på skräp.
+  De gjorde inte det — alla sju rena, och en körning i webbläsaren där de
+  laddades i följd gav exakt matchning mot filerna i alla elva
+  inställningskartorna.
+  **"0 problem" är dock precis det resultat man inte ska lita på**, så
+  granskningen kördes mot en avsiktligt trasig kopia först: okänd trumma,
+  `vel: 1` (samma sak som ingen vel alls, alltså dödvikt), träffar efter
+  låtens slut, `adsr` utan `release` (hela posten tappas vid laddning),
+  tonal-inställning på ett rytmspår, spår-id som inte finns i låten,
+  duty utanför de fyra som väljaren erbjuder, EQ/pan utanför sina intervall,
+  okänd vågform, automation på en parameter som inte finns, `masterEQ`
+  utanför ±12 dB, saknad `masterVol`, och `index.json` kontra filerna på disk
+  åt bägge håll. Alla fjorton smällde.
+  Två saker som gör att den inte kan ruttna: konstanterna (`WAVEFORMS`,
+  `RHYTHM_ROWS`, `DUTY_VALUES`, `AUTOMATION_PARAMS`, `SPARSE_TRACK_MAPS`,
+  `TRACK_FX_REGISTRY`s min/max) **läses ur `index.html`** i stället för att
+  skrivas av — samma drift-problem som punkten nedan handlar om — och en
+  extraktion som slutar matcha **kastar** i stället för att ge en tom lista.
+  Verifierat: döp om `SPARSE_TRACK_MAPS` i en kopia och granskningen säger
+  *"could not read SPARSE_TRACK_MAPS out of index.html — the audit would pass
+  vacuously"* i stället för att glatt godkänna allt.
+  Ligger först i sviten, och är enda steget som inte startar någon webbläsare:
+  en trasig exempellåt går ut till alla som öppnar Songs-menyn, och att få veta
+  det ska kosta sekunder, inte de tretton minuter resten av körningen tar.
 - [x] **Spårinställningar sparades och lästes in fel — en lista i stället för
   sex handskrivna.** Frågan var enkel ("sparas allt i master och spåren?") och
   svaret visade sig vara *nästan*. Genomgången av `currentSongData()` mot

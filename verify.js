@@ -138,6 +138,157 @@ class CDP {
   close() { try { this.ws.close(); } catch { /* already closed */ } }
 }
 
+// ---------------------------------------------------------------------------
+// Bundled-song audit. The only check here that never opens a browser: it reads
+// songs/*.json and asks whether index.html would accept every field in them.
+//
+// Every constant it validates against is pulled out of index.html rather than
+// retyped, so the audit cannot drift from the app — which is the same failure
+// this repo already hit when six places each hand-wrote the list of per-track
+// settings and four of them fell out of step. Extraction that stops matching
+// throws rather than yielding an empty list, since an audit with nothing to
+// compare against passes everything.
+// ---------------------------------------------------------------------------
+function auditBundledSongs(repoRoot) {
+  const html = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8');
+  const constArray = (name) => {
+    const m = html.match(new RegExp(`const ${name} = (\\[[^\\]]*\\]);`));
+    if (!m) throw new Error(`could not read ${name} out of index.html — the audit would pass vacuously`);
+    return eval(m[1]);
+  };
+  const WAVEFORMS = constArray('WAVEFORMS');
+  const RHYTHM_ROWS = constArray('RHYTHM_ROWS');
+  const DUTY_VALUES = constArray('DUTY_VALUES');
+  const AUTOMATION_PARAMS = constArray('AUTOMATION_PARAMS');
+  const SPARSE_TRACK_MAPS = constArray('SPARSE_TRACK_MAPS');
+  const rangeSrc = html.match(/const AUTOMATION_RANGE = (\{.*?\});/);
+  if (!rangeSrc) throw new Error('could not read AUTOMATION_RANGE out of index.html');
+  const AUTOMATION_RANGE = eval('(' + rangeSrc[1] + ')');
+
+  // Each effect's field ranges, read straight off the TRACK_FX_REGISTRY table.
+  const registry = {};
+  {
+    const from = html.indexOf('const TRACK_FX_REGISTRY = [');
+    if (from < 0) throw new Error('could not find TRACK_FX_REGISTRY in index.html');
+    const src = html.slice(from, from + html.slice(from).indexOf('\n];'));
+    let key = null;
+    for (const line of src.split('\n')) {
+      const k = line.match(/^\s*key: '(\w+)'/);
+      if (k) { key = k[1]; registry[key] = []; continue; }
+      const f = line.match(/\{ param: '(\w+)',.*?min: (-?[\d.]+), max: (-?[\d.]+)/);
+      if (f && key) registry[key].push({ param: f[1], min: +f[2], max: +f[3], optional: /optional: true/.test(line) });
+    }
+    if (!Object.keys(registry).length) throw new Error('read no effects out of TRACK_FX_REGISTRY');
+  }
+
+  const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty'];
+  const SEEDED_MAPS = ['gains', 'waveform', 'pan', 'mute', 'solo'];
+  const REQUIRED_FIELDS = {
+    adsr: ['attack', 'decay', 'sustain', 'release'],
+    filter: ['cutoff', 'q', 'envAmount'],
+    fm: ['ratio', 'depth'],
+  };
+
+  const problems = [];
+  const songsDir = path.join(repoRoot, 'songs');
+  const files = fs.readdirSync(songsDir).filter((f) => f.endsWith('.json') && f !== 'index.json').sort();
+  const index = JSON.parse(fs.readFileSync(path.join(songsDir, 'index.json'), 'utf8'));
+  if (!files.length) throw new Error('found no example songs to audit');
+
+  // Both directions: a song the menu never offers is invisible, and an entry
+  // with no file behind it is a row that fails when clicked.
+  const listed = index.map((e) => e.file);
+  for (const f of files) if (!listed.includes(f)) problems.push(`${f} is not listed in songs/index.json`);
+  for (const e of listed) if (!files.includes(e)) problems.push(`songs/index.json lists ${e}, which does not exist`);
+
+  for (const file of files) {
+    const song = JSON.parse(fs.readFileSync(path.join(songsDir, file), 'utf8'));
+    const add = (s) => problems.push(`${file}: ${s}`);
+    const list = Array.isArray(song.trackList) ? song.trackList : [];
+    const ids = list.map((t) => t.id);
+    const kind = Object.fromEntries(list.map((t) => [t.id, t.kind]));
+    const isRhythm = (id) => kind[id] === 'rhythm';
+    const cols = typeof song.cols === 'number' ? song.cols : 64;
+
+    if (!list.length) add('no trackList');
+    if (new Set(ids).size !== ids.length) add('duplicate track ids in trackList');
+    if (!list.some((t) => t.kind === 'rhythm')) add('no rhythm track');
+    if (typeof song.masterVol !== 'number') add('no masterVol');
+
+    for (const id of Object.keys(song.tracks || {})) {
+      if (!ids.includes(id)) { add(`tracks["${id}"] is not in trackList — its notes/hits are dropped on load`); continue; }
+      const seq = song.tracks[id] || [];
+      if (isRhythm(id)) {
+        const unknown = [...new Set(seq.filter((h) => !RHYTHM_ROWS.includes(h.type)).map((h) => h.type))];
+        if (unknown.length) add(`${id}: hit(s) on an unknown drum: ${unknown.join(', ')}`);
+        const badVel = seq.filter((h) => h.vel != null && (h.vel < 0.1 || h.vel > 1));
+        if (badVel.length) add(`${id}: ${badVel.length} hit(s) with a velocity outside 0.1-1`);
+        // vel: 1 is the same sound as no vel at all, so it is pure file weight
+        // — and it is what the inspector deliberately avoids writing.
+        const unity = seq.filter((h) => h.vel === 1);
+        if (unity.length) add(`${id}: ${unity.length} hit(s) store vel: 1, which means the same as leaving it off`);
+      }
+      const past = seq.filter((n) => typeof n.start === 'number' && n.start >= cols);
+      if (past.length) add(`${id}: ${past.length} item(s) start past the song end (cols ${cols})`);
+    }
+    for (const id of ids) if (!(song.tracks || {})[id]) add(`${id} has a trackList entry but no tracks[] data`);
+
+    for (const key of [...SPARSE_TRACK_MAPS, ...SEEDED_MAPS]) {
+      const map = song[key];
+      if (!map || typeof map !== 'object') continue;
+      for (const id of Object.keys(map)) {
+        // The shape a pre-#96 save could carry: settings for a track that
+        // belonged to whichever song was loaded before this one.
+        if (!ids.includes(id)) { add(`${key}["${id}"] — no such track in this song`); continue; }
+        if (TONAL_ONLY.includes(key) && isRhythm(id)) add(`${key}["${id}"] is on a rhythm track, where it does nothing`);
+        const v = map[id];
+        for (const f of REQUIRED_FIELDS[key] || []) {
+          if (typeof (v || {})[f] !== 'number') add(`${key}["${id}"] is missing ${f} — the whole entry is dropped on load`);
+        }
+        for (const f of registry[key] || []) {
+          if (typeof (v || {})[f.param] !== 'number') {
+            if (!f.optional) add(`${key}["${id}"] is missing ${f.param} — the whole entry is dropped on load`);
+            continue;
+          }
+          if (v[f.param] < f.min || v[f.param] > f.max) add(`${key}["${id}"].${f.param} = ${v[f.param]}, outside ${f.min}..${f.max}`);
+        }
+        if (key === 'duty' && !DUTY_VALUES.includes(v)) add(`duty["${id}"] = ${v}, not one of ${DUTY_VALUES.join('/')} — dropped on load`);
+        if (key === 'waveform') {
+          if (isRhythm(id) && v !== 'kit') add(`waveform["${id}"] = "${v}" on a rhythm track (expected "kit")`);
+          if (!isRhythm(id) && !WAVEFORMS.includes(v)) add(`waveform["${id}"] = "${v}", not a selectable waveform — dropped on load`);
+        }
+        if (key === 'pan' && (v < -1 || v > 1)) add(`pan["${id}"] = ${v}, outside -1..1`);
+      }
+    }
+
+    for (const id of Object.keys(song.automation || {})) {
+      if (!ids.includes(id)) continue; // already reported by the loop above
+      for (const param of Object.keys(song.automation[id])) {
+        if (!AUTOMATION_PARAMS.includes(param)) { add(`automation["${id}"].${param} is not an automatable parameter — dropped on load`); continue; }
+        const r = AUTOMATION_RANGE[param];
+        const pts = song.automation[id][param] || [];
+        const malformed = pts.filter((p) => typeof p.col !== 'number' || typeof p.value !== 'number');
+        if (malformed.length) add(`automation["${id}"].${param}: ${malformed.length} malformed point(s)`);
+        const oor = pts.filter((p) => typeof p.value === 'number' && (p.value < r.min || p.value > r.max));
+        if (oor.length) add(`automation["${id}"].${param}: ${oor.length} point(s) outside ${r.min}..${r.max}`);
+        const past = pts.filter((p) => typeof p.col === 'number' && p.col > cols);
+        if (past.length) add(`automation["${id}"].${param}: ${past.length} point(s) past the song end`);
+        if (pts.some((p, i) => i && p.col < pts[i - 1].col)) add(`automation["${id}"].${param} is not sorted by col`);
+      }
+    }
+
+    if (song.masterEQ) for (const b of ['low', 'mid', 'high']) {
+      const v = song.masterEQ[b];
+      if (typeof v !== 'number') add(`masterEQ.${b} is not a number — the whole EQ is dropped on load`);
+      else if (v < -12 || v > 12) add(`masterEQ.${b} = ${v}, outside -12..12`);
+    }
+    if (song.masterComp) for (const f of ['threshold', 'ratio', 'attack', 'release']) {
+      if (typeof song.masterComp[f] !== 'number') add(`masterComp.${f} is not a number — the whole compressor is dropped on load`);
+    }
+  }
+  return { files, problems };
+}
+
 async function main() {
   const errors = [];
   const steps = [];
@@ -216,6 +367,17 @@ async function main() {
       })()`);
       await waitFor(`!!document.querySelector('.preset-grid button[${attr}]')`);
     }
+
+    // First, and the only step that needs no browser: a song file the app
+    // would silently mangle is worth hearing about before thirteen minutes of
+    // rendering, and a bad example ships to everyone who opens the Songs menu.
+    step('Bundled songs: every field is one the app will actually load', async () => {
+      const { files, problems } = auditBundledSongs(repoRoot);
+      if (files.length < 5) throw new Error(`only found ${files.length} example songs — expected the bundled set`);
+      if (problems.length) {
+        throw new Error(`${problems.length} problem(s):\n        ` + problems.join('\n        '));
+      }
+    });
 
     step('loads with no console errors, boots into a blank project', async () => {
       await goto(APP_URL);
