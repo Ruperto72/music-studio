@@ -1023,6 +1023,36 @@ nodes for any track added/removed by the undo and reapplies all four
 - **Code export**: see B.3 — a distinct, narrower serialization for pasting
   into the originating game's own audio module.
 
+**One list names the per-track settings.** The per-track song state splits
+in two. The *seeded* maps — `tracks`, `gains`, `waveform`, `pan`, `mute`,
+`solo` — get one entry per track with a real default, so a load rebuilds
+them from the track list. The *sparse* maps — `automation`, `adsr`,
+`filter`, `fm`, `fxSend`, `comp`, `crush`, `tremolo`, `vibrato`, `duty`,
+`eq` — treat an absent entry as the default, so a load has to clear them
+wholesale before applying the file. Those eleven are named once, in
+`SPARSE_TRACK_MAPS`, and `currentSongData()`, `snapshotSong()`,
+`restoreSnapshot()`, `restoreTrackList()`, `createNewSong()` and
+`removeTrack()` all walk it. **A new per-track setting goes in that list,
+not into six call sites.**
+
+It is a list because it used to be six hand-written ones, and four had
+drifted apart — invisibly, since nothing about a missing key looks wrong:
+
+- `restoreTrackList()` cleared two of the eleven, so loading song B kept
+  song A's filter, FM, sends, EQ, compressor, crush and tremolo on every
+  track id the two shared. Every song has a `rhythm`, so this always had
+  something to land on.
+- `createNewSong()` cleared nine, forgetting `filter` and `fm`.
+- `removeTrack()` deleted ten, forgetting `filter`.
+- `applySavedMix()` restored ten, never reading `duty` — so a per-track
+  pulse width was written into every saved file and silently discarded on
+  load. `duty` is the one per-track setting that is a bare number rather
+  than an object, which is exactly why it rode along in no shared loop.
+
+`autosave()` writes `currentSongData()` itself rather than repeating its
+field list, for the same reason: a crash-recovery net that quietly saves
+less than a save does is worth very little.
+
 ### B.9 File & module map
 
 | File | Role |
