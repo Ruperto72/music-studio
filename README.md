@@ -21,19 +21,20 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   shaker, tom, clap, crash, ride)
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
-- **Chords** — place several pitches in one column, or build a triad from a
-  selected note with **Add Major / Minor Chord**
+- **Chords** — place several pitches in one column, or build one from a
+  selected note with the inspector's ten quick voicings (power chord, maj,
+  min, dim, aug, sus2, sus4, 7, maj7, m7), which add real notes above the
+  root rather than flagging the one you picked
 - Selectable **grid** resolution (1/4, 1/8, 1/16 and triplets) and a **swing**
   control for a shuffled 8th feel
 - **Time signature** (4/4, 3/4, 6/8, …) and named **timeline markers**
 - **Loop** range, zoom, multi-select, copy/paste, undo/redo
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
   Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap) you can audition and
-  stamp into a
-  rhythm track. Every hit lands
-  with its own velocity, so the groove has accents rather than a flat machine
-  pulse, and each pattern carries a **fill** bar used on the last bar of every
-  phrase (2, 4 or 8 bars, or off), with a crash on the downbeat after it
+  stamp into a rhythm track. Every hit lands with its own velocity, so the
+  groove has accents rather than a flat machine pulse, and each pattern
+  carries a **fill** bar used on the last bar of every phrase (2, 4 or 8
+  bars, or off), with a crash on the downbeat after it
 
 ### Sound design
 

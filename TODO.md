@@ -807,6 +807,44 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   också att ett nollavstånd — två hi-hats i samma kolumn, vilket `hitsConflict`
   räknar som krock — förtjänar ett eget felmeddelande i stället för en
   Infinity-kvot, så det lades till.
+- [x] **Genomgång av `DESIGN.md` och `README.md` mot koden — fjorton fel.**
+  Uppföljning av emoji-städningen: om ikonografin hade legat kvar inaktuell,
+  vad mer hade det? Sätten som gav utdelning var att räkna: varje
+  `backtick`-identifierare i dokumenten kontrollerades mot källkoden (inga
+  döda kvar), och varje antalsord (*four*, *five*, *six*) lästes om mot
+  verkligheten. Det senare hittade nästan allt.
+  **Antal som halkat efter när något lagts till:**
+  - "The **six** buttons are sized `flex: 1 1 0`" — tio knappar, och det är
+    ett CSS-grid med fem kolumner, inte flex.
+  - FX-panelen: "**Five** groups", "all **five** groups", "the **four**
+    `TRACK_FX_REGISTRY`-driven groups (fxSend/comp/crush/tremolo)", "all
+    **four** FX-panel groups", "**All four** (Delay/Chorus/Reverb send, EQ,
+    Compressor, Bitcrush, Tremolo)" — som dessutom räknade fel mot sin egen
+    uppräkning — och "instead of **four** hand-written blocks". Det är sex
+    grupper; `eq` och `vibrato` tillkom efter att texten skrevs.
+  - "the **five** things a track contributes to a note's sound" — sex sedan
+    PWM-svepet lades i `voice`-objektet.
+  - Vibrato och Tremolo stod i fel ordning mot registret, i ett stycke som
+    påstår att ordningen betyder något.
+  - En mening om Bitcrush ("`0%` = full quality") hade hamnat sist i
+    *Vibrato*-punkten.
+  - "reapplies all **four** `TRACK_FX_REGISTRY` groups" vid undo — alla utom
+    Vibrato, vars `apply` är en avsiktlig no-op.
+  **Två som var direkt vilseledande:**
+  - "`restoreTrackList()` ... (and resets automation/adsr)" — sedan #96
+    rensar den alla elva glesa kartorna, vilket är hela poängen med den
+    fixen.
+  - "Mouse-driven editing ... `mousedown` → `mousemove`/`mouseup`". Alla sju
+    namngivna drag-maskiner använder **pointer**-events. Kontrollerat en och
+    en. Det är inte kosmetiskt: det är pointer-events som gör rutnätet
+    redigerbart på en telefon, och en framtida redigerare som följde texten
+    hade skrivit fel API. De `mousedown` som finns kvar är bara
+    `stopPropagation()`-vakter.
+  - `README`: "build a triad ... with **Add Major / Minor Chord**" — de
+    knapparna finns inte; det är tio ackordlägen bakom en `▸ presets`-lucka.
+  Samt `〰 Auto` / `E Env`, som namngav kontroller efter tecken glyferna
+  ersatte — precis samma fel som punkten nedan, missat för att min
+  emoji-sökning inte täckte U+3030.
 - [x] **Dokumentationen beskrev fortfarande den gamla emoji-ikonografin — och
   koden gjorde det på ett ställe också.** `DESIGN.md` §A.1 påstod rakt ut
   "Iconography: emoji throughout (🎵 💾 📂 ⤓ ⛶ ✏️ 🧽 ✋ 🚩 🔍 ▾ ▸ ✕ ✨)", vilket

@@ -131,10 +131,11 @@ with distinct rows, each independently hideable when the track is collapsed:
    `aria-label` because the glyph itself is `aria-hidden`. This replaced a
    `<select>`: the choice is "which of these shapes", which a dropdown can
    only ever show one of at a time — and a native `<option>` cannot carry
-   an SVG at all. The six buttons are sized `flex: 1 1 0` so they divide
-   the fixed 200px header (`--header-w`) however many waveforms exist.
-3. **Tools row** (hidden when collapsed): **〰 Auto** (toggles the
-   automation-curve row), **E Env** (toggles the envelope/filter/FM row,
+   an SVG at all. The group is a CSS grid of five equal columns, so the
+   buttons divide the fixed 200px header (`--header-w`) evenly and a new
+   waveform extends the second row instead of shrinking the first.
+3. **Tools row** (hidden when collapsed): **Auto** (toggles the
+   automation-curve row), **Env** (toggles the envelope/filter/FM row,
    tonal tracks only — drum hits use fixed per-type envelopes), **FX**
    (toggles the Delay/Chorus/Reverb-send + EQ + Compressor + Bitcrush + Tremolo
    panel — see A.7), and **Preset** (saves/loads that track's
@@ -180,7 +181,7 @@ just name/M/S/VU — a slim overview strip so many tracks fit on screen;
 
 ### A.6 Automation curve editor
 
-Opened per-track via its header's **〰 Auto** button; renders as an extra
+Opened per-track via its header's **Auto** button; renders as an extra
 full-width row directly under that track (reusing the `.track-header`/
 `.gutter`/`.lane` sticky-positioning trio so it lines up with the grid
 above/below it):
@@ -214,8 +215,11 @@ Automation/Envelope, this does **not** add a full-width timeline row — every
 field in it is a static per-track knob with nothing tied to a timeline
 column, so it renders as a compact two-column grid (`buildFxPanel()`)
 appended directly into the track header itself, expanding the header's
-height in place. Available on every track, tonal or rhythm alike. Five
-groups, driven generically by `TRACK_FX_REGISTRY` (see B.6). Each group
+height in place. Available on every track, tonal or rhythm alike. Six
+groups, listed here in `TRACK_FX_REGISTRY` order — which is the order the
+panel renders them in, not a signal order, since the sends tap the end of
+the chain and Vibrato is not in the chain at all. Both come from that one
+table (see B.6). Each group
 opens with a heading — its glyph plus its name — which doubles as the
 separator between groups; these replaced the thin dividers that used to
 stand there, because abbreviations like Thr/Rat/Atk/Rel only read as a
@@ -238,6 +242,10 @@ compressor once you can see which group you are in:
   same `AudioWorkletNode` processor as the master bus's own Downsample
   control — independent of the per-note Bitcrush toggle, which is a fixed
   always-on `WaveShaperNode` effect rather than a dial-able amount.
+  `0%` = full quality (default).
+- **Tremolo** (Rate Hz / Depth %): a per-track amplitude-modulation LFO.
+  `Depth: 0%` (default) leaves the level unmodulated regardless of rate.
+
 - **Vibrato** (Rate, Depth in cents; **tonal tracks only**): pitch wobble on
   every note of the track. The one entry in `TRACK_FX_REGISTRY` that is *not*
   an insert — an LFO on the channel gain can shape an already-summed signal,
@@ -249,17 +257,14 @@ compressor once you can see which group you are in:
   toggle rather than replacing it — both connect an LFO into the same
   `osc.frequency`, and `AudioParam` inputs sum — matching the same
   "independent of the per-note flag" contract Crush and Tremolo have.
-  `0%` = full quality (default).
-- **Tremolo** (Rate Hz / Depth %): a per-track amplitude-modulation LFO.
-  `Depth: 0%` (default) leaves the level unmodulated regardless of rate.
-
-A **Reset** button restores every field in all five groups to its default
+  `Depth: 0` cents (default) leaves the pitch alone regardless of rate.
+A **Reset** button restores every field in all six groups to its default
 (neutral) value in one click; **✕** closes the panel without changing
 anything.
 
 ### A.8 Envelope, filter & FM editor
 
-Opened per-track (tonal tracks only) via **E Env**; same full-width-row
+Opened per-track (tonal tracks only) via **Env**; same full-width-row
 placement convention as automation, but its "lane" is a plain flex row of
 sliders rather than a column-indexed curve — it doesn't need to scroll
 with the timeline:
@@ -664,19 +669,23 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
 ```
 
 Loading is defensive/additive: `restoreTrackList()` rebuilds
-tracks/gains/waveform/pan/mute/solo (and resets automation/adsr) from
-whatever `trackList`+`tracks` are present, tolerating old files with no
-`trackList` by inferring tonal tracks from the data's keys; `applySavedMix()`
-then overlays gains/waveform/pan/mute/solo/markers/automation/adsr and the
-four `TRACK_FX_REGISTRY`-driven groups (fxSend/comp/crush/tremolo — see B.6)
-from the loaded data where present, validating each field's shape/range.
+tracks/gains/waveform/pan/mute/solo from whatever `trackList`+`tracks` are
+present (tolerating old files with no `trackList` by inferring tonal tracks
+from the data's keys) and clears every sparse per-track map through
+`SPARSE_TRACK_MAPS` — it has to, because `applySavedMix()` only *sets* what
+the file contains, so anything left behind would survive into the next song
+(see the end of B.8). `applySavedMix()` then overlays
+gains/waveform/pan/mute/solo/markers/automation/adsr/duty and the six
+`TRACK_FX_REGISTRY`-driven groups (fxSend/eq/comp/crush/tremolo/vibrato —
+see B.6) from the loaded data where present, validating each field's
+shape/range.
 `cols` is clamped to `[1 bar, MAX_COLS=576]`; if absent, it's derived from
 the last note/hit's end, rounded up to a whole bar.
 
 A separate **code-export** path (**Export code**) serializes only
 `TRACKS`/`RHYTHM_TRACKS` JS literals matching `js/song-data.js`'s shape, for
 pasting back into the originating game — `songName`, `markers`,
-`automation`, `adsr`, and all four FX-panel groups have no representation in
+`automation`, `adsr`, and all six FX-panel groups have no representation in
 that format and are intentionally excluded from it (the game's own audio
 engine doesn't read them).
 
@@ -724,16 +733,20 @@ track count).
 
 ### B.5 Interaction state machines
 
-Mouse-driven editing is implemented as manual `mousedown` → `document`-level
-`mousemove`/`mouseup` state machines (no drag library):
+Direct editing is implemented as manual `pointerdown` → `window`-level
+`pointermove`/`pointerup` state machines (no drag library). **Pointer
+events, not mouse events** — one code path then covers mouse, touch and pen,
+which is what makes the grid editable on a phone at all; the remaining
+`mousedown` listeners in the file are only `stopPropagation()` guards that
+keep a slider or select from starting a drag underneath it. The machines:
 `startMoveNote`/`startResize`/`startMoveHit` (drag/resize existing
 notes/hits), `startMarquee` (rubber-band multi-select), `startScrub`
 (playhead), `startLoopDrag` (loop-range handles), `startAutomationDrag`
 (automation curve points, generic across all five automatable parameters).
 Each captures whatever it needs at gesture start (bounding rects, clamping
 bounds from neighboring points/notes), applies `scheduleRender()` during
-`mousemove`, and commits with a synchronous `render()` + `autosave()` on
-`mouseup`. A drag that produces no net change (e.g., a plain click on an
+`pointermove`, and commits with a synchronous `render()` + `autosave()` on
+`pointerup`. A drag that produces no net change (e.g., a plain click on an
 automation point) deliberately skips the render/commit step — necessary so
 a `dblclick` (used to delete) doesn't get its target element swapped out
 mid-gesture by an intervening rebuild.
@@ -847,12 +860,12 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   modulated by an LFO (`createChanTremolo()`). `chanTremolo[id]` is the
   fixed downstream anchor that `chanPan[id]`, the VU meter, and the three FX
   sends all connect from, so a bitcrushed/tremolo'd track's pan, meter, and
-  sends all reflect the final processed signal. All four (Delay/Chorus/
-  Reverb send, EQ, Compressor, Bitcrush, Tremolo) share one state-shape/UI
-  registry, `TRACK_FX_REGISTRY` (get/set/apply functions plus each field's
-  range/format/clamp-on-load rules per group) — both `applySavedMix()`
-  (Song I/O load/validate) and `buildFxPanel()` (A.7's UI) iterate this one
-  table instead of four hand-written near-duplicate blocks; the underlying
+  sends all reflect the final processed signal. All six (Delay/Chorus/
+  Reverb send, EQ, Compressor, Bitcrush, Tremolo, Vibrato) share one
+  state-shape/UI registry, `TRACK_FX_REGISTRY` (get/set/apply functions plus
+  each field's range/format/clamp-on-load rules per group) — both
+  `applySavedMix()` (Song I/O load/validate) and `buildFxPanel()` (A.7's UI)
+  iterate this one table instead of six hand-written near-duplicate blocks; the underlying
   audio-graph wiring itself stays as separate functions (too heterogeneous —
   an async worklet insert vs. three send taps vs. a compressor insert — to
   be worth unifying further).
@@ -863,9 +876,10 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   once per scheduling chunk (re-anchoring itself from each chunk's starting
   value) — independent of individual notes, so it keeps working correctly
   across chunk boundaries, loop points, and seeks.
-- **The track's voice**: the five things a track contributes to a note's sound
-  — ADSR, filter, FM, vibrato and the `square` pulse-width default — are
-  gathered by `getTrackVoice(track)` into one object that
+- **The track's voice**: the six things a track contributes to a note's sound
+  — ADSR, filter, FM, vibrato, the `square` pulse-width default, and the
+  free-running PWM sweep LFO (`chanPwmLfo`, see the PWM paragraph below) —
+  are gathered by `getTrackVoice(track)` into one object that
   `scheduleTone()`/`schedulePortamentoTone()` take as a single parameter.
   They used to be a tail of five optional positional arguments, which is how
   one ends up a slot off; a new per-track synth setting is now a field rather
@@ -1006,8 +1020,10 @@ settings or presentation state rather than undo-able edits).
 snapshot onto `undoStack` if it differs from the last committed one, capped
 at 100 entries; `undo()`/`redo()` swap between `undoStack` and `redoStack`
 and call `restoreSnapshot()`, which also rebuilds the audio graph's channel
-nodes for any track added/removed by the undo and reapplies all four
-`TRACK_FX_REGISTRY` groups.
+nodes for any track added/removed by the undo and reapplies the
+`TRACK_FX_REGISTRY` groups that have something to reapply — every one but
+Vibrato, whose `apply` is a deliberate no-op because a note's LFO is built
+with the note and so picks the change up on the next scheduled chunk.
 
 ### B.8 Persistence & Song I/O
 
