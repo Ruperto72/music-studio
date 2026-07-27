@@ -57,8 +57,7 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - **Song library** — bundled examples or your own songs saved in this browser
 - **💾 / 📂** download/upload a song as `.json`
 - **🎹 / 🎼** export/import a Standard MIDI File (format 1)
-- **🔊** render the whole song offline and download a `.wav` — reproducible,
-  so re-exporting an unchanged song gives byte-identical audio
+- **🔊** render the whole song offline and download a `.wav`
 - **⤓** export the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
   a game
 - **Keyboard & screen reader**: Tab reaches every control with a visible focus

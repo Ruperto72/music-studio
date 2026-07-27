@@ -358,6 +358,16 @@
   /* In a heading or an inline run the glyph has to sit on the text baseline;
      as a flex child (buttons above) it is centred for free. */
   h2 .glyph-sq { display: inline-block; vertical-align: -2px; width: 18px; height: 18px; }
+  /* An icon standing in front of the button name it belongs to, inside running
+     help text. Sized to the surrounding line rather than a fixed pixel value,
+     and given a little trailing space so it reads as part of the name. */
+  /* The span itself carries the box — sizing only the inner <svg> left the
+     span zero-width, so the icon drew on top of the word before it. */
+  .help-ico {
+    display: inline-block; width: 1.15em; height: 1.15em;
+    vertical-align: -0.22em; margin-right: 5px;
+  }
+  .help-ico .glyph-sq { width: 100%; height: 100%; opacity: 0.9; }
   #new-song-starter, #new-song-empty, #song-save-local, #preset-save {
     display: inline-flex; align-items: center; gap: 6px;
   }
@@ -777,7 +787,7 @@
         vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
         red playhead run across every lane at once. The current project's name is shown in the
         <b>Master</b> strip at the bottom (click it to rename while the strip is expanded) — the
-        <b>☰</b> menu's <b>Songs…</b> loads an example, one of your own saved songs, or starts a
+        <span class="help-ico" data-glyph="menu"></span><b>menu</b>'s <span class="help-ico" data-glyph="songs"></span><b>Songs…</b> loads an example, one of your own saved songs, or starts a
         new one; your own songs are stored in this browser.
       </p>
 
@@ -785,21 +795,21 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
-        <li><b>Add track</b> / <b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
+        <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
-        <li>The <b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
-        <li>The <b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
-        <li>The <b>Preset</b> button (the faders icon on a track) saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
+        <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
+        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
 
       <h3>Tools</h3>
       <ul>
-        <li><b>Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
-        <li><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
-        <li><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
+        <li><span class="help-ico" data-glyph="pen"></span><b>Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
+        <li><span class="help-ico" data-glyph="eraser"></span><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
+        <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit's only setting is <b>Velocity</b> (10–100%) — how hard it's struck — which is what turns a mechanical drum pattern into one with accents. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too.</li>
@@ -852,7 +862,7 @@
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
-        <li>The <b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit, a lo-fi <b>downsampler</b>, and a live spectrum + approximate <b>LUFS</b> meter — all on the master bus, post-FX.</li>
+        <li>The <span class="help-ico" data-glyph="master"></span><b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit, a lo-fi <b>downsampler</b>, and a live spectrum + approximate <b>LUFS</b> meter — all on the master bus, post-FX.</li>
       </ul>
 
       <h3>Transport &amp; timeline</h3>
@@ -861,17 +871,17 @@
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
         <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>⧉ Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
-        <li>The <b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
+        <li>The <span class="help-ico" data-glyph="marker"></span><b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
-        <li><b>Save as .json</b> / <b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
-        <li><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
-        <li><b>Export MIDI</b> / <b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
-        <li><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
-        <li><b>Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
+        <li><span class="help-ico" data-glyph="songs"></span><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
+        <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
+        <li><span class="help-ico" data-glyph="code"></span><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><span class="help-ico" data-glyph="midiOut"></span><b>Export MIDI</b> / <span class="help-ico" data-glyph="midiIn"></span><b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
+        <li><span class="help-ico" data-glyph="wav"></span><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
+        <li><span class="help-ico" data-glyph="fullscreen"></span><b>Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
@@ -6237,6 +6247,7 @@ function ensureReverb(destGain) {
 const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
 const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, reverbSend, busyUntil }]
 function acquireVoice(destGain, startAt) {
+  return null; // TEST: pooling disabled
   let pool = voicePools.get(destGain);
   if (!pool) { pool = []; voicePools.set(destGain, pool); }
   for (const v of pool) if (v.busyUntil <= startAt) return v;
