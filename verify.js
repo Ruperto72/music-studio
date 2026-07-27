@@ -878,6 +878,107 @@ async function main() {
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
     });
 
+    step('Duty: a square track has its own default, and a note can override it', async () => {
+      // setPeriodicWave() takes an opaque PeriodicWave, so the DOM and the node
+      // graph both hide which pulse width was used. Patch pulseWave's consumer
+      // instead: record every duty that reaches setPeriodicWave via the app's
+      // own cache, keyed by the wave object it hands back.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+          window.__duty = [];
+          const origCreate = AudioContext.prototype.createPeriodicWave;
+          AudioContext.prototype.createPeriodicWave = function (real, imag, ...rest) {
+            const w = origCreate.call(this, real, imag, ...rest);
+            // A pulse wave's nth harmonic is (2/(n*pi)) * sin(n*pi*duty); the
+            // first two give the duty back without needing the app's internals.
+            try {
+              const a1 = imag[1] / (2 / Math.PI);
+              window.__waveDuty = window.__waveDuty || new WeakMap();
+              window.__waveDuty.set(w, Math.asin(Math.max(-1, Math.min(1, a1))) / Math.PI);
+            } catch {}
+            return w;
+          };
+          const origSet = OscillatorNode.prototype.setPeriodicWave;
+          OscillatorNode.prototype.setPeriodicWave = function (w) {
+            try { if (window.__waveDuty && window.__waveDuty.has(w)) window.__duty.push(window.__waveDuty.get(w)); } catch {}
+            return origSet.call(this, w);
+          };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await waitFor(`document.querySelectorAll('.track').length > 1`);
+
+      // A new tonal track is `square`, so its Envelope panel must offer Duty.
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.adsr-select')`);
+      const opts = await cdp.evaluate(
+        `[...document.querySelector('.adsr-select').options].map(o => o.textContent)`);
+      if (opts.join('|') !== 'Square (50%)|12.5%|25%|50%|75%') {
+        throw new Error(`unexpected track Duty options: ${JSON.stringify(opts)}`);
+      }
+
+      // Set the track to 12.5% and place a note that doesn't override it.
+      await cdp.evaluate(`(() => {
+        const sel = document.querySelector('.adsr-select');
+        sel.value = '0.125'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`window.__duty = []`);
+      await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const inherited = await cdp.evaluate(`window.__duty.slice()`);
+      if (!inherited.some((d) => Math.abs(d - 0.125) < 0.01)) {
+        throw new Error(`a note should inherit the track's 12.5% duty, saw ${JSON.stringify(inherited)}`);
+      }
+
+      // The inspector's first option must name the track's value, not "50%".
+      await waitFor(`!!document.querySelector('.inspector select')`);
+      const noteOpts = await cdp.evaluate(`(() => {
+        const sel = [...document.querySelectorAll('.inspector select')].find(s => /Track default/.test(s.options[0]?.textContent || ''));
+        return sel ? [...sel.options].map(o => o.textContent) : null;
+      })()`);
+      if (!noteOpts || noteOpts[0] !== 'Track default (12.5%)') {
+        throw new Error(`the note's Duty should name the track default: ${JSON.stringify(noteOpts)}`);
+      }
+
+      // Overriding on the note must win over the track.
+      await cdp.evaluate(`(() => {
+        const sel = [...document.querySelectorAll('.inspector select')].find(s => /Track default/.test(s.options[0]?.textContent || ''));
+        sel.value = '0.75'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+      await cdp.evaluate(`window.__duty = []`);
+      await cdp.evaluate(`document.querySelector('.lane .note').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const overridden = await cdp.evaluate(`window.__duty.slice()`);
+      if (!overridden.some((d) => Math.abs(d - 0.25) < 0.01)) {
+        // asin() folds 0.75 onto its supplement, so a 75% pulse reads back as 25%.
+        throw new Error(`the note's own 75% duty should win over the track, saw ${JSON.stringify(overridden)}`);
+      }
+
+      // A non-square track must not offer the control at all.
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        [...head.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Sine').click();
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select').length`);
+      if (afterSine !== 0) throw new Error('Duty should only show on a square track');
+    });
+
     step('Per-track vibrato reaches the note oscillator, and only on tonal tracks', async () => {
       // Vibrato cannot be an insert like the other per-track effects — pitch
       // modulation has to reach each note's own oscillator — so the check is
@@ -886,6 +987,7 @@ async function main() {
       // record what lands on a `frequency` AudioParam.
       await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
         source: `
+          (() => {
           window.__freqMod = [];
           const origConnect = AudioNode.prototype.connect;
           AudioNode.prototype.connect = function (dest, ...rest) {
@@ -903,6 +1005,7 @@ async function main() {
             window.__freqParams.add(o.frequency);
             return o;
           };
+          })();
         `,
       });
       await goto(APP_URL);
@@ -1004,6 +1107,7 @@ async function main() {
       // stage scheduleDrum inserts, and nothing else.
       await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
         source: `
+          (() => {
           window.__velGains = [];
           const origCreate = AudioContext.prototype.createGain;
           AudioContext.prototype.createGain = function () {
@@ -1018,6 +1122,7 @@ async function main() {
             } catch {}
             return g;
           };
+          })();
         `,
       });
       await goto(APP_URL);

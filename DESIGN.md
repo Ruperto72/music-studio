@@ -262,9 +262,14 @@ with the timeline:
   stays at its base value).
 - Tracks on the **FM** waveform additionally show modulator **ratio** and
   **depth** sliders (`state.fm`, `DEFAULT_FM`).
+- Tracks on the **Square** waveform show a **Duty** select (`state.duty`) —
+  the track's pulse width, applying to every note on it. Same rule as the FM
+  sliders above: a waveform-specific per-track synth setting, shown only for
+  the waveform it applies to. A single note can still override it from the
+  inspector (A.9); see B.6 for how the two resolve.
 - The row's title reflects what's shown: "Envelope & Filter", or
-  "Envelope, Filter & FM" when the track's waveform is FM.
-- **Reset** restores every default (ADSR, filter, FM); **✕** closes the
+  "Envelope, Filter & FM" / "Envelope, Filter & Duty" for those waveforms.
+- **Reset** restores every default (ADSR, filter, FM, duty); **✕** closes the
   panel without changing anything.
 
 ### A.9 Note/effects inspector
@@ -288,7 +293,9 @@ A **note** gets the fuller set, grouped into:
   (glides into the next contiguous note). Each toggle draws its effect as a
   small glyph above its label — see A.14.
 - **Pitch**: Bend (semitones, glides partway through the note), Duty cycle
-  (pulse-width for square waves), Arpeggio (comma-separated semitone
+  (pulse-width for square waves — its first option, "Track default (…)",
+  inherits the track's own Duty from A.8 and names its current value, while
+  the explicit percentages below override it for this note), Arpeggio (comma-separated semitone
   offsets, with the same ten `CHORD_PRESETS` quick-fill buttons the Chord
   panel below uses — both store offsets above the root, so one voicing table
   serves both).
@@ -494,6 +501,7 @@ state = {
   crush,       // id -> { amount } (0..1, any track kind) — DEFAULT_TRACK_CRUSH
   tremolo,     // id -> { rate, depth } (any track kind) — DEFAULT_TREMOLO
   vibrato,     // id -> { rate, depth } (tonal only) — DEFAULT_VIBRATO, see A.7/B.6
+  duty,        // id -> pulse width (tonal, `square` waveform only); absent = plain 50% square
   eq,          // id -> { low, mid, high } dB (any track kind) — DEFAULT_TRACK_EQ
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
@@ -552,6 +560,7 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
   "crush": { "lead": { "amount": 0 } },
   "tremolo": { "lead": { "rate": 5, "depth": 0 } },
   "vibrato": { "lead": { "rate": 5.5, "depth": 0 } },
+  "duty": { "lead": 0.25 },
   "eq": { "lead": { "low": 0, "mid": 0, "high": 0 } },
   "sidechain": { "enabled": false, "depth": 0.5 },
   "masterEQ": { "low": 0, "mid": 0, "high": 0 },
@@ -762,6 +771,23 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   once per scheduling chunk (re-anchoring itself from each chunk's starting
   value) — independent of individual notes, so it keeps working correctly
   across chunk boundaries, loop points, and seeks.
+- **The track's voice**: the five things a track contributes to a note's sound
+  — ADSR, filter, FM, vibrato and the `square` pulse-width default — are
+  gathered by `getTrackVoice(track)` into one object that
+  `scheduleTone()`/`schedulePortamentoTone()` take as a single parameter.
+  They used to be a tail of five optional positional arguments, which is how
+  one ends up a slot off; a new per-track synth setting is now a field rather
+  than another slot. `setOscWave(osc, oscType, duty)` picks the oscillator's
+  shape in one place — that four-branch chain was previously written out three
+  times (the main oscillator, the chorus oscillator beside it, and the
+  portamento scheduler's).
+- **Duty (pulse width)**: a per-track default for `square` tracks, resolved
+  against the note's own value in exactly one place,
+  `effectiveDuty(note, voice)` — the note wins, and `null` on the note means
+  inherit. That inheritance is what finally separates the note inspector's two
+  previously-identical choices: its first option now reads "Track default
+  (…)" and names whatever the track is set to, while the explicit 50% below it
+  forces a plain square regardless.
 - **Per-track vibrato**: the exception to the insert-chain pattern above.
   `scheduleTone()`/`schedulePortamentoTone()` take the track's vibrato
   settings alongside its ADSR/filter/FM and call `addTrackVibrato()`, which

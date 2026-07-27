@@ -34,8 +34,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 - Per-track **waveform** — square, triangle, saw, sine, an **NES triangle**
   wavetable, and **FM** (with modulator ratio/depth)
-- Per-track **ADSR envelope** and a resonant **lowpass filter** with its own
-  envelope amount; save any track's synth settings as a reusable **preset**
+- Per-track **ADSR envelope**, a resonant **lowpass filter** with its own
+  envelope amount, and a **duty cycle** (pulse width) for square-wave tracks
+  that any single note can override; save a track's synth settings as a
+  reusable **preset**
 - Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a 3-band
   **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
   **vibrato** on tonal tracks — all neutral by default
