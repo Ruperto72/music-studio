@@ -721,6 +721,36 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   en `RHYTHM_TRACKS`-array (även uppdaterat i `js/song-data.js`) — ett
   medvetet formatbrott mot Frog vs Toad-spelets nuvarande kod, som ligger
   i ett separat repo utanför den här kodbasen.
+- [x] **Velocity och fills i rytm-mallarna.** Mallarna lade in varje träff
+  på full styrka och tilade samma takt rakt igenom — funktionellt, men det
+  lät som en trumautomat, och det var mallarna som lät så, inte kittet.
+  Två tillägg, båda som *data* i `RHYTHM_PATTERNS` snarare än kod:
+  1. **Accenter.** Varje träff i varje mall har nu en avsedd styrka:
+     backbeat och kick fullt, hi-hats accentuerade på slaget (~0.85) och
+     ghostade mellan (~0.45–0.5), texturer (shaker, en fjädrad jazzkick)
+     klart under. Värdena följer `hitVel()`s regel — **frånvarande betyder
+     full** — och `patternHitAt()` skriver bara ut `vel` när den faktiskt
+     ligger under 1, så en instämplad mall serialiseras inte större än
+     samma träffar utplacerade för hand. Mätt på Rock: 62 av 93 träffar
+     bär en velocity, resten är fulla och alltså egenskapslösa.
+  2. **Fills.** Varje mall har en andra en-takts-`fill` som används på
+     phrasens sista takt. Phraselängden väljs i dialogen (`FILL_EVERY_CHOICES`
+     — aldrig / 2 / 4 / 8 takter, default 4) och räknas från *insättnings*-
+     takten, inte från låtens takt 1, så frasindelningen följer var
+     spelhuvudet står. Takten *efter* ett fill öppnar med en crash — det är
+     hela poängen med ett fill, och utan den låter det som ett misstag i
+     stället för en upptakt. Crashen läggs in via `hitsConflict()`, inte
+     blint: Breakbeat crashar redan på sin egen etta.
+  En dropdown i stället för en per-rad-inställning, eftersom phraselängd är
+  en egenskap hos *insättningen*, inte hos en groove. Varje mall fick också
+  en egen `▶ fill`-knapp — annars är enda sättet att höra ett fill att
+  stämpla in mallen och spela fyra takter.
+  Testet asserterar beteendet i griden: takt 1–3 lika, takt 4 annorlunda,
+  crash på takt 5 och ingen tidigare, exakt *en* crash på Breakbeats takt 5,
+  och med fills avstängda alla takter identiska och noll crasher. Det tog två
+  försök att få rätt: första versionen jämförde hela aria-etiketten, som
+  innehåller taktnumret — så "takt 1 ≠ takt 2" var sant av fel skäl och
+  testet föll mot fungerande kod.
 - [ ] **Frog vs Toad-spelets `audio.js` behöver uppdateras manuellt.**
   Ovanstående formatbrott (`RHYTHM_TRACK` → `RHYTHM_TRACKS`) gör att en
   färsk "⤓ Export code"-output inte längre går att klistra in rakt av i

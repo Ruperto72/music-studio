@@ -56,6 +56,9 @@
   .song-item .song-title { font-size: 13px; font-weight: 600; color: #e8e8ee; }
   .song-item .song-desc { font-size: 11px; color: #9a9aa6; margin-top: 1px; }
   .song-item button { padding: 5px 11px; font-size: 12px; }
+  .pattern-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: #b7b7c2; margin: 2px 0 12px; }
+  .pattern-opt select { padding: 4px 6px; font-size: 12px; }
+  .pattern-opt-note { color: #8f8f9c; }
   .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
   .song-item .song-del:hover { border-color: #a33; }
   .song-save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -801,6 +804,7 @@
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
+        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, so you can hear both before inserting.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -962,7 +966,11 @@
       <button id="pattern-close">Close ✕</button>
     </div>
     <div class="songs-body">
-      <p class="songs-note">Inserts a one-bar groove into the Rhythm track, tiled from the playhead's bar through the end of the song (replacing whatever was there). Move the playhead first if you only want to fill part of the song.</p>
+      <p class="songs-note">Inserts a one-bar groove into the Rhythm track, tiled from the playhead's bar through the end of the song (replacing whatever was there). Move the playhead first if you only want to fill part of the song. Every hit lands with its own velocity, so the groove has accents rather than a flat machine pulse.</p>
+      <label class="pattern-opt" for="pattern-fill-every">Fill every
+        <select id="pattern-fill-every" title="How often a pattern's fill bar replaces its groove bar"></select>
+        <span class="pattern-opt-note">— the last bar of each phrase uses the pattern's fill, and the next bar opens with a crash.</span>
+      </label>
       <div id="pattern-list" class="song-list"></div>
     </div>
   </dialog>
@@ -1410,79 +1418,168 @@ const CHORD_PRESETS = [
 // whatever eighthsPerBar() the song is actually in. `swing` (optional) is
 // applied to state.swing on insert, since a few grooves (shuffle) only read
 // as their genre once the off-8th is pushed toward the triplet position.
+//
+// Each hit may carry a `vel` (0.1-1), and every pattern here uses them: a
+// groove where every hit lands at full strength is the one thing that reads
+// as a machine no matter how good the placement is. The convention throughout
+// is hitVel()'s — **absent means full**, so only the hits that are meant to
+// sit back carry the property, and an inserted pattern serialises no larger
+// than a hand-placed one would. Loudest first: backbeat and kick full, hats
+// accented on the beat (~0.85) and ghosted off it (~0.45-0.5), textures
+// (shaker, feathered jazz kick) well below.
+//
+// `fill` is a second one-bar authoring of the same shape, used on the last bar
+// of each phrase instead of `hits` (see insertPatternIntoRhythm) — that is
+// where "and other variations" lives, since a fill is what stops four
+// identical bars from announcing themselves as a loop. Fills are written to
+// *lead somewhere*: they keep the groove through the first half of the bar and
+// then crescendo, which is why their tail hits climb in velocity.
 const RHYTHM_PATTERNS = [
   {
     id: 'rock', name: 'Rock',
-    desc: 'Classic rock backbeat — kick on 1 & 3, snare on 2 & 4, straight 8th hi-hats.',
+    desc: 'Classic rock backbeat — kick on 1 & 3, snare on 2 & 4, accented 8th hi-hats. Fill: snare-to-tom crescendo over the second half.',
     hits: [
       { start: 0, type: 'kick' }, { start: 4, type: 'kick' },
       { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
-      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
-      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 0, type: 'hihat', vel: 0.85 }, { start: 1, type: 'hihat', vel: 0.5 },
+      { start: 2, type: 'hihat', vel: 0.85 }, { start: 3, type: 'hihat', vel: 0.5 },
+      { start: 4, type: 'hihat', vel: 0.85 }, { start: 5, type: 'hihat', vel: 0.5 },
+      { start: 6, type: 'hihat', vel: 0.85 }, { start: 7, type: 'hihat', vel: 0.5 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'snare' },
+      { start: 0, type: 'hihat', vel: 0.85 }, { start: 1, type: 'hihat', vel: 0.5 },
+      { start: 2, type: 'hihat', vel: 0.85 }, { start: 3, type: 'hihat', vel: 0.5 },
+      { start: 4, type: 'snare', vel: 0.55 }, { start: 5, type: 'snare', vel: 0.75 },
+      { start: 6, type: 'tom', vel: 0.85 }, { start: 7, type: 'tom' },
     ],
   },
   {
     id: 'techno', name: 'Techno',
-    desc: 'Four-on-the-floor kick, clap backbeat, closed hi-hat on every off-beat.',
+    desc: 'Four-on-the-floor kick, clap backbeat, closed hi-hat on every off-beat. Fill: snare ramp into an open hat.',
     hits: [
       { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
       { start: 2, type: 'clap' }, { start: 6, type: 'clap' },
-      { start: 1, type: 'hihat' }, { start: 3, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 1, type: 'hihat', vel: 0.65 }, { start: 3, type: 'hihat', vel: 0.65 },
+      { start: 5, type: 'hihat', vel: 0.65 }, { start: 7, type: 'hihat', vel: 0.65 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
+      { start: 2, type: 'clap' },
+      { start: 1, type: 'hihat', vel: 0.65 }, { start: 3, type: 'hihat', vel: 0.65 },
+      { start: 5, type: 'snare', vel: 0.5 }, { start: 6, type: 'snare', vel: 0.7 }, { start: 7, type: 'snare', vel: 0.95 },
+      { start: 7, type: 'openhat', vel: 0.8 },
     ],
   },
   {
     id: 'disco', name: 'Disco',
-    desc: 'Four-on-the-floor kick, snare backbeat, open hi-hat "chhh" on every off-beat.',
+    desc: 'Four-on-the-floor kick, snare backbeat, open hi-hat "chhh" on every off-beat. Fill: toms into a snare pair.',
     hits: [
       { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
       { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
-      { start: 1, type: 'openhat' }, { start: 3, type: 'openhat' }, { start: 5, type: 'openhat' }, { start: 7, type: 'openhat' },
+      { start: 1, type: 'openhat', vel: 0.75 }, { start: 3, type: 'openhat', vel: 0.75 },
+      { start: 5, type: 'openhat', vel: 0.75 }, { start: 7, type: 'openhat', vel: 0.75 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' },
+      { start: 2, type: 'snare' },
+      { start: 1, type: 'openhat', vel: 0.75 }, { start: 3, type: 'openhat', vel: 0.75 },
+      { start: 4, type: 'tom', vel: 0.6 }, { start: 5, type: 'tom', vel: 0.75 },
+      { start: 6, type: 'snare', vel: 0.9 }, { start: 7, type: 'snare' },
     ],
   },
   {
     id: 'swing', name: 'Swing / Shuffle',
-    desc: 'Ride on every 8th plus a backbeat. Also nudges Swing to 60% for a "spang-a-lang" triplet feel — tweak the Swing slider afterward to taste.',
+    desc: 'Ride on every 8th plus a backbeat, over a feathered kick. Also nudges Swing to 60% for a "spang-a-lang" triplet feel — tweak the Swing slider afterward to taste. Fill: snare/tom trade over the second half.',
     swing: 60,
     hits: [
-      { start: 0, type: 'kick' }, { start: 4, type: 'kick' },
-      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
-      { start: 0, type: 'ride' }, { start: 1, type: 'ride' }, { start: 2, type: 'ride' }, { start: 3, type: 'ride' },
-      { start: 4, type: 'ride' }, { start: 5, type: 'ride' }, { start: 6, type: 'ride' }, { start: 7, type: 'ride' },
+      { start: 0, type: 'kick', vel: 0.35 }, { start: 4, type: 'kick', vel: 0.35 },
+      { start: 2, type: 'snare', vel: 0.7 }, { start: 6, type: 'snare', vel: 0.7 },
+      { start: 0, type: 'ride', vel: 0.9 }, { start: 1, type: 'ride', vel: 0.45 },
+      { start: 2, type: 'ride', vel: 0.9 }, { start: 3, type: 'ride', vel: 0.45 },
+      { start: 4, type: 'ride', vel: 0.9 }, { start: 5, type: 'ride', vel: 0.45 },
+      { start: 6, type: 'ride', vel: 0.9 }, { start: 7, type: 'ride', vel: 0.45 },
+    ],
+    fill: [
+      { start: 0, type: 'kick', vel: 0.35 },
+      { start: 0, type: 'ride', vel: 0.9 }, { start: 1, type: 'ride', vel: 0.45 },
+      { start: 2, type: 'ride', vel: 0.9 }, { start: 3, type: 'ride', vel: 0.45 },
+      { start: 2, type: 'snare', vel: 0.7 },
+      { start: 4, type: 'snare', vel: 0.6 }, { start: 5, type: 'tom', vel: 0.7 },
+      { start: 6, type: 'snare', vel: 0.85 }, { start: 7, type: 'tom' },
     ],
   },
   {
     id: 'hiphop', name: 'Hip-Hop',
-    desc: 'Boom-bap syncopation — kick lands ahead of beat 3, snare backbeat, straight 8th hats.',
+    desc: 'Boom-bap syncopation — kick lands ahead of beat 3, snare backbeat, ghosted 8th hats. Fill: rimshot/snare trade.',
     hits: [
       { start: 0, type: 'kick' }, { start: 3, type: 'kick' }, { start: 4, type: 'kick' },
       { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
-      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
-      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 1, type: 'hihat', vel: 0.45 },
+      { start: 2, type: 'hihat', vel: 0.8 }, { start: 3, type: 'hihat', vel: 0.45 },
+      { start: 4, type: 'hihat', vel: 0.8 }, { start: 5, type: 'hihat', vel: 0.45 },
+      { start: 6, type: 'hihat', vel: 0.8 }, { start: 7, type: 'hihat', vel: 0.45 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 3, type: 'kick' },
+      { start: 2, type: 'snare' },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 1, type: 'hihat', vel: 0.45 },
+      { start: 2, type: 'hihat', vel: 0.8 }, { start: 3, type: 'hihat', vel: 0.45 },
+      { start: 4, type: 'rim', vel: 0.7 }, { start: 5, type: 'snare', vel: 0.6 },
+      { start: 6, type: 'rim', vel: 0.85 }, { start: 7, type: 'snare' },
     ],
   },
   {
     id: 'house', name: 'House',
-    desc: 'Four-on-the-floor with a shuffling shaker layer and a clap backbeat.',
+    desc: 'Four-on-the-floor with a shuffling shaker layer and a clap backbeat. Fill: the kick drops out and an open hat lifts the bar.',
     hits: [
       { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' }, { start: 6, type: 'kick' },
       { start: 2, type: 'clap' }, { start: 6, type: 'clap' },
-      { start: 1, type: 'hihat' }, { start: 3, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 7, type: 'hihat' },
-      { start: 0, type: 'shaker' }, { start: 1, type: 'shaker' }, { start: 2, type: 'shaker' }, { start: 3, type: 'shaker' },
-      { start: 4, type: 'shaker' }, { start: 5, type: 'shaker' }, { start: 6, type: 'shaker' }, { start: 7, type: 'shaker' },
+      { start: 1, type: 'hihat', vel: 0.7 }, { start: 3, type: 'hihat', vel: 0.7 },
+      { start: 5, type: 'hihat', vel: 0.7 }, { start: 7, type: 'hihat', vel: 0.7 },
+      { start: 0, type: 'shaker', vel: 0.55 }, { start: 1, type: 'shaker', vel: 0.3 },
+      { start: 2, type: 'shaker', vel: 0.55 }, { start: 3, type: 'shaker', vel: 0.3 },
+      { start: 4, type: 'shaker', vel: 0.55 }, { start: 5, type: 'shaker', vel: 0.3 },
+      { start: 6, type: 'shaker', vel: 0.55 }, { start: 7, type: 'shaker', vel: 0.3 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 4, type: 'kick' },
+      { start: 2, type: 'clap' }, { start: 6, type: 'clap', vel: 0.7 }, { start: 7, type: 'clap', vel: 0.9 },
+      { start: 1, type: 'hihat', vel: 0.7 }, { start: 3, type: 'hihat', vel: 0.7 }, { start: 5, type: 'hihat', vel: 0.7 },
+      { start: 7, type: 'openhat', vel: 0.85 },
+      { start: 0, type: 'shaker', vel: 0.55 }, { start: 1, type: 'shaker', vel: 0.3 },
+      { start: 2, type: 'shaker', vel: 0.55 }, { start: 3, type: 'shaker', vel: 0.3 },
+      { start: 4, type: 'shaker', vel: 0.55 }, { start: 5, type: 'shaker', vel: 0.3 },
+      { start: 6, type: 'shaker', vel: 0.55 }, { start: 7, type: 'shaker', vel: 0.3 },
     ],
   },
   {
     id: 'breakbeat', name: 'Breakbeat',
-    desc: 'Syncopated kick pattern with a crash on the downbeat — classic sampled-break energy.',
+    desc: 'Syncopated kick pattern with a crash on the downbeat — classic sampled-break energy. Fill: chopped kick/snare trade.',
     hits: [
       { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 5, type: 'kick' },
       { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
-      { start: 0, type: 'hihat' }, { start: 1, type: 'hihat' }, { start: 2, type: 'hihat' }, { start: 3, type: 'hihat' },
-      { start: 4, type: 'hihat' }, { start: 5, type: 'hihat' }, { start: 6, type: 'hihat' }, { start: 7, type: 'hihat' },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 1, type: 'hihat', vel: 0.45 },
+      { start: 2, type: 'hihat', vel: 0.8 }, { start: 3, type: 'hihat', vel: 0.45 },
+      { start: 4, type: 'hihat', vel: 0.8 }, { start: 5, type: 'hihat', vel: 0.45 },
+      { start: 6, type: 'hihat', vel: 0.8 }, { start: 7, type: 'hihat', vel: 0.45 },
       { start: 0, type: 'crash' },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 2, type: 'kick' }, { start: 5, type: 'kick' },
+      { start: 1, type: 'snare', vel: 0.55 }, { start: 2, type: 'snare' },
+      { start: 3, type: 'snare', vel: 0.6 }, { start: 4, type: 'snare', vel: 0.75 },
+      { start: 6, type: 'snare', vel: 0.85 }, { start: 7, type: 'snare' },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 4, type: 'hihat', vel: 0.6 },
     ],
   },
 ];
+// How many bars a phrase runs before its fill lands, offered in the pattern
+// dialog. 0 keeps every bar identical, which is what the patterns did before
+// fills existed — worth keeping reachable, since a pattern being tiled under
+// an existing arrangement is not always meant to comment on it.
+const FILL_EVERY_CHOICES = [0, 2, 4, 8];
+let patternFillEvery = 4;
 
 // Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
 // absent) — attack/decay/release are fractions of the note's own duration (so they
@@ -3245,7 +3342,7 @@ function buildHeader(track) {
   } else {
     const patternsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(patternsBtn, 'drums', '');
-    patternsBtn.title = 'Rhythm patterns — insert a built-in groove (Rock, Techno, Disco, Swing, ...)';
+    patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Disco, Swing, ...)';
     patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     patternsBtn.addEventListener('click', (e) => { e.stopPropagation(); renderPatternList(); patternDialog.showModal(); });
     tools.append(patternsBtn);
@@ -3858,35 +3955,67 @@ function onRhythmCellClick(track, row, col) {
   render();
 }
 function removeHit(track, hit) { state.tracks[track] = state.tracks[track].filter(h => h !== hit); render(); }
-// Plays a built-in RHYTHM_PATTERNS entry once, one bar, for audition before inserting.
-function previewPattern(pattern) {
+// Plays one bar of a built-in RHYTHM_PATTERNS entry for audition before
+// inserting — `which` picks the groove bar or the pattern's fill.
+function previewPattern(pattern, which = 'hits') {
+  const bar = pattern[which];
+  if (!bar) return;
   try {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const eighthSec = 60 / state.tempo / 2;
     const startAt = ctx.currentTime + 0.05;
     const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
-    for (const h of pattern.hits) {
+    for (const h of bar) {
       scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h));
     }
   } catch { /* audio unavailable */ }
+}
+// One authored pattern hit -> a real hit in the track, at `barCol`. The `vel`
+// is only carried across when it is actually below full, matching how the
+// inspector deletes the property rather than writing `vel: 1` — so a groove
+// whose hits are all full-strength serialises exactly as it did before
+// patterns had velocities at all.
+function patternHitAt(h, barCol, scale) {
+  const hit = { start: quant(barCol + h.start * scale), type: h.type };
+  if (h.vel != null && h.vel < 1) hit.vel = h.vel;
+  return hit;
 }
 // Tiles a built-in RHYTHM_PATTERNS entry from the playhead's bar through the
 // end of the song, replacing any existing hits in that range (hits before the
 // playhead's bar are left alone). Patterns are authored at 8 eighths/bar
 // (4/4) and scaled to whatever eighthsPerBar() the song is actually in.
-function insertPatternIntoRhythm(pattern) {
+//
+// Every `fillEvery`-th bar uses the pattern's `fill` instead of its groove,
+// counted from the bar the insert starts on rather than from bar 1 of the
+// song, so the phrasing lines up with where you put the playhead. The bar
+// *after* a fill opens with a crash: that is the whole point of a fill — it
+// hands over to the downbeat — and leaving it out is what makes a fill sound
+// like a mistake rather than a lead-in.
+function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   const track = state.activeTrack;
   if (!isRhythm(track)) return; // the 🥁 button that opens the pattern dialog only exists on rhythm tracks
   const barLen = eighthsPerBar();
   const scale = barLen / 8;
   const startBar = Math.floor(state.playhead / barLen) * barLen;
+  const phrase = pattern.fill && fillEvery > 0 ? fillEvery : 0;
   const newHits = [];
-  for (let barCol = startBar; barCol < COLS; barCol += barLen) {
-    for (const h of pattern.hits) {
-      const start = quant(barCol + h.start * scale);
-      if (start < COLS) newHits.push({ start, type: h.type });
+  let bar = 0;
+  for (let barCol = startBar; barCol < COLS; barCol += barLen, bar++) {
+    const source = phrase > 0 && bar % phrase === phrase - 1 ? pattern.fill : pattern.hits;
+    const barHits = [];
+    for (const h of source) {
+      const hit = patternHitAt(h, barCol, scale);
+      if (hit.start < COLS) barHits.push(hit);
     }
+    if (phrase > 0 && bar > 0 && (bar - 1) % phrase === phrase - 1) {
+      // hitsConflict rather than a hand-written comparison: Breakbeat already
+      // crashes on its own downbeat, and stacking a second one there would be
+      // two crashes in the same column of the same row.
+      const crash = { start: quant(barCol), type: 'crash' };
+      if (crash.start < COLS && !barHits.some(h => hitsConflict(h, crash))) barHits.push(crash);
+    }
+    newHits.push(...barHits);
   }
   state.tracks[track] = state.tracks[track].filter(h => h.start < startBar).concat(newHits);
   if (pattern.swing != null) { state.swing = pattern.swing; syncSwingUI(); }
@@ -5538,6 +5667,15 @@ document.getElementById('preset-save').addEventListener('click', () => {
 // ---------- Rhythm patterns (built-in one-bar groove templates) ----------
 const patternDialog = document.getElementById('pattern-dialog');
 const patternListEl = document.getElementById('pattern-list');
+const patternFillSelect = document.getElementById('pattern-fill-every');
+for (const bars of FILL_EVERY_CHOICES) {
+  const opt = document.createElement('option');
+  opt.value = String(bars);
+  opt.textContent = bars === 0 ? 'never (same bar throughout)' : `${bars} bars`;
+  patternFillSelect.appendChild(opt);
+}
+patternFillSelect.value = String(patternFillEvery);
+patternFillSelect.addEventListener('change', () => { patternFillEvery = Number(patternFillSelect.value); });
 function renderPatternList() {
   patternListEl.innerHTML = '';
   for (const pattern of RHYTHM_PATTERNS) {
@@ -5546,9 +5684,19 @@ function renderPatternList() {
     const title = el('div', 'song-title'); title.textContent = pattern.name; info.appendChild(title);
     const desc = el('div', 'song-desc'); desc.textContent = pattern.desc; info.appendChild(desc);
     row.appendChild(info);
-    const preview = el('button'); preview.textContent = '▶'; preview.title = 'Preview this pattern (one bar)';
+    const preview = el('button'); preview.textContent = '▶'; preview.title = 'Preview the groove bar';
+    preview.setAttribute('aria-label', `Preview the ${pattern.name} groove bar`);
     preview.addEventListener('click', () => previewPattern(pattern));
     row.appendChild(preview);
+    if (pattern.fill) {
+      // The fill is what the phrase length above actually selects, so it needs
+      // to be auditionable on its own — otherwise the only way to hear one is
+      // to insert the pattern and play four bars.
+      const previewFill = el('button'); previewFill.textContent = '▶ fill'; previewFill.title = 'Preview the fill bar';
+      previewFill.setAttribute('aria-label', `Preview the ${pattern.name} fill bar`);
+      previewFill.addEventListener('click', () => previewPattern(pattern, 'fill'));
+      row.appendChild(previewFill);
+    }
     const insert = el('button'); insert.textContent = 'Insert';
     insert.title = 'Insert into the Rhythm track, from the playhead\'s bar through the end of the song';
     insert.addEventListener('click', () => { insertPatternIntoRhythm(pattern); patternDialog.close(); });
