@@ -841,7 +841,11 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   decibel between renders — enough that measuring headroom took several passes
   to trust. **This does not make a render byte-reproducible**, and the buffers
   were never the only source: two exports of the same song still differ, even
-  within one page load. See TODO.md for what that investigation ruled out.
+  within one page load. Measured, that difference is **−121 dBFS RMS, peaking
+  at −79 dBFS** — 104 dB below the signal, and 0.075% of the exported 16-bit
+  samples differing by at most 4 LSB. Audibly identical, in other words;
+  numerical noise in the last bits rather than a different mix. See TODO.md for
+  what the investigation ruled out.
   Each buffer gets its
   **own** generator rather than sharing one stream: a shared one would make
   each buffer's contents depend on which others had already been built, and

@@ -278,7 +278,28 @@ ett facit.
   kunde ha förlitat sig på en viss, eftersom den ändrades varje gång — men det
   betyder också att en låt kan låta aningen annorlunda än den gjorde vid ett
   specifikt tillfälle.
-- [ ] **Exporten är fortfarande inte bitidentisk — jag påstod fel.** När jag
+- [x] **Skillnaden mellan två renderingar är mätt: den är ohörbar.**
+  Uppföljning på punkten nedan. Jag visste att skillnaden fanns men inte hur
+  stor den var, vilket är det som avgör om den betyder något. Mätt genom att
+  behålla första renderingens buffert och jämföra sampel för sampel mot den
+  andra (`Popcorn`, 92 s, 8,8 miljoner sampel):
+  - **I flyttalsbufferten:** största enskilda avvikelse ≈ 1·10⁻⁴, alltså
+    **−79 dBFS**; avvikelsens RMS ≈ 9·10⁻⁷, alltså **−121 dBFS**. Det är
+    **104 dB under signalen** och överstiger aldrig 10⁻³.
+  - **I den exporterade 16-bitars-filen:** **0,075 %** av samplen skiljer sig
+    (6 617 av 8 832 000), och som mest med **4 LSB av 32767**.
+  Slutsats: filerna är *inte* bitidentiska, men de är **hörbart identiska**.
+  −121 dBFS RMS ligger ~25 dB under 16-bitarsformatets eget brusgolv. Det här
+  är numeriskt brus i sista bitarna, inte en annan mixning — så det är en
+  kuriositet, inte en defekt. Punkten nedan står kvar som beskrivning av vad
+  som uteslöts, men den är inte värd att jaga vidare om inte avvikelsen växer.
+  (Andelen *flyttal* som skiljer sig varierade själv mellan körningarna, 15 %
+  respektive 31 %, vilket är precis vad man väntar sig av en liten kaotisk
+  numerisk effekt snarare än av ett systematiskt fel.)
+  Sidofynd: `Popcorn` toppar på **+0,4 dBFS** med 3 klippta sampel av 8,8
+  miljoner. Långt ifrån Neon Cathedrals 680, och ohörbart — men värt att veta
+  om fler låtar ska gås igenom för headroom.
+- [ ] **Var den återstående avvikelsen kommer ifrån är fortfarande okänt.** När jag
   seedade bruset skrev jag att exporten därmed blev reproducerbar. Det stämde
   inte, och jag hann skriva in det i README och DESIGN innan jag hade
   end-to-end-beviset (bägge är rättade nu). Två fullständiga exporter av samma
@@ -298,9 +319,10 @@ ett facit.
   använder som inte är det.
   Kvar att undersöka: per-not-effekterna (echo/chorus/crush-vägarna),
   sidechain-duckningen, automationsramperna, och trumschemaläggningen.
-  Storleken på skillnaden är inte mätt — jag vet att den finns, inte om den är
-  hörbar. Skripten som användes ligger inte i repot; de renderar en låt två
-  gånger och jämför FNV-hashar per kanal och per sekund.
+  Storleken *är* nu mätt — se punkten ovan; den är ohörbar, vilket gör det här
+  till en öppen nyfikenhetsfråga snarare än en bugg. Skripten som användes
+  ligger inte i repot; de renderar en låt två gånger och jämför dels
+  FNV-hashar per kanal och per sekund, dels sampel för sampel.
 
 ## Spår-effekter
 
