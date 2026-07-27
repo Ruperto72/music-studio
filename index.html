@@ -387,9 +387,9 @@
      <select>, since the whole point is to compare them. Sized to share the
      200px header (--header-w) minus its padding, so `flex: 1 1 0` splits the
      row evenly however many WAVEFORMS there are. */
-  .th-wave-group { display: flex; gap: 2px; }
+  .th-wave-group { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
   .th-wave-btn {
-    flex: 1 1 0; min-width: 0; padding: 3px 1px; display: flex; justify-content: center;
+    min-width: 0; padding: 3px 1px; display: flex; justify-content: center;
     background: #26262d; border: 1px solid #3a3a44; border-radius: 4px;
     color: #8f8f9b; cursor: pointer;
   }
@@ -798,7 +798,7 @@
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
-        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -858,7 +858,7 @@
       <h3>Mixing</h3>
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
-        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / Triangle / Saw / Sine / <b>NES Tri</b> wavetable / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
@@ -1230,8 +1230,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
 const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'nestri', 'fm']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', nestri: 'NES Tri', fm: 'FM', kit: 'Kit' };
+const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'noise', 'ringmod', 'fm']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
 
 // ---------- Icon glyphs ----------
 // One table of tiny inline-SVG shapes, so the same concept looks the same
@@ -1260,6 +1260,16 @@ const GLYPHS = {
   // FM has no one waveform, so show what it does to one: a carrier whose
   // period keeps compressing.
   fm:       ['M1 6 q2 -5 4 0 t4 0 q1.5 -5 3 0 t3 0 q1 -5 2 0 t2 0 q0.75 -5 1.5 0 t1.5 0'],
+  // Sine's positive half only, with the negative half flat on the zero line.
+  halfsine: ['M1 6 q2.75 -5.5 5.5 0 h5.5 q2.75 -5.5 5.5 0 h5.5'],
+  // Not a repeating shape at all. The first attempt used even spacing and even
+  // amplitudes, which at 35px read as another "WWW" and was hard to tell from
+  // the FM glyph two buttons along; the spacing and the excursions are both
+  // irregular now, so it reads as noise rather than as a wave.
+  noise:    ['M1 6.5 L2 2 L2.8 8 L4.4 4.5 L5 10.5 L6.6 5.5 L8.2 7 L9 1.5 L10.4 9.5 L11.2 5 L13 7.5 L13.8 2.5 L15.8 9 L16.6 4.5 L18.4 10.5 L20 3 L20.8 7 L23 5.5'],
+  // Two frequencies multiplied: a carrier whose envelope is itself a wave, so
+  // the outline pinches to nothing where the modulator crosses zero.
+  ringmod:  ['M1 6 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0 t3 0', 'M1 6 q5.5 -5 11 0 t11 0', 'M1 6 q5.5 5 11 0 t11 0'],
   kit:      ['M2 9 h20', 'M5 9 a3.5 3.5 0 0 1 7 0', 'M14 9 a2.5 2.5 0 0 1 5 0'],
 
   // Effects.
@@ -2837,6 +2847,7 @@ function renderAdsrRow(track) {
 
   const header = el('div', 'track-header automation-header');
   const title = el('span', 'automation-title'); title.textContent = state.waveform[track] === 'fm' ? 'Envelope, Filter & FM'
+    : state.waveform[track] === 'ringmod' ? 'Envelope, Filter & Ring'
     : state.waveform[track] === 'square' ? 'Envelope, Filter & Duty' : 'Envelope & Filter';
   const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -2957,7 +2968,10 @@ function renderAdsrRow(track) {
     lane.appendChild(dutyField);
   }
 
-  if (state.waveform[track] === 'fm') {
+  // Ring modulation uses the same Ratio as FM (a modulator at a multiple of the
+  // note's frequency), so it gets the slider too — but not Depth, which has no
+  // meaning there: the multiplication is always full.
+  if (state.waveform[track] === 'fm' || state.waveform[track] === 'ringmod') {
     const fmDivider = el('span', 'adsr-divider');
     lane.appendChild(fmDivider);
 
@@ -2979,6 +2993,7 @@ function renderAdsrRow(track) {
     ratioField.append(ratioCap, ratioSlider, ratioVal);
     lane.appendChild(ratioField);
 
+    if (state.waveform[track] === 'ringmod') { row.append(header, gutter, lane); return row; }
     const depthField = el('div', 'adsr-field');
     const depthCap = el('span', 'adsr-label'); depthCap.textContent = 'Depth';
     const depthSlider = document.createElement('input');
@@ -6292,6 +6307,8 @@ function resetAudioCaches() {
   pulseWaves.clear();
   crushCurve = null;
   nesTriWave = null;
+  halfSineWave = null;
+  noiseWaveBuffer = null;
   chanDelays.clear();
   reverbImpulse = null;
   chanReverbs.clear();
@@ -6307,19 +6324,23 @@ function resetAudioCaches() {
 // flagged note on a vibrato'd track gets both rather than one overriding the
 // other — the same "independent of the per-note flag" contract the per-track
 // Crush and Tremolo already have.
-function addVibrato(osc, freq, startAt, endAt, rate = 5.5, depthRatio = 0.02) {
+function addVibrato(src, freq, startAt, endAt, rate = 5.5, depthRatio = 0.02) {
   const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
   lfo.frequency.value = rate;
-  lfoGain.gain.value = freq * depthRatio;
-  lfo.connect(lfoGain).connect(osc.frequency);
+  // Depth is a fraction of the note's own frequency, converted into the unit
+  // that source's pitch parameter uses — Hz for an oscillator, playbackRate for
+  // the noise loop. Both conversions are linear, so the same fraction lands as
+  // the same musical interval either way.
+  lfoGain.gain.value = src.toPitch(freq) * depthRatio;
+  lfo.connect(lfoGain).connect(src.pitch);
   lfo.start(startAt); lfo.stop(endAt);
 }
 const centsToRatio = (cents) => Math.pow(2, cents / 1200) - 1;
 // Applies the track's vibrato to one note's oscillator, if it has any. Called
 // alongside the per-note flag at both scheduling sites.
-function addTrackVibrato(osc, freq, startAt, endAt, vib) {
+function addTrackVibrato(src, freq, startAt, endAt, vib) {
   if (!vib || !vib.depth) return;
-  addVibrato(osc, freq, startAt, endAt, vib.rate, centsToRatio(vib.depth));
+  addVibrato(src, freq, startAt, endAt, vib.rate, centsToRatio(vib.depth));
 }
 // Classic 2-operator FM: a sine modulator running at `ratio` times the
 // carrier frequency drives the carrier's own frequency AudioParam, same
@@ -6328,13 +6349,13 @@ function addTrackVibrato(osc, freq, startAt, endAt, vib) {
 // index scaled by the carrier frequency itself, so higher notes still get an
 // audibly proportional amount of sideband spread instead of a fixed Hz swing
 // that would vanish at high pitches or overwhelm low ones.
-function addFmModulator(osc, carrierFreq, ratio, depth, startAt, endAt) {
+function addFmModulator(src, carrierFreq, ratio, depth, startAt, endAt) {
   if (!depth) return;
   const modOsc = ctx.createOscillator(), modGain = ctx.createGain();
   modOsc.type = 'sine';
   modOsc.frequency.value = carrierFreq * ratio;
-  modGain.gain.value = carrierFreq * depth * 4;
-  modOsc.connect(modGain).connect(osc.frequency);
+  modGain.gain.value = src.toPitch(carrierFreq) * depth * 4;
+  modOsc.connect(modGain).connect(src.pitch);
   modOsc.start(startAt); modOsc.stop(endAt);
 }
 function addTremolo(gainNode, startAt, endAt) {
@@ -6434,40 +6455,128 @@ const effectiveDuty = (note, voice) => note.duty ?? voice.duty;
 // to keep in step every time the rule changes (adding the track duty default
 // would have made it three near-identical four-branch chains).
 function setOscWave(osc, oscType, duty) {
-  if (oscType === 'fm') osc.type = 'sine';
+  if (oscType === 'fm' || oscType === 'sine') osc.type = 'sine';
   else if (oscType === 'square' && duty) osc.setPeriodicWave(pulseWave(duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
+  else if (oscType === 'halfsine') osc.setPeriodicWave(getHalfSineWave());
+  // Ring modulation's carrier is a triangle, the way the SID's is; the
+  // modulator that multiplies it is built in createVoiceSource().
+  else if (oscType === 'ringmod') osc.type = 'triangle';
   else osc.type = oscType;
 }
-function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOICE) {
-  const osc = ctx.createOscillator();
-  const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
-  setOscWave(osc, oscType, effectiveDuty(note, voice));
 
-  let chorusOsc = null;
+// Sine's positive half, with the negative half flat — one of the OPL2 operator
+// shapes. Unlike a plain sine it has even harmonics, so it reads as hollow and
+// reedy rather than pure.
+const HALF_SINE_SAMPLES = Array.from({ length: 64 }, (_, i) =>
+  i < 32 ? Math.sin((Math.PI * i) / 32) : 0);
+let halfSineWave = null;
+function getHalfSineWave() {
+  if (!halfSineWave) halfSineWave = dftToPeriodicWave(HALF_SINE_SAMPLES);
+  return halfSineWave;
+}
+
+// Pitched noise, the way a chip's noise channel does it: a short fixed random
+// sequence played on loop, so the *loop* repeats at the note's frequency. 93
+// steps is the NES's short-mode LFSR period, which is what makes that mode
+// buzz at a pitch instead of hissing. Seeded, like every other noise buffer
+// here, so it is the same sequence every time.
+const NOISE_STEPS = 93;
+let noiseWaveBuffer = null;
+function ensureNoiseWaveBuffer() {
+  if (!noiseWaveBuffer) {
+    noiseWaveBuffer = ctx.createBuffer(1, NOISE_STEPS, ctx.sampleRate);
+    const d = noiseWaveBuffer.getChannelData(0);
+    const rnd = noiseRandom(0x4E01);
+    // Scaled rather than full ±1: resampling a random step sequence overshoots,
+    // and measured against the other waveforms an unscaled buffer sat about
+    // 5 dB hot — switching a track to Noise would jump in level. 0.57 is the
+    // ratio that measured out (0.2234 peak for square against 0.3918 for noise).
+    for (let i = 0; i < NOISE_STEPS; i++) d[i] = (rnd() < 0.5 ? -1 : 1) * 0.57;
+  }
+  return noiseWaveBuffer;
+}
+// Hz -> the playbackRate that makes the loop come round that many times a second.
+const noisePlaybackRate = (hz) => (hz * NOISE_STEPS) / ctx.sampleRate;
+
+// Builds a note's sound source. Oscillators carry pitch in Hz on `frequency`;
+// the noise source is a looping buffer whose `playbackRate` sets how often the
+// loop repeats, so its pitch parameter is in a different unit entirely.
+//
+// The returned `toPitch` converts Hz into whatever unit that source wants, and
+// because both mappings are *linear* in frequency, everything downstream keeps
+// working unchanged: bend and arpeggio convert their absolute targets, while
+// vibrato and FM express depth as a fraction of the note's own frequency, which
+// converts by the same factor. That linearity is the whole reason noise could
+// join without a second copy of the scheduling code.
+//
+// `out` is what connects onward, and is not always the node being pitched —
+// ring modulation multiplies the carrier by a second oscillator, so its output
+// is the gain node doing the multiplying.
+function createVoiceSource(oscType, duty, freq, fm) {
+  if (oscType === 'noise') {
+    const src = ctx.createBufferSource();
+    src.buffer = ensureNoiseWaveBuffer();
+    src.loop = true;
+    return {
+      out: src, pitch: src.playbackRate, toPitch: noisePlaybackRate, detune: src.detune,
+      start: (t) => src.start(t), stop: (t) => src.stop(t),
+    };
+  }
+  const osc = ctx.createOscillator();
+  setOscWave(osc, oscType, duty);
+  if (oscType !== 'ringmod') {
+    return {
+      out: osc, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
+      start: (t) => osc.start(t), stop: (t) => osc.stop(t),
+    };
+  }
+  // True ring modulation, not tremolo: the gain node's own value sits at 0 and
+  // the modulator swings it between -1 and +1, so the output is the product of
+  // the two rather than one fading the other. The modulator holds a fixed
+  // multiple of the note's frequency — it does not follow a bend or vibrato,
+  // which is also how a hardware ring mod behaves when its second voice is held.
+  const ring = ctx.createGain();
+  ring.gain.value = 0;
+  const mod = ctx.createOscillator();
+  mod.type = 'sine';
+  mod.frequency.value = freq * (fm?.ratio ?? DEFAULT_FM.ratio);
+  mod.connect(ring.gain);
+  osc.connect(ring);
+  return {
+    out: ring, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
+    start: (t) => { osc.start(t); mod.start(t); },
+    stop: (t) => { osc.stop(t); mod.stop(t); },
+  };
+}
+function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOICE) {
+  const duty = effectiveDuty(note, voice);
+  const src = createVoiceSource(oscType, duty, note.freq, voice.fm);
+  const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
+
+  let chorus = null;
   if (note.arp && note.arp.length) {
     const freqs = [note.freq, ...note.arp.map(semi => note.freq * Math.pow(2, semi / 12))];
     const stepSec = 0.03;
     let t = startAt, i = 0;
-    while (t < startAt + dur) { osc.frequency.setValueAtTime(freqs[i % freqs.length], t); t += stepSec; i++; }
+    while (t < startAt + dur) { src.pitch.setValueAtTime(src.toPitch(freqs[i % freqs.length]), t); t += stepSec; i++; }
   } else {
-    osc.frequency.setValueAtTime(note.freq, startAt);
+    src.pitch.setValueAtTime(src.toPitch(note.freq), startAt);
     if (note.bend) {
-      osc.frequency.setValueAtTime(note.freq, startAt + dur * 0.5);
-      osc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
+      src.pitch.setValueAtTime(src.toPitch(note.freq), startAt + dur * 0.5);
+      src.pitch.linearRampToValueAtTime(src.toPitch(note.bend), startAt + dur);
     }
-    if (note.vib) addVibrato(osc, note.freq, startAt, startAt + dur);
-    addTrackVibrato(osc, note.freq, startAt, startAt + dur, voice.vib);
-    if (oscType === 'fm') addFmModulator(osc, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + dur);
+    if (note.vib) addVibrato(src, note.freq, startAt, startAt + dur);
+    addTrackVibrato(src, note.freq, startAt, startAt + dur, voice.vib);
+    if (oscType === 'fm') addFmModulator(src, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + dur);
     if (note.chorus) {
-      chorusOsc = ctx.createOscillator();
-      setOscWave(chorusOsc, oscType, effectiveDuty(note, voice));
-      osc.detune.value = 8;
-      chorusOsc.detune.value = -8;
-      chorusOsc.frequency.setValueAtTime(note.freq, startAt);
+      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm);
+      src.detune.value = 8;
+      chorus.detune.value = -8;
+      chorus.pitch.setValueAtTime(chorus.toPitch(note.freq), startAt);
       if (note.bend) {
-        chorusOsc.frequency.setValueAtTime(note.freq, startAt + dur * 0.5);
-        chorusOsc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
+        chorus.pitch.setValueAtTime(chorus.toPitch(note.freq), startAt + dur * 0.5);
+        chorus.pitch.linearRampToValueAtTime(chorus.toPitch(note.bend), startAt + dur);
       }
     }
   }
@@ -6478,35 +6587,34 @@ function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOI
   if (note.trem) addTremolo(gain, startAt, startAt + dur);
 
   if (!pooled) connectVoiceOutput(gain, note, destGain);
-  osc.connect(filter);
-  osc.start(startAt);
-  osc.stop(startAt + dur);
-  if (chorusOsc) { chorusOsc.connect(filter); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
+  src.out.connect(filter);
+  src.start(startAt);
+  src.stop(startAt + dur);
+  if (chorus) { chorus.out.connect(filter); chorus.start(startAt); chorus.stop(startAt + dur); }
 }
 function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, voice = DEFAULT_VOICE) {
-  const osc = ctx.createOscillator();
   const totalDur = (dur + nextDur) * durScale;
+  // This used to hand-write the wave selection a fourth time — and read
+  // note.duty directly, so the track's Duty default never reached a portamento
+  // note. Everything goes through createVoiceSource()/effectiveDuty() now.
+  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
-  if (oscType === 'fm') osc.type = 'sine';
-  else if (oscType === 'square' && note.duty) osc.setPeriodicWave(pulseWave(note.duty));
-  else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
-  else osc.type = oscType;
-  osc.frequency.setValueAtTime(note.freq, startAt);
+  src.pitch.setValueAtTime(src.toPitch(note.freq), startAt);
   const glideStart = startAt + dur * 0.6;
   const glideEnd = startAt + dur + Math.min(nextDur * 0.3, 0.12);
-  osc.frequency.setValueAtTime(note.freq, glideStart);
-  osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
-  if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
-  addTrackVibrato(osc, note.freq, startAt, startAt + totalDur, voice.vib);
-  if (oscType === 'fm') addFmModulator(osc, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + totalDur);
+  src.pitch.setValueAtTime(src.toPitch(note.freq), glideStart);
+  src.pitch.linearRampToValueAtTime(src.toPitch(nextNote.freq), glideEnd);
+  if (note.vib) addVibrato(src, note.freq, startAt, startAt + totalDur);
+  addTrackVibrato(src, note.freq, startAt, startAt + totalDur, voice.vib);
+  if (oscType === 'fm') addFmModulator(src, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + totalDur);
   applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), voice.adsr);
   applyFilterEnvelope(filter.frequency, startAt, totalDur, voice.adsr, voice.filter.cutoff, voice.filter.envAmount);
   filter.Q.setValueAtTime(voice.filter.q, startAt);
   if (note.trem) addTremolo(gain, startAt, startAt + totalDur);
   if (!pooled) connectVoiceOutput(gain, note, destGain);
-  osc.connect(filter);
-  osc.start(startAt);
-  osc.stop(startAt + totalDur);
+  src.out.connect(filter);
+  src.start(startAt);
+  src.stop(startAt + totalDur);
 }
 function scheduleKick(startAt, destGain) {
   const osc = ctx.createOscillator(), gain = ctx.createGain();

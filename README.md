@@ -32,8 +32,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 ### Sound design
 
-- Per-track **waveform** — square, triangle, saw, sine, an **NES triangle**
-  wavetable, and **FM** (with modulator ratio/depth)
+- Per-track **waveform** — square, triangle, saw, sine, **half sine**, an
+  **NES triangle** wavetable, pitched **noise** (a chip's noise channel, so it
+  buzzes at the note rather than just hissing), **ring modulation**, and **FM**
+  (with modulator ratio/depth)
 - Per-track **ADSR envelope**, a resonant **lowpass filter** with its own
   envelope amount, and a **duty cycle** (pulse width) for square-wave tracks
   that any single note can override; save a track's synth settings as a

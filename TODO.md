@@ -237,6 +237,51 @@ ett facit.
 
 ## Ljud / export
 
+- [x] **Tre nya vågformer: brus, ringmodulering och half-sine.** Nio totalt nu,
+  över två rader i väljaren (nio på en rad hade gett ~19px per knapp, för litet
+  för att formen ska gå att läsa; ett femkolumnsrutnät ger ~35px, bredare än de
+  sex var).
+  - **Noise** var den enda som faktiskt *saknades* — varje klassiskt ljudchip
+    har en bruskanal, och appen hade brusbuffertar för trummorna men inget sätt
+    att skriva en brusslinga på ett tonalt spår. Den är en loopad 93-sampels
+    buffert (NES:ens korta LFSR-period, det som gör att det läget surrar på en
+    tonhöjd i stället för att bara väsa), spelad med en `playbackRate` som får
+    loopen att gå runt på notens frekvens.
+  - **Ring** är en bärvåg multiplicerad med en andra oscillator via en
+    `GainNode` vars eget värde ligger på 0 — modulatorn svänger den mellan −1
+    och +1, så utsignalen blir produkten och inte den ena som tonar den andra.
+    Den återanvänder FM:s Ratio-reglage i Envelope-panelen.
+  - **Half sine** är en av OPL2:s operatorvågformer: sinusens positiva halva,
+    negativa halvan platt. Till skillnad från ren sinus har den jämna
+    övertoner, så den låter ihålig och rörlik.
+
+  **Brus passade inte formen.** De andra åtta är oscillatorer och exponerar
+  tonhöjd i Hz på `frequency`; brus är en buffertkälla vars `playbackRate` är i
+  en helt annan enhet. Lösningen blev `createVoiceSource()`, som returnerar
+  `toPitch` — en omvandling från Hz till källans enhet. Att bägge
+  avbildningarna är **linjära** i frekvens är hela skälet till att bend,
+  arpeggio, vibrato och FM fungerar på brus utan en andra kopia av
+  schemaläggningen: absoluta mål omvandlas direkt, och djup uttryckta som en
+  andel av notens egen frekvens omvandlas med samma faktor.
+
+  Två saker som mätningen gav och gissningen inte hade:
+  1. **Brus låg 5 dB över de andra** (topp 0.39 mot square 0.22) — att byta
+     till Noise hoppade i nivå. Bufferten skalas nu till 0.57.
+  2. **FM hashar identiskt med Sine**, vilket först såg ut som en bugg men är
+     korrekt: FM:s default-djup är 0, alltså en ren sinus. Testet asserterar
+     numera det uttryckligen i stället för att hoppa över det.
+- [x] **Bugg från PR #84: portamento fick aldrig spårets Duty.** Jag skrev då
+  att vågformsvalet var handskrivet på tre ställen och nu låg i en funktion.
+  Det var fyra, och `schedulePortamentoTone` hade kvar sin kopia — som dessutom
+  läste `note.duty` direkt i stället för `effectiveDuty()`, så spår-defaulten
+  nådde aldrig en glidande not. Nu går den genom `createVoiceSource()` som
+  alla andra.
+  Testet för det tog två försök att få rätt: första versionen klickade på noten
+  för att spela den, men **klick spelar förhandslyssningen, som går via
+  `scheduleTone`** — inte portamento-schemaläggaren, som bara körs vid riktig
+  uppspelning. Den versionen passerade glatt med buggen medvetet återinförd.
+  Den trycker på Play nu.
+
 - [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en
   `<textarea id="exportBox">` (tofflar den synlig/dold vid upprepade
   klick) och markerar texten — men saknar en "Kopiera"-knapp

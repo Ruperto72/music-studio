@@ -109,10 +109,12 @@ with distinct rows, each independently hideable when the track is collapsed:
 1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
    track name (click-to-... double-click-to-rename, ellipsis-truncated),
    **M**ute, **S**olo, and (hidden when collapsed) **✕** remove.
-2. **Waveform row** (hidden when collapsed): for tonal tracks, six icon
-   buttons — Square/Triangle/Saw/Sine/NES Tri (wavetable)/FM, each drawn
-   as the shape it produces — with the selected one's name spelled out
-   underneath; rhythm tracks get a static "Kit" label with its own glyph
+2. **Waveform row** (hidden when collapsed): for tonal tracks, nine icon
+   buttons over **two rows** — Square/Triangle/Saw/Sine/Half sine/NES Tri
+   (wavetable)/Noise/Ring/FM, each drawn as the shape it produces — with the
+   selected one's name spelled out underneath. Nine across a single row would
+   leave each button about 19px, too small for the shape to read; a
+   five-column grid keeps them at ~35px, wider than the six were; rhythm tracks get a static "Kit" label with its own glyph
    instead. The buttons form a `role="radiogroup"` with `aria-checked`
    (the same pattern as the Pen/Eraser/Grab tool group, since this is one
    choice out of a set), and each carries the waveform's name as its
@@ -815,6 +817,25 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   wobble is the same musical interval at every pitch. The per-note Vibrato
   flag connects a second LFO into the same param; `AudioParam` inputs sum, so
   the two add rather than one winning. At depth 0 nothing is created at all.
+- **The note's sound source**: `createVoiceSource(oscType, duty, freq, fm)` is
+  the one place a waveform is turned into nodes. Most are an `OscillatorNode`;
+  **Noise** is a looping 93-sample buffer — the NES's short-mode LFSR period,
+  which is what makes that mode buzz at a pitch instead of hissing — played at
+  a `playbackRate` that brings the loop round at the note's frequency; **Ring**
+  is a carrier multiplied by a second oscillator through a `GainNode` whose own
+  value sits at 0, so the modulator swings it between −1 and +1 and the output
+  is the product rather than one fading the other.
+  It returns `{ out, pitch, toPitch, detune, start, stop }`. `out` is what
+  connects onward and is not always the node being pitched (ring mod's output
+  is the multiplying gain). `toPitch` converts Hz into whatever unit that
+  source's pitch parameter uses, and **both mappings are linear in frequency**
+  — which is the whole reason bend, arpeggio, vibrato and FM work on noise
+  without a second copy of the scheduling code: absolute targets convert
+  directly, and depths expressed as a fraction of the note's own frequency
+  convert by the same factor.
+  The noise buffer is scaled to 0.57 rather than full ±1: resampling a random
+  step sequence overshoots, and unscaled it measured about 5 dB above the
+  oscillators, so switching a track to Noise jumped in level.
 - **Rhythm**: each hit type is a small dedicated synthesis function
   (`scheduleKick`/`scheduleSnare`/`scheduleRim`/`scheduleHihat`/
   `scheduleOpenHat`/`scheduleShaker`/`schedulePuka`(tom)/`scheduleClap`/
