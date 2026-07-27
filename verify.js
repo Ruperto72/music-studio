@@ -812,6 +812,7 @@ async function main() {
       })()`);
       if (wave.missing) throw new Error('no tonal track waveform picker found');
       if (wave.role !== 'radiogroup') throw new Error(`waveform picker should be a radiogroup, got ${wave.role}`);
+      if (wave.count !== 9) throw new Error(`expected 9 waveforms, got ${wave.count}`);
       if (wave.count === 0 || !wave.named || !wave.drawn || !wave.hidden) {
         throw new Error(`every waveform button needs a name and a decorative glyph: ${JSON.stringify(wave)}`);
       }
@@ -1045,6 +1046,97 @@ async function main() {
       }
     });
 
+    step('Waveforms: all nine build a distinct sound, and none is off in level', async () => {
+      // The DOM can only show that nine buttons exist. What matters is that each
+      // one produces different audio — a waveform that silently fell through to
+      // `square` would look perfect and sound wrong — so render a note per
+      // waveform offline and compare the PCM.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__waveRenders = [];
+            const orig = OfflineAudioContext.prototype.startRendering;
+            OfflineAudioContext.prototype.startRendering = function () {
+              return orig.call(this).then((buf) => {
+                const d = buf.getChannelData(0);
+                let h = 0x811c9dc5, peak = 0;
+                for (let i = 0; i < d.length; i++) {
+                  if (Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+                  const v = Math.round(d[i] * 1e5) | 0;
+                  h ^= v & 255; h = Math.imul(h, 0x01000193) >>> 0;
+                  h ^= (v >> 8) & 255; h = Math.imul(h, 0x01000193) >>> 0;
+                }
+                window.__waveRenders.push({ hash: h.toString(16), peak });
+                return buf;
+              });
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
+      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + 60 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.lane .note').length === 1`);
+
+      const layout = await cdp.evaluate(`(() => {
+        const g = document.querySelector('.th-wave-group');
+        const btns = [...g.querySelectorAll('.th-wave-btn')];
+        return {
+          labels: btns.map(b => b.getAttribute('aria-label')),
+          rows: [...new Set(btns.map(b => Math.round(b.getBoundingClientRect().top)))].length,
+          minWidth: Math.min(...btns.map(b => Math.round(b.getBoundingClientRect().width))),
+          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
+        };
+      })()`);
+      if (layout.rows !== 2 || !layout.fits) {
+        throw new Error(`the picker should wrap to two rows inside the header: ${JSON.stringify(layout)}`);
+      }
+      // Nine across one row would leave each button about 19px, too small for
+      // the shape to read; two rows keeps them at least as big as six were.
+      if (layout.minWidth < 29) throw new Error(`waveform buttons shrank to ${layout.minWidth}px`);
+
+      const results = {};
+      for (const label of layout.labels) {
+        const before = await cdp.evaluate(`window.__waveRenders.length`);
+        await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === ${JSON.stringify('')} + ${JSON.stringify(label)}).click()`);
+        await new Promise((r) => setTimeout(r, 300));
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('export-wav').click()`);
+        await waitFor(`window.__waveRenders.length > ${before}`, 90000);
+        results[label] = await cdp.evaluate(`window.__waveRenders[${before}]`);
+      }
+      const names = Object.keys(results);
+      if (names.length !== 9) throw new Error(`rendered ${names.length} waveforms, expected 9`);
+      const silent = names.filter((n) => results[n].peak <= 0.001);
+      if (silent.length) throw new Error(`waveform(s) produced no sound: ${JSON.stringify(silent)}`);
+      // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
+      // early), so those two hashing alike is correct rather than a
+      // fall-through. Asserting it keeps the check honest if that changes.
+      if (results['FM'].hash !== results['Sine'].hash) {
+        throw new Error('FM at depth 0 should be identical to a plain sine');
+      }
+      const others = names.filter((n) => n !== 'FM');
+      const hashes = new Set(others.map((n) => results[n].hash));
+      if (hashes.size !== others.length) {
+        throw new Error(`waveforms are not all distinct: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].hash])))}`);
+      }
+      // Switching waveform must not jump the level — the noise buffer needed
+      // scaling to sit with the oscillators rather than 5 dB above them.
+      const peaks = others.map((n) => results[n].peak);
+      const spread = 20 * Math.log10(Math.max(...peaks) / Math.min(...peaks));
+      if (spread > 3) {
+        throw new Error(`waveform levels differ by ${spread.toFixed(1)} dB: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].peak.toFixed(4)])))}`);
+      }
+    });
+
     step('Duty: a square track has its own default, and a note can override it', async () => {
       // setPeriodicWave() takes an opaque PeriodicWave, so the DOM and the node
       // graph both hide which pulse width was used. Patch pulseWave's consumer
@@ -1134,6 +1226,56 @@ async function main() {
       if (!overridden.some((d) => Math.abs(d - 0.25) < 0.01)) {
         // asin() folds 0.75 onto its supplement, so a 75% pulse reads back as 25%.
         throw new Error(`the note's own 75% duty should win over the track, saw ${JSON.stringify(overridden)}`);
+      }
+
+      // A portamento note must inherit the track's Duty too. It has its own
+      // scheduler, which for a while kept a hand-written copy of the waveform
+      // selection reading note.duty directly — so the track default silently
+      // never reached a glided note. Structurally it now shares
+      // createVoiceSource(); this checks that rather than assuming it.
+      await cdp.evaluate(`(() => {
+        const sel = [...document.querySelectorAll('.inspector select')].find(s => /Track default/.test(s.options[0]?.textContent || ''));
+        sel.value = ''; sel.dispatchEvent(new Event('change', { bubbles: true })); // back to inheriting
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const n = lane.querySelector('.note').getBoundingClientRect();
+        // 1.2 columns along, not 1.5: the grid snap rounds, so aiming at the
+        // middle of the next cell lands two columns away and leaves a gap —
+        // and a gap means the portamento path never runs.
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+          clientX: n.left + n.width * 1.2, clientY: n.top + n.height / 2 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.lane .note').length === 2`);
+      const pair = await cdp.evaluate(`(() => {
+        const ns = [...document.querySelectorAll('.lane .note')]
+          .map(n => n.getBoundingClientRect()).sort((a, b) => a.left - b.left);
+        return { gap: Math.round(ns[1].left - ns[0].left), width: Math.round(ns[0].width), sameRow: Math.abs(ns[0].top - ns[1].top) < 1 };
+      })()`);
+      if (pair.gap !== pair.width || !pair.sameRow) {
+        throw new Error(`the two notes must be contiguous and on one row for a glide: ${JSON.stringify(pair)}`);
+      }
+      await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        lane.querySelector('.note').click();
+      })()`);
+      await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.inspector .fx-toggle')].find(b => /Portamento/.test(b.textContent)).click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      // Play, don't preview. Clicking a note auditions it through scheduleTone;
+      // schedulePortamentoTone only runs from actual playback, so a preview
+      // here would exercise the wrong scheduler and pass whatever the state of
+      // the glided path — which is exactly how the first version of this check
+      // passed with the bug deliberately put back.
+      await cdp.evaluate(`window.__duty = []`);
+      await cdp.evaluate(`document.querySelector('#rtz').click()`);
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 1500));
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+      const portaDuty = await cdp.evaluate(`window.__duty.slice()`);
+      if (!portaDuty.some((d) => Math.abs(d - 0.125) < 0.01)) {
+        throw new Error(`a portamento note should inherit the track's 12.5% duty, saw ${JSON.stringify(portaDuty)}`);
       }
 
       // A non-square track must not offer the control at all.
