@@ -800,7 +800,7 @@
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
-        <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
+        <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
@@ -873,7 +873,7 @@
       <ul>
         <li>Transport: return-to-start, stop, play, and a loop on/off toggle; the LCD shows Bars&nbsp;|&nbsp;Beats and Min:Sec.</li>
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
-        <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>⧉ Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
+        <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <span class="help-ico" data-glyph="repeat"></span><b>Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
         <li>The <span class="help-ico" data-glyph="marker"></span><b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
@@ -881,7 +881,7 @@
       <h3>Saving &amp; exporting</h3>
       <ul>
         <li><span class="help-ico" data-glyph="songs"></span><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
-        <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
+        <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>Songs…</b> in the menu instead.</li>
         <li><span class="help-ico" data-glyph="code"></span><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><span class="help-ico" data-glyph="midiOut"></span><b>Export MIDI</b> / <span class="help-ico" data-glyph="midiIn"></span><b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><span class="help-ico" data-glyph="wav"></span><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
@@ -1245,7 +1245,7 @@ const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtoot
 // One table of tiny inline-SVG shapes, so the same concept looks the same
 // everywhere it appears: a waveform in the track header's picker, an effect on
 // a per-note toggle pill, and the same effect again as a group heading in the
-// track's ✨ FX panel. Each entry is a list of path `d` strings drawn in a
+// track's FX panel. Each entry is a list of path `d` strings drawn in a
 // 24x12 viewBox with y=6 as the zero line — a list rather than a single string
 // because a few glyphs need more than one stroke (chorus is two detuned waves,
 // reverb an impulse plus its spreading tail).
@@ -2041,7 +2041,7 @@ function hasRhythmTrackData(data) {
 // Blank starting project (just the Rhythm track) — see the boot-time block
 // below (right after applySavedMix()) for why the page always starts here
 // rather than loading the game's demo song or an autosaved draft; pick a
-// song via the 🎵 Songs menu instead (js/song-data.js's TRACKS/RHYTHM_TRACKS
+// song via the Songs menu instead (js/song-data.js's TRACKS/RHYTHM_TRACKS
 // remain the "export as code" round-trip target — see fromColumnNotes()/
 // fromColumnHits() — they're just no longer imported for a startup default).
 const state = {
@@ -2181,7 +2181,7 @@ function applySavedMix(data) {
       if (DUTY_VALUES.includes(data.duty[ch])) state.duty[ch] = data.duty[ch];
     }
   }
-  // The four ✨ FX panel effects (Delay/Chorus/Reverb send, Compressor,
+  // The four FX panel effects (Delay/Chorus/Reverb send, Compressor,
   // Bitcrush, Tremolo) all live on every track kind (tonal and rhythm
   // alike), so — unlike adsr/filter/fm above — this iterates ALL_TRACKS, not
   // PITCH_TRACKS. Driven by TRACK_FX_REGISTRY (single source of truth also
@@ -2278,7 +2278,7 @@ function restoreTrackList(data) {
 
 // state above already starts as a blank project (just Rhythm) rather than the
 // game's demo song or a background autosave draft — song selection happens
-// explicitly via the 🎵 Songs menu instead. This used to ask "restore your
+// explicitly via the Songs menu instead. This used to ask "restore your
 // unsaved draft?" on every reload, which became repetitive noise once
 // autosave started firing on every edit. autosave() (below) still keeps
 // saving in the background as a safety net against a crashed tab; it's just
@@ -2558,7 +2558,7 @@ const pctFormat = (v) => Math.round(v * 100) + '%';
 // Same rendering as the master EQ's readouts (see syncMasterFxUI/EQ_FIELDS), so
 // the two EQ panels don't show the same unit two different ways.
 const dbFormat = (v) => v.toFixed(1) + 'dB';
-// Single source of truth for the ✨ FX panel's five per-track effects
+// Single source of truth for the FX panel's five per-track effects
 // (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo) — one entry per
 // state.* slice, in the order the panel renders them (a divider goes
 // between each group). Drives both applySavedMix()'s load/validate logic
@@ -4192,7 +4192,7 @@ function patternHitAt(h, barCol, scale) {
 // `crashAfterFill: false` (bossa nova's "fill" is a clave flip, not a lift).
 function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   const track = state.activeTrack;
-  if (!isRhythm(track)) return; // the 🥁 button that opens the pattern dialog only exists on rhythm tracks
+  if (!isRhythm(track)) return; // the Patterns button that opens the pattern dialog only exists on rhythm tracks
   const barLen = eighthsPerBar();
   const scale = barLen / 8;
   const startBar = Math.floor(state.playhead / barLen) * barLen;
@@ -4803,7 +4803,7 @@ function renderInspector() {
 
 // The rhythm counterpart of renderInspector's tonal body. Velocity is the whole
 // panel: a hit has no pitch, no length and no per-note effect flags — those all
-// live on the track's ✨ FX panel for drums, since every drum sound on a track
+// live on the track's FX panel for drums, since every drum sound on a track
 // passes through the one channel node those effects insert into.
 function renderHitInspector(track, hit) {
   inspector.innerHTML = '';
@@ -5706,11 +5706,16 @@ async function renderSongToWav() {
 }
 document.getElementById('export-wav').addEventListener('click', async () => {
   const btn = document.getElementById('export-wav');
-  const oldTitle = btn.title, oldText = btn.textContent;
+  const oldTitle = btn.title, oldLabel = btn.textContent;
   // Rendering a long/dense song can take tens of seconds (OfflineAudioContext
-  // isn't guaranteed to run faster than real time) — swap the emoji itself so
-  // there's feedback visible without hovering, not just the title tooltip.
-  btn.disabled = true; btn.title = 'Rendering…'; btn.textContent = '⏳';
+  // isn't guaranteed to run faster than real time), so the button says so
+  // rather than only the title tooltip. It goes through setGlyphLabel because
+  // the button is a glyph plus a label now: this used to assign an hourglass
+  // straight to textContent, which wiped the SVG child — and restoring the
+  // text alone never brought it back, so one export left the button iconless
+  // for the rest of the session.
+  btn.disabled = true; btn.title = 'Rendering…';
+  setGlyphLabel(btn, 'wav', 'Rendering…');
   try {
     const buffer = await renderSongToWav();
     const wavBytes = audioBufferToWav(buffer);
@@ -5723,7 +5728,7 @@ document.getElementById('export-wav').addEventListener('click', async () => {
   } catch (err) {
     alert('Could not render the WAV file: ' + err.message);
   } finally {
-    btn.disabled = false; btn.title = oldTitle; btn.textContent = oldText;
+    btn.disabled = false; btn.title = oldTitle; setGlyphLabel(btn, 'wav', oldLabel);
   }
 });
 

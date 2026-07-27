@@ -35,8 +35,17 @@ deliberately not built yet.
 - **Typography**: system UI font stack (no webfont — dependency-free), 11–13px
   for controls, monospace (`Menlo`/`Consolas`) for the LCD counter and note
   frequency readout.
-- **Iconography**: emoji throughout (🎵 💾 📂 ⤓ ⛶ ✏️ 🧽 ✋ 🚩 🔍 ▾ ▸ ✕ ✨), no
-  icon font/SVG sprite sheet — keeps the app dependency-free.
+- **Iconography**: one hand-drawn set of inline SVG paths (`GLYPHS`, see
+  A.14), stroked with `currentColor` at a uniform weight, covering the
+  waveform picker, the per-note effect toggles, the FX panel headings and
+  the whole toolbar/menu/dialog set. No icon font and no sprite sheet —
+  the paths live in the one file, so this stays dependency-free. The only
+  characters kept as characters are the plain geometric ones that already
+  matched the drawing: the transport (`⏮ ■ ▶ ↺`), undo/redo, the `▾`/`▸`
+  disclosures, the `✕` closes and the `+`/`−` steppers. **This replaced an
+  all-emoji UI** — full-colour system pictures pasted into a monochrome
+  stroked interface — and `verify.js` audits every control against an
+  explicit keep-list so the split stays a decision rather than a drift.
 - **Density**: the whole UI targets information density over whitespace —
   compact toolbar panels, an 11px-per-semitone piano roll, and 17px rhythm
   rows, so a full song's structure is visible without excessive scrolling.
@@ -56,7 +65,7 @@ deliberately not built yet.
 │ M/S/  │                                         │   empty state)  │
 │ ✕,    │  ...one row per track, plus optional    │                 │
 │ wave, │  Automation / Envelope rows when open   │                 │
-│ Auto/ │  (the ✨ FX panel expands the header      │                 │
+│ Auto/ │  (the FX panel expands the header      │                 │
 │ Env/  │  in place instead — see A.7)             │                 │
 │ FX,   │                                         │                 │
 │ vol,  │                                         │                 │
@@ -92,11 +101,11 @@ label) laid out left to right:
 
 | Panel | Contents |
 |---|---|
-| **Menu (☰)** | 🎵 Songs library, 💾 Save file, 📂 Load file, ⤓ Export code (toggles a code box open/closed), 🎹 Export MIDI, 🎼 Import MIDI, 🔊 Export WAV, ＋ Add track, ＋ 🥁 Add rhythm track, ⛶ Fullscreen, ❓ Help |
-| **Transport** | Return-to-start (⏮), Stop (⏹), Play (▶), Loop toggle (↺) |
+| **Menu** | Songs library, Save file, Load file, Export code (toggles a code box open/closed), Export MIDI, Import MIDI, Export WAV, Add track, Add rhythm track, Fullscreen, Help |
+| **Transport** | Return-to-start (⏮), Stop (■), Play (▶), Loop toggle (↺) |
 | **Bars\|Beats** | LCD-style counter (bar\|beat\|sub-beat, plus mm:ss) |
 | **Tools** | Pen / Eraser / Grab tool segmented control; Undo/Redo |
-| **Loop & Zoom** | Full range, ⧉ Repeat (duplicate the loop region forward), 🚩 Add marker, zoom −/100%/+ |
+| **Loop & Zoom** | Full range, Repeat (duplicate the loop region forward), Add marker, zoom −/100%/+ |
 
 On narrow screens, an "⋯ More" toggle collapses the less-essential panels
 (`.tb-extra`) behind a button to keep the primary controls reachable.
@@ -126,9 +135,9 @@ with distinct rows, each independently hideable when the track is collapsed:
    the fixed 200px header (`--header-w`) however many waveforms exist.
 3. **Tools row** (hidden when collapsed): **〰 Auto** (toggles the
    automation-curve row), **E Env** (toggles the envelope/filter/FM row,
-   tonal tracks only — drum hits use fixed per-type envelopes), **✨ FX**
+   tonal tracks only — drum hits use fixed per-type envelopes), **FX**
    (toggles the Delay/Chorus/Reverb-send + EQ + Compressor + Bitcrush + Tremolo
-   panel — see A.7), and **🎚 Preset** (saves/loads that track's
+   panel — see A.7), and **Preset** (saves/loads that track's
    waveform+envelope+filter+FM as a named preset, shared across songs via
    `localStorage`).
 4. **Volume row** (hidden when collapsed): a slider (0–2) + numeric readout.
@@ -179,7 +188,7 @@ above/below it):
 - A `<select>` picks the parameter — **Volume** (0–2), **Pan** (−1–1),
   **Delay** (0–100%), **Chorus** (0–100%), or **Reverb** (0–100%) — each
   with its own independent point set. The three send parameters ramp the
-  same continuous per-track FX sends the ✨ FX panel's sliders control (see
+  same continuous per-track FX sends the FX panel's sliders control (see
   A.7) — drawing a curve here is an alternative to that panel's static
   slider, not a separate effect; whichever value is in effect at a given
   moment (curve or static slider) is what's actually sent.
@@ -194,13 +203,13 @@ above/below it):
   and clicking Clear again removes another parameter's points
   independently; there's no "clear all parameters" action).
 - With **no points** for a parameter, it behaves exactly as before
-  automation existed for it — driven by the channel strip's (or ✨ FX
+  automation existed for it — driven by the channel strip's (or FX
   panel's) static slider value for the whole song — fully backward
   compatible.
 
 ### A.7 Track FX panel
 
-Opened per-track via its header's **✨ FX** button (see A.4); unlike
+Opened per-track via its header's **FX** button (see A.4); unlike
 Automation/Envelope, this does **not** add a full-width timeline row — every
 field in it is a static per-track knob with nothing tied to a timeline
 column, so it renders as a compact two-column grid (`buildFxPanel()`)
@@ -283,7 +292,7 @@ panel of its own (`renderHitInspector()`): the drum's name, its bar and beat,
 a **Velocity** slider (10–100%, the same range/step/formatting as the tonal
 one below) and Delete. That is the whole list on purpose — a hit has no pitch,
 no length and no per-note effect flags, and for drums those effects live on
-the track's ✨ FX panel instead, since every kit sound on a track passes
+the track's FX panel instead, since every kit sound on a track passes
 through the one channel node those inserts and sends tap.
 
 A **note** gets the fuller set, grouped into:
@@ -337,7 +346,7 @@ per-browser): the project **Song** name, **Master** volume + **Output** VU,
 **Tempo** (BPM number input), **Meter** (time-signature select), **Length**
 (±1 bar, trims/pads notes, hits, and markers past the new end when
 shrinking), **Grid** (note snap resolution — see A.5), **Swing**, and a
-**🎛️** toggle for the **Master FX** panel.
+**Master FX** toggle for the master-bus panel.
 
 **Song** is the project name, click-to-rename via a prompt (`renameSong()`)
 while the strip is expanded; when the strip is collapsed the same name still
@@ -345,10 +354,10 @@ shows in the slim label bar but as plain, non-editable text — it's the same
 underlying `state.songName`, just rendered as two different elements that
 CSS shows/hides based on collapsed state, so the name stays visible either
 way but is only editable when there's room for the "click to rename"
-affordance. (Adding/removing tracks is a ☰-menu action, not part of this
+affordance. (Adding/removing tracks is a menu action, not part of this
 strip — see A.3.)
 
-The **🎛️** toggle opens the **Master FX** panel:
+The **Master FX** toggle opens that panel:
 
 - **EQ**: 3-band (Lo shelf ~200Hz, Mid peak ~1kHz, Hi shelf ~4kHz, ±12dB).
 - **Comp**: a `DynamicsCompressorNode` (threshold, ratio, attack, release).
@@ -366,10 +375,10 @@ untouched song's master bus is unaffected — see B.6 for the signal chain.
 
 ### A.11 Songs library dialog
 
-Opened via 🎵; three sections:
+Opened from the menu's **Songs** item; three sections:
 
-1. **New song** — name it up front, then either **🎼 Starter tracks**
-   (empty Melody/Bass/Rhythm) or **📄 Empty project** (just Rhythm).
+1. **New song** — name it up front, then either **Starter tracks**
+   (empty Melody/Bass/Rhythm) or **Empty project** (just Rhythm).
 2. **Examples** — fetched from `songs/index.json` + one `.json` per entry;
    loading replaces the current editor content (a warning tells the user to
    save first).
@@ -381,7 +390,7 @@ This dialog is the *only* way a song's content gets loaded into the editor
 
 ### A.11b Rhythm patterns dialog
 
-Opened from the 🥁 button on a rhythm track's header (rhythm tracks only —
+Opened from the **Patterns** button on a rhythm track's header (rhythm tracks only —
 `insertPatternIntoRhythm()` refuses anything else). Lists the built-in
 grooves from `RHYTHM_PATTERNS`, each with a name, a one-line description
 and three buttons: **▶** auditions the groove bar, **▶ fill** the fill bar,
@@ -493,7 +502,7 @@ caller has to know. (A list rather than one string because chorus is two
 detuned waves and reverb an impulse plus its tail.)
 
 They cover the waveform picker (A.4), the per-note effect toggles (A.9), the
-FX panel's group headings (A.7), and the whole toolbar, ☰ menu and dialog set.
+FX panel's group headings (A.7), and the whole toolbar, menu and dialog set.
 Static markup carries `data-glyph="name"` and one boot pass fills them in;
 buttons built in JS use `setGlyphLabel(btn, name, label)`. Either way the label
 stays a real text node, so the accessible name is what it always was.
@@ -664,7 +673,7 @@ from the loaded data where present, validating each field's shape/range.
 `cols` is clamped to `[1 bar, MAX_COLS=576]`; if absent, it's derived from
 the last note/hit's end, rounded up to a whole bar.
 
-A separate **code-export** path (`⤓ Export`) serializes only
+A separate **code-export** path (**Export code**) serializes only
 `TRACKS`/`RHYTHM_TRACKS` JS literals matching `js/song-data.js`'s shape, for
 pasting back into the originating game — `songName`, `markers`,
 `automation`, `adsr`, and all four FX-panel groups have no representation in
@@ -685,7 +694,7 @@ render()
  ├─ positionOverlays()    → updateOverlayHeights(), updatePlayheadPositions(),
  │                          updateLoopPositions(), updateHScroll()
  ├─ renderInspector()     → selected-note effect controls, or empty state
- ├─ updateSongInfo()      → ☰ menu's Tempo/Meter/Length/Track-count text
+ ├─ updateSongInfo()      → menu's Tempo/Meter/Length/Track-count text
  ├─ autosave()            → debounced localStorage write
  └─ checkpointHistory()   → debounced undo-stack push if state changed
 ```
@@ -699,7 +708,7 @@ never flicker mid-drag (playhead, marker layer, loop region/handles) is
 created once by `createOverlays()` and only *repositioned*, never rebuilt,
 by `positionOverlays()`.
 
-Unlike Automation and Envelope, the ✨ FX panel (`buildFxPanel()`) needs no
+Unlike Automation and Envelope, the FX panel (`buildFxPanel()`) needs no
 timeline-column width — every field in it is a static per-track knob — so
 it's built straight into `buildHeader()`'s own left-column header instead
 of being appended as a sibling `.track` row; toggling it open/closed just
@@ -1007,18 +1016,18 @@ nodes for any track added/removed by the undo and reapplies all four
   purely as a crash-recovery safety net. It is **write-only** — never read
   back automatically. The page always boots into a blank project (just a
   Rhythm track; the `state` object's own initial literal, not seeded from
-  any saved data), so song selection always goes through the explicit 🎵
+  any saved data), so song selection always goes through the explicit
   Songs menu (A.11) rather than a reload-time prompt.
 - **Local songs**: named saves under a second `localStorage` key, an
   object keyed by name; listed/loaded/deleted from the Songs dialog.
-- **File save/load**: `💾` downloads `currentSongData()` as a `.json` file
-  (name slugified from the song name); `📂` reads a dropped/selected file
+- **File save/load**: **Save file** downloads `currentSongData()` as a `.json`
+  file (name slugified from the song name); **Load file** reads a selected file
   through the same `applySongData()` path as everything else.
 - **Examples**: `songs/index.json` lists `{ file, name, desc }`; each
   example is fetched and applied the same way, with the display name
   overridden from the index entry (not the file's own `songName`, so
   renaming a local copy doesn't affect the example's library listing).
-- **MIDI**: 🎹/🎼 export/import a Standard MIDI File (format 1, own SMF
+- **MIDI**: **Export/Import MIDI** move a Standard MIDI File (format 1, own SMF
   writer/parser, no library). Per-note effects have no MIDI equivalent and
   aren't round-tripped; import merges all channel-9 (drum) events in a file
   into the song's first rhythm track. Velocity *does* round-trip in both
@@ -1065,7 +1074,7 @@ less than a save does is worth very little.
 | File | Role |
 |---|---|
 | `index.html` | The entire application — markup, CSS, and the single `<script type="module">` covering state, rendering, interaction, synthesis, and I/O. |
-| `js/song-data.js` | `TRACKS`/`RHYTHM_TRACKS`/`TEMPO_BPM` — the demo song's note data, in the same shape the code-export path produces; `index.html` only imports `TEMPO_BPM` from it (a fallback used in a couple of places) — the full demo song is loaded only via the 🎵 Songs menu's "Froggy Hop" example. The only other JS module besides `js/downsample-processor.js`. |
+| `js/song-data.js` | `TRACKS`/`RHYTHM_TRACKS`/`TEMPO_BPM` — the demo song's note data, in the same shape the code-export path produces; `index.html` only imports `TEMPO_BPM` from it (a fallback used in a couple of places) — the full demo song is loaded only via the Songs menu's "Froggy Hop" example. The only other JS module besides `js/downsample-processor.js`. |
 | `js/downsample-processor.js` | The shared `AudioWorkletProcessor` behind the master bus's Downsample control and every per-track Bitcrush insert (A.7, A.10) — a sample-and-hold lo-fi downsampler. |
 | `songs/*.json` + `songs/index.json` | Bundled example songs and their Songs-dialog listing. |
 | `dev-server.js` | Dependency-free static file server, used for local development and by `verify.js`; stays plain (no auto-open) since it also runs headlessly. |

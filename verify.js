@@ -1588,6 +1588,19 @@ async function main() {
       if (delayMods['PWM'] <= baseline[0]) {
         throw new Error(`PWM built no LFO on its pulse-width delay — the sweep is gone: ${JSON.stringify(delayMods)}`);
       }
+      // Ten exports have just run through the Export WAV button's busy state.
+      // That state used to assign an hourglass straight to textContent, which
+      // wiped the button's SVG child — and restoring the text alone never
+      // brought it back, so one export left it iconless for the session. The
+      // icons step above can't see this: it runs before anything is exported.
+      const wavBtn = await cdp.evaluate(`(() => {
+        const b = document.getElementById('export-wav');
+        return { svgs: b.querySelectorAll('svg').length, text: b.textContent.trim(), disabled: b.disabled };
+      })()`);
+      if (wavBtn.svgs !== 1 || wavBtn.text !== 'Export WAV' || wavBtn.disabled) {
+        throw new Error(`Export WAV should come back out of its busy state intact: ${JSON.stringify(wavBtn)}`);
+      }
+
       const names = Object.keys(results);
       if (names.length !== 10) throw new Error(`rendered ${names.length} waveforms, expected 10`);
       const silent = names.filter((n) => results[n].peak <= 0.001);
