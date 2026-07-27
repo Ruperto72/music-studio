@@ -226,6 +226,17 @@ compressor once you can see which group you are in:
   same `AudioWorkletNode` processor as the master bus's own Downsample
   control — independent of the per-note Bitcrush toggle, which is a fixed
   always-on `WaveShaperNode` effect rather than a dial-able amount.
+- **Vibrato** (Rate, Depth in cents; **tonal tracks only**): pitch wobble on
+  every note of the track. The one entry in `TRACK_FX_REGISTRY` that is *not*
+  an insert — an LFO on the channel gain can shape an already-summed signal,
+  but bending its pitch cannot be done downstream, so this is threaded into
+  `scheduleTone()` and reaches each note's own oscillator (see B.6). That is
+  also why it is tonal-only: a drum hit has no oscillator to bend, so
+  `trackFxFor(track)` filters the whole group out of a rhythm track's panel
+  and `applySavedMix()` skips it there. It **adds to** the per-note Vibrato
+  toggle rather than replacing it — both connect an LFO into the same
+  `osc.frequency`, and `AudioParam` inputs sum — matching the same
+  "independent of the per-note flag" contract Crush and Tremolo have.
   `0%` = full quality (default).
 - **Tremolo** (Rate Hz / Depth %): a per-track amplitude-modulation LFO.
   `Depth: 0%` (default) leaves the level unmodulated regardless of rate.
@@ -482,6 +493,7 @@ state = {
   comp,        // id -> { threshold, ratio, attack, release } (any track kind) — DEFAULT_TRACK_COMP
   crush,       // id -> { amount } (0..1, any track kind) — DEFAULT_TRACK_CRUSH
   tremolo,     // id -> { rate, depth } (any track kind) — DEFAULT_TREMOLO
+  vibrato,     // id -> { rate, depth } (tonal only) — DEFAULT_VIBRATO, see A.7/B.6
   eq,          // id -> { low, mid, high } dB (any track kind) — DEFAULT_TRACK_EQ
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
@@ -539,6 +551,7 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
   "comp": { "lead": { "threshold": -24, "ratio": 1, "attack": 0.01, "release": 0.25 } },
   "crush": { "lead": { "amount": 0 } },
   "tremolo": { "lead": { "rate": 5, "depth": 0 } },
+  "vibrato": { "lead": { "rate": 5.5, "depth": 0 } },
   "eq": { "lead": { "low": 0, "mid": 0, "high": 0 } },
   "sidechain": { "enabled": false, "depth": 0.5 },
   "masterEQ": { "low": 0, "mid": 0, "high": 0 },
@@ -749,6 +762,14 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   once per scheduling chunk (re-anchoring itself from each chunk's starting
   value) — independent of individual notes, so it keeps working correctly
   across chunk boundaries, loop points, and seeks.
+- **Per-track vibrato**: the exception to the insert-chain pattern above.
+  `scheduleTone()`/`schedulePortamentoTone()` take the track's vibrato
+  settings alongside its ADSR/filter/FM and call `addTrackVibrato()`, which
+  connects an LFO into that note's `osc.frequency` — depth converted from
+  cents by `centsToRatio()` and scaled by the note's own frequency, so the
+  wobble is the same musical interval at every pitch. The per-note Vibrato
+  flag connects a second LFO into the same param; `AudioParam` inputs sum, so
+  the two add rather than one winning. At depth 0 nothing is created at all.
 - **Rhythm**: each hit type is a small dedicated synthesis function
   (`scheduleKick`/`scheduleSnare`/`scheduleRim`/`scheduleHihat`/
   `scheduleOpenHat`/`scheduleShaker`/`schedulePuka`(tom)/`scheduleClap`/

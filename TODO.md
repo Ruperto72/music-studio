@@ -437,10 +437,27 @@ och de är avsiktligt additiva (se `TRACK_FX_REGISTRY`). Det som återstår
   `hitsConflict` — att flytta en kick in i en kolumn raderade alltså en
   omarkerad hi-hat som redan låg där. Sjätte instansen av precis den bugg de
   delade predikaten finns för.
-- [ ] **Vibrato per spår.** Spåret har en tremolo-LFO (amplitud) men ingen
-  vibrato-LFO (tonhöjd), trots att `addVibrato()` och `addTremolo()` är
-  nästan identiska funktioner längs olika axlar. Billigast av punkterna
-  här: en rad i `TRACK_FX_REGISTRY` plus en LFO i kanalkedjan.
+- [x] **Vibrato per spår.** Tonala spår har nu Rate + Depth (i cent, 100 = en
+  halvton) i ✨ FX-panelen. **Min uppskattning om mekanismen var fel**: jag
+  skrev att det bara var "en rad i registret plus en LFO i kanalkedjan",
+  eftersom `addVibrato()` och `addTremolo()` är nästan identiska funktioner.
+  Funktionerna är det, men kopplingen är det inte. En LFO på kanalens gain
+  kan forma en redan summerad signal; att böja dess *tonhöjd* går inte att
+  göra nedströms — det måste nå varje nots egen oscillator. Alltså är detta
+  den enda posten i `TRACK_FX_REGISTRY` som inte är en insert: den trådas in
+  i `scheduleTone()`/`schedulePortamentoTone()` bredvid ADSR/filter/FM.
+  Samma sak gör den också till registrets enda `tonalOnly`-post — ett
+  trumslag har ingen oscillator att böja — vilket krävde ett nytt filter
+  (`trackFxFor()`) som både panelen och `applySavedMix()` går igenom.
+  Två detaljer värda att minnas: djupet anges i cent och skalas med notens
+  egen frekvens, så vibratot är samma musikaliska intervall i alla lägen (i
+  Hz hade det varit ohörbart i botten och vilt i toppen); och den *adderas*
+  till per-not-flaggan i stället för att ersätta den, eftersom bägge kopplar
+  in en LFO i samma `osc.frequency` och `AudioParam`-ingångar summerar — samma
+  kontrakt som Crush och Tremolo redan har.
+  `apply` är en medveten no-op: en nots LFO skapas med noten, så en ändring
+  slår igenom vid nästa schemalagda chunk, precis som en ändring av vågform,
+  ADSR eller filter.
 - [ ] **Duty cycle-default per spår.** Vågformen väljs redan per spår, men
   pulsbredden går bara att sätta per not (och bara när spårets vågform är
   `square`). Ett spår-default är den naturliga platsen; per-not-värdet får

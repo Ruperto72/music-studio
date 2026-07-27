@@ -37,8 +37,8 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - Per-track **ADSR envelope** and a resonant **lowpass filter** with its own
   envelope amount; save any track's synth settings as a reusable **preset**
 - Per-track **✨ FX**: continuous Delay / Chorus / Reverb sends, a 3-band
-  **EQ**, a **compressor**, a **bitcrush** downsampler and a **tremolo** — all
-  neutral by default
+  **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
+  **vibrato** on tonal tracks — all neutral by default
 - Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
   arpeggio, portamento, bitcrush, echo, chorus and reverb
 - **Per-hit velocity** on rhythm tracks — click a drum hit to set how hard
