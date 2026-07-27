@@ -293,12 +293,40 @@ ett facit.
      över noten. Första mätningen såg rörig ut, men det var mätfelet — jag hade
      lagt 24 *separata* noter, så måttet läste över notgränser och tystnader.
   Svepet startar om vid varje not, som per-not-vibratot gör. Ett fritt löpande
-  svep per spår vore en annan och större ändring.
+  svep per spår vore en annan och större ändring. (Gjord — se nästa punkt.)
   Testet asserterar inte duty-kurvan (för brusigt mått för att lita på) utan
   **kopplingen** — att en LFO når `delayTime` — på samma sätt som vibrato-steget
   kollar att en LFO når `osc.frequency`. Det tog två försök: först krävde jag
   att *bara* PWM modulerar en delayTime, men chorus-bussen gör det legitimt vid
   varje rendering, så baslinjen är inte noll. Nu jämförs PWM mot den baslinjen.
+- [x] **Fritt löpande PWM-svep per spår.** En LFO per kanal (`chanPwmLfo`),
+  startad när kanalen byggs och aldrig omstartad; varje `pwm`-not skalar den
+  till sin egen period genom en egen `GainNode` i stället för att skapa en egen
+  oscillator. Ett spår utan kanal (inspektorns förhandslyssning) faller tillbaka
+  på en not-lokal LFO.
+  **Mätningen bekräftade problemet exakt.** Åtta noter i rad, duty läst ur PCM
+  (saw-minus-fördröjd-saw är en rektangel vars positiva del varar (1 − duty) av
+  perioden, så andelen positiva sampel ger duty direkt):
+  - *Före:* 0.533 0.537 0.537 0.537 0.521 0.521 0.521 0.521 — spridning 0.016,
+    samma som en ren fyrkantvågs mätbrus. Svepet fanns bara på papperet för
+    korta noter.
+  - *Efter:* 0.735 0.734 0.537 0.297 0.596 0.721 0.521 0.279 — spridning 0.456,
+    alltså hela svepet.
+  **Två saker jag hade fel om, båda fångade av mätning:**
+  1. **Nivån.** Jag flaggade risken att fritt löpande svep gör noterna hetare,
+     och det stämde: 0.85 gav topp 0.253 mot de andra nio vågformernas
+     0.210–0.224, alltså ~1,1 dB över den högsta. En smal puls *toppar* 1,5×
+     högre än en fyrkantvåg men dess RMS är 1,25 dB *lägre*, så de två ändarna
+     drar åt olika håll. `PWM_LEVEL` är nu 0.75 — mittpunkten mellan att matcha
+     topp i ytterlägena (0.65) och RMS i mitten (0.85) — och mäter 0.224, mitt
+     i klungan.
+  2. **Var frånkopplingen hör hemma.** Första versionen släppte notens uttag på
+     den delade LFO:n i `stop(t)`. Men `stop(t)` anropas vid *schemaläggning*
+     med ett framtida `t`, så den hade kopplat bort svepet innan noten ens
+     hördes. Rätt hake är oscillatorns eget `ended`-event.
+  Testet asserterar den här gången beteendet, inte kopplingen: åtta noter,
+  duty ur PCM, spridningen måste överstiga 0.2 (mot 0.016 för den gamla koden)
+  och ingen not får hamna utanför 25–75 %-svepet.
 - [x] **Bugg från PR #84: portamento fick aldrig spårets Duty.** Jag skrev då
   att vågformsvalet var handskrivet på tre ställen och nu låg i en funktion.
   Det var fyra, och `schedulePortamentoTone` hade kvar sin kopia — som dessutom

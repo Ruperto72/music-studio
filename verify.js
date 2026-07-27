@@ -1174,6 +1174,79 @@ async function main() {
       }
     });
 
+    step('PWM: the sweep free-runs across notes instead of restarting on each one', async () => {
+      // The wiring check in the step above proves an LFO reaches the pulse-width
+      // delay; it cannot tell a per-note LFO from the shared per-track one. Only
+      // the audio can, because the difference IS the phase: a per-note LFO
+      // starts at 0 every time, so every note begins at the same 50% duty.
+      //
+      // Duty is readable straight out of the PCM. Saw-minus-delayed-saw is a
+      // rectangle whose positive part lasts (1 - duty) of each period, so the
+      // fraction of positive samples just after a note's onset gives the duty
+      // that note started on. Against the per-note LFO this spread was 0.02 —
+      // the same as a plain square's measurement noise — so the threshold below
+      // is nowhere near it in either direction.
+      await cdp.evaluate(`(() => {
+        window.__pwmDuty = null;
+        const orig = OfflineAudioContext.prototype.startRendering;
+        OfflineAudioContext.prototype.startRendering = function () {
+          return orig.call(this).then((buf) => {
+            const d = buf.getChannelData(0), sr = buf.sampleRate;
+            let peak = 0;
+            for (let i = 0; i < d.length; i++) if (Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+            const blk = Math.round(sr * 0.005), env = [];
+            for (let i = 0; i + blk <= d.length; i += blk) {
+              let m = 0; for (let j = i; j < i + blk; j++) if (Math.abs(d[j]) > m) m = Math.abs(d[j]);
+              env.push(m);
+            }
+            // Onsets: the envelope crossing up through 20% of peak, ignoring
+            // re-crossings inside one note.
+            const thr = peak * 0.2, onsets = [];
+            for (let b = 1; b < env.length; b++) {
+              if (env[b] > thr && env[b - 1] <= thr) {
+                const s = b * blk;
+                if (!onsets.length || s - onsets[onsets.length - 1] > sr * 0.05) onsets.push(s);
+              }
+            }
+            const win = Math.round(sr * 0.03), skip = Math.round(sr * 0.005);
+            window.__pwmDuty = onsets.map((s) => {
+              let pos = 0, n = 0;
+              for (let i = s + skip; i < s + skip + win && i < d.length; i++) { if (d[i] > 0) pos++; n++; }
+              return n ? 1 - pos / n : 0.5;
+            });
+            return buf;
+          });
+        };
+      })()`);
+      // Eight short notes at one pitch: long enough a run that a 0.8Hz sweep
+      // covers most of a cycle, short enough that each note is well inside it.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const placed = await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const r = lane.getBoundingClientRect();
+        for (let i = 1; i < 8; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 60 }));
+        }
+        return document.querySelectorAll('.lane .note').length;
+      })()`);
+      if (placed !== 8) throw new Error(`expected 8 notes on the PWM track, got ${placed}`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'PWM').click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('export-wav').click()`);
+      await waitFor(`!!window.__pwmDuty`, 90000);
+      const duty = await cdp.evaluate(`window.__pwmDuty`);
+      if (duty.length < 6) throw new Error(`only found ${duty.length} note onsets in the render, expected 8`);
+      const spread = Math.max(...duty) - Math.min(...duty);
+      if (spread < 0.2) {
+        throw new Error(`consecutive PWM notes started within ${spread.toFixed(3)} duty of each other — the sweep is restarting per note: ${JSON.stringify(duty)}`);
+      }
+      // The sweep is PWM_CENTRE +/- PWM_WIDTH, so nothing may land outside it;
+      // a note reading near 0 or 1 would mean the delay ran past the period.
+      const out = duty.filter((v) => v < 0.2 || v > 0.8);
+      if (out.length) throw new Error(`PWM duty left the 25%-75% sweep range: ${JSON.stringify(duty)}`);
+    });
+
     step('Duty: a square track has its own default, and a note can override it', async () => {
       // setPeriodicWave() takes an opaque PeriodicWave, so the DOM and the node
       // graph both hide which pulse width was used. Patch pulseWave's consumer

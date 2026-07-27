@@ -798,7 +798,7 @@
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
-        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep restarts with every note — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -858,7 +858,7 @@
       <h3>Mixing</h3>
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
-        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / <b>PWM</b> / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li>The <b>waveform</b> picker — ten buttons drawn as the shapes themselves (Square / <b>PWM</b> / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
@@ -2595,6 +2595,7 @@ function removeTrack(id) {
   // disconnect loop above — dropping the reference alone would leave it
   // silently ticking forever, so stop it explicitly.
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
+  if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
@@ -5360,7 +5361,7 @@ async function renderSongToWav() {
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
-  chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {};
+  chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {};
   trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
   fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
   fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
@@ -5569,6 +5570,13 @@ let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanEq[id] -> chanC
 let chanCrush = {}; // id -> AudioWorkletNode (downsample-processor) once loaded, inserted chanComp[id] -> chanCrush[id] -> chanTremolo[id] — see ensureTrackCrusher()
 let chanTremolo = {}; // id -> GainNode, the last insert before chanPan[id]/chanAnalyser[id]/the FX sends — see createChanTremolo()
 let chanTremoloLfo = {}, chanTremoloLfoGain = {}; // id -> OscillatorNode/GainNode driving chanTremolo[id].gain
+// id -> a free-running OscillatorNode at PWM_RATE, started with the channel and
+// never restarted. Notes on a `pwm` track scale it by their own period and feed
+// it into their pulse-width delay, so the sweep runs continuously across the
+// part instead of resetting to the same duty on every note (which made short
+// notes sound like a fixed 50% duty — the whole point of PWM is the movement).
+// It is only read, never heard directly, so it costs nothing on other tracks.
+let chanPwmLfo = {};
 let trackDelaySend = {};  // id -> GainNode, chanTremolo[id] -> shared delay bus (see createTrackFxSends())
 let trackChorusSend = {}; // id -> GainNode, chanTremolo[id] -> shared chorus bus
 let trackReverbSend = {}; // id -> GainNode, chanTremolo[id] -> shared reverb bus
@@ -5761,6 +5769,18 @@ function createChanTremolo(id) {
   chanTremoloLfo[id].connect(chanTremoloLfoGain[id]).connect(chanTremolo[id].gain);
   chanTremoloLfo[id].start();
 }
+// The pulse-width sweep every `pwm` note on this track shares. Unlike the
+// tremolo LFO above this one is connected to nothing here — notes reach for it
+// themselves via getTrackVoice(), each scaling it into its own period — so it
+// is inaudible on a track that never plays a `pwm` note. Started once with the
+// channel and never restarted, which is the whole difference from the per-note
+// LFO it replaced: the phase carries across notes, so short notes get the
+// movement instead of all landing on the same duty.
+function createChanPwmLfo(id) {
+  chanPwmLfo[id] = ctx.createOscillator();
+  chanPwmLfo[id].frequency.value = PWM_RATE;
+  chanPwmLfo[id].start();
+}
 // Per-track counterpart to ensureCrusher() above — same bypass-then-upgrade
 // dance (needed for live playback, where buildChannelChain() must stay
 // synchronous) but one AudioWorkletNode instance per track instead of one
@@ -5839,6 +5859,7 @@ function buildChannelChain(c, id, withAnalyser) {
   createChanEq(id);
   createChanComp(id);
   createChanTremolo(id);
+  createChanPwmLfo(id);
   const crushReady = ensureTrackCrusher(id, c, chanComp[id], chanTremolo[id]);
   chanTremolo[id].connect(chanPan[id]);
   if (withAnalyser) {
@@ -6443,11 +6464,14 @@ function voiceGainFor(note, destGain, startAt, dur) {
 // parameters (adsr, filter, fm, vib, and duty would have been the sixth),
 // which is how an argument ends up one slot off; now they take a single
 // `voice` and a new per-track setting is a field rather than another slot.
-const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null };
+const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null, pwmLfo: null };
 function getTrackVoice(track) {
   return {
     adsr: getAdsr(track), filter: getFilterState(track), fm: getFmState(track),
     vib: getTrackVibrato(track), duty: getTrackDuty(track),
+    // The free-running sweep shared by every `pwm` note on this track. Absent
+    // (a track with no channel yet) falls back to a note-local LFO.
+    pwmLfo: chanPwmLfo[track] || null,
   };
 }
 // The note's own pulse width wins over the track's default; `null` on the note
@@ -6518,14 +6542,28 @@ const noisePlaybackRate = (hz) => (hz * NOISE_STEPS) / ctx.sampleRate;
 // The delay is set from the note's starting frequency, so a bend or vibrato
 // moves the pitch without moving the duty proportionally — the same compromise
 // ring modulation's fixed modulator makes.
+//
+// The sweep itself belongs to the *track*, not the note (createChanPwmLfo).
+// A per-note LFO starts at phase 0 every time, so every note began at the same
+// 50% duty and only notes long enough to cover a good part of a 0.8Hz cycle
+// heard any movement at all — a run of eighth notes came out as a plain square
+// wave. One free-running oscillator per channel makes the sweep continuous
+// across the part: measured over eight consecutive notes the per-note version
+// started them all within 0.02 of the same duty, the shared one spread them
+// across 0.28-0.74, which is the full sweep.
 const PWM_RATE = 0.8;      // Hz — slow enough to hear as a sweep, not a warble
 const PWM_CENTRE = 0.5;    // duty the sweep is centred on
 const PWM_WIDTH = 0.25;    // +/- around the centre, so 25%..75%
 // Levelled against the other waveforms by measurement, the same way the noise
-// buffer was: saw-minus-delayed-saw swings wider than a plain oscillator, and
-// wider still toward the extremes of the sweep.
-const PWM_LEVEL = 0.85;
-function createPwmSource(freq) {
+// buffer was. Since the sweep free-runs, a note can start anywhere in it, and
+// the two ends pull in opposite directions: a narrow pulse *peaks* 1.5x higher
+// than a square one but its RMS is 1.25dB *lower*, so peak-matching the
+// extremes (0.65) under-levels what the ear hears and RMS-matching the centre
+// (0.85) leaves the extremes 2.3dB above every other waveform's peak. This is
+// the midpoint of the two — measured worst-case peak lands about 1dB over the
+// other nine, close enough that no waveform stands out either way.
+const PWM_LEVEL = 0.75;
+function createPwmSource(freq, sweepLfo) {
   const osc = ctx.createOscillator();
   osc.type = 'sawtooth';
   const period = 1 / Math.max(freq, 1);
@@ -6537,15 +6575,32 @@ function createPwmSource(freq) {
   sum.gain.value = PWM_LEVEL;
   osc.connect(sum);
   osc.connect(delay).connect(invert).connect(sum);
-  const lfo = ctx.createOscillator();
-  lfo.frequency.value = PWM_RATE;
-  const lfoGain = ctx.createGain();
-  lfoGain.gain.value = PWM_WIDTH * period;
-  lfo.connect(lfoGain).connect(delay.delayTime);
+  // The sweep comes from the track (createChanPwmLfo), so its phase carries on
+  // across notes; this note only scales it into its own period. A note-local
+  // LFO is the fallback for anything scheduled without a channel — the preview
+  // before a context has channels, mainly — and it restarts each time, which
+  // is exactly the behaviour the shared one exists to avoid.
+  const width = ctx.createGain();
+  width.gain.value = PWM_WIDTH * period;
+  width.connect(delay.delayTime);
+  let ownLfo = null;
+  if (sweepLfo) {
+    sweepLfo.connect(width);
+  } else {
+    ownLfo = ctx.createOscillator();
+    ownLfo.frequency.value = PWM_RATE;
+    ownLfo.connect(width);
+  }
+  // The shared LFO outlives every note, so this note's tap on it has to come
+  // off when the note ends or they pile up on one oscillator for the whole
+  // session. `stop(t)` is called at *schedule* time with a future t, so it is
+  // the wrong place to do it — the oscillator's own `ended` event is the hook
+  // that actually fires when the note is over.
+  if (sweepLfo) osc.addEventListener('ended', () => { try { width.disconnect(); } catch { /* gone */ } });
   return {
     out: sum, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
-    start: (t) => { osc.start(t); lfo.start(t); },
-    stop: (t) => { osc.stop(t); lfo.stop(t); },
+    start: (t) => { osc.start(t); if (ownLfo) ownLfo.start(t); },
+    stop: (t) => { osc.stop(t); if (ownLfo) ownLfo.stop(t); },
   };
 }
 
@@ -6563,7 +6618,7 @@ function createPwmSource(freq) {
 // `out` is what connects onward, and is not always the node being pitched —
 // ring modulation multiplies the carrier by a second oscillator, so its output
 // is the gain node doing the multiplying.
-function createVoiceSource(oscType, duty, freq, fm) {
+function createVoiceSource(oscType, duty, freq, fm, sweepLfo) {
   if (oscType === 'noise') {
     const src = ctx.createBufferSource();
     src.buffer = ensureNoiseWaveBuffer();
@@ -6573,7 +6628,7 @@ function createVoiceSource(oscType, duty, freq, fm) {
       start: (t) => src.start(t), stop: (t) => src.stop(t),
     };
   }
-  if (oscType === 'pwm') return createPwmSource(freq);
+  if (oscType === 'pwm') return createPwmSource(freq, sweepLfo);
   const osc = ctx.createOscillator();
   setOscWave(osc, oscType, duty);
   if (oscType !== 'ringmod') {
@@ -6602,7 +6657,7 @@ function createVoiceSource(oscType, duty, freq, fm) {
 }
 function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOICE) {
   const duty = effectiveDuty(note, voice);
-  const src = createVoiceSource(oscType, duty, note.freq, voice.fm);
+  const src = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
 
   let chorus = null;
@@ -6621,7 +6676,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOI
     addTrackVibrato(src, note.freq, startAt, startAt + dur, voice.vib);
     if (oscType === 'fm') addFmModulator(src, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + dur);
     if (note.chorus) {
-      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm);
+      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo);
       src.detune.value = 8;
       chorus.detune.value = -8;
       chorus.pitch.setValueAtTime(chorus.toPitch(note.freq), startAt);
@@ -6648,7 +6703,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   // This used to hand-write the wave selection a fourth time — and read
   // note.duty directly, so the track's Duty default never reached a portamento
   // note. Everything goes through createVoiceSource()/effectiveDuty() now.
-  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm);
+  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm, voice.pwmLfo);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
   src.pitch.setValueAtTime(src.toPitch(note.freq), startAt);
   const glideStart = startAt + dur * 0.6;
@@ -7008,7 +7063,7 @@ function stopPlayback() {
     duckGain = null;
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {};
-    chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {};
+    chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {};
     trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
     fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
