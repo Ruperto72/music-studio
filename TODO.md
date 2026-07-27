@@ -270,6 +270,35 @@ ett facit.
   2. **FM hashar identiskt med Sine**, vilket först såg ut som en bugg men är
      korrekt: FM:s default-djup är 0, alltså en ren sinus. Testet asserterar
      numera det uttryckligen i stället för att hoppa över det.
+- [x] **PWM som tionde vågform.** Fyller den sista platsen i väljarens
+  femkolumnsrutnät (tio = exakt två fulla rader). Vald för att den är det enda
+  som **rör klangfärgen över tid**: vibrato rör tonhöjd, tremolo rör volym,
+  FM-djupet är statiskt per spår, och `square`s duty är ett fast värde. Det är
+  svepet som får en chip-lead att sjunga i stället för att stå still.
+  Byggd med det klassiska analogtricket — en sågtand minus en fördröjd kopia av
+  sig själv är ett pulståg vars bredd är fördröjningen, så en LFO på
+  `delayTime` sveper bredden.
+  **Den risk jag flaggade försvann under planeringen.** Jag skrev att två
+  fasläsade sågtänder var den stora osäkerheten, eftersom Web Audio inte lovar
+  att två oscillatorer startade samtidigt ligger i fas. Men den fördröjda vägen
+  behöver inte en andra oscillator — den kan matas från *samma*, split i två
+  grenar. Då är fasen exakt per konstruktion i stället för något att mäta och
+  hoppas på. Värt att minnas: den risken var inte värd att acceptera, den var
+  värd att designa bort.
+  Två saker mätningen gav:
+  1. **Nivån var 4,4 dB för låg** med min gissade skalning 0.62 (topp 0.134 mot
+     square 0.223) — jag hade gissat åt fel håll, i tron att saw-minus-saw
+     svänger bredare. 0.85 ger 0.184, alltså 1,7 dB från square.
+  2. **Svepet bekräftat på en hållen not:** duty rör sig monotont 0.44 → 0.285
+     över noten. Första mätningen såg rörig ut, men det var mätfelet — jag hade
+     lagt 24 *separata* noter, så måttet läste över notgränser och tystnader.
+  Svepet startar om vid varje not, som per-not-vibratot gör. Ett fritt löpande
+  svep per spår vore en annan och större ändring.
+  Testet asserterar inte duty-kurvan (för brusigt mått för att lita på) utan
+  **kopplingen** — att en LFO når `delayTime` — på samma sätt som vibrato-steget
+  kollar att en LFO når `osc.frequency`. Det tog två försök: först krävde jag
+  att *bara* PWM modulerar en delayTime, men chorus-bussen gör det legitimt vid
+  varje rendering, så baslinjen är inte noll. Nu jämförs PWM mot den baslinjen.
 - [x] **Bugg från PR #84: portamento fick aldrig spårets Duty.** Jag skrev då
   att vågformsvalet var handskrivet på tre ställen och nu låg i en funktion.
   Det var fyra, och `schedulePortamentoTone` hade kvar sin kopia — som dessutom

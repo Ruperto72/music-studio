@@ -798,7 +798,7 @@
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
-        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep restarts with every note — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -858,7 +858,7 @@
       <h3>Mixing</h3>
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
-        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / <b>PWM</b> / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
@@ -1230,8 +1230,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
 const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'noise', 'ringmod', 'fm']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
+const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'noise', 'ringmod', 'fm']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
 
 // ---------- Icon glyphs ----------
 // One table of tiny inline-SVG shapes, so the same concept looks the same
@@ -1260,6 +1260,9 @@ const GLYPHS = {
   // FM has no one waveform, so show what it does to one: a carrier whose
   // period keeps compressing.
   fm:       ['M1 6 q2 -5 4 0 t4 0 q1.5 -5 3 0 t3 0 q1 -5 2 0 t2 0 q0.75 -5 1.5 0 t1.5 0'],
+  // Pulses of growing width — the sweep is the whole point of this one, so the
+  // glyph shows the width changing rather than one fixed duty.
+  pwm:      ['M1 9 H3 V3 H5 V9 H9 V3 H13 V9 H16 V3 H22 V9 H23'],
   // Sine's positive half only, with the negative half flat on the zero line.
   halfsine: ['M1 6 q2.75 -5.5 5.5 0 h5.5 q2.75 -5.5 5.5 0 h5.5'],
   // Not a repeating shape at all. The first attempt used even spacing and even
@@ -6499,6 +6502,53 @@ function ensureNoiseWaveBuffer() {
 // Hz -> the playbackRate that makes the loop come round that many times a second.
 const noisePlaybackRate = (hz) => (hz * NOISE_STEPS) / ctx.sampleRate;
 
+// Pulse-width modulation, by the classic analogue trick: a sawtooth minus a
+// delayed copy of itself is a pulse train whose width is the delay, as a
+// fraction of the period. Sweep the delay and the width sweeps with it — which
+// is the point, since a static duty is already available on `square` and it is
+// the *movement* that makes a chip lead sing.
+//
+// Crucially the delayed path is fed from the SAME oscillator rather than a
+// second one started alongside it. Two oscillators would have to stay in phase
+// for the width to hold steady, and Web Audio does not promise that; splitting
+// one makes it exact by construction. That is worth more than it looks — it was
+// the main risk in this waveform, and it turned out to be avoidable rather than
+// something to measure and hope about.
+//
+// The delay is set from the note's starting frequency, so a bend or vibrato
+// moves the pitch without moving the duty proportionally — the same compromise
+// ring modulation's fixed modulator makes.
+const PWM_RATE = 0.8;      // Hz — slow enough to hear as a sweep, not a warble
+const PWM_CENTRE = 0.5;    // duty the sweep is centred on
+const PWM_WIDTH = 0.25;    // +/- around the centre, so 25%..75%
+// Levelled against the other waveforms by measurement, the same way the noise
+// buffer was: saw-minus-delayed-saw swings wider than a plain oscillator, and
+// wider still toward the extremes of the sweep.
+const PWM_LEVEL = 0.85;
+function createPwmSource(freq) {
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  const period = 1 / Math.max(freq, 1);
+  const delay = ctx.createDelay(0.05); // covers the sweep down to ~15Hz
+  delay.delayTime.value = PWM_CENTRE * period;
+  const invert = ctx.createGain();
+  invert.gain.value = -1;
+  const sum = ctx.createGain();
+  sum.gain.value = PWM_LEVEL;
+  osc.connect(sum);
+  osc.connect(delay).connect(invert).connect(sum);
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = PWM_RATE;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = PWM_WIDTH * period;
+  lfo.connect(lfoGain).connect(delay.delayTime);
+  return {
+    out: sum, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
+    start: (t) => { osc.start(t); lfo.start(t); },
+    stop: (t) => { osc.stop(t); lfo.stop(t); },
+  };
+}
+
 // Builds a note's sound source. Oscillators carry pitch in Hz on `frequency`;
 // the noise source is a looping buffer whose `playbackRate` sets how often the
 // loop repeats, so its pitch parameter is in a different unit entirely.
@@ -6523,6 +6573,7 @@ function createVoiceSource(oscType, duty, freq, fm) {
       start: (t) => src.start(t), stop: (t) => src.stop(t),
     };
   }
+  if (oscType === 'pwm') return createPwmSource(freq);
   const osc = ctx.createOscillator();
   setOscWave(osc, oscType, duty);
   if (oscType !== 'ringmod') {
