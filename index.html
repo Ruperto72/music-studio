@@ -756,7 +756,7 @@
         <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
         <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>✨ FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off).</li>
+        <li>The <b>✨ FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1416,6 +1416,19 @@ const DEFAULT_TRACK_CRUSH = { amount: 0 };
 // depth: 0 collapses the oscillation to nothing (gain pinned at 1, rate then
 // irrelevant), the usual "neutral by default" contract; rate is in Hz.
 const DEFAULT_TREMOLO = { rate: 5, depth: 0 };
+// Per-track vibrato (state.vibrato[track] absent -> this). Depth is in cents,
+// so the wobble is the same musical interval at every pitch rather than a
+// fixed number of Hz that would be inaudible low and wild high. Depth 0 is a
+// true no-op regardless of rate, matching the tremolo above.
+//
+// Unlike every other per-track effect this is NOT an insert in the channel
+// chain: pitch modulation has to reach each note's own OscillatorNode, and
+// there is no node downstream of chanGain whose frequency represents the
+// pitch of an already-summed signal. So it is threaded into scheduleTone()
+// alongside the ADSR/filter/FM settings instead, which is also why it is
+// tonal-only — a drum hit has no oscillator to bend (see TRACK_FX_REGISTRY's
+// tonalOnly flag).
+const DEFAULT_VIBRATO = { rate: 5.5, depth: 0 }; // Hz, cents
 // Per-track 3-band EQ insert (state.eq[track] absent -> this). Same bands and
 // ±12dB range as the master EQ, just one instance per channel and placed first
 // in the insert chain, so the compressor after it reacts to the shaped signal
@@ -1615,7 +1628,7 @@ function autosave() {
   autosaveTimer = setTimeout(() => {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
-        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
+        songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, vibrato: state.vibrato, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing
       }));
     } catch { /* best-effort */ }
   }, 400);
@@ -1662,6 +1675,7 @@ const state = {
   comp: {},                  // id -> { threshold, ratio, attack, release } (any track kind) — see DEFAULT_TRACK_COMP
   crush: {},                 // id -> { amount } (0..1, any track kind) — see DEFAULT_TRACK_CRUSH
   tremolo: {},               // id -> { rate, depth } (any track kind) — see DEFAULT_TREMOLO
+  vibrato: {},               // id -> { rate, depth } (tonal tracks only) — see DEFAULT_VIBRATO
   eq: {},                    // id -> { low, mid, high } dB (any track kind) — see DEFAULT_TRACK_EQ
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
@@ -1749,6 +1763,7 @@ function applySavedMix(data) {
     const src = data[effect.key];
     if (!src || typeof src !== 'object') continue;
     for (const ch of ALL_TRACKS) {
+      if (effect.tonalOnly && isRhythm(ch)) continue;
       const v = src[ch];
       if (!v || typeof v !== 'object') continue;
       if (!effect.fields.every(f => f.optional || typeof v[f.param] === 'number')) continue;
@@ -1897,7 +1912,7 @@ const snapshotSong = () => JSON.stringify({
   tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
   automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp,
-  crush: state.crush, tremolo: state.tremolo, eq: state.eq
+  crush: state.crush, tremolo: state.tremolo, vibrato: state.vibrato, eq: state.eq
 });
 let lastCommitted = snapshotSong();
 function checkpointHistory() { clearTimeout(historyTimer); historyTimer = setTimeout(commitHistory, 400); }
@@ -1927,6 +1942,7 @@ function restoreSnapshot(s) {
     state.comp = data.comp && typeof data.comp === 'object' ? data.comp : {};
     state.crush = data.crush && typeof data.crush === 'object' ? data.crush : {};
     state.tremolo = data.tremolo && typeof data.tremolo === 'object' ? data.tremolo : {};
+    state.vibrato = data.vibrato && typeof data.vibrato === 'object' ? data.vibrato : {};
     state.eq = data.eq && typeof data.eq === 'object' ? data.eq : {};
     if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
     for (const t of state.trackList) ensureChannelNodes(t.id);
@@ -2092,6 +2108,13 @@ function getTrackCrush(track) { return state.crush[track] || DEFAULT_TRACK_CRUSH
 function setTrackCrush(track, patch) { state.crush[track] = { ...getTrackCrush(track), ...patch }; }
 function getTrackTremolo(track) { return state.tremolo[track] || DEFAULT_TREMOLO; }
 function setTrackTremolo(track, patch) { state.tremolo[track] = { ...getTrackTremolo(track), ...patch }; }
+function getTrackVibrato(track) { return state.vibrato[track] || DEFAULT_VIBRATO; }
+function setTrackVibrato(track, patch) { state.vibrato[track] = { ...getTrackVibrato(track), ...patch }; }
+// Nothing live to update: a note's vibrato LFO is created with the note, so a
+// change lands on the next scheduled chunk — the same way a change to the
+// waveform, ADSR or filter does. Present so every TRACK_FX_REGISTRY entry has
+// the same shape.
+function applyTrackVibrato() { /* takes effect on the next scheduled note */ }
 function getTrackEq(track) { return state.eq[track] || DEFAULT_TRACK_EQ; }
 function setTrackEq(track, patch) { state.eq[track] = { ...getTrackEq(track), ...patch }; }
 const pctFormat = (v) => Math.round(v * 100) + '%';
@@ -2181,7 +2204,26 @@ const TRACK_FX_REGISTRY = [
       { param: 'depth', label: 'Depth', title: 'Tremolo depth — 0% = off, 100% = swings all the way down to silence at the low point', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
     ],
   },
+  {
+    // The pitch counterpart of the tremolo above, and the one entry in this
+    // table that is *not* an insert: an LFO on the channel's gain can shape an
+    // already-summed signal, but bending its pitch cannot be done downstream —
+    // it has to reach each note's own oscillator. So this is threaded into
+    // scheduleTone() (see DEFAULT_VIBRATO), which also makes it the only
+    // tonal-only entry here: a drum hit has no oscillator to bend.
+    key: 'vibrato', label: 'Vibrato', icon: 'vibrato', tonalOnly: true,
+    get: getTrackVibrato, set: setTrackVibrato, apply: applyTrackVibrato,
+    fields: [
+      { param: 'rate', label: 'Rate', title: 'Vibrato LFO speed', min: 0.5, max: 12, step: 0.1, format: (v) => v.toFixed(1) + 'Hz', clamp: false },
+      { param: 'depth', label: 'Depth', title: 'Vibrato depth in cents (100 = a semitone) — 0 = off. Adds to the per-note Vibrato flag rather than replacing it', min: 0, max: 100, step: 1, format: (v) => Math.round(v) + '\u00A2', clamp: true },
+    ],
+  },
 ];
+// The FX panel and the mix loader both walk the registry, and both have to skip
+// tonal-only effects on a rhythm track — otherwise the panel would offer a
+// vibrato that can never sound, and a saved file could park state on a track
+// that has no use for it.
+const trackFxFor = (track) => TRACK_FX_REGISTRY.filter(e => !e.tonalOnly || !isRhythm(track));
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
@@ -2396,7 +2438,7 @@ function removeTrack(id) {
   const n = (state.tracks[id] || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
-  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend, state.comp, state.crush, state.tremolo, state.eq]) delete map[id];
+  for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, state.automation, state.adsr, state.fxSend, state.comp, state.crush, state.tremolo, state.vibrato, state.eq]) delete map[id];
   for (const nodes of [chanGain, chanPan, chanAnalyser, chanComp, chanCrush, chanTremolo, trackDelaySend, trackChorusSend, trackReverbSend]) {
     if (nodes[id]) { try { nodes[id].disconnect(); } catch { /* already gone */ } delete nodes[id]; }
   }
@@ -2837,7 +2879,7 @@ function buildFxPanel(track) {
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    for (const effect of TRACK_FX_REGISTRY) { delete state[effect.key][track]; effect.apply(); }
+    for (const effect of trackFxFor(track)) { delete state[effect.key][track]; effect.apply(); }
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);
@@ -2848,7 +2890,7 @@ function buildFxPanel(track) {
   // grid, and abbreviations like Thr/Rat/Atk/Rel only read as a compressor once
   // you know which group you're looking at. The heading doubles as the
   // separator, so the old .th-fx-divider is gone.
-  TRACK_FX_REGISTRY.forEach((effect, i) => {
+  trackFxFor(track).forEach((effect, i) => {
     const head = el('div', 'th-fx-group' + (i === 0 ? ' first' : ''));
     head.appendChild(glyph(effect.icon));
     const cap = el('span'); cap.textContent = effect.label;
@@ -4619,6 +4661,7 @@ function createNewSong(withStarterTracks, name) {
   state.comp = {};
   state.crush = {};
   state.tremolo = {};
+  state.vibrato = {};
   state.eq = {};
   const nt = newSongTrackList(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
@@ -4709,7 +4752,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // ---------- Save/load file ----------
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
-  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
+  return { version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid), timeSig: state.timeSig, markers: state.markers, trackList: state.trackList, gains: state.gains, waveform: state.waveform, pan: state.pan, masterVol: state.masterVol, mute: state.mute, solo: state.solo, tracks: state.tracks, automation: state.automation, adsr: state.adsr, filter: state.filter, fm: state.fm, fxSend: state.fxSend, comp: state.comp, crush: state.crush, tremolo: state.tremolo, vibrato: state.vibrato, eq: state.eq, masterEQ: state.masterEQ, masterComp: state.masterComp, masterParallel: state.masterParallel, sidechain: state.sidechain, masterCrush: state.masterCrush, swing: state.swing };
 }
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
@@ -5758,7 +5801,7 @@ function previewNote(track, note) {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const oscType = state.waveform[track] || 'square';
-    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track), getFmState(track));
+    scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getAdsr(track), getFilterState(track), getFmState(track), getTrackVibrato(track));
   } catch { /* audio unavailable */ }
 }
 function previewHit(type, vel) {
@@ -6047,12 +6090,28 @@ function resetAudioCaches() {
   voicePools.clear();
 }
 // Shared voice building blocks used by both scheduleTone and schedulePortamentoTone.
-function addVibrato(osc, freq, startAt, endAt) {
+// `depthRatio` is the peak deviation as a fraction of the note's own frequency,
+// so the wobble is the same musical interval at every pitch. The defaults are
+// the fixed values the per-note Vibrato flag has always used; the per-track
+// Vibrato (DEFAULT_VIBRATO) passes its own, converting cents with
+// 2^(cents/1200) - 1. Both can be added to the same oscillator: each call
+// connects another LFO into osc.frequency, and AudioParam inputs sum, so a
+// flagged note on a vibrato'd track gets both rather than one overriding the
+// other — the same "independent of the per-note flag" contract the per-track
+// Crush and Tremolo already have.
+function addVibrato(osc, freq, startAt, endAt, rate = 5.5, depthRatio = 0.02) {
   const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
-  lfo.frequency.value = 5.5;
-  lfoGain.gain.value = freq * 0.02;
+  lfo.frequency.value = rate;
+  lfoGain.gain.value = freq * depthRatio;
   lfo.connect(lfoGain).connect(osc.frequency);
   lfo.start(startAt); lfo.stop(endAt);
+}
+const centsToRatio = (cents) => Math.pow(2, cents / 1200) - 1;
+// Applies the track's vibrato to one note's oscillator, if it has any. Called
+// alongside the per-note flag at both scheduling sites.
+function addTrackVibrato(osc, freq, startAt, endAt, vib) {
+  if (!vib || !vib.depth) return;
+  addVibrato(osc, freq, startAt, endAt, vib.rate, centsToRatio(vib.depth));
 }
 // Classic 2-operator FM: a sine modulator running at `ratio` times the
 // carrier frequency drives the carrier's own frequency AudioParam, same
@@ -6147,7 +6206,7 @@ function voiceGainFor(note, destGain, startAt, dur) {
   filter.connect(gain);
   return { gain, filter, pooled: false };
 }
-function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM) {
+function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM, vibState = DEFAULT_VIBRATO) {
   const osc = ctx.createOscillator();
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
   if (oscType === 'fm') osc.type = 'sine';
@@ -6168,6 +6227,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
       osc.frequency.linearRampToValueAtTime(note.bend, startAt + dur);
     }
     if (note.vib) addVibrato(osc, note.freq, startAt, startAt + dur);
+    addTrackVibrato(osc, note.freq, startAt, startAt + dur, vibState);
     if (oscType === 'fm') addFmModulator(osc, note.freq, fmState.ratio, fmState.depth, startAt, startAt + dur);
     if (note.chorus) {
       chorusOsc = ctx.createOscillator();
@@ -6196,7 +6256,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, adsr = DEFAULT_ADSR
   osc.stop(startAt + dur);
   if (chorusOsc) { chorusOsc.connect(filter); chorusOsc.start(startAt); chorusOsc.stop(startAt + dur); }
 }
-function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM) {
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, adsr = DEFAULT_ADSR, filterState = DEFAULT_FILTER, fmState = DEFAULT_FM, vibState = DEFAULT_VIBRATO) {
   const osc = ctx.createOscillator();
   const totalDur = (dur + nextDur) * durScale;
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
@@ -6210,6 +6270,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   osc.frequency.setValueAtTime(note.freq, glideStart);
   osc.frequency.linearRampToValueAtTime(nextNote.freq, glideEnd);
   if (note.vib) addVibrato(osc, note.freq, startAt, startAt + totalDur);
+  addTrackVibrato(osc, note.freq, startAt, startAt + totalDur, vibState);
   if (oscType === 'fm') addFmModulator(osc, note.freq, fmState.ratio, fmState.depth, startAt, startAt + totalDur);
   applyAdsrEnvelope(gain.gain, startAt, totalDur, notePeak(note), adsr);
   applyFilterEnvelope(filter.frequency, startAt, totalDur, adsr, filterState.cutoff, filterState.envAmount);
@@ -6416,7 +6477,7 @@ function swingOffsetCols(col) {
   if (Math.abs(withinPair - 1) > EPS) return 0;
   return (amt / 100) * (1 / 3);
 }
-function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState, fmState) {
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, adsr, filterState, fmState, vibState) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   // A portamento note glides into the note starting exactly where it ends, and
   // that note is *not* retriggered — the two share one continuous oscillator.
@@ -6448,18 +6509,18 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
       const next = glideTarget(n);
       if (next && next.start < toCol) {
         consumed.add(next);
-        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState, fmState);
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, adsr, filterState, fmState, vibState);
         continue;
       }
     }
-    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr, filterState, fmState);
+    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, adsr, filterState, fmState, vibState);
   }
 }
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id), getFmState(id));
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getAdsr(id), getFilterState(id), getFmState(id), getTrackVibrato(id));
   }
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;

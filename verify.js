@@ -812,13 +812,19 @@ async function main() {
           drawn: heads.every(h => h.querySelectorAll('svg.glyph path').length > 0),
           fields: panel.querySelectorAll('.th-fx-field').length,
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
+          // Vibrato is tonal-only (it modulates each note's oscillator, so a
+          // drum has nothing for it to bend), so what this panel should show
+          // depends on which kind of track it belongs to.
+          tonal: !!panel.closest('.track-header').querySelector('.th-wave-group'),
         };
       })()`);
-      if (fx.labels.join('|') !== 'Sends|EQ|Comp|Bitcrush|Tremolo') {
-        throw new Error(`unexpected FX group headings: ${JSON.stringify(fx.labels)}`);
+      const wantFx = ['Sends', 'EQ', 'Comp', 'Bitcrush', 'Tremolo'].concat(fx.tonal ? ['Vibrato'] : []);
+      if (fx.labels.join('|') !== wantFx.join('|')) {
+        throw new Error(`unexpected FX group headings on a ${fx.tonal ? 'tonal' : 'rhythm'} track: ${JSON.stringify(fx.labels)}`);
       }
       if (!fx.drawn) throw new Error('every FX group heading needs a glyph');
-      if (fx.fields !== 13) throw new Error(`expected 13 FX sliders, got ${fx.fields}`);
+      const wantFields = fx.tonal ? 15 : 13;
+      if (fx.fields !== wantFields) throw new Error(`expected ${wantFields} FX sliders, got ${fx.fields}`);
       if (!fx.fits) throw new Error('the FX panel overflows the track header');
     });
 
@@ -870,6 +876,121 @@ async function main() {
       await new Promise((r) => setTimeout(r, 300));
       const afterNudge = await cdp.evaluate(`document.querySelector('#a11y-status').textContent`);
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
+    });
+
+    step('Per-track vibrato reaches the note oscillator, and only on tonal tracks', async () => {
+      // Vibrato cannot be an insert like the other per-track effects — pitch
+      // modulation has to reach each note's own oscillator — so the check is
+      // that an LFO actually gets connected to an OscillatorNode's frequency,
+      // which no DOM assertion can show. Patch connect() before load and
+      // record what lands on a `frequency` AudioParam.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          window.__freqMod = [];
+          const origConnect = AudioNode.prototype.connect;
+          AudioNode.prototype.connect = function (dest, ...rest) {
+            try {
+              if (dest instanceof AudioParam && window.__freqParams && window.__freqParams.has(dest)) {
+                window.__freqMod.push(this.gain ? this.gain.value : null);
+              }
+            } catch {}
+            return origConnect.call(this, dest, ...rest);
+          };
+          window.__freqParams = new WeakSet();
+          const origOsc = AudioContext.prototype.createOscillator;
+          AudioContext.prototype.createOscillator = function () {
+            const o = origOsc.call(this);
+            window.__freqParams.add(o.frequency);
+            return o;
+          };
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+
+      // A blank project is rhythm-only: its FX panel must not offer Vibrato.
+      await cdp.evaluate(`(() => {
+        if (document.querySelector('.th-fx-panel')) return;
+        [...document.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.th-fx-group')`);
+      const rhythmGroups = await cdp.evaluate(
+        `[...document.querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')].map(h => h.textContent.trim())`);
+      if (rhythmGroups.includes('Vibrato')) {
+        throw new Error(`a rhythm track must not offer Vibrato: ${JSON.stringify(rhythmGroups)}`);
+      }
+      if (!rhythmGroups.includes('Tremolo')) {
+        throw new Error(`the rhythm FX panel lost its other groups: ${JSON.stringify(rhythmGroups)}`);
+      }
+
+      // A tonal track must offer it.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('＋ Add track')).click()`);
+      await waitFor(`document.querySelectorAll('.track').length > 1`);
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        head.querySelector('.th-fx-panel') || [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        return !!head && !!head.querySelector('.th-fx-panel');
+      })()`);
+      const tonalGroups = await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        return [...head.querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')].map(h => h.textContent.trim());
+      })()`);
+      if (!tonalGroups.includes('Vibrato')) {
+        throw new Error(`a tonal track should offer Vibrato: ${JSON.stringify(tonalGroups)}`);
+      }
+
+      // Set a depth, place a note, and confirm an LFO reaches its frequency.
+      // 50 cents on a 523.25Hz note => 523.25 * (2^(50/1200) - 1) ~= 15.3Hz.
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const panel = head.querySelector('.th-fx-panel');
+        const groups = [...panel.querySelectorAll('.th-fx-group')];
+        const vib = groups.find(g => g.textContent.trim() === 'Vibrato');
+        // The two fields after the Vibrato heading are its Rate and Depth.
+        let n = vib.nextElementSibling, fields = [];
+        while (n && !n.classList.contains('th-fx-group')) { if (n.classList.contains('th-fx-field')) fields.push(n); n = n.nextElementSibling; }
+        const depth = fields[1].querySelector('input[type=range]');
+        depth.value = 50; depth.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`window.__freqMod = []`);
+      await cdp.evaluate(`(() => {
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const mod = await cdp.evaluate(`window.__freqMod.slice()`);
+      // Only the vibrato LFO's gain feeds a frequency param at a depth this
+      // small; FM's modulator gain is far larger and is off by default.
+      if (!mod.some((v) => v !== null && v > 5 && v < 40)) {
+        throw new Error(`a 50-cent track vibrato should modulate the note's frequency, saw ${JSON.stringify(mod)}`);
+      }
+
+      // At depth 0 nothing must be connected — an untouched track is unchanged.
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const groups = [...head.querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')];
+        const vib = groups.find(g => g.textContent.trim() === 'Vibrato');
+        let n = vib.nextElementSibling, fields = [];
+        while (n && !n.classList.contains('th-fx-group')) { if (n.classList.contains('th-fx-field')) fields.push(n); n = n.nextElementSibling; }
+        const depth = fields[1].querySelector('input[type=range]');
+        depth.value = 0; depth.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`window.__freqMod = []`);
+      await cdp.evaluate(`document.querySelector('.lane .note')?.click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const off = await cdp.evaluate(`window.__freqMod.slice()`);
+      if (off.length !== 0) {
+        throw new Error(`depth 0 should connect no vibrato LFO at all, saw ${JSON.stringify(off)}`);
+      }
     });
 
     // Last on purpose: this step reloads the page to install its createGain
