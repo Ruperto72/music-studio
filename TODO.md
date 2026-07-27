@@ -658,6 +658,30 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   läste ihop alla spårs väljare till en enda lista.
   EQ-glyfen ritades först som tre reglage men blev till daggar i 18px, och
   är nu en responskurva som håller sig läsbar i vilken storlek som helst.
+- [x] **Hela gränssnittet ritas nu ur samma tabell.** Uppföljning på
+  ovanstående: menyn, verktygsfältet, spårhuvudenas knappar och dialogernas
+  rubriker körde fortfarande emoji, som renderas i systemets egen färg och
+  stil — helfärgade bilder inklistrade i ett monokromt streckat gränssnitt.
+  `GLYPHS` fick 22 nya ikoner i en **kvadratisk 24×24-ruta**; en post är
+  antingen en naken lista med paths (den breda 24×12-rutan för vågformer och
+  effekter) eller `{ box, paths }`, så vilken ruta en glyf använder är en
+  egenskap hos glyfen och inte något varje anropspunkt måste veta. Statisk
+  markup bär `data-glyph="namn"` och fylls i av ett enda pass vid uppstart;
+  JS-byggda knappar använder `setGlyphLabel()`.
+  **Behållet med flit:** transporten (`⏮ ■ ▶ ↺`), ångra/gör om, `▾`/`▸`,
+  `✕`-stängningarna och `+`/`−`-stegarna. De läser som typografi, inte som
+  inklistrade bilder, och en streckad play-triangel ser sämre ut än den
+  fyllda alla förväntar sig. `verify.js` granskar varje knapp i verktygsfält,
+  meny och spårhuvuden mot en explicit undantagslista, så uppdelningen är ett
+  nedskrivet beslut och inte en glömska — och kollar i samma svep att ingen
+  knapp tappat sitt tillgängliga namn, eftersom en glyf är `aria-hidden` och
+  en ikonknapp utan text eller `aria-label` vore namnlös. Bägge felfallen
+  provades genom att införa dem.
+  Två ikoner ritades om efter att ha setts i rätt storlek: suddgummit blev en
+  klump och repeat korsade sina pilspetsar. Hjälptexten pekade ut knappar med
+  deras emoji ("🎵 Songs…"), vilket blev inaktuellt — den namnger dem nu med
+  sina etiketter i stället. Markörflaggan är ett CSS-pseudoelement och kan
+  inte anropa `glyph()`, så den fick samma form som en inbäddad data-URI.
 
 - [x] **Ljudgrafens uppbyggnad var duplicerad på tre ställen** —
   `ensureCtx()` (live-uppspelning), `renderSongToWav()` (WAV-export) och

@@ -348,6 +348,27 @@
     fill: none; stroke: currentColor; stroke-width: 1.4;
     stroke-linecap: round; stroke-linejoin: round;
   }
+  /* Square interface icons: twice the viewBox height of the waveform strip, so
+     the stroke needs to be twice as thick to render at the same visual weight. */
+  .glyph-sq { width: 15px; height: 15px; }
+  /* In a heading or an inline run the glyph has to sit on the text baseline;
+     as a flex child (buttons above) it is centred for free. */
+  h2 .glyph-sq { display: inline-block; vertical-align: -2px; width: 18px; height: 18px; }
+  #new-song-starter, #new-song-empty, #song-save-local, #preset-save {
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .glyph-sq path { stroke-width: 1.9; }
+  /* Buttons that carry a glyph next to their label — menu items, the toolbar's
+     icon buttons, the track-header tools. The label stays a real text node, so
+     the accessible name is what it always was. */
+  .file-menu-item .glyph-sq { width: 16px; height: 16px; }
+  .icon-btn .glyph-sq, .tool-group button .glyph-sq, .zoom-group button .glyph-sq,
+  #add-marker .glyph-sq, #repeat-loop .glyph-sq, #master-fx-btn .glyph-sq { width: 17px; height: 17px; }
+  .th-tool-btn { display: inline-flex; align-items: center; gap: 3px; justify-content: center; }
+  .th-tool-btn .glyph-sq { width: 13px; height: 13px; }
+  .insp-del { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .mv-ico .glyph-sq { width: 14px; height: 14px; }
+  #repeat-loop, #more-toggle { display: inline-flex; align-items: center; gap: 5px; }
   /* Waveform picker: six shapes shown at once rather than hidden behind a
      <select>, since the whole point is to compare them. Sized to share the
      200px header (--header-w) minus its padding, so `flex: 1 1 0` splits the
@@ -560,7 +581,10 @@
     box-shadow: 1px 0 2px rgba(0,0,0,0.4);
   }
   .marker-flag:hover { background: #f2bd45; }
-  .marker-flag::before { content: '🚩'; font-size: 9px; }
+  .marker-flag::before {
+    content: ''; display: inline-block; width: 9px; height: 9px; vertical-align: -1px;
+    background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e8e8ee' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 21V4'/%3E%3Cpath d='M6 4h11l-2.5 3.5L17 11H6z'/%3E%3C/svg%3E");
+  }
   /* Wrappers carry the fixed horizontal (content-space) position/width set by
      JS; the visual inside each one is what actually sticks vertically to the
      top of .daw's scrollport (like .timeline), so these stay on-screen while
@@ -738,7 +762,7 @@
 
   <dialog id="help-dialog">
     <div class="help-head">
-      <h2>🎛️ Web Audio Studio — Help</h2>
+      <h2><span data-glyph="help"></span> Web Audio Studio — Help</h2>
       <button id="help-close">Close ✕</button>
     </div>
     <div class="help-body">
@@ -749,7 +773,7 @@
         vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
         red playhead run across every lane at once. The current project's name is shown in the
         <b>Master</b> strip at the bottom (click it to rename while the strip is expanded) — the
-        <b>☰</b> menu's <b>🎵 Songs…</b> loads an example, one of your own saved songs, or starts a
+        <b>☰</b> menu's <b>Songs…</b> loads an example, one of your own saved songs, or starts a
         new one; your own songs are stored in this browser.
       </p>
 
@@ -757,21 +781,21 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
         <li>Each track's <b>channel strip</b> (left) has its name, <b>M</b>ute / <b>S</b>olo, a <b>volume</b> slider, waveform (or "Kit" for rhythm), pan and a level meter.</li>
-        <li><b>＋ Add track</b> / <b>＋ 🥁 Add rhythm track</b> (in the <b>☰</b> menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
+        <li><b>Add track</b> / <b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
-        <li>The <b>〰 Automation</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
-        <li>The <b>E (Envelope)</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
-        <li>The <b>🎚 Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>✨ FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
+        <li>The <b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's/✨ FX panel's slider value is used for the whole song (as before).</li>
+        <li>The <b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <b>Preset</b> button (the faders icon on a track) saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>The <b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
 
       <h3>Tools</h3>
       <ul>
-        <li><b>✏️ Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
-        <li><b>🧽 Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
-        <li><b>✋ Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
+        <li><b>Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
+        <li><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
+        <li><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit's only setting is <b>Velocity</b> (10–100%) — how hard it's struck — which is what turns a mechanical drum pattern into one with accents. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too.</li>
@@ -809,7 +833,7 @@
       <h3>Bottom bar (Song · Tempo · Length · Grid · Master)</h3>
       <p>
         The strip under the tracks holds the <b>Song</b> name (click it to rename), <b>Tempo</b>,
-        <b>Length</b>, <b>Grid</b> (the note snap resolution) and the <b>🔊 Master</b> volume. The
+        <b>Length</b>, <b>Grid</b> (the note snap resolution) and the <b>Master</b> volume. The
         <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions) —
         the song name stays visible, but only rename-able while expanded. <b>Length</b> makes the
         song longer/shorter one bar at a time: <b>+</b> appends an empty bar, <b>−</b> removes the
@@ -822,9 +846,9 @@
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
         <li>The <b>waveform</b> picker — six buttons drawn as the shapes themselves (Square / Triangle / Saw / Sine / <b>NES Tri</b> wavetable / <b>FM</b>), with the chosen one named underneath — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
-        <li><b>🔊 Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
+        <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
-        <li>The <b>🎛️</b> button next to Master opens the <b>Master FX</b> panel: a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit, a lo-fi <b>downsampler</b>, and a live spectrum + approximate <b>LUFS</b> meter — all on the master bus, post-FX.</li>
+        <li>The <b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit, a lo-fi <b>downsampler</b>, and a live spectrum + approximate <b>LUFS</b> meter — all on the master bus, post-FX.</li>
       </ul>
 
       <h3>Transport &amp; timeline</h3>
@@ -833,17 +857,17 @@
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
         <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>⧉ Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
-        <li><b>🚩</b> adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
+        <li>The <b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><b>🎵 Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
-        <li><b>💾 Save</b> / <b>📂 Load</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
-        <li><b>⤓ Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
-        <li><b>🎹 Export MIDI</b> / <b>🎼 Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
-        <li><b>🔊 Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
-        <li><b>⛶ Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
+        <li><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
+        <li><b>Save as .json</b> / <b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>🎵 Songs…</b> instead.</li>
+        <li><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><b>Export MIDI</b> / <b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
+        <li><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
+        <li><b>Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
       </ul>
 
       <h3>Keyboard shortcuts</h3>
@@ -873,7 +897,7 @@
 
   <dialog id="songs-dialog">
     <div class="help-head">
-      <h2>🎵 Song library</h2>
+      <h2><span data-glyph="songs"></span> Song library</h2>
       <button id="songs-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -882,8 +906,8 @@
         <h3>New song</h3>
         <div class="song-save-row">
           <input id="new-song-name" type="text" placeholder="Name this song…" maxlength="60">
-          <button id="new-song-starter" title="Melody, Bass and a Rhythm track, all empty">🎼 Starter tracks</button>
-          <button id="new-song-empty" title="Just the Rhythm track — add your own tonal tracks">📄 Empty project</button>
+          <button id="new-song-starter" data-glyph="addTrack" title="Melody, Bass and a Rhythm track, all empty">Starter tracks</button>
+          <button id="new-song-empty" data-glyph="addDrums" title="Just the Rhythm track — add your own tonal tracks">Empty project</button>
         </div>
       </section>
       <section>
@@ -894,7 +918,7 @@
         <h3>My songs <span class="songs-sub">(this browser)</span></h3>
         <div class="song-save-row">
           <input id="song-name" type="text" placeholder="Name this song…" maxlength="60">
-          <button id="song-save-local">💾 Save current</button>
+          <button id="song-save-local" data-glyph="save">Save current</button>
         </div>
         <div id="songs-local" class="song-list"></div>
       </section>
@@ -903,7 +927,7 @@
 
   <dialog id="preset-dialog">
     <div class="help-head">
-      <h2>🎚 Instrument presets</h2>
+      <h2><span data-glyph="preset"></span> Instrument presets</h2>
       <button id="preset-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -911,7 +935,7 @@
       <section>
         <div class="song-save-row">
           <input id="preset-new-name" type="text" placeholder="Name this preset…" maxlength="60">
-          <button id="preset-save">💾 Save current as preset</button>
+          <button id="preset-save" data-glyph="save">Save current as preset</button>
         </div>
         <div id="preset-list" class="song-list"></div>
       </section>
@@ -920,7 +944,7 @@
 
   <dialog id="pattern-dialog">
     <div class="help-head">
-      <h2>🥁 Rhythm patterns</h2>
+      <h2><span data-glyph="drums"></span> Rhythm patterns</h2>
       <button id="pattern-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -934,7 +958,7 @@
   <!-- Announces what keyboard navigation just selected; see announce(). -->
   <p id="a11y-status" class="sr-only" role="status" aria-live="polite"></p>
 
-  <div id="rotate-hint">📱 Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
+  <div id="rotate-hint">Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
   <div class="toolbar" role="toolbar" aria-label="Transport and tools">
     <!-- File menu: consolidates session/export actions, project properties and
@@ -944,27 +968,27 @@
     <div class="panel" id="file-menu-panel">
       <div class="panel-cap">Menu</div>
       <div class="panel-body">
-        <button id="file-menu-toggle" class="icon-btn" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false">☰</button>
+        <button id="file-menu-toggle" class="icon-btn" data-glyph="menu" aria-label="Menu" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false"></button>
       </div>
       <div id="file-menu" class="file-menu" hidden>
         <div class="file-menu-section">
-          <button id="songs-btn" class="file-menu-item">🎵 Songs…</button>
-          <button id="save-file" class="file-menu-item">💾 Save as .json</button>
-          <button id="load-file" class="file-menu-item">📂 Load .json</button>
+          <button id="songs-btn" class="file-menu-item" data-glyph="songs">Songs…</button>
+          <button id="save-file" class="file-menu-item" data-glyph="save">Save as .json</button>
+          <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
-          <button id="export" class="file-menu-item">⤓ Export code</button>
-          <button id="export-midi" class="file-menu-item">🎹 Export MIDI</button>
-          <button id="import-midi" class="file-menu-item">🎼 Import MIDI</button>
+          <button id="export" class="file-menu-item" data-glyph="code">Export code</button>
+          <button id="export-midi" class="file-menu-item" data-glyph="midiOut">Export MIDI</button>
+          <button id="import-midi" class="file-menu-item" data-glyph="midiIn">Import MIDI</button>
           <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
-          <button id="export-wav" class="file-menu-item">🔊 Export WAV</button>
-          <button id="fullscreen-btn" class="file-menu-item" aria-pressed="false">⛶ Fullscreen</button>
+          <button id="export-wav" class="file-menu-item" data-glyph="wav">Export WAV</button>
+          <button id="fullscreen-btn" class="file-menu-item" data-glyph="fullscreen" aria-pressed="false">Fullscreen</button>
         </div>
         <div class="file-menu-section">
-          <button id="add-track-btn" class="file-menu-item" title="Add a new tonal track">＋ Add track</button>
-          <button id="add-rhythm-track-btn" class="file-menu-item" title="Add a new rhythm track (same kit as the others)">＋ 🥁 Add rhythm track</button>
+          <button id="add-track-btn" class="file-menu-item" data-glyph="addTrack" title="Add a new tonal track">Add track</button>
+          <button id="add-rhythm-track-btn" class="file-menu-item" data-glyph="addDrums" title="Add a new rhythm track (same kit as the others)">Add rhythm track</button>
         </div>
         <div class="file-menu-section">
-          <button id="help-btn" class="file-menu-item">❓ Help</button>
+          <button id="help-btn" class="file-menu-item" data-glyph="help">Help</button>
         </div>
       </div>
     </div>
@@ -997,9 +1021,9 @@
       <div class="panel-cap">Tools</div>
       <div class="panel-body">
         <div class="segmented tool-group" role="radiogroup" aria-label="Editing tool">
-          <button data-tool="pen" class="active" role="radio" aria-checked="true" aria-label="Pen tool" title="Pen (1): click an empty cell to add a note/hit">✏️</button>
-          <button data-tool="eraser" role="radio" aria-checked="false" aria-label="Eraser tool" title="Eraser (2): click a note/hit to remove it">🧽</button>
-          <button data-tool="grab" role="radio" aria-checked="false" aria-label="Grab tool" title="Grab (3): drag a note/hit to move it, drag its right edge to resize">✋</button>
+          <button data-tool="pen" class="active" role="radio" aria-checked="true" aria-label="Pen tool" title="Pen (1): click an empty cell to add a note/hit" data-glyph="pen"></button>
+          <button data-tool="eraser" role="radio" aria-checked="false" aria-label="Eraser tool" title="Eraser (2): click a note/hit to remove it" data-glyph="eraser"></button>
+          <button data-tool="grab" role="radio" aria-checked="false" aria-label="Grab tool" title="Grab (3): drag a note/hit to move it, drag its right edge to resize" data-glyph="grab"></button>
         </div>
         <div class="segmented history-group">
           <button id="undo-btn" title="Undo (Ctrl+Z)" disabled>↶</button>
@@ -1016,12 +1040,12 @@
       <div class="panel-cap">Loop &amp; Zoom</div>
       <div class="panel-body">
         <button id="loop-reset" title="Reset the loop range to the full song">Full range</button>
-        <button id="repeat-loop" title="Duplicate the loop range's notes/hits into the region right after it — click again to keep stamping forward">⧉ Repeat</button>
-        <button id="add-marker" title="Add a marker at the playhead">🚩</button>
+        <button id="repeat-loop" data-glyph="repeat" title="Duplicate the loop range's notes/hits into the region right after it — click again to keep stamping forward">Repeat</button>
+        <button id="add-marker" data-glyph="marker" aria-label="Add marker" title="Add a marker at the playhead"></button>
         <div class="segmented zoom-group">
-          <button id="zoom-out" title="Zoom out">🔍−</button>
+          <button id="zoom-out" data-glyph="zoomOut" aria-label="Zoom out" title="Zoom out"></button>
           <span id="zoom-level">100%</span>
-          <button id="zoom-in" title="Zoom in">🔍+</button>
+          <button id="zoom-in" data-glyph="zoomIn" aria-label="Zoom in" title="Zoom in"></button>
         </div>
       </div>
     </div>
@@ -1045,7 +1069,7 @@
           <div class="mstrip-cell">
             <span class="mstrip-cap">Master</span>
             <div class="th-vol">
-              <span class="mv-ico">🔊</span>
+              <span class="mv-ico" data-glyph="wav"></span>
               <input id="master-vol" type="range" min="0" max="1" step="0.02" title="Master preview volume (editor only)">
               <span id="master-vol-val" class="vol-val"></span>
             </div>
@@ -1091,7 +1115,7 @@
             </div>
           </div>
           <div class="mstrip-cell">
-            <button id="master-fx-toggle" class="icon-btn" title="Master EQ &amp; compression" aria-pressed="false">🎛️</button>
+            <button id="master-fx-toggle" class="icon-btn" data-glyph="master" aria-label="Master FX" title="Master EQ &amp; compression" aria-pressed="false"></button>
           </div>
         </div>
         <div id="master-fx-panel" class="master-fx-panel" style="display:none">
@@ -1238,6 +1262,53 @@ const GLYPHS = {
   eq:       ['M1 9.5 C5 9.5 6 1.5 12 1.5 C18 1.5 19 9.5 23 9.5'],
   comp:     ['M1 2 L23 5', 'M1 10 L23 7'],                                // dynamic range squeezed into a wedge
   send:     ['M1 6 h14', 'M11 2 l4 4 l-4 4'],                             // signal tapped off to a shared bus
+
+  // ---- Interface icons (square) ----
+  // Drawn in a 24x24 box because these sit on square buttons, unlike the wide
+  // waveform strip above. Same language otherwise: one stroke weight, round
+  // caps, currentColor, no fill. These replaced emoji, which rendered in the
+  // system's own colour and style and read as pasted-in next to the rest of
+  // the UI. Deliberately NOT replaced: the transport (play/stop/return), undo
+  // and redo, the disclosure triangles and the ✕ closes — those are neutral
+  // geometric characters that already match, and a stroked play triangle reads
+  // worse than the filled one everybody expects.
+  menu:     { box: '0 0 24 24', paths: ['M4 7h16', 'M4 12h16', 'M4 17h16'] },
+  // Two beamed notes — the Songs library.
+  songs:    { box: '0 0 24 24', paths: ['M10 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0', 'M20 15.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0', 'M10 17.5V7l10-2v10.5', 'M10 10.5l10-2'] },
+  // Save and load mirror each other: an arrow into, or out of, the same line.
+  save:     { box: '0 0 24 24', paths: ['M5 20h14', 'M12 5v11', 'M7.5 11.5l4.5 4.5 4.5-4.5'] },
+  load:     { box: '0 0 24 24', paths: ['M5 20h14', 'M12 16V5', 'M7.5 9.5L12 5l4.5 4.5'] },
+  code:     { box: '0 0 24 24', paths: ['M9 7l-5 5 5 5', 'M15 7l5 5-5 5'] },
+  // A keyboard, plus the same out/in arrow the save/load pair uses.
+  midiOut:  { box: '0 0 24 24', paths: ['M3 8h13v8H3z', 'M7.3 8v4.5', 'M11.7 8v4.5', 'M20 8v6', 'M17.8 11.8l2.2 2.2 2.2-2.2'] },
+  midiIn:   { box: '0 0 24 24', paths: ['M3 8h13v8H3z', 'M7.3 8v4.5', 'M11.7 8v4.5', 'M20 14V8', 'M17.8 10.2L20 8l2.2 2.2'] },
+  // Speaker + radiating arcs, the same arc language the reverb glyph uses.
+  wav:      { box: '0 0 24 24', paths: ['M4 9.5h3.5L12 6v12l-4.5-3.5H4z', 'M15.5 9.5a4 4 0 0 1 0 5', 'M18.5 7a8 8 0 0 1 0 10'] },
+  fullscreen: { box: '0 0 24 24', paths: ['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5'] },
+  // A stack of lanes with a plus; the rhythm one swaps the plus's neighbours
+  // for the drum shape the Kit label already uses.
+  addTrack: { box: '0 0 24 24', paths: ['M3 6h13', 'M3 11h11', 'M3 16h7', 'M18 12v8', 'M14 16h8'] },
+  addDrums: { box: '0 0 24 24', paths: ['M3 17h11', 'M5 17a3.5 3.5 0 0 1 7 0', 'M18 11v8', 'M14 15h8'] },
+  help:     { box: '0 0 24 24', paths: ['M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z', 'M9.4 9.6a2.6 2.6 0 1 1 2.6 2.6V14', 'M12 17.2v.4'] },
+  // Editing tools.
+  pen:      { box: '0 0 24 24', paths: ['M4 20l1.2-4.2L16 5a2.1 2.1 0 0 1 3 3L8.2 18.8 4 20z', 'M14.5 6.5l3 3'] },
+  // A tilted block on a desk line, with the crease that separates the worn
+  // end. The first attempt rounded every corner and read as a blob at 17px.
+  eraser:   { box: '0 0 24 24', paths: ['M4 20h16', 'M6 16.5l8.2-8.2a1.6 1.6 0 0 1 2.3 0l2.2 2.2a1.6 1.6 0 0 1 0 2.3L11.5 17H8.5z', 'M11.3 11.2l4.5 4.5'] },
+  grab:     { box: '0 0 24 24', paths: ['M9 11V5.5a1.6 1.6 0 0 1 3.2 0V11', 'M12.2 11V4.6a1.6 1.6 0 0 1 3.2 0V11', 'M15.4 11.5V6.6a1.6 1.6 0 0 1 3.2 0V15a5 5 0 0 1-5 5h-2.2a4 4 0 0 1-3-1.4L5.4 14a1.6 1.6 0 0 1 2.3-2.2L9 13.2V11'] },
+  marker:   { box: '0 0 24 24', paths: ['M6 21V4', 'M6 4h11l-2.5 3.5L17 11H6z'] },
+  // The standard two-arrow loop; the first attempt crossed its arrowheads.
+  repeat:   { box: '0 0 24 24', paths: ['M4 10V9a3 3 0 0 1 3-3h10', 'M14.5 3.5L17.5 6l-3 2.5', 'M20 14v1a3 3 0 0 1-3 3H7', 'M9.5 20.5L6.5 18l3-2.5'] },
+  zoomIn:   { box: '0 0 24 24', paths: ['M17.5 17.5L21 21', 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z', 'M11 7.5v7', 'M7.5 11h7'] },
+  zoomOut:  { box: '0 0 24 24', paths: ['M17.5 17.5L21 21', 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z', 'M7.5 11h7'] },
+  // Track-header buttons.
+  automation: { box: '0 0 24 24', paths: ['M3 17c4 0 5-9 9-9s5 7 9 7'], },
+  envelope: { box: '0 0 24 24', paths: ['M3 19l4-13 4 9 3-4 3 5 4-2'] },
+  sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
+  preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
+  master:   { box: '0 0 24 24', paths: ['M5 20a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M5 12V4', 'M5 20v0', 'M15 14a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M15 6V4', 'M15 14v6'] },
+  drums:    { box: '0 0 24 24', paths: ['M3 18h18', 'M6 18a5 5 0 0 1 10 0', 'M17.5 18a2.5 2.5 0 0 1 4.5 0', 'M11 13V5', 'M11 5l6-2'] },
+  trash:    { box: '0 0 24 24', paths: ['M4 7h16', 'M9.5 7V4.5h5V7', 'M6.5 7l1 13h9l1-13', 'M10 10.5v6.5', 'M14 10.5v6.5'] },
 };
 // Which glyph illustrates each per-note effect flag, keyed by the note property
 // the inspector's toggle writes to (see renderInspector's addFxToggle).
@@ -1251,17 +1322,37 @@ const NOTE_FX_GLYPH = {
 // SVG inside a <button> its own tab stop.
 function glyph(name, cls) {
   const NS = 'http://www.w3.org/2000/svg';
+  const entry = GLYPHS[name];
+  // An entry is either a bare list of paths (the 24x12 waveform/effect box) or
+  // { box, paths } for the square 24x24 interface icons — so which box a glyph
+  // uses is a property of the glyph, not something every caller has to know.
+  const paths = Array.isArray(entry) ? entry : (entry?.paths || []);
+  const box = Array.isArray(entry) ? '0 0 24 12' : (entry?.box || '0 0 24 12');
   const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 12');
-  svg.setAttribute('class', 'glyph' + (cls ? ' ' + cls : ''));
+  svg.setAttribute('viewBox', box);
+  svg.setAttribute('class', 'glyph' + (box === '0 0 24 24' ? ' glyph-sq' : '') + (cls ? ' ' + cls : ''));
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
-  for (const d of GLYPHS[name] || []) {
+  for (const d of paths) {
     const p = document.createElementNS(NS, 'path');
     p.setAttribute('d', d);
     svg.appendChild(p);
   }
   return svg;
+}
+// Builds a button's contents as glyph + label, replacing the emoji these used
+// to carry. The label stays real text, so the accessible name is unchanged and
+// nothing depends on recognising a picture — same contract as the per-note
+// effect toggles.
+function setGlyphLabel(btn, name, label) {
+  btn.textContent = '';
+  btn.appendChild(glyph(name));
+  if (label) {
+    const span = document.createElement('span');
+    span.textContent = label;
+    btn.appendChild(span);
+  }
+  return btn;
 }
 const RHYTHM_ROWS = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
 const RHYTHM_LABELS = { kick: 'Kick', snare: 'Snare', rim: 'Rim', hihat: 'Hi-hat', openhat: 'Open', shaker: 'Shaker', tom: 'Tom', clap: 'Clap', crash: 'Crash', ride: 'Ride' };
@@ -3074,7 +3165,7 @@ function buildHeader(track) {
   // keeping them out of .th-top avoids overflowing the header's fixed width.
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
-  autoBtn.textContent = '〰 Auto';
+  setGlyphLabel(autoBtn, 'automation', 'Auto');
   autoBtn.title = 'Automation (volume/pan over time)';
   autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   autoBtn.addEventListener('click', (e) => {
@@ -3084,7 +3175,7 @@ function buildHeader(track) {
   });
   tools.append(autoBtn);
   const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
-  fxBtn.textContent = '✨ FX';
+  setGlyphLabel(fxBtn, 'sparkle', 'FX');
   fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags), a 3-band EQ, a Compressor, a Bitcrush downsampler and a Tremolo';
   fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   fxBtn.addEventListener('click', (e) => {
@@ -3095,7 +3186,7 @@ function buildHeader(track) {
   tools.append(fxBtn);
   if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
-    adsrBtn.textContent = 'E Env';
+    setGlyphLabel(adsrBtn, 'envelope', 'Env');
     adsrBtn.title = 'Envelope (attack/decay/sustain/release)';
     adsrBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     adsrBtn.addEventListener('click', (e) => {
@@ -3105,14 +3196,14 @@ function buildHeader(track) {
     });
     tools.append(adsrBtn);
     const presetBtn = el('button', 'th-tool-btn icon');
-    presetBtn.textContent = '🎚';
+    setGlyphLabel(presetBtn, 'preset', '');
     presetBtn.title = 'Instrument presets — save/load this track\'s waveform + envelope';
     presetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     presetBtn.addEventListener('click', (e) => { e.stopPropagation(); openPresetDialog(track); });
     tools.append(presetBtn);
   } else {
     const patternsBtn = el('button', 'th-tool-btn icon');
-    patternsBtn.textContent = '🥁';
+    setGlyphLabel(patternsBtn, 'drums', '');
     patternsBtn.title = 'Rhythm patterns — insert a built-in groove (Rock, Techno, Disco, Swing, ...)';
     patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     patternsBtn.addEventListener('click', (e) => { e.stopPropagation(); renderPatternList(); patternDialog.showModal(); });
@@ -4330,7 +4421,7 @@ function renderInspector() {
   fx.appendChild(fxRow);
 
   const del = el('button', 'insp-del');
-  del.textContent = '🗑 Delete note';
+  setGlyphLabel(del, 'trash', 'Delete note');
   del.addEventListener('click', () => deleteItem(track, note));
   inspector.appendChild(del);
 }
@@ -4380,9 +4471,16 @@ function renderHitInspector(track, hit) {
   inspector.appendChild(p);
 
   const del = el('button', 'insp-del');
-  del.textContent = '🗑 Delete hit';
+  setGlyphLabel(del, 'trash', 'Delete hit');
   del.addEventListener('click', () => deleteItem(track, hit));
   inspector.appendChild(del);
+}
+
+// Fill in every static button's glyph from its data-glyph. Doing it here rather
+// than inlining <svg> in the markup keeps GLYPHS the single source for every
+// icon in the app, and keeps the HTML readable.
+for (const elWithGlyph of document.querySelectorAll('[data-glyph]')) {
+  elWithGlyph.prepend(glyph(elWithGlyph.dataset.glyph));
 }
 
 // ---------- Help dialog ----------
