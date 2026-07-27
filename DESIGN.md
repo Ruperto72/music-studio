@@ -414,6 +414,25 @@ Two things carry the musical weight here, both data rather than code:
 Phrases are counted from the bar the insert starts on, not from bar 1 of
 the song, so the phrasing lines up with wherever the playhead was left.
 
+A pattern can also bring editor state along, because a few grooves are not
+the same groove without it:
+
+- `swing` → `state.swing`. Shuffle only reads as shuffle once the off-8th
+  is pushed toward the triplet position.
+- `grid` → `state.grid`. A `start` may be fractional (the column unit is an
+  eighth, positions re-lattice to 1/6 of one, so `0.5` is a 16th), but a
+  hit's block is drawn one *grid step* wide — on the default 1/8 grid two
+  16ths would render one on top of the other. Funk sets `grid: 0.5`; its
+  ghost notes are the groove and they have to be visible and editable.
+- `crashAfterFill: false`. Bossa nova's fill flips the clave to its other
+  side rather than building to anything, and a crash on top of that is
+  simply the wrong genre.
+
+The library covers ten grooves: Rock, Techno, Disco, Swing/Shuffle,
+Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova. Each is one table
+row — nothing about phrasing, velocity or grid handling is per-pattern
+code.
+
 ### A.12 Help dialog
 
 A single scrollable reference covering: overview, tracks & channel strips,

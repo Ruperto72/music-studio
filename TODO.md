@@ -751,6 +751,36 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   försök att få rätt: första versionen jämförde hela aria-etiketten, som
   innehåller taktnumret — så "takt 1 ≠ takt 2" var sant av fel skäl och
   testet föll mot fungerande kod.
+- [x] **Tre mallar till: Funk, Half-time, Bossa Nova.** Sju blev tio. Valda
+  för att de ligger *långt* från de befintliga snarare än att vara
+  rock-varianter, och de använder olika delar av kittet (rim, ride, shaker,
+  tom).
+  **Funk tvingade fram en riktig upptäckt om kolumnenheten.** Jag antog
+  först att mallarna satt fast på åttondelar, vilket hade gjort funk
+  meningslös — ghost notes lever på sextondelar. Men kolumnenheten är en
+  åttondel medan positioner re-lattice:as till `MICRO` (1/6 av en), så
+  `start: 0.5` *är* en sextondel och `1/3` en triol; griddropdownen erbjuder
+  redan bägge. Kontrollerat i node att `quant()` ger tillbaka 0.5, 1.5, 3.5,
+  7.5 exakt, och att `quant(8 + 0.5) === 8.5` — annars hade `hitsConflict`s
+  `a.start === b.start` blivit opålitlig.
+  **Men rendering avslöjade nästa problem:** en träffs block ritas en
+  *gridsteg* brett (`renderRhythmTrack`), inte ett kolumnsteg — så på
+  default-griden 1/8 hade två sextondelar ritats ovanpå varandra. Grooven
+  hade funnits där och varit oläsbar. Lösning: ett valfritt `grid`-fält på
+  mallen som sätts vid insättning, exakt som `swing` redan gör. Funk sätter
+  `grid: 0.5`.
+  Bossa fick ett tredje valfritt fält, `crashAfterFill: false` — dess "fill"
+  är en clave-vändning, inte en upptakt, och en crash ovanpå är helt enkelt
+  fel genre.
+  Testet utökat med fyra assertioner, alla verifierade mot injicerade buggar:
+  griden byts till 1/16 vid Funk (*"got 1/8"*), sexton hi-hats i Funks första
+  takt — vilket är det som faktiskt pinnar sextondelsplaceringen, eftersom
+  åtta åttondelskolumner inte rymmer sexton (*"got 15"*), Bossa lägger in noll
+  crasher (*"but one was inserted"*), och varje rad i biblioteket har både
+  beskrivning och fill (*"pattern 'Half-time' has no fill"*). Den sista tog
+  två försök: första injiceringen lade `fill: null` *före* det riktiga
+  `fill:`-fältet i samma objektliteral, så den senare vann och buggen fanns
+  aldrig — testet såg ut att missa något det i själva verket fångar.
 - [ ] **Frog vs Toad-spelets `audio.js` behöver uppdateras manuellt.**
   Ovanstående formatbrott (`RHYTHM_TRACK` → `RHYTHM_TRACKS`) gör att en
   färsk "⤓ Export code"-output inte längre går att klistra in rakt av i

@@ -804,7 +804,7 @@
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
-        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, so you can hear both before inserting.</li>
+        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, so you can hear both before inserting. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, and <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -1415,9 +1415,19 @@ const CHORD_PRESETS = [
 
 // Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
 // (4/4) resolution — insertPatternIntoRhythm() scales the `start` columns to
-// whatever eighthsPerBar() the song is actually in. `swing` (optional) is
-// applied to state.swing on insert, since a few grooves (shuffle) only read
-// as their genre once the off-8th is pushed toward the triplet position.
+// whatever eighthsPerBar() the song is actually in. A `start` may be
+// fractional: the column unit is an eighth, but positions re-lattice to
+// MICRO (1/6 of one), so 0.5 is a 16th and 1/3 a triplet, exactly as the grid
+// dropdown already offers.
+//
+// Two optional fields let a pattern bring the editor's own settings with it,
+// because a few grooves are not the same groove without them:
+//   `swing` -> state.swing   (shuffle only reads as shuffle once the off-8th
+//                             is pushed toward the triplet position)
+//   `grid`  -> state.grid    (a 16th-note groove needs the 16th grid, or its
+//                             hits draw one on top of the other — see the
+//                             note in insertPatternIntoRhythm)
+// and `crashAfterFill: false` opts out of the crash the bar after a fill.
 //
 // Each hit may carry a `vel` (0.1-1), and every pattern here uses them: a
 // groove where every hit lands at full strength is the one thing that reads
@@ -1571,6 +1581,92 @@ const RHYTHM_PATTERNS = [
       { start: 3, type: 'snare', vel: 0.6 }, { start: 4, type: 'snare', vel: 0.75 },
       { start: 6, type: 'snare', vel: 0.85 }, { start: 7, type: 'snare' },
       { start: 0, type: 'hihat', vel: 0.8 }, { start: 4, type: 'hihat', vel: 0.6 },
+    ],
+  },
+  {
+    id: 'funk', name: 'Funk',
+    desc: '16th-note groove with ghosted snares between the backbeats — the quiet hits are the groove. Switches the grid to 1/16, since that is where its hits live. Fill: a 16th snare/tom run.',
+    grid: 0.5,
+    hits: [
+      { start: 0, type: 'kick' }, { start: 1.5, type: 'kick', vel: 0.8 },
+      { start: 3, type: 'kick', vel: 0.9 }, { start: 5, type: 'kick', vel: 0.8 },
+      { start: 2, type: 'snare' }, { start: 6, type: 'snare' },
+      // The ghosts are the whole point: barely there, but the bar limps
+      // without them.
+      { start: 3.5, type: 'snare', vel: 0.25 }, { start: 5.5, type: 'snare', vel: 0.25 },
+      { start: 7, type: 'snare', vel: 0.3 },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 0.5, type: 'hihat', vel: 0.4 },
+      { start: 1, type: 'hihat', vel: 0.8 }, { start: 1.5, type: 'hihat', vel: 0.4 },
+      { start: 2, type: 'hihat', vel: 0.8 }, { start: 2.5, type: 'hihat', vel: 0.4 },
+      { start: 3, type: 'hihat', vel: 0.8 }, { start: 3.5, type: 'hihat', vel: 0.4 },
+      { start: 4, type: 'hihat', vel: 0.8 }, { start: 4.5, type: 'hihat', vel: 0.4 },
+      { start: 5, type: 'hihat', vel: 0.8 }, { start: 5.5, type: 'hihat', vel: 0.4 },
+      { start: 6, type: 'hihat', vel: 0.8 }, { start: 6.5, type: 'hihat', vel: 0.4 },
+      { start: 7, type: 'hihat', vel: 0.8 }, { start: 7.5, type: 'hihat', vel: 0.4 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 1.5, type: 'kick', vel: 0.8 },
+      { start: 2, type: 'snare' }, { start: 3.5, type: 'snare', vel: 0.25 },
+      { start: 0, type: 'hihat', vel: 0.8 }, { start: 0.5, type: 'hihat', vel: 0.4 },
+      { start: 1, type: 'hihat', vel: 0.8 }, { start: 1.5, type: 'hihat', vel: 0.4 },
+      { start: 2, type: 'hihat', vel: 0.8 }, { start: 2.5, type: 'hihat', vel: 0.4 },
+      { start: 3, type: 'hihat', vel: 0.8 }, { start: 3.5, type: 'hihat', vel: 0.4 },
+      { start: 4, type: 'snare', vel: 0.4 }, { start: 4.5, type: 'snare', vel: 0.5 },
+      { start: 5, type: 'tom', vel: 0.6 }, { start: 5.5, type: 'tom', vel: 0.7 },
+      { start: 6, type: 'snare', vel: 0.8 }, { start: 6.5, type: 'snare', vel: 0.9 },
+      { start: 7, type: 'tom', vel: 0.95 }, { start: 7.5, type: 'tom' },
+    ],
+  },
+  {
+    id: 'halftime', name: 'Half-time',
+    desc: 'One snare, on beat 3 instead of 2 & 4 — the same tempo suddenly feels half as fast. Heavy rock and modern hip-hop live here. Fill: two toms and nothing else.',
+    hits: [
+      { start: 0, type: 'kick' }, { start: 3, type: 'kick', vel: 0.85 }, { start: 6, type: 'kick', vel: 0.9 },
+      { start: 4, type: 'snare' },
+      { start: 0, type: 'hihat', vel: 0.85 }, { start: 1, type: 'hihat', vel: 0.45 },
+      { start: 2, type: 'hihat', vel: 0.85 }, { start: 3, type: 'hihat', vel: 0.45 },
+      { start: 4, type: 'hihat', vel: 0.85 }, { start: 5, type: 'hihat', vel: 0.45 },
+      { start: 6, type: 'hihat', vel: 0.85 }, { start: 7, type: 'hihat', vel: 0.45 },
+    ],
+    fill: [
+      { start: 0, type: 'kick' }, { start: 3, type: 'kick', vel: 0.85 },
+      { start: 4, type: 'snare' },
+      { start: 0, type: 'hihat', vel: 0.85 }, { start: 1, type: 'hihat', vel: 0.45 },
+      { start: 2, type: 'hihat', vel: 0.85 }, { start: 3, type: 'hihat', vel: 0.45 },
+      // Sparse on purpose: a busy fill would give the half-time feel away.
+      { start: 6, type: 'tom', vel: 0.85 }, { start: 7, type: 'tom' },
+    ],
+  },
+  {
+    id: 'bossa', name: 'Bossa Nova',
+    desc: 'Rim-shot clave over a soft surdo kick, ride and shaker on every 8th. Everything sits well below full — it is a quiet groove by design. Fill: the clave flips to its other side rather than building, so no crash follows it.',
+    crashAfterFill: false,
+    hits: [
+      { start: 0, type: 'kick', vel: 0.7 }, { start: 3, type: 'kick', vel: 0.55 },
+      { start: 4, type: 'kick', vel: 0.7 }, { start: 7, type: 'kick', vel: 0.55 },
+      { start: 0, type: 'rim', vel: 0.8 }, { start: 3, type: 'rim', vel: 0.7 }, { start: 6, type: 'rim', vel: 0.85 },
+      { start: 0, type: 'ride', vel: 0.6 }, { start: 1, type: 'ride', vel: 0.4 },
+      { start: 2, type: 'ride', vel: 0.6 }, { start: 3, type: 'ride', vel: 0.4 },
+      { start: 4, type: 'ride', vel: 0.6 }, { start: 5, type: 'ride', vel: 0.4 },
+      { start: 6, type: 'ride', vel: 0.6 }, { start: 7, type: 'ride', vel: 0.4 },
+      { start: 0, type: 'shaker', vel: 0.3 }, { start: 1, type: 'shaker', vel: 0.3 },
+      { start: 2, type: 'shaker', vel: 0.3 }, { start: 3, type: 'shaker', vel: 0.3 },
+      { start: 4, type: 'shaker', vel: 0.3 }, { start: 5, type: 'shaker', vel: 0.3 },
+      { start: 6, type: 'shaker', vel: 0.3 }, { start: 7, type: 'shaker', vel: 0.3 },
+    ],
+    fill: [
+      { start: 0, type: 'kick', vel: 0.7 }, { start: 3, type: 'kick', vel: 0.55 },
+      { start: 4, type: 'kick', vel: 0.7 }, { start: 7, type: 'kick', vel: 0.55 },
+      { start: 1, type: 'rim', vel: 0.7 }, { start: 4, type: 'rim', vel: 0.8 },
+      { start: 6, type: 'rim', vel: 0.7 }, { start: 7, type: 'rim', vel: 0.9 },
+      { start: 0, type: 'ride', vel: 0.6 }, { start: 1, type: 'ride', vel: 0.4 },
+      { start: 2, type: 'ride', vel: 0.6 }, { start: 3, type: 'ride', vel: 0.4 },
+      { start: 4, type: 'ride', vel: 0.6 }, { start: 5, type: 'ride', vel: 0.4 },
+      { start: 6, type: 'ride', vel: 0.6 }, { start: 7, type: 'ride', vel: 0.4 },
+      { start: 0, type: 'shaker', vel: 0.3 }, { start: 1, type: 'shaker', vel: 0.3 },
+      { start: 2, type: 'shaker', vel: 0.3 }, { start: 3, type: 'shaker', vel: 0.3 },
+      { start: 4, type: 'shaker', vel: 0.3 }, { start: 5, type: 'shaker', vel: 0.3 },
+      { start: 6, type: 'shaker', vel: 0.3 }, { start: 7, type: 'shaker', vel: 0.3 },
     ],
   },
 ];
@@ -3342,7 +3438,7 @@ function buildHeader(track) {
   } else {
     const patternsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(patternsBtn, 'drums', '');
-    patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Disco, Swing, ...)';
+    patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Funk, Bossa Nova, ...)';
     patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     patternsBtn.addEventListener('click', (e) => { e.stopPropagation(); renderPatternList(); patternDialog.showModal(); });
     tools.append(patternsBtn);
@@ -3991,7 +4087,8 @@ function patternHitAt(h, barCol, scale) {
 // song, so the phrasing lines up with where you put the playhead. The bar
 // *after* a fill opens with a crash: that is the whole point of a fill — it
 // hands over to the downbeat — and leaving it out is what makes a fill sound
-// like a mistake rather than a lead-in.
+// like a mistake rather than a lead-in. A pattern can decline it with
+// `crashAfterFill: false` (bossa nova's "fill" is a clave flip, not a lift).
 function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   const track = state.activeTrack;
   if (!isRhythm(track)) return; // the 🥁 button that opens the pattern dialog only exists on rhythm tracks
@@ -4008,7 +4105,7 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
       const hit = patternHitAt(h, barCol, scale);
       if (hit.start < COLS) barHits.push(hit);
     }
-    if (phrase > 0 && bar > 0 && (bar - 1) % phrase === phrase - 1) {
+    if (phrase > 0 && pattern.crashAfterFill !== false && bar > 0 && (bar - 1) % phrase === phrase - 1) {
       // hitsConflict rather than a hand-written comparison: Breakbeat already
       // crashes on its own downbeat, and stacking a second one there would be
       // two crashes in the same column of the same row.
@@ -4019,6 +4116,13 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   }
   state.tracks[track] = state.tracks[track].filter(h => h.start < startBar).concat(newHits);
   if (pattern.swing != null) { state.swing = pattern.swing; syncSwingUI(); }
+  // A pattern written on 16ths has to bring the grid with it, the same way
+  // shuffle brings its swing. A hit's block is drawn one *grid step* wide
+  // (see renderRhythmTrack), so on the default 1/8 grid two 16ths would
+  // render as one smeared block over the other — the groove would be there
+  // and unreadable. Setting it also leaves the editing snap where the
+  // pattern's own hits live, which is where you want it to edit them.
+  if (pattern.grid != null) { state.grid = pattern.grid; syncGridUI(); }
   render();
   autosave();
 }
