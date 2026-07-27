@@ -965,6 +965,19 @@ async function main() {
       if (choices.value !== '4' || choices.count !== 4) {
         throw new Error(`expected a 4-option phrase length defaulting to 4 bars, got ${JSON.stringify(choices)}`);
       }
+      // Every row, not just the ones exercised below: a new groove added to
+      // RHYTHM_PATTERNS without a fill or a description would otherwise ship
+      // silently, since nothing else in the app requires either.
+      const rows = await cdp.evaluate(`[...document.querySelectorAll('#pattern-list .song-item')].map(r => ({
+        name: r.querySelector('.song-title').textContent,
+        desc: (r.querySelector('.song-desc') || {}).textContent || '',
+        buttons: [...r.querySelectorAll('button')].map(b => b.textContent),
+      }))`);
+      if (rows.length < 10) throw new Error(`expected at least 10 grooves in the library, got ${rows.length}`);
+      for (const r of rows) {
+        if (!r.desc.trim()) throw new Error(`pattern "${r.name}" has no description`);
+        if (!r.buttons.includes('▶ fill')) throw new Error(`pattern "${r.name}" has no fill`);
+      }
 
       // Read the inserted groove back out of the grid's own aria-labels: they
       // carry the drum, the bar and the velocity, which is exactly the three
@@ -1027,6 +1040,34 @@ async function main() {
       const bar5Crashes = (breaks.bars['5'] || []).filter((l) => /^Crash/.test(l));
       if (bar5Crashes.length !== 1) {
         throw new Error(`expected exactly one crash on bar 5 of Breakbeat, got ${bar5Crashes.length}`);
+      }
+
+      // Funk is written on 16ths, which the column unit allows (a column is an
+      // eighth, positions re-lattice to 1/6 of one) but the *default grid* does
+      // not draw: a hit's block is one grid step wide, so on 1/8 two 16ths
+      // would render one on top of the other. The pattern brings its grid with
+      // it, the way shuffle brings its swing.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const funk = await insertAndRead('Funk');
+      const grid = await cdp.evaluate(`document.getElementById('grid-select').value`);
+      if (grid !== '1/16') throw new Error(`inserting Funk should switch the grid to 1/16, got ${grid}`);
+      // Sixteen hi-hats in one bar cannot sit on eight eighth-columns, so this
+      // is what actually pins the 16th placement — the grid alone would still
+      // pass if every `start` had been rounded to a whole column.
+      const hats = (funk.bars['1'] || []).filter((l) => /^Hi-hat/.test(l));
+      if (hats.length !== 16) throw new Error(`expected 16 hi-hats in Funk's first bar, got ${hats.length}`);
+
+      // Bossa nova declines the crash (crashAfterFill: false) — its fill flips
+      // the clave rather than building to anything.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const bossa = await insertAndRead('Bossa Nova');
+      if (bossa.labels.some((l) => /^Crash/.test(l))) {
+        throw new Error('Bossa Nova opts out of the crash after a fill, but one was inserted');
+      }
+      if ((bossa.bars['4'] || []).join('|') === (bossa.bars['1'] || []).join('|')) {
+        throw new Error('Bossa Nova still needs a fill bar even without the crash');
       }
 
       // Fills off: every bar identical again, which is what the patterns did
