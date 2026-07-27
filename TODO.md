@@ -781,6 +781,32 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   två försök: första injiceringen lade `fill: null` *före* det riktiga
   `fill:`-fältet i samma objektliteral, så den senare vann och buggen fanns
   aldrig — testet såg ut att missa något det i själva verket fångar.
+- [x] **Reggae (one drop) och Trap — tolv mallar.** Bägge rena tabellrader.
+  **Reggae definieras av en frånvaro:** ingen kick på ettan alls, kick och
+  cross-stick tillsammans på trean, och hi-hatens accenter *omvända* — svagt på
+  slaget, starkt mellan. Det är den tomma ettan som är stilen; lägger man något
+  där blir det ett långsamt rockbeat med annan hi-hat. Testet asserterar just
+  frånvaron, eftersom ingen mängd eller spridning fångar den.
+  **Trap tvingade fram ett val om rastret.** Det är den enda mallen som blandar
+  två underdelningar: sextondelar i hi-hat-linjen och en trioroll. Båda finns på
+  MICRO-gittret (1/2 respektive 1/3 av en åttondel) — men *trettiotvåondelar
+  finns inte*, en fjärdedels åttondel ligger utanför och `quant()` snäpper den
+  till triolen. Så rollen är skriven som trioler, vilket är ett verkligt
+  trap-tempo och inte en approximation av ett.
+  Griden sätts till `1/3` (1/16 T), inte `0.5`: en träffs block ritas ett
+  *gridsteg* brett, så på 1/16 hade triolerna (1/3 isär) överlappat, medan på
+  1/16 T är varje block en tredjedels kolumn och både sextondelarna och
+  triolerna går att läsa. Kontrollerat i node först att triolpositionerna är
+  exakta och skilda från sextondelarna (`quant(7.5) ≠ quant(7⅔)`).
+  Trap-testet **mäter** i stället för att lita på tabellen: det läser
+  hi-hatarnas ritade x-positioner, tar avstånden mellan dem och kräver att två
+  av dem står i förhållandet 3:2 — inget annat i appen producerar det.
+  Bägge assertionerna verifierade mot injicerade buggar: en kick på ettan
+  (*"found 3 kick(s) there"*) och alla mönsterträffar snäppta till
+  sextondelsgittret (*"measured Infinity from [0,8,16]"*). Den andra visade
+  också att ett nollavstånd — två hi-hats i samma kolumn, vilket `hitsConflict`
+  räknar som krock — förtjänar ett eget felmeddelande i stället för en
+  Infinity-kvot, så det lades till.
 - [ ] **Frog vs Toad-spelets `audio.js` behöver uppdateras manuellt.**
   Ovanstående formatbrott (`RHYTHM_TRACK` → `RHYTHM_TRACKS`) gör att en
   färsk "⤓ Export code"-output inte längre går att klistra in rakt av i
