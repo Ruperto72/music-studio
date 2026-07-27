@@ -878,6 +878,96 @@ async function main() {
       if (afterNudge !== stepped) throw new Error('a plain arrow should nudge, not change the selection');
     });
 
+    step('Noise buffers are seeded, so two page loads build byte-identical audio', async () => {
+      // The reverb tail and the six noise-based drum sounds used to be filled
+      // from Math.random(), so the same song never exported the same bytes
+      // twice. A full render each way would take minutes, so checksum the
+      // buffers themselves as they are handed to the nodes that play them —
+      // if those match across two loads, everything downstream is determined.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__bufSums = {};
+            const sum = (buf) => {
+              let out = [];
+              for (let c = 0; c < buf.numberOfChannels; c++) {
+                const d = buf.getChannelData(c);
+                let h = 0x811c9dc5;
+                // Stride the samples: a full pass over a 2.2s stereo impulse on
+                // every assignment is slow, and any seeding bug shifts the whole
+                // sequence rather than one sample.
+                for (let i = 0; i < d.length; i += 97) {
+                  h ^= Math.round(d[i] * 1e6) | 0; h = Math.imul(h, 0x01000193) >>> 0;
+                }
+                out.push(h.toString(16));
+              }
+              return out.join('/') + '@' + buf.length;
+            };
+            const note = (kind, buf) => {
+              if (!buf || window.__bufSums[kind]) return;
+              try { window.__bufSums[kind] = sum(buf); } catch {}
+            };
+            const cd = Object.getOwnPropertyDescriptor(ConvolverNode.prototype, 'buffer');
+            Object.defineProperty(ConvolverNode.prototype, 'buffer', {
+              get() { return cd.get.call(this); },
+              set(b) { note('reverb', b); cd.set.call(this, b); },
+              configurable: true,
+            });
+            const bd = Object.getOwnPropertyDescriptor(AudioBufferSourceNode.prototype, 'buffer');
+            Object.defineProperty(AudioBufferSourceNode.prototype, 'buffer', {
+              get() { return bd.get.call(this); },
+              // The two drum noise buffers differ in length (0.1s vs 0.9s), so
+              // the key tells them apart without reaching into the app.
+              set(b) { if (b) note(b.length > 20000 ? 'crashNoise' : 'noise', b); bd.set.call(this, b); },
+              configurable: true,
+            });
+          })();
+        `,
+      });
+
+      // Two separate loads: the buffers are built once per page and cached, so
+      // asking twice in one session would prove nothing.
+      const collect = async () => {
+        await goto(APP_URL);
+        await waitFor(`!!document.querySelector('.track .lane')`);
+        // Place a hit and audition it — that builds the noise buffers — and
+        // give a note a Reverb flag so the convolver gets its impulse.
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          const lane = document.querySelector('.track .lane');
+          const r = lane.getBoundingClientRect();
+          // Derive the row height rather than assuming it: the kit is the ten
+          // RHYTHM_ROWS, so row 1 is the snare (short noise buffer) and row 8
+          // the crash (long one). The kick on row 0 is a pure oscillator and
+          // would build no buffer at all.
+          const rowH = r.height / 10;
+          const at = (row, x) => lane.dispatchEvent(new MouseEvent('click', {
+            bubbles: true, clientX: r.left + x, clientY: r.top + (row + 0.5) * rowH,
+          }));
+          at(1, 60);
+          at(8, 120);
+        })()`);
+        await new Promise((r) => setTimeout(r, 500));
+        await cdp.evaluate(`[...document.querySelectorAll('.hit')].forEach(h => h.click())`);
+        await new Promise((r) => setTimeout(r, 800));
+        await cdp.evaluate(`document.querySelector('#play').click()`);
+        await new Promise((r) => setTimeout(r, 1500));
+        await cdp.evaluate(`document.querySelector('#stop').click()`);
+        return cdp.evaluate(`JSON.parse(JSON.stringify(window.__bufSums))`);
+      };
+      const first = await collect();
+      if (!first.noise) throw new Error(`no drum noise buffer was captured: ${JSON.stringify(first)}`);
+      const second = await collect();
+      for (const key of Object.keys(first)) {
+        if (first[key] !== second[key]) {
+          throw new Error(`${key} buffer differs between page loads (${first[key]} vs ${second[key]}) — it is not seeded`);
+        }
+      }
+      if (Object.keys(second).length !== Object.keys(first).length) {
+        throw new Error(`the two loads captured different buffers: ${JSON.stringify(first)} vs ${JSON.stringify(second)}`);
+      }
+    });
+
     step('Duty: a square track has its own default, and a note can override it', async () => {
       // setPeriodicWave() takes an opaque PeriodicWave, so the DOM and the node
       // graph both hide which pulse width was used. Patch pulseWave's consumer
