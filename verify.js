@@ -1455,6 +1455,101 @@ async function main() {
       }
     });
 
+    step('Per-note pan reaches the audio graph, and centre inserts no node', async () => {
+      // A panned note looks identical in the DOM, so the DOM alone can't show
+      // that pan is applied. Patch createStereoPanner before the page loads
+      // and watch what gets built when a note is auditioned.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__panners = [];
+            const orig = BaseAudioContext.prototype.createStereoPanner;
+            BaseAudioContext.prototype.createStereoPanner = function () {
+              const n = orig.call(this);
+              window.__panners.push(n);
+              return n;
+            };
+            window.__panVals = () => window.__panners.map((p) => +p.pan.value.toFixed(3));
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      await cdp.evaluate(`(() => {
+        const lane = ${tonalLane};
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 60 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.lane .note')`);
+
+      const panField = `[...document.querySelectorAll('.insp-field')].find(f => f.querySelector('span') && f.querySelector('span').textContent === 'Pan')`;
+      await waitFor(`!!(${panField})`);
+      const centred = await cdp.evaluate(`(${panField}).querySelector('.insp-velval').textContent`);
+      if (centred !== 'C') throw new Error(`a new note should read centred, got ${JSON.stringify(centred)}`);
+
+      // Centre must build no panner at all — the same "no node when neutral"
+      // contract a full-velocity drum hit keeps. Counted from zero *after* the
+      // note exists, so the channel's own chanPan doesn't muddy it.
+      await cdp.evaluate(`window.__panners.length = 0`);
+      await cdp.evaluate(`document.querySelector('.lane .note').click()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const atCentre = await cdp.evaluate(`window.__panVals()`);
+      if (atCentre.length !== 0) {
+        throw new Error(`a centred note should add no panner, saw ${JSON.stringify(atCentre)}`);
+      }
+
+      await cdp.evaluate(`(() => {
+        const s = (${panField}).querySelector('input[type=range]');
+        s.value = -0.7;
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const readout = await cdp.evaluate(`(${panField}).querySelector('.insp-velval').textContent`);
+      if (readout !== 'L70') throw new Error(`expected the readout to say L70, got ${JSON.stringify(readout)}`);
+      const label = await cdp.evaluate(`document.querySelector('.lane .note').getAttribute('aria-label')`);
+      if (!/pan L70/.test(label || '')) {
+        throw new Error(`a panned note must say so in its accessible name: ${JSON.stringify(label)}`);
+      }
+
+      await cdp.evaluate(`window.__panners.length = 0`);
+      await cdp.evaluate(`document.querySelector('.lane .note').click()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const panned = await cdp.evaluate(`window.__panVals()`);
+      if (panned.length !== 1 || Math.abs(panned[0] + 0.7) > 1e-6) {
+        throw new Error(`auditioning a note panned to -0.7 should build exactly that panner, saw ${JSON.stringify(panned)}`);
+      }
+
+      // It must reach the saved song, and centring must delete the property
+      // rather than write 0 — otherwise every note grows the file for nothing.
+      const savedNote = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
+        return (d.tracks[id] || [])[0] || null;
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
+        const n = (d.tracks[id] || [])[0];
+        return n && Math.abs(n.pan + 0.7) < 1e-6;
+      })()`, 4000);
+
+      await cdp.evaluate(`(() => {
+        const s = (${panField}).querySelector('input[type=range]');
+        s.value = 0;
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 700));
+      const recentred = await savedNote();
+      if (!recentred || 'pan' in recentred) {
+        throw new Error(`re-centring should remove the property, saved note is ${JSON.stringify(recentred)}`);
+      }
+    });
+
     step('Noise buffers are seeded: identical across two page loads', async () => {
       // The reverb tail and the six noise-based drum sounds used to be filled
       // from Math.random(), so they differed on every page load. Checksum the

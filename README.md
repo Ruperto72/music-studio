@@ -51,8 +51,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - Per-track **FX**: continuous Delay / Chorus / Reverb sends, a 3-band
   **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
   **vibrato** on tonal tracks — all neutral by default
-- Per-note effects: velocity, bend, vibrato, tremolo, pulse width (duty),
-  arpeggio, portamento, bitcrush, echo, chorus and reverb
+- Per-note effects: velocity, **pan**, bend, vibrato, tremolo, pulse width
+  (duty), arpeggio, portamento, bitcrush, echo, chorus and reverb — pan places
+  a single note in the stereo field on top of its track's own pan
 - **Per-hit velocity** on rhythm tracks — click a drum hit to set how hard
   it's struck, so a pattern can have accents instead of sounding mechanical;
   quieter notes and hits are drawn dimmer
@@ -79,10 +80,11 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 ## Roadmap
 
-Most of the original audio-engine roadmap is now built — voice pooling,
-wavetable synthesis, FM, a per-track resonant filter, aux sends for
-reverb/delay, custom DSP via `AudioWorklet`, spectrum + LUFS metering,
-parallel compression and sidechain ducking all ship today.
+Most of the original audio-engine roadmap is now built — wavetable
+synthesis, FM, a per-track resonant filter, aux sends for reverb/delay,
+custom DSP via `AudioWorklet`, spectrum + LUFS metering, parallel compression
+and sidechain ducking all ship today. (Voice pooling is written but currently
+switched off — see `TODO.md`.)
 
 Still open (see `TODO.md` for the full breakdown):
 
