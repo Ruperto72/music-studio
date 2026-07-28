@@ -1046,6 +1046,33 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   trioler) berörs inte. Grid snappar fortfarande strikt (1/4, 1/8, 1/16,
   triol) — det är bara uppspelningstajmingen som sväng-fördröjs, inte
   var noterna hamnar i redigeringsgriden.
+- [x] **Inspelning från datortangentbordet + metronom** — varje spårhuvud har
+  nu en **R**-knapp (record-arm; ett spår i taget, eftersom det finns ett
+  tangentbord — att armera ett annat flyttar armeringen), och transporten
+  har en **Record**-knapp och en **Metronom**-växel. Record ger en takt
+  förräkning (klick oavsett om metronomen är på — du bad om att spela in,
+  alltså får du takten du spelar mot) och rullar sedan transporten med
+  inspelning igång. Tangentlayouten är tracker-stil: `Z S X D C V…` är den
+  lägre oktaven med svarta tangenter på raden ovanför, `Q 2 W 3…` oktaven
+  upp, `[`/`]` byter oktav. På ett *rytmspår* spelar samma rad kittet
+  istället (`Z` kick … `/` ride). Mappningen går på `event.code`, inte
+  `event.key`, så layouten är positionell och funkar på ett svenskt
+  tangentbord. Varje tangent låter direkt genom det armerade spårets egen
+  kanal, så det man hör medan man spelar är den vågform/envelope/FX noten
+  kommer att få; under inspelning committas noten vid key-up med längden
+  tangenten hölls (minst ett gridsteg) via samma `clearOverlaps()`/
+  `hitsConflict()` som allt annat placerande. Metronomen ligger medvetet på
+  en egen `metroGain` rakt till `ctx.destination`, utanför masterbussen, och
+  `renderSongToWav()` anropar aldrig `scheduleMetronomeForChunk()` — ett
+  klick kan alltså inte hamna i en exporterad WAV. `state.recTrack`/
+  `state.metronome` är redigerartillstånd, inte låtdata: sparas aldrig i
+  filen och ligger inte i ångra-historiken (metronomen kommas ihåg per
+  webbläsare i `localStorage`). Verifierat med ett nytt steg i `verify.js`.
+- [ ] **Steginmatning** (nästa steg ovanpå inspelningen) — samma
+  tangentlayout ska lägga en not vid uppspelningshuvudet när transporten
+  står stilla, och flytta huvudet ett gridsteg framåt. Det är den delen som
+  gör komponerande utan pekdon möjligt; realtidsinspelningen kräver både
+  händerna och tidskänsla.
 
 ## Lagring / delning
 
@@ -1472,15 +1499,17 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   4. **Tillstånd låg bara i CSS-klasser.** Mute/Solo och per-not-växlarna har
      nu `aria-pressed`; Pen/Eraser/Grab blev en `role="radiogroup"` med
      `aria-checked` eftersom det är ett val och inte tre oberoende växlar.
-     Ikonknappar som bara gick att tolka positionellt (M/S/✕ per spår) namnger
-     nu sitt spår.
+     Ikonknappar som bara gick att tolka positionellt (M/S/R/✕ per spår)
+     namnger nu sitt spår.
   Dessutom: panelrubrikerna låg på 3.23:1 kontrast (under AA) och är nu
   5.32:1. Brödtext och dämpad text klarade redan AA.
-- [ ] **Skapa noter från tangentbordet** — går fortfarande inte. Man kan nå,
-  välja och redigera det som finns, men själva komponerandet kräver pekdon.
-  Skulle behöva en rumslig modell av griden (markör-position, oktav, kolumn)
-  snarare än bara en markering — betydligt större arbete än den här
-  genomgången.
+- [ ] **Skapa noter från tangentbordet** — delvis löst: man kan nu armera ett
+  spår med **R** och spela in en tagning från tangentbordet (se "Interaktion
+  / touch"). Det som återstår är steginmatning med stillastående transport —
+  lägga en not vid uppspelningshuvudet och stega framåt — vilket är den del
+  som faktiskt gör komponerande utan pekdon möjligt. Det behöver en rumslig
+  modell av griden (markör-position, oktav, kolumn) snarare än bara en
+  markering.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 
