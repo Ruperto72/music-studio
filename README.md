@@ -46,7 +46,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   stamp into a rhythm track. Every hit lands with its own velocity, so the
   groove has accents rather than a flat machine pulse, and each pattern
   carries a **fill** bar used on the last bar of every phrase (2, 4 or 8
-  bars, or off), with a crash on the downbeat after it
+  bars, or off), with a crash on the downbeat after it. The kit is spread
+  across the stereo field on insert — hi-hat and ride right, shaker, toms
+  and crash left, kick and snare centred — which you can switch off
 
 ### Sound design
 

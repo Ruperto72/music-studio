@@ -882,10 +882,22 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   identisk graf. Kontrollerat: en träff med pan 0.6 och orörd velocity sparas
   som `{"start":6,"type":"kick","pan":0.6}`, alltså utan `vel`.
   Det här är den funktion som märks mest av de tre senaste: ett kit där allt
-  sitter mitt i är det man oftast vill sprida. Mallarna i `RHYTHM_PATTERNS`
-  panorerar dock fortfarande ingenting — de kunde göra det (hi-hat åt sidan,
-  tomtrummor spridda) och det vore en ren tabelländring, men det är eget
-  arbete och något man vill höra innan det går in.
+  sitter mitt i är det man oftast vill sprida.
+- [x] **Mallarna panorerar kittet vid insättning.** `KIT_PAN` ger var och en
+  av de tio delarna en plats i fältet — bas och virvel håller mitten
+  eftersom de bär pulsen, hi-hat och ride öppnar åt höger, shaker, pukor och
+  crash åt vänster. Medvetet *en tabell keyad på trumman*, inte ett `pan` på
+  varje träff i varje mall: en hi-hat sitter åt sidan i varenda groove som
+  har en, så per-träff-värden hade blivit tolv mallars kopior av samma
+  siffror att hålla i takt. En mall får ändå skriva över med eget `pan` på
+  en träff. `patternPan()` är enda stället det avgörs, så dialogens
+  ▶-förhandslyssning och Insert inte kan säga emot varandra — förhandsvisningen
+  läste tidigare `hitPan()` på den *författade* träffen, som inte har någon
+  pan förrän tabellen applicerats. Kryssrutan "Spread the kit in stereo"
+  (på som standard, kommas ihåg per webbläsare) stänger av det helt; av läggs
+  allt rakt i mitten precis som förut. Inget skrivs vid centrum, så ett
+  centrerat kit serialiseras exakt som tidigare. Måtten är avsiktligt
+  återhållsamma — ett kit i ett rum, inte en pingpongeffekt.
 - [x] **Voice pooling var avstängt av en kvarglömd debugrad** — `acquireVoice()`
   började med `return null; // TEST: pooling disabled`, så hela poolen var död
   kod och varje not allokerade egna noder. Hittat under pan-arbetet, eftersom

@@ -1358,6 +1358,45 @@ async function main() {
         throw new Error(`with fills off every bar should be identical, got ${flatKeys.size} distinct bars`);
       }
       if (flat.labels.some((l) => /^Crash/.test(l))) throw new Error('fills off should insert no crashes');
+
+      // The kit is spread across the stereo field on insert (KIT_PAN), so a
+      // stamped pattern is a kit in a room rather than ten sounds in one spot.
+      // Read off the labels again: hitAriaLabel() names the pan, so a hit
+      // placed off-centre without being announced would fail here too.
+      const panOf = (labels, drum) => labels
+        .filter((l) => l.startsWith(drum + ','))
+        .map((l) => (l.match(/pan (L|R|C)(\d*)/) || [])[0] || 'centre');
+      const spreadHats = new Set(panOf(flat.labels, 'Hi-hat'));
+      if (spreadHats.size !== 1 || !/^pan R/.test([...spreadHats][0])) {
+        throw new Error(`hi-hats should all sit right of centre, got ${JSON.stringify([...spreadHats])}`);
+      }
+      // Kick and snare hold the middle: they carry the pulse, and a song that
+      // never touches pan must still serialise without the property at all.
+      for (const drum of ['Kick', 'Snare']) {
+        const p = new Set(panOf(flat.labels, drum));
+        if (p.size !== 1 || [...p][0] !== 'centre') {
+          throw new Error(`${drum} should stay centred, got ${JSON.stringify([...p])}`);
+        }
+      }
+      // Two pieces on opposite sides, so this can't pass with everything nudged
+      // one way — the shaker is left where the hi-hat is right.
+      const shaker = new Set(panOf(flat.labels, 'Shaker'));
+      if (shaker.size && !/^pan L/.test([...shaker][0])) {
+        throw new Error(`the shaker should sit left of centre, got ${JSON.stringify([...shaker])}`);
+      }
+
+      // And the toggle really turns it off — same pattern, everything centred.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const c = document.getElementById('pattern-spread');
+        c.checked = false;
+        c.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      const centred = await insertAndRead('Rock');
+      if (centred.labels.some((l) => /pan /.test(l))) {
+        throw new Error(`with the spread off nothing should be panned, got ${JSON.stringify(centred.labels.filter((l) => /pan /.test(l)))}`);
+      }
     });
 
     // The autosave draft is currentSongData()'s own payload, so reading it back

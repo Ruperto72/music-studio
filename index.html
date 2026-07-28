@@ -811,7 +811,7 @@
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
-        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, so you can hear both before inserting. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
+        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -990,6 +990,11 @@
       <label class="pattern-opt" for="pattern-fill-every">Fill every
         <select id="pattern-fill-every" title="How often a pattern's fill bar replaces its groove bar"></select>
         <span class="pattern-opt-note">— the last bar of each phrase uses the pattern's fill, and the next bar opens with a crash.</span>
+      </label>
+      <label class="pattern-opt" for="pattern-spread">
+        <input type="checkbox" id="pattern-spread" checked>
+        Spread the kit in stereo
+        <span class="pattern-opt-note">— hi-hat and ride to the right, shaker, toms and crash to the left; kick and snare stay centred. Off inserts everything dead centre.</span>
       </label>
       <div id="pattern-list" class="song-list"></div>
     </div>
@@ -4314,7 +4319,10 @@ function previewPattern(pattern, which = 'hits') {
     const startAt = ctx.currentTime + 0.05;
     const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
     for (const h of bar) {
-      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), hitPan(h));
+      // patternPan(), not hitPan(): the preview has to be what Insert will
+      // give you, and an authored hit carries no pan of its own until the kit
+      // table has been applied to it.
+      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), patternPan(h));
     }
   } catch { /* audio unavailable */ }
 }
@@ -4323,9 +4331,41 @@ function previewPattern(pattern, which = 'hits') {
 // inspector deletes the property rather than writing `vel: 1` — so a groove
 // whose hits are all full-strength serialises exactly as it did before
 // patterns had velocities at all.
+// Where each kit piece sits in the stereo field when a pattern is stamped in.
+// One table rather than a `pan` on every hit of every pattern: the position is
+// a property of the *instrument*, not of the groove — a hi-hat is off to one
+// side in every pattern that has one — so repeating it per hit would be twelve
+// patterns' worth of the same numbers to keep in step.
+//
+// Audience perspective (the usual convention for a mixed kit): kick and snare
+// hold the centre because they carry the pulse, and everything else opens out
+// around them. Modest amounts — this is a kit in a room, not a ping-pong
+// effect — and only the pieces where a real kit is genuinely off-centre.
+const KIT_PAN = {
+  kick: 0, snare: 0, clap: 0.18, rim: -0.2,
+  hihat: 0.35, openhat: 0.35, shaker: -0.32,
+  tom: -0.28, crash: -0.45, ride: 0.45,
+};
+// Off means a pattern stamps dead centre, exactly as it did before this table
+// existed. Remembered per browser like the other editor preferences, since it
+// is a way of working rather than something about the song.
+const PATTERN_SPREAD_KEY = 'music-studio-pattern-spread';
+let patternSpread = true;
+try { patternSpread = localStorage.getItem(PATTERN_SPREAD_KEY) !== '0'; } catch { /* ignore */ }
+// A pattern's own hit can override the kit position; absent means take the
+// table's. One resolver, so the dialog's preview and Insert cannot disagree
+// about where a piece sits.
+function patternPan(h) {
+  if (h.pan != null) return h.pan;
+  return patternSpread ? (KIT_PAN[h.type] || 0) : 0;
+}
 function patternHitAt(h, barCol, scale) {
   const hit = { start: quant(barCol + h.start * scale), type: h.type };
   if (h.vel != null && h.vel < 1) hit.vel = h.vel;
+  // Nothing is written at centre — `pan` absent means centred everywhere else
+  // too (hitPan()), so a centred kit serialises exactly as it did before.
+  const pan = patternPan(h);
+  if (pan) hit.pan = round2(pan);
   return hit;
 }
 // Tiles a built-in RHYTHM_PATTERNS entry from the playhead's bar through the
@@ -4360,7 +4400,9 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
       // hitsConflict rather than a hand-written comparison: Breakbeat already
       // crashes on its own downbeat, and stacking a second one there would be
       // two crashes in the same column of the same row.
-      const crash = { start: quant(barCol), type: 'crash' };
+      // Through patternHitAt() like every other hit, so the crash lands in the
+      // same place in the stereo field as the pattern's own crashes.
+      const crash = patternHitAt({ start: 0, type: 'crash' }, barCol, scale);
       if (crash.start < COLS && !barHits.some(h => hitsConflict(h, crash))) barHits.push(crash);
     }
     newHits.push(...barHits);
@@ -6111,6 +6153,12 @@ for (const bars of FILL_EVERY_CHOICES) {
 }
 patternFillSelect.value = String(patternFillEvery);
 patternFillSelect.addEventListener('change', () => { patternFillEvery = Number(patternFillSelect.value); });
+const patternSpreadChk = document.getElementById('pattern-spread');
+patternSpreadChk.checked = patternSpread;
+patternSpreadChk.addEventListener('change', () => {
+  patternSpread = patternSpreadChk.checked;
+  try { localStorage.setItem(PATTERN_SPREAD_KEY, patternSpread ? '1' : '0'); } catch { /* ignore */ }
+});
 function renderPatternList() {
   patternListEl.innerHTML = '';
   for (const pattern of RHYTHM_PATTERNS) {

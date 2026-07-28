@@ -412,12 +412,14 @@ and three buttons: **▶** auditions the groove bar, **▶ fill** the fill bar,
 song, replacing whatever was there.
 
 Above the list, one **Fill every** dropdown (`FILL_EVERY_CHOICES`: never /
-2 / 4 / 8 bars, default 4) sets the phrase length for the insert. It is a
-single control rather than a per-row one because it is a property of *this
-insert*, not of a groove — every pattern has a fill, and which one you pick
-does not change how long a phrase should be.
+2 / 4 / 8 bars, default 4) sets the phrase length for the insert, and a
+**Spread the kit in stereo** checkbox (default on, remembered per browser)
+decides whether the insert applies `KIT_PAN`. Both are single controls
+rather than per-row ones because they are properties of *this insert*, not
+of a groove — every pattern has a fill, and a hi-hat sits where a hi-hat
+sits regardless of which groove is playing it.
 
-Two things carry the musical weight here, both data rather than code:
+Three things carry the musical weight here, all data rather than code:
 
 - **Velocity.** Every hit in every pattern is authored with an intended
   strength — backbeat and kick full, hats accented on the beat and ghosted
@@ -433,6 +435,18 @@ Two things carry the musical weight here, both data rather than code:
   a crash — that is what a fill is for, and leaving the crash out makes it
   sound like a mistake rather than a lead-in. The crash goes in through
   `hitsConflict()`, since Breakbeat already crashes on its own downbeat.
+- **Stereo position.** `KIT_PAN` gives each of the ten pieces a place in
+  the field, applied on insert: kick and snare hold the centre because they
+  carry the pulse, hi-hat and ride open to the right, shaker, toms and
+  crash to the left. It is one table keyed on the *drum*, not a `pan` on
+  every hit of every pattern — a hi-hat is off to one side in every groove
+  that has one, so per-hit values would be twelve patterns' worth of the
+  same numbers to keep in step. A pattern's own hit can still override it.
+  `patternPan()` is the single resolver, so the dialog's ▶ preview and
+  **Insert** cannot disagree about where a piece sits; like velocity it
+  writes nothing at centre, so a centred kit serialises exactly as before.
+  The amounts are deliberately modest — a kit in a room, not a ping-pong
+  effect.
 
 Phrases are counted from the bar the insert starts on, not from bar 1 of
 the song, so the phrasing lines up with wherever the playhead was left.
