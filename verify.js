@@ -165,8 +165,16 @@ function auditBundledSongs(repoRoot) {
   if (!rangeSrc) throw new Error('could not read AUTOMATION_RANGE out of index.html');
   const AUTOMATION_RANGE = eval('(' + rangeSrc[1] + ')');
 
-  // Each effect's field ranges, read straight off the TRACK_FX_REGISTRY table.
+  // Each effect's field ranges, read straight off the TRACK_FX_REGISTRY
+  // table. Grouped by dataKey (falls back to key) since the three send
+  // entries all share state.fxSend/data.fxSend — see applySavedMix()'s
+  // matching group-by in index.html. EFFECT_KEYS/TONAL_ONLY_EFFECTS keep the
+  // ungrouped per-entry list (8 keys) for validating activeFx's own
+  // effect-key references below, which is a level below what `registry`
+  // (grouped by storage, 6 keys after the split) can answer.
   const registry = {};
+  const EFFECT_KEYS = [];
+  const TONAL_ONLY_EFFECTS = [];
   {
     const from = html.indexOf('const TRACK_FX_REGISTRY = [');
     if (from < 0) throw new Error('could not find TRACK_FX_REGISTRY in index.html');
@@ -174,11 +182,19 @@ function auditBundledSongs(repoRoot) {
     let key = null;
     for (const line of src.split('\n')) {
       const k = line.match(/^\s*key: '(\w+)'/);
-      if (k) { key = k[1]; registry[key] = []; continue; }
+      if (k) {
+        EFFECT_KEYS.push(k[1]);
+        if (/tonalOnly: true/.test(line)) TONAL_ONLY_EFFECTS.push(k[1]);
+        const dk = line.match(/dataKey: '(\w+)'/);
+        key = dk ? dk[1] : k[1];
+        if (!registry[key]) registry[key] = [];
+        continue;
+      }
       const f = line.match(/\{ param: '(\w+)',.*?min: (-?[\d.]+), max: (-?[\d.]+)/);
       if (f && key) registry[key].push({ param: f[1], min: +f[2], max: +f[3], optional: /optional: true/.test(line) });
     }
     if (!Object.keys(registry).length) throw new Error('read no effects out of TRACK_FX_REGISTRY');
+    if (EFFECT_KEYS.length !== 8) throw new Error(`expected 8 TRACK_FX_REGISTRY entries, read ${EFFECT_KEYS.length}: ${EFFECT_KEYS.join(',')}`);
   }
 
   const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty'];
@@ -258,6 +274,26 @@ function auditBundledSongs(repoRoot) {
           if (!isRhythm(id) && !WAVEFORMS.includes(v)) add(`waveform["${id}"] = "${v}", not a selectable waveform — dropped on load`);
         }
         if (key === 'pan' && (v < -1 || v > 1)) add(`pan["${id}"] = ${v}, outside -1..1`);
+      }
+    }
+
+    // activeFx's own shape (`{ [effectKey]: { bypassed } }`) is one level
+    // deeper than the flat "id -> {param: number}" maps the loop above
+    // assumes (registry has no 'activeFx' entry, so the loop's own per-field
+    // checks silently skip it) — this covers the nesting the loop can't.
+    for (const id of Object.keys(song.activeFx || {})) {
+      if (!ids.includes(id)) continue; // already reported above
+      const entry = song.activeFx[id];
+      if (!entry || typeof entry !== 'object') continue;
+      for (const effectKey of Object.keys(entry)) {
+        if (!EFFECT_KEYS.includes(effectKey)) { add(`activeFx["${id}"] names an unknown effect: ${effectKey}`); continue; }
+        if (TONAL_ONLY_EFFECTS.includes(effectKey) && isRhythm(id)) {
+          add(`activeFx["${id}"].${effectKey} is on a rhythm track, where it does nothing`);
+        }
+        const v = entry[effectKey];
+        if (v && typeof v === 'object' && v.bypassed !== undefined && typeof v.bypassed !== 'boolean') {
+          add(`activeFx["${id}"].${effectKey}.bypassed should be a boolean`);
+        }
       }
     }
 
@@ -1433,7 +1469,7 @@ async function main() {
       await loadExample('Techno');
       const after = await draft();
       const file = await cdp.evaluate(`fetch('songs/techno.json').then(r => r.json())`);
-      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq'];
+      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx'];
       for (const k of maps) {
         const got = Object.keys(after[k] || {}).sort();
         const want = Object.keys(file[k] || {}).sort();

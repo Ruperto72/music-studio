@@ -2189,6 +2189,12 @@ const state = {
   vibrato: {},               // id -> { rate, depth } (tonal tracks only) — see DEFAULT_VIBRATO
   duty: BOOT.duty,           // id -> pulse width (tonal tracks on the `square` waveform); absent = plain 50% square
   eq: {},                    // id -> { low, mid, high } dB (any track kind) — see DEFAULT_TRACK_EQ
+  activeFx: {},              // id -> { [effectKey]: { bypassed } } — which TRACK_FX_REGISTRY
+                              // entries the FX panel shows as insert chips, and whether each is
+                              // muted without losing its dialled-in value; see visibleFxFor()/
+                              // isFxBypassed(). Absent per track/key both mean "not shown, not
+                              // bypassed" the same way every other sparse map's absence means
+                              // "the default".
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
   masterParallel: { ...DEFAULT_MASTER_PARALLEL }, // song-global parallel ("NY") compression blend
@@ -2222,7 +2228,7 @@ const state = {
 // The seeded maps (tracks/gains/waveform/pan/mute/solo) are deliberately not
 // in the list: those get one entry per track with a real default, so they are
 // rebuilt from the track list rather than cleared.
-const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq'];
+const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx'];
 const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k] = {}; };
 
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
@@ -2298,26 +2304,61 @@ function applySavedMix(data) {
       if (DUTY_VALUES.includes(data.duty[ch])) state.duty[ch] = data.duty[ch];
     }
   }
-  // The four FX panel effects (Delay/Chorus/Reverb send, Compressor,
-  // Bitcrush, Tremolo) all live on every track kind (tonal and rhythm
-  // alike), so — unlike adsr/filter/fm above — this iterates ALL_TRACKS, not
-  // PITCH_TRACKS. Driven by TRACK_FX_REGISTRY (single source of truth also
-  // used by buildFxPanel()) rather than one hand-written block per effect.
+  // The seven FX panel effects (EQ, Compressor, Bitcrush, Tremolo, and the
+  // three sends) all live on every track kind (tonal and rhythm alike, apart
+  // from Vibrato), so — unlike adsr/filter/fm above — this iterates
+  // ALL_TRACKS, not PITCH_TRACKS. Grouped by dataKey (falls back to key)
+  // rather than key alone: the three send entries all read/write
+  // data.fxSend, and without grouping, each would independently overwrite
+  // state.fxSend[ch] with only its own one field, discarding whatever the
+  // previous entry in the group had just set. Each effect within a group
+  // keeps the original all-or-nothing-per-effect validation (one bad field
+  // drops that effect's own fields, not the group's other effects) and every
+  // field always resolves to a real number via FX_FIELD_DEFAULTS, so a
+  // corrupt or missing field can never reach a Web Audio param as
+  // `undefined`.
+  const fxGroups = new Map();
   for (const effect of TRACK_FX_REGISTRY) {
-    const src = data[effect.key];
+    const dk = effect.dataKey || effect.key;
+    if (!fxGroups.has(dk)) fxGroups.set(dk, []);
+    fxGroups.get(dk).push(effect);
+  }
+  for (const [dataKey, effects] of fxGroups) {
+    const src = data[dataKey];
     if (!src || typeof src !== 'object') continue;
     for (const ch of ALL_TRACKS) {
-      if (effect.tonalOnly && isRhythm(ch)) continue;
       const v = src[ch];
       if (!v || typeof v !== 'object') continue;
-      if (!effect.fields.every(f => f.optional || typeof v[f.param] === 'number')) continue;
       const clean = {};
-      for (const f of effect.fields) {
-        let val = typeof v[f.param] === 'number' ? v[f.param] : f.default;
-        if (f.clamp) val = Math.max(f.min, Math.min(f.max, val));
-        clean[f.param] = val;
+      for (const effect of effects) {
+        if (effect.tonalOnly && isRhythm(ch)) continue;
+        const ok = effect.fields.every((f) => f.optional || typeof v[f.param] === 'number');
+        const def = FX_FIELD_DEFAULTS[effect.key] || {};
+        for (const f of effect.fields) {
+          let val = ok && typeof v[f.param] === 'number' ? v[f.param] : (def[f.param] !== undefined ? def[f.param] : f.default);
+          if (ok && f.clamp) val = Math.max(f.min, Math.min(f.max, val));
+          clean[f.param] = val;
+        }
       }
-      state[effect.key][ch] = clean;
+      if (Object.keys(clean).length) state[dataKey][ch] = clean;
+    }
+  }
+  // activeFx: which TRACK_FX_REGISTRY entries a track's FX panel shows as
+  // insert chips, plus each one's bypass flag — see visibleFxFor(). Doesn't
+  // ride the loop above since its shape (an effect key -> { bypassed } map)
+  // doesn't match the flat "id -> {param: number}" the loop assumes.
+  if (data.activeFx && typeof data.activeFx === 'object') {
+    for (const ch of ALL_TRACKS) {
+      const src = data.activeFx[ch];
+      if (!src || typeof src !== 'object') continue;
+      const clean = {};
+      for (const effectKey of Object.keys(src)) {
+        const effect = TRACK_FX_REGISTRY.find((e) => e.key === effectKey);
+        if (!effect) continue;
+        if (effect.tonalOnly && isRhythm(ch)) continue;
+        clean[effectKey] = { bypassed: !!(src[effectKey] || {}).bypassed };
+      }
+      if (Object.keys(clean).length) state.activeFx[ch] = clean;
     }
   }
   if (data.masterEQ && typeof data.masterEQ === 'object') {
@@ -2708,15 +2749,6 @@ const dbFormat = (v) => v.toFixed(1) + 'dB';
 // be worth the indirection there; see buildChannelChain() instead.
 const TRACK_FX_REGISTRY = [
   {
-    key: 'fxSend', label: 'Sends', icon: 'send',
-    get: getFxSend, set: setFxSend, apply: applyFxSend,
-    fields: [
-      { param: 'delay', label: 'Delay', title: 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
-      { param: 'chorus', label: 'Chorus', title: 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
-      { param: 'reverb', label: 'Reverb', title: 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true, optional: true, default: 0 },
-    ],
-  },
-  {
     // Three biquads at the head of the insert chain (chanGain[track] ->
     // chanEq[track] -> chanComp[track] -> ...), so the compressor after it
     // reacts to the shaped signal. Same bands and range as the master EQ;
@@ -2766,6 +2798,38 @@ const TRACK_FX_REGISTRY = [
     ],
   },
   {
+    // The three sends below register as separate insert chips — a real mixer
+    // picks Delay/Chorus/Reverb independently — but all three still read and
+    // write one shared state.fxSend[track] object via
+    // getFxSend/setFxSend/applyFxSend (setFxSend merges, so removing one
+    // send's chip only patches its own field back to default rather than
+    // wiping the other two — see removeFxChip() in Task 2). `dataKey` names
+    // the song-JSON/state field these three share, since it no longer
+    // matches any one of their own `key`s — applySavedMix() below groups by
+    // dataKey rather than key so the three merge into one object instead of
+    // each overwriting the last, and verify.js's auditBundledSongs() groups
+    // the same way when reading this table's source text.
+    key: 'sendDelay', dataKey: 'fxSend', label: 'Delay', icon: 'send',
+    get: getFxSend, set: setFxSend, apply: applyFxSend,
+    fields: [
+      { param: 'delay', label: 'Delay', title: 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+    ],
+  },
+  {
+    key: 'sendChorus', dataKey: 'fxSend', label: 'Chorus', icon: 'send',
+    get: getFxSend, set: setFxSend, apply: applyFxSend,
+    fields: [
+      { param: 'chorus', label: 'Chorus', title: 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+    ],
+  },
+  {
+    key: 'sendReverb', dataKey: 'fxSend', label: 'Reverb', icon: 'send',
+    get: getFxSend, set: setFxSend, apply: applyFxSend,
+    fields: [
+      { param: 'reverb', label: 'Reverb', title: 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true, optional: true, default: 0 },
+    ],
+  },
+  {
     // The pitch counterpart of the tremolo above, and the one entry in this
     // table that is *not* an insert: an LFO on the channel's gain can shape an
     // already-summed signal, but bending its pitch cannot be done downstream —
@@ -2785,6 +2849,43 @@ const TRACK_FX_REGISTRY = [
 // vibrato that can never sound, and a saved file could park state on a track
 // that has no use for it.
 const trackFxFor = (track) => TRACK_FX_REGISTRY.filter(e => !e.tonalOnly || !isRhythm(track));
+// Per-registry-key defaults for exactly that entry's own fields. Used both
+// to decide whether a chip is "at default" (see isEffectDefault below) and,
+// in Task 2, to reset one chip's fields via effect.set() — which merges, so
+// patching sendDelay's one field back to default can't disturb sendChorus/
+// sendReverb on the same shared state.fxSend[track] object the way deleting
+// the whole object would.
+const FX_FIELD_DEFAULTS = {
+  eq: DEFAULT_TRACK_EQ,
+  comp: DEFAULT_TRACK_COMP,
+  crush: DEFAULT_TRACK_CRUSH,
+  tremolo: DEFAULT_TREMOLO,
+  vibrato: DEFAULT_VIBRATO,
+  sendDelay: { delay: DEFAULT_FX_SEND.delay },
+  sendChorus: { chorus: DEFAULT_FX_SEND.chorus },
+  sendReverb: { reverb: DEFAULT_FX_SEND.reverb },
+};
+// Field-by-field comparison against FX_FIELD_DEFAULTS — not simply "is
+// state[key][track] present", since set() can leave an object sitting at
+// literal defaults (e.g. a knob dragged back down to 0) without deleting it.
+function isEffectDefault(track, effect) {
+  const v = effect.get(track) || {};
+  const d = FX_FIELD_DEFAULTS[effect.key] || {};
+  return effect.fields.every((f) => v[f.param] === d[f.param]);
+}
+// Which chips a track's FX panel shows: explicitly added (state.activeFx),
+// or already holding a non-default value. The second clause is what makes an
+// older song's saved EQ/Comp/sends — no activeFx entry, since the field
+// didn't exist when it was saved — show its real chips on load instead of
+// looking empty while still audibly applying (get()/apply() never consulted
+// activeFx at all, only isFxBypassed() below does).
+function visibleFxFor(track) {
+  return trackFxFor(track).filter((effect) =>
+    (state.activeFx[track] && effect.key in state.activeFx[track]) || !isEffectDefault(track, effect));
+}
+function isFxBypassed(track, key) {
+  return !!(state.activeFx[track] && state.activeFx[track][key] && state.activeFx[track][key].bypassed);
+}
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
