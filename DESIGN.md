@@ -412,12 +412,14 @@ and three buttons: **▶** auditions the groove bar, **▶ fill** the fill bar,
 song, replacing whatever was there.
 
 Above the list, one **Fill every** dropdown (`FILL_EVERY_CHOICES`: never /
-2 / 4 / 8 bars, default 4) sets the phrase length for the insert. It is a
-single control rather than a per-row one because it is a property of *this
-insert*, not of a groove — every pattern has a fill, and which one you pick
-does not change how long a phrase should be.
+2 / 4 / 8 bars, default 4) sets the phrase length for the insert, and a
+**Spread the kit in stereo** checkbox (default on, remembered per browser)
+decides whether the insert applies `KIT_PAN`. Both are single controls
+rather than per-row ones because they are properties of *this insert*, not
+of a groove — every pattern has a fill, and a hi-hat sits where a hi-hat
+sits regardless of which groove is playing it.
 
-Two things carry the musical weight here, both data rather than code:
+Three things carry the musical weight here, all data rather than code:
 
 - **Velocity.** Every hit in every pattern is authored with an intended
   strength — backbeat and kick full, hats accented on the beat and ghosted
@@ -433,6 +435,18 @@ Two things carry the musical weight here, both data rather than code:
   a crash — that is what a fill is for, and leaving the crash out makes it
   sound like a mistake rather than a lead-in. The crash goes in through
   `hitsConflict()`, since Breakbeat already crashes on its own downbeat.
+- **Stereo position.** `KIT_PAN` gives each of the ten pieces a place in
+  the field, applied on insert: kick and snare hold the centre because they
+  carry the pulse, hi-hat and ride open to the right, shaker, toms and
+  crash to the left. It is one table keyed on the *drum*, not a `pan` on
+  every hit of every pattern — a hi-hat is off to one side in every groove
+  that has one, so per-hit values would be twelve patterns' worth of the
+  same numbers to keep in step. A pattern's own hit can still override it.
+  `patternPan()` is the single resolver, so the dialog's ▶ preview and
+  **Insert** cannot disagree about where a piece sits; like velocity it
+  writes nothing at centre, so a centred kit serialises exactly as before.
+  The amounts are deliberately modest — a kit in a room, not a ping-pong
+  effect.
 
 Phrases are counted from the bar the insert starts on, not from bar 1 of
 the song, so the phrasing lines up with wherever the playhead was left.
@@ -499,10 +513,12 @@ by default — these are the deliberate additions:
   nudge, so nothing already in muscle memory changed. Notes use a **roving
   tabindex** — only the selected one is a tab stop — so Tab reaches the grid
   without walking through hundreds of blocks.
-- **Keyboard note entry**: arming a track (**R**) turns the letter keys into
-  step entry (A.16) — notes at the playhead, arrows to move the cursor,
-  `Backspace` to clear the last step, each spoken through the same live
-  region. This is the one piece that makes *composing* possible without a
+- **Keyboard note entry and a grid cursor**: arming a track (**R**) turns the
+  letter keys into step entry (A.16) — notes at the playhead, `←`/`→` through
+  time, `↑`/`↓` between tracks, `Home`/`End` to the ends, `Backspace` to
+  clear the last step. Every move is spoken through the same live region with
+  the position **and** the contents, so the grid can be surveyed as well as
+  written to. This is the piece that makes *composing* possible without a
   pointer rather than only editing what a pointer already placed.
 - **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
   5.32:1. Body and muted text already passed AA.
@@ -512,14 +528,14 @@ by default — these are the deliberate additions:
   row, so no information is available *only* as a picture.
 
 Solved since: notes can now be **created** from the keyboard as well as
-reached and edited. Arm a track with its **R** button and the letter keys
-place notes at the playhead a step at a time, with the arrows moving the
-cursor and `Backspace` clearing the last step, each announced as it lands
-(A.16 — step entry, deliberately separate from the real-time take, which
-needs both hands and a sense of timing and so is not on its own an answer
-here). What is still missing is a spatial model of the grid for a screen
-reader: you compose forwards along the timeline rather than navigating it
-freely.
+reached and edited, and the grid has a cursor that can be moved around it
+rather than only stepped between the items that already exist. Arm a track
+with its **R** button and the letter keys place notes a step at a time,
+`←`/`→` move through time, `↑`/`↓` between tracks, `Home`/`End` to the
+start of the song or the end of this track's part — and every move is
+spoken with the position *and* what is already there (A.16 — step entry,
+deliberately separate from the real-time take, which needs both hands and
+a sense of timing and so is not on its own an answer here).
 
 ### A.14 Icon glyphs
 
@@ -632,10 +648,20 @@ selection uses (A.13).
   per key would spell a chord out as an arpeggio.
 - **A stepped note commits on key down** with a fixed one-step length: with
   no clock running, how long you lean on a key can't mean anything.
-- **The arrows move the cursor** — `→` leaves a rest, `←` goes back — and
-  **`Backspace`** steps back and clears that step, leaving the cursor there
-  so the next key fills the gap. All three shadow the selection nudge and
-  delete, which is the same trade the letter keys already make.
+- **The arrows move the cursor in both dimensions** — `←`/`→` through time
+  (`→` leaves a rest), `↑`/`↓` from track to track (the arm moves with it,
+  since there is only one) — with `Home`/`End` jumping to the start of the
+  song or to **one step past this track's last item**, which is where you
+  would carry on writing rather than the end of the song. **`Backspace`**
+  steps back and clears that step, leaving the cursor there so the next key
+  fills the gap. All of these shadow the selection nudge, jump and delete,
+  which is the same trade the letter keys already make.
+- **Every move reports what it lands on**, not only where it is
+  (`stepContentsLabel()`/`announceStep()`): "bar 2 beat 3, C4, E4", or
+  "empty". A cursor that only says where it is tells you how far you have
+  walked but nothing about what you walked over — which is the difference
+  between navigating a part and counting bars in the dark. Chords read low
+  to high so the order is stable, and moving to another track names it.
 - **Only when nothing is rolling.** Plain Play with a track armed means
   "listen", not "type into the song"; only Record captures.
 
@@ -1003,16 +1029,27 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   field with it. At centre no panner is built at all — the same "no node when
   neutral" contract a full-velocity drum hit keeps, so a song that never
   touched pan builds the graph it always did.
-  **Voice pooling** (`acquireVoice()`, `VOICE_POOL_SIZE = 16` per channel) was
-  meant to reuse a fixed pool of filter+gain+echoSend+reverbSend node sets
-  across notes instead of building fresh ones each time, with bitcrushed notes
-  excluded (their `WaveShaperNode.curve` can't be safely reused for a
-  future-scheduled note) and panned ones too (a pooled voice is wired to the
-  destination once, so it has nowhere to put a panner). **It is currently
-  switched off** by an early `return null` left in `acquireVoice()` — a debug
-  line, not a decision — so every note allocates its own nodes. See TODO.md:
-  re-enabling needs its own testing, since none of that bookkeeping has run in
-  a long time.
+  **Voice pooling** (`acquireVoice()`/`voiceGainFor()`, `VOICE_POOL_SIZE = 16`
+  per channel) reuses a fixed pool of filter+gain+echoSend+reverbSend node sets
+  across notes instead of building fresh ones each time — 24 filters carried
+  117 notes of the demo song's first lookahead window, against 108 unpooled.
+  Bitcrushed notes are excluded (their `WaveShaperNode.curve` is a plain
+  property, not an `AudioParam`, so it can't be scheduled for a future note
+  without retroactively corrupting whichever earlier note is still playing
+  through that node) and panned ones too (a pooled voice is wired to the
+  destination once, so it has nowhere to put a panner); both fall back to an
+  ad-hoc gain+filter pair, as does an exhausted pool.
+  A voice frees up at `startAt + dur + VOICE_RELEASE_PAD`, **not** at
+  `startAt + dur`. `envelopeTimes()` ends the release exactly at `startAt +
+  dur`, so reusing at that instant makes `voiceGainFor()`'s
+  `cancelScheduledValues(startAt)` land on the release ramp's own end event and
+  delete it — the gain then jumps from the sustain level straight to silence
+  instead of ramping there, which is a click on every pair of back-to-back
+  notes. The pad costs at most a voice or two per channel.
+  `resetAudioCaches()` clears `voicePools` whenever the context is torn down or
+  swapped, which is what keeps an offline render (a different `AudioContext`,
+  and its nodes cannot be mixed with a live one's) from ever seeing a live
+  context's voices or vice versa.
 - **Per-track insert chain** (`chanGain[id] → chanEq[id] → chanComp[id] → chanCrush[id]? →
   chanTremolo[id]`, built by `buildChannelChain()`): a `DynamicsCompressorNode`
   (`createChanComp()`), an optional bitcrush `AudioWorkletNode` reusing the

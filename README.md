@@ -39,14 +39,18 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - **Step entry** — with a track armed and the transport *stopped*, the same
   keys write a note at the playhead and move it on one step, so you can type
   a part out at your own pace. Keys held together land as a chord on one
-  column; `→` leaves a rest, `Backspace` steps back and clears. Every step is
-  announced, so this is also how you compose without a mouse at all
+  column; `←`/`→` move through time, `↑`/`↓` between tracks, `Home`/`End` to
+  the ends, `Backspace` steps back and clears. Every move is announced with
+  the position *and* what's already there, so this is also how you compose —
+  and read a song back — without a mouse at all
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
   Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap) you can audition and
   stamp into a rhythm track. Every hit lands with its own velocity, so the
   groove has accents rather than a flat machine pulse, and each pattern
   carries a **fill** bar used on the last bar of every phrase (2, 4 or 8
-  bars, or off), with a crash on the downbeat after it
+  bars, or off), with a crash on the downbeat after it. The kit is spread
+  across the stereo field on insert — hi-hat and ride right, shaker, toms
+  and crash left, kick and snare centred — which you can switch off
 
 ### Sound design
 
@@ -95,17 +99,17 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 Most of the original audio-engine roadmap is now built — wavetable
 synthesis, FM, a per-track resonant filter, aux sends for reverb/delay,
-custom DSP via `AudioWorklet`, spectrum + LUFS metering, parallel compression
-and sidechain ducking all ship today. (Voice pooling is written but currently
-switched off — see `TODO.md`.)
+custom DSP via `AudioWorklet`, spectrum + LUFS metering, parallel compression,
+sidechain ducking and voice pooling all ship today.
 
 Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Accessibility** — the grid is labelled and keyboard-navigable and notes
-  can now be *created* from the keyboard (step entry); what's still missing
-  is a spatial model of the grid for a screen reader
+- **Accessibility** — the grid is labelled, keyboard-navigable in both
+  directions and notes can be *created* from the keyboard (step entry); what
+  the remaining gaps are is now a question for someone who uses a screen
+  reader daily rather than something to guess at
 
 ## Run it locally
 

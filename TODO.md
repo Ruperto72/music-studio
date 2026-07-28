@@ -882,20 +882,37 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   identisk graf. Kontrollerat: en träff med pan 0.6 och orörd velocity sparas
   som `{"start":6,"type":"kick","pan":0.6}`, alltså utan `vel`.
   Det här är den funktion som märks mest av de tre senaste: ett kit där allt
-  sitter mitt i är det man oftast vill sprida. Mallarna i `RHYTHM_PATTERNS`
-  panorerar dock fortfarande ingenting — de kunde göra det (hi-hat åt sidan,
-  tomtrummor spridda) och det vore en ren tabelländring, men det är eget
-  arbete och något man vill höra innan det går in.
-- [ ] **Voice pooling är avstängt av en kvarglömd debugrad.** `acquireVoice()`
-  börjar med `return null; // TEST: pooling disabled`, så hela poolen är död
-  kod och varje not allokerar egna noder. Hittat under pan-arbetet, eftersom
-  pan måste veta om en not kan använda en poolad röst. `DESIGN.md` och
-  `README.md` påstod bägge att pooling *fanns*; det är rättat nu, men själva
-  återinkopplingen är eget arbete: `busyUntil`-bokföringen och
-  `cancelScheduledValues`-vägarna har inte körts på länge, och de behöver egen
-  testning. (Panorerade noter måste stå utanför poolen precis som
-  bitcrushade — en poolad röst kopplas till destinationen en gång och har
-  ingenstans att lägga en panner. Det villkoret ligger redan på plats.)
+  sitter mitt i är det man oftast vill sprida.
+- [x] **Mallarna panorerar kittet vid insättning.** `KIT_PAN` ger var och en
+  av de tio delarna en plats i fältet — bas och virvel håller mitten
+  eftersom de bär pulsen, hi-hat och ride öppnar åt höger, shaker, pukor och
+  crash åt vänster. Medvetet *en tabell keyad på trumman*, inte ett `pan` på
+  varje träff i varje mall: en hi-hat sitter åt sidan i varenda groove som
+  har en, så per-träff-värden hade blivit tolv mallars kopior av samma
+  siffror att hålla i takt. En mall får ändå skriva över med eget `pan` på
+  en träff. `patternPan()` är enda stället det avgörs, så dialogens
+  ▶-förhandslyssning och Insert inte kan säga emot varandra — förhandsvisningen
+  läste tidigare `hitPan()` på den *författade* träffen, som inte har någon
+  pan förrän tabellen applicerats. Kryssrutan "Spread the kit in stereo"
+  (på som standard, kommas ihåg per webbläsare) stänger av det helt; av läggs
+  allt rakt i mitten precis som förut. Inget skrivs vid centrum, så ett
+  centrerat kit serialiseras exakt som tidigare. Måtten är avsiktligt
+  återhållsamma — ett kit i ett rum, inte en pingpongeffekt.
+- [x] **Voice pooling var avstängt av en kvarglömd debugrad** — `acquireVoice()`
+  började med `return null; // TEST: pooling disabled`, så hela poolen var död
+  kod och varje not allokerade egna noder. Hittat under pan-arbetet, eftersom
+  pan måste veta om en not kan använda en poolad röst. Nu återinkopplad, med
+  en riktig bugg åtgärdad på vägen: en röst frigavs vid `startAt + dur`, men
+  `envelopeTimes()` lägger release-rampens *slut* exakt där, så
+  `voiceGainFor()`:s `cancelScheduledValues(startAt)` råkade radera just den
+  rampen och gainet hoppade från sustain rakt till tystnad istället för att
+  rampa dit — ett klick vid varje par av noter som ligger kant i kant. Löst
+  med `VOICE_RELEASE_PAD` (5 ms), vilket kostar på sin höjd en röst eller två
+  per kanal. Mätt: 24 filter bar 117 noter i demolåtens första
+  lookahead-fönster, mot 108 opoolat. Verifierat med ett eget steg i
+  `verify.js` som mäter själva invarianten (flera notkällor kopplade till
+  *samma* `BiquadFilterNode`) och inte en nodräkning — opoolat är förhållandet
+  exakt 1:1, så testet kan inte passera av misstag.
 - [x] **Neon Cathedral hade 2,6 dB mindre nivå än de andra exempellåtarna.**
   −3,54 dBFS mot ~−1 för resten. Jag hade skrivit att det var icke-linjärt att
   höja eftersom låtens egen kompressor äter påslaget — mätningen visar att det
@@ -1520,10 +1537,18 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   Dessutom: panelrubrikerna låg på 3.23:1 kontrast (under AA) och är nu
   5.32:1. Brödtext och dämpad text klarade redan AA.
 - [x] **Skapa noter från tangentbordet** — löst: armera ett spår med **R** och
-  skriv in noter med steginmatning (se "Interaktion / touch"), med pilarna
-  som markör och `Backspace` som radering, allt uppläst. Det som återstår är
-  en *rumslig* modell av griden för skärmläsare — man komponerar framåt längs
-  tidslinjen istället för att navigera den fritt.
+  skriv in noter med steginmatning (se "Interaktion / touch"), allt uppläst.
+- [x] **Rumslig modell av griden** — markören rör sig nu i bägge riktningar:
+  `←`/`→` genom tiden, `↑`/`↓` mellan spåren (armeringen följer med, det
+  finns bara en), `Home`/`End` till låtens början respektive *ett steg efter
+  spårets sista objekt* — dit man skulle skriva vidare, inte till låtens
+  slut. Och det som faktiskt saknades: **varje förflyttning läser upp vad
+  markören landar på**, inte bara var den är (`stepContentsLabel()`/
+  `announceStep()` — "bar 2 beat 3, C4, E4" eller "empty", ackord låga till
+  höga). En markör som bara säger var den är berättar hur långt man gått men
+  ingenting om vad man gått förbi; det är skillnaden mellan att navigera en
+  stämma och att räkna takter i mörker. Därmed går griden att *läsa* utan
+  pekdon, inte bara skriva till.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 

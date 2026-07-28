@@ -1358,6 +1358,45 @@ async function main() {
         throw new Error(`with fills off every bar should be identical, got ${flatKeys.size} distinct bars`);
       }
       if (flat.labels.some((l) => /^Crash/.test(l))) throw new Error('fills off should insert no crashes');
+
+      // The kit is spread across the stereo field on insert (KIT_PAN), so a
+      // stamped pattern is a kit in a room rather than ten sounds in one spot.
+      // Read off the labels again: hitAriaLabel() names the pan, so a hit
+      // placed off-centre without being announced would fail here too.
+      const panOf = (labels, drum) => labels
+        .filter((l) => l.startsWith(drum + ','))
+        .map((l) => (l.match(/pan (L|R|C)(\d*)/) || [])[0] || 'centre');
+      const spreadHats = new Set(panOf(flat.labels, 'Hi-hat'));
+      if (spreadHats.size !== 1 || !/^pan R/.test([...spreadHats][0])) {
+        throw new Error(`hi-hats should all sit right of centre, got ${JSON.stringify([...spreadHats])}`);
+      }
+      // Kick and snare hold the middle: they carry the pulse, and a song that
+      // never touches pan must still serialise without the property at all.
+      for (const drum of ['Kick', 'Snare']) {
+        const p = new Set(panOf(flat.labels, drum));
+        if (p.size !== 1 || [...p][0] !== 'centre') {
+          throw new Error(`${drum} should stay centred, got ${JSON.stringify([...p])}`);
+        }
+      }
+      // Two pieces on opposite sides, so this can't pass with everything nudged
+      // one way — the shaker is left where the hi-hat is right.
+      const shaker = new Set(panOf(flat.labels, 'Shaker'));
+      if (shaker.size && !/^pan L/.test([...shaker][0])) {
+        throw new Error(`the shaker should sit left of centre, got ${JSON.stringify([...shaker])}`);
+      }
+
+      // And the toggle really turns it off — same pattern, everything centred.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const c = document.getElementById('pattern-spread');
+        c.checked = false;
+        c.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      const centred = await insertAndRead('Rock');
+      if (centred.labels.some((l) => /pan /.test(l))) {
+        throw new Error(`with the spread off nothing should be panned, got ${JSON.stringify(centred.labels.filter((l) => /pan /.test(l)))}`);
+      }
     });
 
     // The autosave draft is currentSongData()'s own payload, so reading it back
@@ -1807,6 +1846,59 @@ async function main() {
         throw new Error(`Backspace should leave the cursor on the step it cleared, got ${JSON.stringify(notes)}`);
       }
 
+      // The cursor is a way of reading the grid, not only of writing it: every
+      // move reports the position *and* what is already there. Without that a
+      // screen-reader user can count bars but never find out what is in them.
+      await cdp.evaluate(`document.getElementById('rtz').click()`);
+      await new Promise((r) => setTimeout(r, 100));
+      await key('ArrowRight', 'keydown');   // onto column 1 — D4 from the taps above
+      await new Promise((r) => setTimeout(r, 150));
+      let heard = await spoken();
+      if (!/bar 1/.test(heard) || !/D4/.test(heard)) {
+        throw new Error(`the cursor should read out what it lands on, heard "${heard}"`);
+      }
+      await key('ArrowRight', 'keydown');
+      await key('ArrowRight', 'keydown');   // onto column 3 — the chord
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/C4, E4, G4/.test(heard)) throw new Error(`a chord should be read low to high, heard "${heard}"`);
+      await key('ArrowRight', 'keydown');
+      await key('ArrowRight', 'keydown');   // column 5 was left as a rest
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/empty/.test(heard)) throw new Error(`an empty step should say so, heard "${heard}"`);
+
+      // End goes to where the part ends — one step past its last note — which
+      // is where you would carry on writing, not to the end of the song.
+      await key('End', 'keydown');
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/bar 1 beat 4/.test(heard) || !/empty/.test(heard)) {
+        throw new Error(`End should land one step past the last note, heard "${heard}"`);
+      }
+      await key('Home', 'keydown');
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/bar 1 beat 1/.test(heard) || !/C4/.test(heard)) {
+        throw new Error(`Home should return to the first step, heard "${heard}"`);
+      }
+
+      // The grid's other dimension: down moves the arm to the next track and
+      // says what is under the cursor there.
+      await key('ArrowDown', 'keydown');
+      await new Promise((r) => setTimeout(r, 250));
+      heard = await spoken();
+      if (!/^Pad,/.test(heard) || !/empty/.test(heard)) {
+        throw new Error(`down should move to the next track and read it, heard "${heard}"`);
+      }
+      if (await cdp.evaluate(`[...document.querySelectorAll('.track')].findIndex(t => t.querySelector('.th-btns button.r.on')) < 0`)) {
+        throw new Error('moving between tracks should keep exactly one armed');
+      }
+      await key('ArrowUp', 'keydown');
+      await new Promise((r) => setTimeout(r, 250));
+      heard = await spoken();
+      if (!/^Bass,/.test(heard)) throw new Error(`up should move back to the previous track, heard "${heard}"`);
+
       // Drums step in the same way, from the same row of keys.
       await cdp.evaluate(`document.getElementById('rtz').click()`);
       await arm('Rhythm');
@@ -1825,6 +1917,58 @@ async function main() {
       // those two taps reached the kit and nothing else.
       if ((await items('Bass')).length !== before) {
         throw new Error('arming a second track should move the arm, not add to it');
+      }
+    });
+
+    step('Voice pooling: notes share filter+gain nodes instead of one pair each', async () => {
+      // Pooling shipped, then sat switched off behind a leftover `return null`
+      // for long enough that both README and DESIGN had drifted into claiming
+      // something the build didn't do. What is asserted here is the invariant
+      // itself rather than a node count: several note sources connect into the
+      // *same* BiquadFilterNode. Unpooled that ratio is exactly 1:1, so this
+      // cannot pass by accident.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__pool = { conns: 0, ids: [] };
+            let nextId = 1;
+            const make = BaseAudioContext.prototype.createBiquadFilter;
+            BaseAudioContext.prototype.createBiquadFilter = function (...a) {
+              const n = make.apply(this, a);
+              n.__poolId = nextId++;
+              return n;
+            };
+            const connect = AudioNode.prototype.connect;
+            AudioNode.prototype.connect = function (dest, ...rest) {
+              // Only a note's own voice source feeds a biquad directly: the
+              // channel chain's EQ is fed from a GainNode, and the vibrato/
+              // tremolo/FM LFOs connect to AudioParams, not nodes.
+              if (dest instanceof BiquadFilterNode
+                  && (this instanceof OscillatorNode || this instanceof AudioBufferSourceNode)) {
+                window.__pool.conns++;
+                window.__pool.ids.push(dest.__poolId);
+              }
+              return connect.call(this, dest, ...rest);
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      await loadExample('Froggy Hop');
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 2500));
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+
+      const pool = await cdp.evaluate(`({ conns: window.__pool.conns, distinct: new Set(window.__pool.ids).size })`);
+      if (pool.conns < 20) {
+        throw new Error(`too few notes scheduled to say anything about pooling: ${JSON.stringify(pool)}`);
+      }
+      // Unpooled this is 1:1. Pooled, a channel's handful of voices carry the
+      // whole part, so the margin is large — but assert a modest one, since the
+      // exact ratio depends on how much of the song the lookahead reached.
+      if (pool.distinct * 2 > pool.conns) {
+        throw new Error(`notes should share pooled filters, got ${pool.distinct} filters for ${pool.conns} notes`);
       }
     });
 

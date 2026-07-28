@@ -811,7 +811,7 @@
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="sparkle"></span><b>FX</b> button (every track, rhythm included) expands that track's own header (left column) with continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> send knobs — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a per-track <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Crush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
-        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, so you can hear both before inserting. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
+        <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
       </ul>
@@ -824,7 +824,7 @@
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
-        <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, and <kbd>Backspace</kbd> steps back and clears what's there. Everything is spoken as it lands, so this is also how you compose without a mouse at all.</li>
+        <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
 
@@ -912,7 +912,9 @@
         <span><kbd>Z</kbd> <kbd>S</kbd> <kbd>X</kbd> <kbd>D</kbd> …</span><span>Play the armed track — lower octave (black keys on the row above)</span>
         <span><kbd>Q</kbd> <kbd>2</kbd> <kbd>W</kbd> <kbd>3</kbd> …</span><span>Play the armed track — an octave up</span>
         <span><kbd>[</kbd> <kbd>]</kbd></span><span>Octave down / up</span>
-        <span><kbd>←</kbd> <kbd>→</kbd></span><span>Step entry (armed, stopped): move the playhead back / on a grid step</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>Step entry (armed, stopped): move the cursor back / on a grid step</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>Step entry (armed, stopped): move to the track above / below</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd></span><span>Step entry (armed, stopped): start of the song / end of this track's part</span>
         <span><kbd>Backspace</kbd></span><span>Step entry (armed, stopped): step back and clear that step</span>
         <span><kbd>Esc</kbd></span><span>Deselect (or close this dialog)</span>
       </div>
@@ -927,8 +929,10 @@
       </p>
       <p>
         To <i>write</i> notes rather than only edit the ones that exist, arm a track with its <b>R</b> button
-        and use step entry (above): the letter keys place notes at the playhead with the transport stopped,
-        <b>←</b>/<b>→</b> move the playhead and <b>Backspace</b> clears the last step, each spoken as it happens.
+        and use step entry (above). That also gives you a cursor you can move around the grid in both
+        directions — <b>←</b>/<b>→</b> through time, <b>↑</b>/<b>↓</b> from track to track, <b>Home</b>/<b>End</b>
+        to the start of the song or the end of this track's part — and every move is spoken with the position
+        <i>and</i> what is already there, so you can survey a song you can't see.
       </p>
     </div>
   </dialog>
@@ -990,6 +994,11 @@
       <label class="pattern-opt" for="pattern-fill-every">Fill every
         <select id="pattern-fill-every" title="How often a pattern's fill bar replaces its groove bar"></select>
         <span class="pattern-opt-note">— the last bar of each phrase uses the pattern's fill, and the next bar opens with a crash.</span>
+      </label>
+      <label class="pattern-opt" for="pattern-spread">
+        <input type="checkbox" id="pattern-spread" checked>
+        Spread the kit in stereo
+        <span class="pattern-opt-note">— hi-hat and ride to the right, shaker, toms and crash to the left; kick and snare stay centred. Off inserts everything dead centre.</span>
       </label>
       <div id="pattern-list" class="song-list"></div>
     </div>
@@ -4314,7 +4323,10 @@ function previewPattern(pattern, which = 'hits') {
     const startAt = ctx.currentTime + 0.05;
     const scale = eighthsPerBar() / 8; // patterns are authored at 8 eighths/bar (4/4)
     for (const h of bar) {
-      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), hitPan(h));
+      // patternPan(), not hitPan(): the preview has to be what Insert will
+      // give you, and an authored hit carries no pan of its own until the kit
+      // table has been applied to it.
+      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), patternPan(h));
     }
   } catch { /* audio unavailable */ }
 }
@@ -4323,9 +4335,41 @@ function previewPattern(pattern, which = 'hits') {
 // inspector deletes the property rather than writing `vel: 1` — so a groove
 // whose hits are all full-strength serialises exactly as it did before
 // patterns had velocities at all.
+// Where each kit piece sits in the stereo field when a pattern is stamped in.
+// One table rather than a `pan` on every hit of every pattern: the position is
+// a property of the *instrument*, not of the groove — a hi-hat is off to one
+// side in every pattern that has one — so repeating it per hit would be twelve
+// patterns' worth of the same numbers to keep in step.
+//
+// Audience perspective (the usual convention for a mixed kit): kick and snare
+// hold the centre because they carry the pulse, and everything else opens out
+// around them. Modest amounts — this is a kit in a room, not a ping-pong
+// effect — and only the pieces where a real kit is genuinely off-centre.
+const KIT_PAN = {
+  kick: 0, snare: 0, clap: 0.18, rim: -0.2,
+  hihat: 0.35, openhat: 0.35, shaker: -0.32,
+  tom: -0.28, crash: -0.45, ride: 0.45,
+};
+// Off means a pattern stamps dead centre, exactly as it did before this table
+// existed. Remembered per browser like the other editor preferences, since it
+// is a way of working rather than something about the song.
+const PATTERN_SPREAD_KEY = 'music-studio-pattern-spread';
+let patternSpread = true;
+try { patternSpread = localStorage.getItem(PATTERN_SPREAD_KEY) !== '0'; } catch { /* ignore */ }
+// A pattern's own hit can override the kit position; absent means take the
+// table's. One resolver, so the dialog's preview and Insert cannot disagree
+// about where a piece sits.
+function patternPan(h) {
+  if (h.pan != null) return h.pan;
+  return patternSpread ? (KIT_PAN[h.type] || 0) : 0;
+}
 function patternHitAt(h, barCol, scale) {
   const hit = { start: quant(barCol + h.start * scale), type: h.type };
   if (h.vel != null && h.vel < 1) hit.vel = h.vel;
+  // Nothing is written at centre — `pan` absent means centred everywhere else
+  // too (hitPan()), so a centred kit serialises exactly as it did before.
+  const pan = patternPan(h);
+  if (pan) hit.pan = round2(pan);
   return hit;
 }
 // Tiles a built-in RHYTHM_PATTERNS entry from the playhead's bar through the
@@ -4360,7 +4404,9 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
       // hitsConflict rather than a hand-written comparison: Breakbeat already
       // crashes on its own downbeat, and stacking a second one there would be
       // two crashes in the same column of the same row.
-      const crash = { start: quant(barCol), type: 'crash' };
+      // Through patternHitAt() like every other hit, so the crash lands in the
+      // same place in the stereo field as the pattern's own crashes.
+      const crash = patternHitAt({ start: 0, type: 'crash' }, barCol, scale);
       if (crash.start < COLS && !barHits.some(h => hitsConflict(h, crash))) barHits.push(crash);
     }
     newHits.push(...barHits);
@@ -5142,9 +5188,20 @@ window.addEventListener('keydown', (e) => {
     if (stepEntryActive()) {
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
-        const col = quant(state.playhead + (e.code === 'ArrowRight' ? state.grid : -state.grid));
-        setStepPlayhead(col);
-        announce(colToBarBeat(Math.max(0, Math.min(COLS - state.grid, col))));
+        setStepPlayhead(quant(state.playhead + (e.code === 'ArrowRight' ? state.grid : -state.grid)));
+        announceStep(state.recTrack, state.playhead);
+        return;
+      }
+      // The grid's other dimension: up/down walk the track list.
+      if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        if (!e.repeat) stepTrack(e.code === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      if (e.code === 'Home' || e.code === 'End') {
+        e.preventDefault();
+        setStepPlayhead(e.code === 'Home' ? 0 : stepEnd(state.recTrack));
+        announceStep(state.recTrack, state.playhead);
         return;
       }
       // Auto-repeat is deliberately allowed here: holding Backspace walking
@@ -6111,6 +6168,12 @@ for (const bars of FILL_EVERY_CHOICES) {
 }
 patternFillSelect.value = String(patternFillEvery);
 patternFillSelect.addEventListener('change', () => { patternFillEvery = Number(patternFillSelect.value); });
+const patternSpreadChk = document.getElementById('pattern-spread');
+patternSpreadChk.checked = patternSpread;
+patternSpreadChk.addEventListener('change', () => {
+  patternSpread = patternSpreadChk.checked;
+  try { localStorage.setItem(PATTERN_SPREAD_KEY, patternSpread ? '1' : '0'); } catch { /* ignore */ }
+});
 function renderPatternList() {
   patternListEl.innerHTML = '';
   for (const pattern of RHYTHM_PATTERNS) {
@@ -6868,14 +6931,15 @@ function ensureReverb(destGain) {
 // crushed notes get their own ad-hoc WaveShaperNode instead, as before.
 const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
 const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, reverbSend, busyUntil }]
+// A voice is only handed out again once the previous note's envelope has
+// finished *and* a little more. envelopeTimes() ends its release exactly at
+// startAt + dur, so reusing at that instant means voiceGainFor()'s
+// cancelScheduledValues(startAt) lands on the release ramp's own end event and
+// deletes it — the gain would jump from the sustain level straight to silence
+// instead of ramping there, which is a click on every pair of back-to-back
+// notes. The pad costs at most a voice or two per channel.
+const VOICE_RELEASE_PAD = 0.005;
 function acquireVoice(destGain, startAt) {
-  // NOTE: voice pooling is switched off by this early return — a leftover
-  // debug line, not a decision. Everything below is unreachable, so every note
-  // allocates its own filter+gain. DESIGN.md and README.md both still claim
-  // pooling ships; see TODO.md for the re-enable, which needs its own testing
-  // (the busyUntil bookkeeping and cancelScheduledValues paths have not run in
-  // a long time).
-  return null; // TEST: pooling disabled
   let pool = voicePools.get(destGain);
   if (!pool) { pool = []; voicePools.set(destGain, pool); }
   for (const v of pool) if (v.busyUntil <= startAt) return v;
@@ -7052,9 +7116,7 @@ const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
 function voiceGainFor(note, destGain, startAt, dur) {
   // A pooled voice is wired to destGain once, when it is built, so it has
   // nowhere to put a per-note panner — same reason a bitcrushed note can't use
-  // one. Pooling is currently disabled outright inside acquireVoice() (see the
-  // note there), but this keeps the two facts independent: turning it back on
-  // must not silently drop pan.
+  // one. Both opt out here and get an ad-hoc gain+filter pair instead.
   if (!note.crush && !notePan(note)) {
     const voice = acquireVoice(destGain, startAt);
     if (voice) {
@@ -7063,7 +7125,7 @@ function voiceGainFor(note, destGain, startAt, dur) {
       voice.echoSend.gain.setValueAtTime(note.echo ? 1 : 0, startAt);
       voice.reverbSend.gain.cancelScheduledValues(startAt);
       voice.reverbSend.gain.setValueAtTime(note.reverb ? 1 : 0, startAt);
-      voice.busyUntil = startAt + dur;
+      voice.busyUntil = startAt + dur + VOICE_RELEASE_PAD;
       return { gain: voice.gain, filter: voice.filter, pooled: true };
     }
   }
@@ -7795,6 +7857,49 @@ function endStepIfDone() {
   setStepPlayhead(stepAnchor + state.grid);
   stepAnchor = null;
 }
+// What is already on this track at the cursor's step, named the way the grid
+// names it. A cursor that only reports where it is tells you how far you have
+// walked but nothing about what you walked over — which is the difference
+// between navigating a part and counting bars in the dark. Sorted low to high
+// so a chord is always read out in the same order.
+function stepContentsLabel(track, col) {
+  const here = (state.tracks[track] || []).filter(it => it.start > col - EPS && it.start < col + state.grid - EPS);
+  if (!here.length) return 'empty';
+  return isRhythm(track)
+    ? here.map(h => RHYTHM_LABELS[h.type] || h.type).sort().join(', ')
+    : here.slice().sort((a, b) => a.freq - b.freq).map(n => midiToName(freqToMidi(n.freq))).join(', ');
+}
+function announceStep(track, col, prefix = '') {
+  announce(`${prefix}${colToBarBeat(col)}, ${stepContentsLabel(track, col)}`);
+}
+// Up/down move the arm to the neighbouring track. Time is one dimension of
+// this grid and the track list is the other, so without this the keyboard can
+// only ever reach the lane a pointer last left it on. Announces the new
+// track's name *and* what sits under the cursor there, since moving lane
+// without moving in time is exactly when you want to know what is already
+// stacked at this moment.
+function stepTrack(dir) {
+  const ids = state.trackList.map(t => t.id);
+  const at = ids.indexOf(state.recTrack);
+  const next = ids[at + dir];
+  if (!next) { announce(dir > 0 ? 'Last track' : 'First track'); return; }
+  setRecTrack(next);
+  const col = quant(state.playhead);
+  announceStep(next, col, `${trackName(next)}, `);
+  // After the render setRecTrack() just did, so the lane exists to scroll to.
+  requestAnimationFrame(() => {
+    const lane = document.querySelector(`.lane[data-track="${next}"]`);
+    if (lane) lane.scrollIntoView({ block: 'nearest' });
+  });
+}
+// End goes to where the part *ends* — one step past its last item — rather
+// than to the end of the song, because that is where you would carry on
+// writing. An empty track has nowhere to carry on from, so it stays at 0.
+function stepEnd(track) {
+  const seq = state.tracks[track] || [];
+  if (!seq.length) return 0;
+  return quant(Math.min(COLS - state.grid, Math.max(...seq.map(it => it.start)) + state.grid));
+}
 // Step back over the last step and clear it. Without this a typo is only
 // fixable with the mouse, which would defeat the point of the whole feature.
 function stepBack() {
@@ -7810,9 +7915,8 @@ function stepBack() {
     for (const it of removed) state.multiSelected.delete(it);
     render(); autosave();
   }
-  announce(removed.length
-    ? `Removed ${removed.length}, ${colToBarBeat(col)}`
-    : `${colToBarBeat(col)}`);
+  if (removed.length) announce(`Removed ${removed.length}, ${colToBarBeat(col)}`);
+  else announceStep(track, col);
 }
 function recNoteFromKey(code) {
   const semis = REC_KEY_SEMIS[code];
