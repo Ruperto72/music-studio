@@ -39,8 +39,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - **Step entry** — with a track armed and the transport *stopped*, the same
   keys write a note at the playhead and move it on one step, so you can type
   a part out at your own pace. Keys held together land as a chord on one
-  column; `→` leaves a rest, `Backspace` steps back and clears. Every step is
-  announced, so this is also how you compose without a mouse at all
+  column; `←`/`→` move through time, `↑`/`↓` between tracks, `Home`/`End` to
+  the ends, `Backspace` steps back and clears. Every move is announced with
+  the position *and* what's already there, so this is also how you compose —
+  and read a song back — without a mouse at all
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
   Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap) you can audition and
   stamp into a rhythm track. Every hit lands with its own velocity, so the
@@ -104,9 +106,10 @@ Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Accessibility** — the grid is labelled and keyboard-navigable and notes
-  can now be *created* from the keyboard (step entry); what's still missing
-  is a spatial model of the grid for a screen reader
+- **Accessibility** — the grid is labelled, keyboard-navigable in both
+  directions and notes can be *created* from the keyboard (step entry); what
+  the remaining gaps are is now a question for someone who uses a screen
+  reader daily rather than something to guess at
 
 ## Run it locally
 

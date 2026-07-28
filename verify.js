@@ -1846,6 +1846,59 @@ async function main() {
         throw new Error(`Backspace should leave the cursor on the step it cleared, got ${JSON.stringify(notes)}`);
       }
 
+      // The cursor is a way of reading the grid, not only of writing it: every
+      // move reports the position *and* what is already there. Without that a
+      // screen-reader user can count bars but never find out what is in them.
+      await cdp.evaluate(`document.getElementById('rtz').click()`);
+      await new Promise((r) => setTimeout(r, 100));
+      await key('ArrowRight', 'keydown');   // onto column 1 — D4 from the taps above
+      await new Promise((r) => setTimeout(r, 150));
+      let heard = await spoken();
+      if (!/bar 1/.test(heard) || !/D4/.test(heard)) {
+        throw new Error(`the cursor should read out what it lands on, heard "${heard}"`);
+      }
+      await key('ArrowRight', 'keydown');
+      await key('ArrowRight', 'keydown');   // onto column 3 — the chord
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/C4, E4, G4/.test(heard)) throw new Error(`a chord should be read low to high, heard "${heard}"`);
+      await key('ArrowRight', 'keydown');
+      await key('ArrowRight', 'keydown');   // column 5 was left as a rest
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/empty/.test(heard)) throw new Error(`an empty step should say so, heard "${heard}"`);
+
+      // End goes to where the part ends — one step past its last note — which
+      // is where you would carry on writing, not to the end of the song.
+      await key('End', 'keydown');
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/bar 1 beat 4/.test(heard) || !/empty/.test(heard)) {
+        throw new Error(`End should land one step past the last note, heard "${heard}"`);
+      }
+      await key('Home', 'keydown');
+      await new Promise((r) => setTimeout(r, 150));
+      heard = await spoken();
+      if (!/bar 1 beat 1/.test(heard) || !/C4/.test(heard)) {
+        throw new Error(`Home should return to the first step, heard "${heard}"`);
+      }
+
+      // The grid's other dimension: down moves the arm to the next track and
+      // says what is under the cursor there.
+      await key('ArrowDown', 'keydown');
+      await new Promise((r) => setTimeout(r, 250));
+      heard = await spoken();
+      if (!/^Pad,/.test(heard) || !/empty/.test(heard)) {
+        throw new Error(`down should move to the next track and read it, heard "${heard}"`);
+      }
+      if (await cdp.evaluate(`[...document.querySelectorAll('.track')].findIndex(t => t.querySelector('.th-btns button.r.on')) < 0`)) {
+        throw new Error('moving between tracks should keep exactly one armed');
+      }
+      await key('ArrowUp', 'keydown');
+      await new Promise((r) => setTimeout(r, 250));
+      heard = await spoken();
+      if (!/^Bass,/.test(heard)) throw new Error(`up should move back to the previous track, heard "${heard}"`);
+
       // Drums step in the same way, from the same row of keys.
       await cdp.evaluate(`document.getElementById('rtz').click()`);
       await arm('Rhythm');

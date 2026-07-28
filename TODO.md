@@ -1537,10 +1537,18 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   Dessutom: panelrubrikerna låg på 3.23:1 kontrast (under AA) och är nu
   5.32:1. Brödtext och dämpad text klarade redan AA.
 - [x] **Skapa noter från tangentbordet** — löst: armera ett spår med **R** och
-  skriv in noter med steginmatning (se "Interaktion / touch"), med pilarna
-  som markör och `Backspace` som radering, allt uppläst. Det som återstår är
-  en *rumslig* modell av griden för skärmläsare — man komponerar framåt längs
-  tidslinjen istället för att navigera den fritt.
+  skriv in noter med steginmatning (se "Interaktion / touch"), allt uppläst.
+- [x] **Rumslig modell av griden** — markören rör sig nu i bägge riktningar:
+  `←`/`→` genom tiden, `↑`/`↓` mellan spåren (armeringen följer med, det
+  finns bara en), `Home`/`End` till låtens början respektive *ett steg efter
+  spårets sista objekt* — dit man skulle skriva vidare, inte till låtens
+  slut. Och det som faktiskt saknades: **varje förflyttning läser upp vad
+  markören landar på**, inte bara var den är (`stepContentsLabel()`/
+  `announceStep()` — "bar 2 beat 3, C4, E4" eller "empty", ackord låga till
+  höga). En markör som bara säger var den är berättar hur långt man gått men
+  ingenting om vad man gått förbi; det är skillnaden mellan att navigera en
+  stämma och att räkna takter i mörker. Därmed går griden att *läsa* utan
+  pekdon, inte bara skriva till.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 

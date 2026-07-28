@@ -824,7 +824,7 @@
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
-        <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, and <kbd>Backspace</kbd> steps back and clears what's there. Everything is spoken as it lands, so this is also how you compose without a mouse at all.</li>
+        <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
 
@@ -912,7 +912,9 @@
         <span><kbd>Z</kbd> <kbd>S</kbd> <kbd>X</kbd> <kbd>D</kbd> …</span><span>Play the armed track — lower octave (black keys on the row above)</span>
         <span><kbd>Q</kbd> <kbd>2</kbd> <kbd>W</kbd> <kbd>3</kbd> …</span><span>Play the armed track — an octave up</span>
         <span><kbd>[</kbd> <kbd>]</kbd></span><span>Octave down / up</span>
-        <span><kbd>←</kbd> <kbd>→</kbd></span><span>Step entry (armed, stopped): move the playhead back / on a grid step</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>Step entry (armed, stopped): move the cursor back / on a grid step</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>Step entry (armed, stopped): move to the track above / below</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd></span><span>Step entry (armed, stopped): start of the song / end of this track's part</span>
         <span><kbd>Backspace</kbd></span><span>Step entry (armed, stopped): step back and clear that step</span>
         <span><kbd>Esc</kbd></span><span>Deselect (or close this dialog)</span>
       </div>
@@ -927,8 +929,10 @@
       </p>
       <p>
         To <i>write</i> notes rather than only edit the ones that exist, arm a track with its <b>R</b> button
-        and use step entry (above): the letter keys place notes at the playhead with the transport stopped,
-        <b>←</b>/<b>→</b> move the playhead and <b>Backspace</b> clears the last step, each spoken as it happens.
+        and use step entry (above). That also gives you a cursor you can move around the grid in both
+        directions — <b>←</b>/<b>→</b> through time, <b>↑</b>/<b>↓</b> from track to track, <b>Home</b>/<b>End</b>
+        to the start of the song or the end of this track's part — and every move is spoken with the position
+        <i>and</i> what is already there, so you can survey a song you can't see.
       </p>
     </div>
   </dialog>
@@ -5184,9 +5188,20 @@ window.addEventListener('keydown', (e) => {
     if (stepEntryActive()) {
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
-        const col = quant(state.playhead + (e.code === 'ArrowRight' ? state.grid : -state.grid));
-        setStepPlayhead(col);
-        announce(colToBarBeat(Math.max(0, Math.min(COLS - state.grid, col))));
+        setStepPlayhead(quant(state.playhead + (e.code === 'ArrowRight' ? state.grid : -state.grid)));
+        announceStep(state.recTrack, state.playhead);
+        return;
+      }
+      // The grid's other dimension: up/down walk the track list.
+      if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        if (!e.repeat) stepTrack(e.code === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      if (e.code === 'Home' || e.code === 'End') {
+        e.preventDefault();
+        setStepPlayhead(e.code === 'Home' ? 0 : stepEnd(state.recTrack));
+        announceStep(state.recTrack, state.playhead);
         return;
       }
       // Auto-repeat is deliberately allowed here: holding Backspace walking
@@ -7842,6 +7857,49 @@ function endStepIfDone() {
   setStepPlayhead(stepAnchor + state.grid);
   stepAnchor = null;
 }
+// What is already on this track at the cursor's step, named the way the grid
+// names it. A cursor that only reports where it is tells you how far you have
+// walked but nothing about what you walked over — which is the difference
+// between navigating a part and counting bars in the dark. Sorted low to high
+// so a chord is always read out in the same order.
+function stepContentsLabel(track, col) {
+  const here = (state.tracks[track] || []).filter(it => it.start > col - EPS && it.start < col + state.grid - EPS);
+  if (!here.length) return 'empty';
+  return isRhythm(track)
+    ? here.map(h => RHYTHM_LABELS[h.type] || h.type).sort().join(', ')
+    : here.slice().sort((a, b) => a.freq - b.freq).map(n => midiToName(freqToMidi(n.freq))).join(', ');
+}
+function announceStep(track, col, prefix = '') {
+  announce(`${prefix}${colToBarBeat(col)}, ${stepContentsLabel(track, col)}`);
+}
+// Up/down move the arm to the neighbouring track. Time is one dimension of
+// this grid and the track list is the other, so without this the keyboard can
+// only ever reach the lane a pointer last left it on. Announces the new
+// track's name *and* what sits under the cursor there, since moving lane
+// without moving in time is exactly when you want to know what is already
+// stacked at this moment.
+function stepTrack(dir) {
+  const ids = state.trackList.map(t => t.id);
+  const at = ids.indexOf(state.recTrack);
+  const next = ids[at + dir];
+  if (!next) { announce(dir > 0 ? 'Last track' : 'First track'); return; }
+  setRecTrack(next);
+  const col = quant(state.playhead);
+  announceStep(next, col, `${trackName(next)}, `);
+  // After the render setRecTrack() just did, so the lane exists to scroll to.
+  requestAnimationFrame(() => {
+    const lane = document.querySelector(`.lane[data-track="${next}"]`);
+    if (lane) lane.scrollIntoView({ block: 'nearest' });
+  });
+}
+// End goes to where the part *ends* — one step past its last item — rather
+// than to the end of the song, because that is where you would carry on
+// writing. An empty track has nowhere to carry on from, so it stays at 0.
+function stepEnd(track) {
+  const seq = state.tracks[track] || [];
+  if (!seq.length) return 0;
+  return quant(Math.min(COLS - state.grid, Math.max(...seq.map(it => it.start)) + state.grid));
+}
 // Step back over the last step and clear it. Without this a typo is only
 // fixable with the mouse, which would defeat the point of the whole feature.
 function stepBack() {
@@ -7857,9 +7915,8 @@ function stepBack() {
     for (const it of removed) state.multiSelected.delete(it);
     render(); autosave();
   }
-  announce(removed.length
-    ? `Removed ${removed.length}, ${colToBarBeat(col)}`
-    : `${colToBarBeat(col)}`);
+  if (removed.length) announce(`Removed ${removed.length}, ${colToBarBeat(col)}`);
+  else announceStep(track, col);
 }
 function recNoteFromKey(code) {
   const semis = REC_KEY_SEMIS[code];

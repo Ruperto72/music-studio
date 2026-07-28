@@ -513,10 +513,12 @@ by default — these are the deliberate additions:
   nudge, so nothing already in muscle memory changed. Notes use a **roving
   tabindex** — only the selected one is a tab stop — so Tab reaches the grid
   without walking through hundreds of blocks.
-- **Keyboard note entry**: arming a track (**R**) turns the letter keys into
-  step entry (A.16) — notes at the playhead, arrows to move the cursor,
-  `Backspace` to clear the last step, each spoken through the same live
-  region. This is the one piece that makes *composing* possible without a
+- **Keyboard note entry and a grid cursor**: arming a track (**R**) turns the
+  letter keys into step entry (A.16) — notes at the playhead, `←`/`→` through
+  time, `↑`/`↓` between tracks, `Home`/`End` to the ends, `Backspace` to
+  clear the last step. Every move is spoken through the same live region with
+  the position **and** the contents, so the grid can be surveyed as well as
+  written to. This is the piece that makes *composing* possible without a
   pointer rather than only editing what a pointer already placed.
 - **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
   5.32:1. Body and muted text already passed AA.
@@ -526,14 +528,14 @@ by default — these are the deliberate additions:
   row, so no information is available *only* as a picture.
 
 Solved since: notes can now be **created** from the keyboard as well as
-reached and edited. Arm a track with its **R** button and the letter keys
-place notes at the playhead a step at a time, with the arrows moving the
-cursor and `Backspace` clearing the last step, each announced as it lands
-(A.16 — step entry, deliberately separate from the real-time take, which
-needs both hands and a sense of timing and so is not on its own an answer
-here). What is still missing is a spatial model of the grid for a screen
-reader: you compose forwards along the timeline rather than navigating it
-freely.
+reached and edited, and the grid has a cursor that can be moved around it
+rather than only stepped between the items that already exist. Arm a track
+with its **R** button and the letter keys place notes a step at a time,
+`←`/`→` move through time, `↑`/`↓` between tracks, `Home`/`End` to the
+start of the song or the end of this track's part — and every move is
+spoken with the position *and* what is already there (A.16 — step entry,
+deliberately separate from the real-time take, which needs both hands and
+a sense of timing and so is not on its own an answer here).
 
 ### A.14 Icon glyphs
 
@@ -646,10 +648,20 @@ selection uses (A.13).
   per key would spell a chord out as an arpeggio.
 - **A stepped note commits on key down** with a fixed one-step length: with
   no clock running, how long you lean on a key can't mean anything.
-- **The arrows move the cursor** — `→` leaves a rest, `←` goes back — and
-  **`Backspace`** steps back and clears that step, leaving the cursor there
-  so the next key fills the gap. All three shadow the selection nudge and
-  delete, which is the same trade the letter keys already make.
+- **The arrows move the cursor in both dimensions** — `←`/`→` through time
+  (`→` leaves a rest), `↑`/`↓` from track to track (the arm moves with it,
+  since there is only one) — with `Home`/`End` jumping to the start of the
+  song or to **one step past this track's last item**, which is where you
+  would carry on writing rather than the end of the song. **`Backspace`**
+  steps back and clears that step, leaving the cursor there so the next key
+  fills the gap. All of these shadow the selection nudge, jump and delete,
+  which is the same trade the letter keys already make.
+- **Every move reports what it lands on**, not only where it is
+  (`stepContentsLabel()`/`announceStep()`): "bar 2 beat 3, C4, E4", or
+  "empty". A cursor that only says where it is tells you how far you have
+  walked but nothing about what you walked over — which is the difference
+  between navigating a part and counting bars in the dark. Chords read low
+  to high so the order is stable, and moving to another track names it.
 - **Only when nothing is rolling.** Plain Play with a track armed means
   "listen", not "type into the song"; only Record captures.
 
