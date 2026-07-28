@@ -299,8 +299,8 @@ with the timeline:
 The right-hand `.inspector` panel shows either an empty-state hint or the
 controls for whatever single item is selected. A **rhythm hit** gets a short
 panel of its own (`renderHitInspector()`): the drum's name, its bar and beat,
-a **Velocity** slider (10–100%, the same range/step/formatting as the tonal
-one below) and Delete. That is the whole list on purpose — a hit has no pitch,
+**Velocity** (10–100%) and **Pan** sliders — the same range/step/formatting as
+the tonal ones below, and the same delete-when-neutral rule — and Delete. That is the whole list on purpose — a hit has no pitch,
 no length and no per-note effect flags, and for drums those effects live on
 the track's FX panel instead, since every kit sound on a track passes
 through the one channel node those inserts and sends tap.
@@ -627,8 +627,9 @@ A `Note` is `{ start, len, freq, vel, bend, vib, trem, duty, arp, porta,
 crush, echo, chorus, reverb, pan? }` (`pan` −1..1, **absent means centred** —
 see `notePan()`) (columns are in eighth-note units; `MICRO = 1/6`
 eighth is the finest shared lattice, so triplet and straight subdivisions
-never drift). A `Hit` is `{ start, type, vel? }` where `type` is one of
-`RHYTHM_ROWS` and `vel` (0.1–1) is how hard it's struck; **absent means full**,
+never drift). A `Hit` is `{ start, type, vel?, pan? }` where `type` is one of
+`RHYTHM_ROWS`, `vel` (0.1–1) is how hard it's struck and `pan` (−1..1, absent
+= centred, `hitPan()`) is where it sits; for velocity **absent means full**,
 so every song written before hits had a velocity loads and sounds unchanged,
 and the inspector deletes the property rather than writing `vel: 1` back.
 `hitVel()` is the one reader, and clamps there so a hand-edited file can't
@@ -991,10 +992,11 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   `scheduleCrash`/`scheduleRide`) — filtered noise bursts and/or short
   pitch-swept oscillators, no shared "drum" abstraction since each sound's
   shape is bespoke. They are all reached through one dispatch point,
-  `scheduleDrum(type, startAt, destGain, vel)`, used by playback, the
+  `scheduleDrum(type, startAt, destGain, vel, pan)`, used by playback, the
   click-to-place preview and the pattern auditions alike. That is also where
-  per-hit **velocity** is applied — as a plain `GainNode` in front of the
-  destination, deliberately *not* as an argument threaded into the ten
+  per-hit **velocity** and **pan** are applied — a plain `GainNode` and a
+  `StereoPannerNode` in front of the destination, built backwards so pan ends
+  up last, deliberately *not* as arguments threaded into the ten
   functions: each hand-writes its own multi-stage envelope (the snare has two,
   the clap three), so scaling every `exponentialRampToValueAtTime` by hand
   would be ten chances for the same factor to drift. At full velocity no node

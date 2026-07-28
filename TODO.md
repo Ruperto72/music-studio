@@ -870,6 +870,22 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   byggs (*"a centred note should add no panner, saw [0]"*) och en inspektor som
   sparar `pan: 0` i stället för att radera (*"re-centring should remove the
   property"*).
+- [x] **Pan per trumträff.** `hit.pan` med exakt samma kontrakt som noternas
+  (`hitPan()`, −1..1, frånvarande = centrerat) och samma reglage i
+  träff-inspektorn. Går genom `scheduleDrum()` — den enda dispatchpunkten —
+  som en `StereoPannerNode` framför destinationen, av samma skäl som velocity
+  ligger där: de tio trumfunktionerna skriver var sin flerstegsenvelopp för
+  hand, så att tråda igenom värdet vore tio chanser för samma sak att glida
+  isär. Kedjan byggs baklänges från destinationen så pannern hamnar *sist*,
+  där notens egen panner också sitter.
+  Vid centrum *och* full velocity byggs ingen nod alls — en orörd låt bygger
+  identisk graf. Kontrollerat: en träff med pan 0.6 och orörd velocity sparas
+  som `{"start":6,"type":"kick","pan":0.6}`, alltså utan `vel`.
+  Det här är den funktion som märks mest av de tre senaste: ett kit där allt
+  sitter mitt i är det man oftast vill sprida. Mallarna i `RHYTHM_PATTERNS`
+  panorerar dock fortfarande ingenting — de kunde göra det (hi-hat åt sidan,
+  tomtrummor spridda) och det vore en ren tabelländring, men det är eget
+  arbete och något man vill höra innan det går in.
 - [ ] **Voice pooling är avstängt av en kvarglömd debugrad.** `acquireVoice()`
   börjar med `return null; // TEST: pooling disabled`, så hela poolen är död
   kod och varje not allokerar egna noder. Hittat under pan-arbetet, eftersom
