@@ -29,6 +29,13 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   control for a shuffled 8th feel
 - **Time signature** (4/4, 3/4, 6/8, …) and named **timeline markers**
 - **Loop** range, zoom, multi-select, copy/paste, undo/redo
+- **Recording from the computer keyboard** — arm a track with its **R**
+  button, hit Record for a bar of count-in, and play: a tracker-style key
+  layout (ZSXDCV… plus the row above for sharps, QWERTY an octave up, `[`/`]`
+  to shift octave) on tonal tracks, the ten kit pieces on rhythm tracks.
+  Everything lands on the grid at the current snap resolution. A **metronome**
+  clicks on every beat, accented on the downbeat, and never reaches an
+  exported WAV
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
   Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap) you can audition and
   stamp into a rhythm track. Every hit lands with its own velocity, so the
@@ -91,8 +98,9 @@ Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Accessibility** — the grid is now labelled and keyboard-navigable, but
-  notes still can't be *created* without a pointer
+- **Accessibility** — the grid is labelled and keyboard-navigable, and notes
+  can now be played in from the keyboard while recording; what's still
+  missing is placing a note at the playhead with the transport *stopped*
 
 ## Run it locally
 

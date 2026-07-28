@@ -317,7 +317,16 @@ async function main() {
   const debugPort = 9333 + Math.floor(Math.random() * 500); // avoid clashing with a concurrent run
   const chrome = spawn(browserPath, [
     '--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${userDataDir}`,
-    '--no-sandbox', '--disable-gpu', '--no-first-run', 'about:blank',
+    '--no-sandbox', '--disable-gpu', '--no-first-run',
+    // Without this an AudioContext stays suspended — a synthetic click through
+    // the DevTools Protocol is not a trusted user gesture, so resume() never
+    // takes and ctx.currentTime sits at 0 forever. Anything that measures
+    // *when* something happened (the recording step) would then see every
+    // event at time zero. A real click grants exactly this, so the flag makes
+    // the headless run behave like the browser rather than papering over
+    // anything.
+    '--autoplay-policy=no-user-gesture-required',
+    'about:blank',
   ], { stdio: 'ignore' });
 
   let cdp;
@@ -1597,6 +1606,111 @@ async function main() {
         const h = (d.tracks[id] || [])[0];
         return h && Math.abs(h.pan - 0.6) < 1e-6 && !('vel' in h);
       })()`, 4000);
+    });
+
+    step('Recording: arm a track, count in, and play notes onto the grid', async () => {
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+
+      // The transport gained two buttons, both glyphed.
+      const tp = await cdp.evaluate(`[...document.querySelectorAll('#transport-panel button')].map((b) => ({ id: b.id, svg: b.querySelectorAll('svg').length }))`);
+      for (const id of ['record-btn', 'metronome-btn']) {
+        const b = tp.find((x) => x.id === id);
+        if (!b || b.svg !== 1) throw new Error(`expected a glyphed ${id} in the transport: ${JSON.stringify(tp)}`);
+      }
+      // Metronome is a remembered preference, not song data.
+      await cdp.evaluate(`document.getElementById('metronome-btn').click()`);
+      if (await cdp.evaluate(`document.getElementById('metronome-btn').getAttribute('aria-pressed')`) !== 'true') {
+        throw new Error('the metronome button should toggle on');
+      }
+      if (await cdp.evaluate(`localStorage.getItem('music-studio-metronome')`) !== '1') {
+        throw new Error('the metronome setting should be remembered per browser');
+      }
+
+      // Every track gets an R beside M and S.
+      const btns = await cdp.evaluate(`[...document.querySelectorAll('.track')[0].querySelectorAll('.th-btns button')].map((b) => b.textContent)`);
+      if (!btns.includes('R')) throw new Error(`expected a record-arm button beside M/S, got ${JSON.stringify(btns)}`);
+
+      const armBass = `(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`;
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+
+      const key = (code, type) => cdp.evaluate(`window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code, bubbles: true }))`.replace('code,', `code: ${JSON.stringify(code)},`));
+      const bassNotes = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
+        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
+      })()`);
+
+      // Armed but stopped: the key sounds, and records nothing.
+      await key('KeyZ', 'keydown');
+      await new Promise((r) => setTimeout(r, 150));
+      await key('KeyZ', 'keyup');
+      await new Promise((r) => setTimeout(r, 500));
+      const idle = await bassNotes();
+      if (idle.length !== 0) throw new Error(`playing while stopped should record nothing, got ${JSON.stringify(idle)}`);
+
+      // Record: a bar of count-in, then capture.
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('counting-in')`, 2000);
+      if (await cdp.evaluate(`document.body.classList.contains('playing')`)) {
+        throw new Error('the transport must not roll until the count-in is over');
+      }
+      // And "not rolling" as the user sees it, not just as a class name: the
+      // playhead must still be where it was a beat into the count-in.
+      const playheadLeft = () => cdp.evaluate(`document.querySelector('.playhead').style.left`);
+      const beforeCount = await playheadLeft();
+      await new Promise((r) => setTimeout(r, 400));
+      const duringCount = await playheadLeft();
+      if (duringCount !== beforeCount) {
+        throw new Error(`the playhead must not move during the count-in: ${beforeCount} -> ${duringCount}`);
+      }
+      await waitFor(`document.body.classList.contains('playing')`, 6000);
+      await waitFor(`document.querySelector('.playhead').style.left !== ${JSON.stringify(beforeCount)}`, 3000);
+
+      for (const code of ['KeyZ', 'KeyX', 'KeyC']) {
+        await key(code, 'keydown');
+        await new Promise((r) => setTimeout(r, 260));
+        await key(code, 'keyup');
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 500));
+
+      const rec = await bassNotes();
+      if (rec.length !== 3) throw new Error(`expected three recorded notes, got ${JSON.stringify(rec)}`);
+      // Z X C are C, D and E of the current octave — the pitches, not just the
+      // count, so a mis-wired key map can't pass.
+      const freqs = rec.map((n) => Math.round(n.freq));
+      if (freqs.join(',') !== '262,294,330') {
+        throw new Error(`Z/X/C should record C, D and E, got ${JSON.stringify(freqs)}`);
+      }
+      // And they must land where they were played, not stacked on one column.
+      // (Every note at column 0 is exactly what a stopped audio clock looks
+      // like — see the autoplay flag at the top of this file.)
+      const starts = rec.map((n) => n.start);
+      if (new Set(starts).size !== 3 || Math.max(...starts) === 0) {
+        throw new Error(`recorded notes should land on separate columns, got ${JSON.stringify(starts)}`);
+      }
+      if (starts.some((c, i) => i && c <= starts[i - 1])) {
+        throw new Error(`recorded notes should be in the order played, got ${JSON.stringify(starts)}`);
+      }
+      // Every note is at least one grid step long, however briefly it was hit.
+      if (rec.some((n) => n.len < 1)) throw new Error(`a recorded note should never be shorter than the grid: ${JSON.stringify(rec)}`);
+
+      // Disarming hands the letter keys back to the shortcuts.
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 0`);
+      await key('KeyZ', 'keydown');
+      await key('KeyZ', 'keyup');
+      await new Promise((r) => setTimeout(r, 400));
+      const after = await bassNotes();
+      if (after.length !== 3) throw new Error(`a disarmed track should ignore note keys, got ${JSON.stringify(after)}`);
     });
 
     step('Noise buffers are seeded: identical across two page loads', async () => {

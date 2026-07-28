@@ -421,6 +421,13 @@
     background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
   }
   .th-btns button.x { color: #d88; font-size: 10px; }
+  /* Armed is red rather than the green M/S use: it is the one state where
+     typing does something destructive, so it should not look like the others. */
+  .th-btns button.r.on { background: #6a1620; color: #ffb3bd; border-color: #c2283c; }
+  .tp-btn.rec { color: #ff8f9d; }
+  .tp-btn.rec[aria-pressed="true"] { background: #6a1620; color: #ffd6dc; border-color: #c2283c; box-shadow: 0 0 10px rgba(255,60,90,0.45); }
+  body.counting-in .tp-btn.rec[aria-pressed="true"] { animation: recBlink 0.5s steps(2, end) infinite; }
+  @keyframes recBlink { 50% { opacity: 0.35; } }
   .th-tools { display: flex; gap: 4px; }
   .th-tool-btn {
     flex: 1 1 auto; height: 18px; padding: 0; font-size: 10px; font-weight: 700;
@@ -816,6 +823,7 @@
         <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
+        <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. While the transport is stopped the keys just sound, so you can find the part first. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
 
@@ -899,6 +907,10 @@
         <span><kbd>Ctrl/Cmd</kbd>+<kbd>C</kbd> / <kbd>V</kbd></span><span>Copy / paste</span>
         <span><kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd></span><span>Undo (notes/hits/tempo/length)</span>
         <span><kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl/Cmd</kbd>+<kbd>Y</kbd></span><span>Redo</span>
+        <span><kbd>M</kbd></span><span>Metronome on/off (when no track is armed)</span>
+        <span><kbd>Z</kbd> <kbd>S</kbd> <kbd>X</kbd> <kbd>D</kbd> …</span><span>Play the armed track — lower octave (black keys on the row above)</span>
+        <span><kbd>Q</kbd> <kbd>2</kbd> <kbd>W</kbd> <kbd>3</kbd> …</span><span>Play the armed track — an octave up</span>
+        <span><kbd>[</kbd> <kbd>]</kbd></span><span>Octave down / up</span>
         <span><kbd>Esc</kbd></span><span>Deselect (or close this dialog)</span>
       </div>
       <p style="color:#8a8a95; font-size:11.5px;">Shortcuts are ignored while typing in a field.</p>
@@ -1022,7 +1034,9 @@
         <button class="tp-btn" id="rtz" title="Return to start">⏮</button>
         <button class="tp-btn stop" id="stop" title="Stop">■</button>
         <button class="tp-btn play" id="play" title="Play (Space)">▶</button>
+        <button class="tp-btn rec" id="record-btn" data-glyph="record" aria-label="Record" title="Record into the armed track — one bar of count-in first" aria-pressed="false"></button>
         <button class="tp-btn toggle" id="loop-btn" title="Loop on/off" aria-pressed="true">↺</button>
+        <button class="tp-btn toggle" id="metronome-btn" data-glyph="metronome" aria-label="Metronome" title="Metronome click on every beat (M)" aria-pressed="false"></button>
         <input id="loop" type="checkbox" checked hidden>
       </div>
     </div>
@@ -1342,6 +1356,13 @@ const GLYPHS = {
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
   master:   { box: '0 0 24 24', paths: ['M5 20a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M5 12V4', 'M5 20v0', 'M15 14a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M15 6V4', 'M15 14v6'] },
+  // A metronome seen from the front: the case, the swinging rod and the
+  // weight that sets the tempo. Stroked like everything else, so it reads at
+  // the 18px the toolbar renders it at.
+  metronome: { box: '0 0 24 24', paths: ['M12 3 L19 21 H5 Z', 'M7.6 15h8.8', 'M12 19 L16 7', 'M14.2 12.5h3'] },
+  // A ring rather than a filled disc: every other glyph is a stroke, and the
+  // armed/recording states are carried by colour instead.
+  record:   { box: '0 0 24 24', paths: ['M12 5.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13z'] },
   drums:    { box: '0 0 24 24', paths: ['M3 18h18', 'M6 18a5 5 0 0 1 10 0', 'M17.5 18a2.5 2.5 0 0 1 4.5 0', 'M11 13V5', 'M11 5l6-2'] },
   trash:    { box: '0 0 24 24', paths: ['M4 7h16', 'M9.5 7V4.5h5V7', 'M6.5 7l1 13h9l1-13', 'M10 10.5v6.5', 'M14 10.5v6.5'] },
 };
@@ -2129,6 +2150,13 @@ const state = {
                              // not part of undo history (see snapshotSong())
   masterVol: 0.45,           // editor preview master level (not part of the game)
   activeTrack: BOOT.trackList[0].id, // the Lead track — the first thing you'd write
+  // Which track the computer keyboard plays into, and whether the metronome
+  // clicks. Both are *editor* state, not song content: they are never
+  // serialised, never in the undo snapshot, and the metronome is remembered
+  // per browser the way the collapse state is. One armed track, because there
+  // is one keyboard — arming another moves it.
+  recTrack: null,
+  metronome: false,
   tool: 'pen',
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
@@ -3492,6 +3520,21 @@ function buildHeader(track) {
     // render) rebuilds this button before the click completes, dropping the click.
     btn.addEventListener('mousedown', (e) => e.stopPropagation());
     btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
+    btns.append(btn);
+  }
+  // Record-arm. One track at a time, because there is one computer keyboard —
+  // arming another simply moves it, which is also why this is a plain toggle
+  // rather than a per-track flag like Mute/Solo. Editor state, not song data:
+  // nothing about which track you were recording into belongs in the file.
+  {
+    const armed = state.recTrack === track;
+    const btn = el('button', 'r' + (armed ? ' on' : ''));
+    btn.textContent = 'R';
+    btn.title = armed ? 'Armed for recording — click to disarm' : 'Arm this track for recording';
+    btn.setAttribute('aria-label', `Record-arm ${trackOf(track)?.name || track}`);
+    btn.setAttribute('aria-pressed', String(armed));
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('click', (e) => { e.stopPropagation(); setRecTrack(armed ? null : track); });
     btns.append(btn);
   }
   if (canRemoveTrack(track)) {
@@ -5062,10 +5105,31 @@ document.querySelectorAll('.tool-group button[data-tool]').forEach(btn => {
 document.body.dataset.tool = state.tool;
 
 // ---------- Keyboard shortcuts ----------
+window.addEventListener('keyup', (e) => { recKeyUp(e.code); });
+// Releasing everything on blur matters: a key held when the window loses focus
+// never sends its keyup, and the note would otherwise stay "down" forever and
+// be committed with an absurd length the next time it is pressed.
+window.addEventListener('blur', releaseAllKeys);
 window.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
   if (helpDialog.open) { if (e.key === 'Escape') helpDialog.close(); return; }
+  // Note keys, only while a track is armed — so the letter shortcuts below
+  // keep working exactly as before until you explicitly arm something, and
+  // arming is a visible, deliberate act. Modifier combinations are left alone
+  // so Ctrl+C/V/Z still reach their handlers.
+  if (state.recTrack && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+      e.preventDefault();
+      if (e.repeat) return;
+      recOctave = Math.max(REC_OCTAVE_MIN, Math.min(REC_OCTAVE_MAX, recOctave + (e.code === 'BracketRight' ? 1 : -1)));
+      announce(`Octave ${recOctave}`);
+      return;
+    }
+    // e.repeat is the auto-repeat a held key sends; a held note is one note.
+    if (!e.repeat && recKeyDown(e.code)) { e.preventDefault(); return; }
+    if (e.repeat && heldKeys.has(e.code)) { e.preventDefault(); return; }
+  }
   if (e.key === ' ') {
     e.preventDefault();
     if (e.repeat) return;
@@ -5077,6 +5141,8 @@ window.addEventListener('keydown', (e) => {
     document.querySelector(`.tool-group button[data-tool="${tool}"]`).click();
     return;
   }
+  // Only reachable with nothing armed — with a track armed, M plays a note.
+  if (e.key === 'm' || e.key === 'M') { metronomeBtn.click(); return; }
   if (e.key === 'Escape') { clearSelection(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
   // Shift+arrows walk the selection through the active track; plain arrows nudge
@@ -5829,7 +5895,7 @@ async function renderSongToWav() {
   ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
-  chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {};
+  chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
   trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
   fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
   fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
@@ -7499,6 +7565,51 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
     scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, voice);
   }
 }
+// ---------- Metronome ----------
+// A click straight to the destination on its own gain, deliberately outside
+// the master bus: it is a rehearsal aid, not part of the mix, so it must not
+// go through the master EQ/compressor and must not exist at all in an offline
+// render — renderSongToWav() never calls this, which is the whole guarantee
+// that a click can't end up in an exported file.
+const METRONOME_LEVEL = 0.32;
+let metroGain = null;
+function ensureMetronomeBus() {
+  if (metroGain || !ctx) return metroGain;
+  metroGain = ctx.createGain();
+  metroGain.gain.value = METRONOME_LEVEL;
+  metroGain.connect(ctx.destination);
+  return metroGain;
+}
+// Two pitches so the downbeat is findable without counting: a bar's first
+// beat rings a fifth higher than the rest. Short enough (35ms) that it reads
+// as a click rather than a note, which is what keeps it from being mistaken
+// for something in the song.
+function scheduleClick(at, accent) {
+  const bus = ensureMetronomeBus();
+  if (!bus) return;
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = accent ? 1800 : 1200;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(1, at + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.035);
+  osc.connect(g).connect(bus);
+  osc.start(at);
+  osc.stop(at + 0.05);
+}
+// Clicks for one scheduling chunk, on every beat that falls inside it. Swing
+// is deliberately *not* applied: the metronome is the straight reference the
+// swung part is played against.
+function scheduleMetronomeForChunk(startAt, eighthSec, fromCol, toCol) {
+  if (!state.metronome) return;
+  const beat = eighthsPerBeat();
+  const bar = eighthsPerBar();
+  const first = Math.ceil((fromCol - 1e-6) / beat) * beat;
+  for (let col = first; col < toCol; col += beat) {
+    scheduleClick(startAt + (col - fromCol) * eighthSec, Math.abs(col % bar) < 1e-6);
+  }
+}
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
@@ -7546,6 +7657,7 @@ function startPlaybackFrom(col) {
     const toCol = Math.min(loopEnd, fromCol + SCHEDULE_LOOKAHEAD_BARS * eighthsPerBar());
     scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol);
     scheduleDucking(startAt, eighthSec, fromCol, toCol);
+    scheduleMetronomeForChunk(startAt, eighthSec, fromCol, toCol);
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;
@@ -7585,6 +7697,167 @@ function followPlayhead() {
   if (x > viewRight - margin) daw.scrollLeft = x - daw.clientWidth + margin;
   else if (x < viewLeft) daw.scrollLeft = Math.max(0, x - LANE_ORIGIN - margin); // e.g. after a loop wrap back to the start
 }
+// ---------- Recording ----------
+// Tracker-style layout, because that is what anyone who has typed music before
+// will already have in their fingers: the ZSXDCV row is the lower octave with
+// the black keys on the row above it, and QWERTY is the octave up. `event.code`
+// rather than `event.key`, so the mapping is positional and survives a
+// non-US layout — on a Swedish keyboard the key where QWERTY's `;` sits still
+// plays the same note.
+const REC_KEY_SEMIS = {
+  KeyZ: 0, KeyS: 1, KeyX: 2, KeyD: 3, KeyC: 4, KeyV: 5, KeyG: 6, KeyB: 7,
+  KeyH: 8, KeyN: 9, KeyJ: 10, KeyM: 11, Comma: 12, KeyL: 13, Period: 14,
+  KeyQ: 12, Digit2: 13, KeyW: 14, Digit3: 15, KeyE: 16, KeyR: 17, Digit5: 18,
+  KeyT: 19, Digit6: 20, KeyY: 21, Digit7: 22, KeyU: 23, KeyI: 24,
+};
+// A rhythm track has no pitch, so the same row plays the kit instead — ten
+// keys for the ten fixed RHYTHM_ROWS, in the order they appear in the grid.
+const REC_KEY_DRUMS = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash'];
+const REC_OCTAVE_MIN = 1, REC_OCTAVE_MAX = 7;
+let recOctave = 4;              // C of this octave is where KeyZ sits
+let recording = false;          // transport is rolling *and* capturing
+let countingIn = false;         // the bar of clicks before capture starts
+let countInTimer = null;
+const heldKeys = new Map();     // event.code -> { midi|type, startCol, voice }
+
+function setRecTrack(id) {
+  state.recTrack = id;
+  if (!id) releaseAllKeys();
+  render();
+}
+// Audio time -> the column it lands on, using the anchor the playhead animation
+// already keeps. Quantised to the current grid, which is what makes a part
+// played by hand line up with one placed by mouse.
+function ctxTimeToCol(t) {
+  const eighthSec = 60 / state.tempo / 2;
+  return playStartCol + (t - playStartCtxTime) / eighthSec;
+}
+function recNoteFromKey(code) {
+  const semis = REC_KEY_SEMIS[code];
+  if (semis == null) return null;
+  const midi = 12 * (recOctave + 1) + semis;
+  return midi >= MIDI_MIN && midi <= MIDI_MAX ? midi : null;
+}
+// Sounds the key immediately through the armed track's own channel, so what
+// you hear while playing is the waveform and envelope the note will have.
+function monitorNote(track, midi) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const note = { start: 0, len: state.grid, freq: round2(midiToFreq(midi)), vel: 1,
+      bend: null, vib: false, trem: false, duty: null, arp: null,
+      porta: false, crush: false, echo: false, chorus: false, reverb: false };
+    const dest = chanGain[track] || previewGain;
+    scheduleTone(note, ctx.currentTime + 0.005, 0.4, state.waveform[track] || 'square', dest, getTrackVoice(track));
+  } catch { /* audio unavailable */ }
+}
+function recKeyDown(code) {
+  const track = state.recTrack;
+  if (!track || heldKeys.has(code)) return false;
+  if (isRhythm(track)) {
+    const row = REC_KEY_DRUMS.indexOf(code);
+    if (row < 0) return false;
+    const type = RHYTHM_ROWS[row];
+    try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
+    scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, 1, 0);
+    // A hit has no length, so it is committed the moment it is struck.
+    if (recording) commitHit(track, type, snapToGrid(ctxTimeToCol(ctx.currentTime)));
+    heldKeys.set(code, { type });
+    return true;
+  }
+  const midi = recNoteFromKey(code);
+  if (midi == null) return false;
+  monitorNote(track, midi);
+  heldKeys.set(code, { midi, startCol: recording ? snapToGrid(ctxTimeToCol(ctx.currentTime)) : null });
+  return true;
+}
+function recKeyUp(code) {
+  const held = heldKeys.get(code);
+  if (!held) return;
+  heldKeys.delete(code);
+  const track = state.recTrack;
+  if (!track || held.midi == null || held.startCol == null || !recording) return;
+  // Length from how long the key was down, floored at one grid step so a
+  // stab still lands as a note rather than nothing.
+  const end = snapToGrid(ctxTimeToCol(ctx.currentTime));
+  commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol));
+}
+function releaseAllKeys() {
+  for (const code of [...heldKeys.keys()]) recKeyUp(code);
+  heldKeys.clear();
+}
+function commitNote(track, midi, start, len) {
+  if (start < 0 || start >= COLS) return;
+  const note = { start: quant(start), len: Math.min(len, COLS - start), freq: round2(midiToFreq(midi)), vel: 1,
+    bend: null, vib: false, trem: false, duty: null, arp: null,
+    porta: false, crush: false, echo: false, chorus: false, reverb: false };
+  // The same predicate every other placement path uses, so a recorded note
+  // replaces an overlapping one of the same pitch instead of stacking on it.
+  state.tracks[track] = clearOverlaps(state.tracks[track], note).concat([note]);
+  render(); autosave();
+}
+function commitHit(track, type, start) {
+  if (start < 0 || start >= COLS) return;
+  const hit = { start: quant(start), type };
+  state.tracks[track] = state.tracks[track].filter(h => !hitsConflict(h, hit)).concat([hit]);
+  render(); autosave();
+}
+// Record = one bar of count-in, then roll and capture. The count-in exists so
+// there is something to play *to* before the first beat lands; without it the
+// downbeat is always late.
+function startRecording() {
+  const track = state.recTrack;
+  if (!track) { announce('Arm a track with its R button first'); return; }
+  ensureCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  const beat = eighthsPerBeat();
+  const bar = eighthsPerBar();
+  const eighthSec = 60 / state.tempo / 2;
+  const at = ctx.currentTime + 0.1;
+  countingIn = true;
+  recording = false;
+  document.body.classList.add('counting-in');
+  syncRecordUI();
+  // The count-in clicks whether or not the metronome is on — you asked to
+  // record, so you get the beat you are recording against.
+  for (let i = 0; i < bar / beat; i++) scheduleClick(at + i * beat * eighthSec, i === 0);
+  countInTimer = setTimeout(() => {
+    countingIn = false;
+    document.body.classList.remove('counting-in');
+    if (!state.recTrack) { syncRecordUI(); return; }
+    recording = true;
+    syncRecordUI();
+    document.body.classList.add('playing');
+    startPlaybackFrom(state.playhead);
+  }, (bar * eighthSec) * 1000);
+}
+function stopRecording() {
+  clearTimeout(countInTimer);
+  countingIn = false;
+  document.body.classList.remove('counting-in');
+  releaseAllKeys();
+  recording = false;
+  syncRecordUI();
+}
+function syncRecordUI() {
+  const btn = document.getElementById('record-btn');
+  btn.setAttribute('aria-pressed', String(recording || countingIn));
+}
+document.getElementById('record-btn').addEventListener('click', () => {
+  if (recording || countingIn) { document.getElementById('stop').click(); return; }
+  startRecording();
+});
+const metronomeBtn = document.getElementById('metronome-btn');
+const METRONOME_KEY = 'music-studio-metronome';
+try { state.metronome = localStorage.getItem(METRONOME_KEY) === '1'; } catch { /* ignore */ }
+function syncMetronomeUI() { metronomeBtn.setAttribute('aria-pressed', String(state.metronome)); }
+metronomeBtn.addEventListener('click', () => {
+  state.metronome = !state.metronome;
+  try { localStorage.setItem(METRONOME_KEY, state.metronome ? '1' : '0'); } catch { /* ignore */ }
+  syncMetronomeUI();
+});
+syncMetronomeUI();
+
 document.getElementById('play').addEventListener('click', () => {
   ensureCtx();
   if (ctx.state === 'suspended') ctx.resume();
@@ -7593,6 +7866,9 @@ document.getElementById('play').addEventListener('click', () => {
 });
 function stopPlayback() {
   playing = false;
+  // Before the context goes away: any key still down is committed against the
+  // clock that is about to be torn down.
+  stopRecording();
   document.body.classList.remove('playing');
   clearTimeout(loopTimer);
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
@@ -7603,7 +7879,7 @@ function stopPlayback() {
     duckGain = null;
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {};
-    chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {};
+    chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
     trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
     fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;

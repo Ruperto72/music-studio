@@ -102,7 +102,7 @@ label) laid out left to right:
 | Panel | Contents |
 |---|---|
 | **Menu** | Songs library, Save file, Load file, Export code (toggles a code box open/closed), Export MIDI, Import MIDI, Export WAV, Add track, Add rhythm track, Fullscreen, Help |
-| **Transport** | Return-to-start (⏮), Stop (■), Play (▶), Loop toggle (↺) |
+| **Transport** | Return-to-start (⏮), Stop (■), Play (▶), **Record** (a filled circle — arms nothing itself, it rolls the armed track's capture after a bar of count-in), Loop toggle (↺), **Metronome** toggle (a metronome glyph) — see A.16 |
 | **Bars\|Beats** | LCD-style counter (bar\|beat\|sub-beat, plus mm:ss) |
 | **Tools** | Pen / Eraser / Grab tool segmented control; Undo/Redo |
 | **Loop & Zoom** | Full range, Repeat (duplicate the loop region forward), Add marker, zoom −/100%/+ |
@@ -117,7 +117,8 @@ with distinct rows, each independently hideable when the track is collapsed:
 
 1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
    track name (click-to-... double-click-to-rename, ellipsis-truncated),
-   **M**ute, **S**olo, and (hidden when collapsed) **✕** remove.
+   **M**ute, **S**olo, **R** (record-arm — see A.16), and (hidden when
+   collapsed) **✕** remove.
 2. **Waveform row** (hidden when collapsed): for tonal tracks, ten icon
    buttons over **two rows** of five — Square/PWM/Triangle/Saw/Sine on the
    first, Half sine/NES Tri (wavetable)/Noise/Ring/FM on the second, each drawn
@@ -484,9 +485,10 @@ by default — these are the deliberate additions:
 - **Names**: every lane carries an `aria-label` (track name + what it is +
   how many items), and every note and hit carries one describing pitch or drum
   plus bar and beat — `noteAriaLabel()`/`hitAriaLabel()`. Repeated icon buttons
-  that only made sense positionally (**M**/**S**/**✕** per track) name their
-  track.
-- **State**: Mute/Solo and the per-note effect toggles expose `aria-pressed`;
+  that only made sense positionally (**M**/**S**/**R**/**✕** per track) name
+  their track.
+- **State**: Mute/Solo, record-arm and the per-note effect toggles expose
+  `aria-pressed`;
   the Pen/Eraser/Grab cluster and the waveform picker are each a
   `role="radiogroup"` with `aria-checked`, since both are a single choice
   rather than a row of independent toggles. All of these previously carried
@@ -503,6 +505,13 @@ by default — these are the deliberate additions:
   keeps its own text label or `aria-label`. The waveform picker, whose buttons
   are icon-only, additionally spells the selected shape's name out below the
   row, so no information is available *only* as a picture.
+
+Partly solved since: notes *can* now be created from the keyboard by arming
+a track and recording (A.16). What is still missing is placing a note at the
+playhead with the transport **stopped** — recording is a real-time take, so
+it needs both hands and a sense of time — and any spatial model of the grid
+for a screen reader. You can reach and edit what exists, and play a part in,
+but composing note by note without a pointer is not there yet.
 
 ### A.14 Icon glyphs
 
@@ -546,10 +555,6 @@ whose period keeps compressing. The EQ glyph is a response curve rather than
 three miniature faders — the faders' knob marks turned into specks at the
 18px the panel headings render at.
 
-Not solved: there is no way to *create* a note from the keyboard, and no
-spatial model of the grid for a screen reader — you can reach and edit what
-exists, but composing from scratch still needs a pointer.
-
 ### A.15 Responsive / mobile / PWA UI
 
 - Below ~760px, `.editor-layout` stacks vertically, the inspector becomes a
@@ -560,6 +565,54 @@ exists, but composing from scratch still needs a pointer.
   ["fullscreen","standalone"]`) and works offline once loaded
   (`sw.js` precaches the app shell, song-data, bundled example songs, and
   icons).
+
+### A.16 Recording & metronome
+
+Notes can be played in from the computer keyboard rather than clicked in.
+Three controls make that up:
+
+- **R** on a track header (A.4) **arms** that track. There is one keyboard,
+  so there is one armed track: arming another moves the arm rather than
+  adding to it, and clicking R again disarms. An armed track's R button is
+  red and carries `aria-pressed="true"`.
+- **Record** in the transport starts **one bar of count-in** (clicks on
+  every beat of a bar, whether or not the metronome is on — you asked to
+  record, so you get the beat you are recording against), then rolls the
+  transport and captures. Pressing it again, or Stop, ends the take.
+  `<body>` carries `counting-in` during the count-in and `playing` after, so
+  the two states are visually distinct. Nothing is armed ⇒ the button
+  announces "Arm a track with its R button first" and does nothing else.
+- **Metronome** in the transport toggles a click on every beat, a fifth
+  higher on the downbeat so the bar is findable without counting. It is a
+  rehearsal aid, not part of the mix (B.6), and is remembered per browser
+  in `localStorage` rather than saved with the song.
+
+**Key layout** (tracker-style, so it is already in the fingers of anyone who
+has typed music before), on a **tonal** armed track:
+
+| Row | Keys |
+|---|---|
+| Lower octave | `Z S X D C V G B H N J M` = C C♯ D D♯ E F F♯ G G♯ A A♯ B |
+| Octave up | `Q 2 W 3 E R 5 T 6 Y 7 U I` = the same run an octave higher |
+| Octave shift | `[` / `]` (range 1–7, announced) |
+
+On a **rhythm** armed track the lower row plays the kit instead:
+`Z X C V B N M , . /` = the ten `RHYTHM_ROWS` in the order the grid shows
+them. Keys are mapped by **`event.code`, not `event.key`**, so the layout is
+positional and a non-US keyboard plays the same notes from the same places.
+
+Every key sounds immediately through the armed track's own channel — so
+what you hear while playing is the waveform, envelope and FX the note will
+have — whether or not the transport is rolling. While rolling, a note is
+committed on **key up** with a length taken from how long the key was held,
+floored at one grid step; a drum hit has no length and commits on key down.
+Both snap to the current grid resolution and go through the same collision
+predicates (B.5) as a mouse-placed note, so recording over an existing part
+replaces same-pitch/same-drum items rather than stacking on them.
+
+Note keys are live **only while a track is armed**, which is what leaves the
+plain letter shortcuts (`M` metronome, tool keys) working the rest of the
+time.
 
 ---
 
@@ -615,8 +668,19 @@ state = {
   multiSelected, // Set<Note|Hit> — group selection within activeTrack
   playhead, loopStart, loopEnd,
   marquee,     // { col0, col1, track } | null, mid-drag only
+  recTrack,    // id of the record-armed track | null — one keyboard, one arm (A.16)
+  metronome,   // bool — click on every beat; per-browser, not song content
 }
 ```
+
+`recTrack` and `metronome` are **editor state, not song content**: neither
+is serialised into a save file, written by `autosave()`, or captured in an
+undo snapshot (`metronome` is remembered per browser under its own
+`localStorage` key, the way per-track collapse state is). The rest of the
+recording engine's own state — which keys are down, the octave, whether the
+transport is capturing — lives in module-level variables (`heldKeys`,
+`recOctave`, `recording`, `countingIn`) rather than in `state`, since none
+of it survives a render, let alone a reload.
 
 `PITCH_TRACKS`/`RHYTHM_TRACK_IDS`/`ALL_TRACKS` (derived id lists) and
 module-level `COLS` (song length in eighths) sit alongside `state` rather
@@ -785,8 +849,8 @@ re-derives the rule locally:
 
 Every editing path routes through these — placing (`onCellClick`,
 `onRhythmCellClick`), dragging (`startMoveNote`, `startMoveHit`), nudging
-(`nudgeSelection`), pasting (`pasteClipboard`) and the Chord buttons
-(`addChordAbove`). That centralisation is load-bearing rather than cosmetic:
+(`nudgeSelection`), pasting (`pasteClipboard`), the Chord buttons
+(`addChordAbove`) and keyboard recording (`commitNote`/`commitHit`, A.16). That centralisation is load-bearing rather than cosmetic:
 when each site spelled the comparison out inline the variants drifted, and
 every drift silently deleted the user's notes or hits — five distinct bugs
 traced back to it.
@@ -804,6 +868,24 @@ there is no separate tonal and rhythm copy to drift apart.
 `activateTrack()` (or `setActive()`, which wraps it) rather than assigning
 `state.activeTrack` directly, or a later nudge will pull the previous track's
 items into the new one.
+
+**Keyboard recording** (A.16) is a fourth state machine, driven by
+`keydown`/`keyup` instead of pointer events. `heldKeys` maps `event.code` →
+the note started by that key, so it is a per-key machine rather than a
+global one and a chord is just several entries. `keydown` sounds the note
+immediately (`monitorNote()` through the armed track's own channel, so the
+monitor is the sound the note will have) and, while capturing, records its
+start column; `keyup` commits with the length the key was held, floored at
+one grid step. Auto-repeat (`e.repeat`) is swallowed — a held note is one
+note, not a stream of them. Audio time becomes a column through
+`ctxTimeToCol()`, which reuses the same `playStartCol`/`playStartCtxTime`
+anchor the playhead animation does, then snaps to the current grid — which
+is what makes a part played by hand line up with one placed by mouse.
+`releaseAllKeys()` runs on window `blur` and from `stopPlayback()`: a key
+held when the window loses focus never sends its `keyup`, and its note
+would otherwise stay down and be committed with an absurd length later —
+and `stopPlayback()` tears down the very clock those lengths are measured
+against, so anything still held has to be resolved *before* that happens.
 
 ### B.6 Audio synthesis engine
 
@@ -1037,6 +1119,18 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   dry/wet blend → `masterAnalyser` (drives the spectrum canvas + LUFS
   estimate) → a lo-fi sample-and-hold `AudioWorkletNode`
   (`js/downsample-processor.js`) → `destination`.
+- **Metronome** (`ensureMetronomeBus()`/`scheduleClick()`, A.16): a 35 ms
+  square blip — 1800 Hz on a bar's downbeat, 1200 Hz otherwise — on its own
+  `metroGain` connected **straight to `ctx.destination`**, deliberately
+  bypassing `masterGain` and the whole master chain. It is a rehearsal aid,
+  not part of the mix, so it must not be EQ'd, compressed, ducked or
+  metered with the song — and it must not exist in an offline render at
+  all: the guarantee there is simply that `renderSongToWav()` never calls
+  `scheduleMetronomeForChunk()`, so a click can never reach an exported
+  file. Clicks are scheduled per chunk alongside the notes, on every beat
+  that falls inside it, with **swing deliberately not applied** — the
+  metronome is the straight reference the swung part is played against.
+  `metroGain` is nulled in both context-teardown paths beside `masterGain`.
 - **Playback scheduling**: `startPlaybackFrom(col)` schedules one bounded
   "chunk" (`SCHEDULE_LOOKAHEAD_BARS` = 8 bars, capped to the loop end or
   song end if closer) ahead of time via Web Audio's own clock
