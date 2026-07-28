@@ -2213,7 +2213,8 @@ async function main() {
       // and that correction is the point of this block.
       //
       // A peak spread of up to 4.4 dB across pitch previously read to me as
-      // "noise and ring aren't levelled", and went into TODO.md as audio work.
+      // "noise and ring aren't levelled", and was filed as audio work; the
+      // retraction is in DONE.md.
       // Measuring RMS alongside peak says otherwise: every waveform's RMS is
       // flat across the range (C5 against E4, all ten within 0.05 dB), while
       // peak swings purely from crest factor — the noise loop is 93 samples

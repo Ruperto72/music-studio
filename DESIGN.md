@@ -8,8 +8,10 @@ means the application's internal architecture).
 
 It describes the system as built, not a proposal — it's a reference for
 understanding or extending `index.html`. See `CLAUDE.md` for the shorter
-orientation aimed at an editing session, and `TODO.md` for what's
-deliberately not built yet.
+orientation aimed at an editing session, `TODO.md` for what's deliberately
+not built yet, and `DONE.md` for the working journal behind what is — the
+measurements, the ruled-out hypotheses, and why a solution looks the way it
+does rather than like the obvious alternative.
 
 ---
 
@@ -1149,8 +1151,9 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   mod's peak follows the carrier/modulator beat. A peak spread across pitch is
   therefore not a levelling fault, and reading one as such is how a
   non-existent "noise and ring aren't levelled across pitch" item briefly got
-  into TODO.md. `verify.js` checks both: RMS in a −7…+0.5 dB band (tight,
-  pitch-stable, and where a loudness drift shows) and peak in a wider
+  filed as audio work (the retraction is in DONE.md). `verify.js` checks
+  both: RMS in a −7…+0.5 dB band (tight, pitch-stable, and where a loudness
+  drift shows) and peak in a wider
   −6…+1.5 dB one (headroom, and where the original hot-buffer bug showed).
 - **Rhythm**: each hit type is a small dedicated synthesis function
   (`scheduleKick`/`scheduleSnare`/`scheduleRim`/`scheduleHihat`/
@@ -1323,3 +1326,4 @@ less than a save does is worth very little.
 | `verify.js` | A permanent, dependency-free headless-browser smoke test — drives the app over the Chrome DevTools Protocol (`WebSocket` + JSON-RPC, Node built-ins only) through a handful of core interactions and fails on any wrong expectation or console error/exception. Not a full test suite; a reusable regression check. Its first step (`auditBundledSongs()`) is the exception that never opens a browser: it reads `songs/*.json` and checks every field against what `applySavedMix()` accepts, with the constants extracted from `index.html` so the audit cannot drift from the loader. It runs first because a bad example ships to everyone who opens the Songs menu, and because hearing about it costs seconds rather than the browser run's minutes. |
 | `manifest.webmanifest`, `sw.js`, `icons/` | PWA installability and offline caching. |
 | `.github/workflows/pages.yml` | Deploys the repo root to GitHub Pages on push to `main`. |
+| `TODO.md` / `DONE.md` | What is left to build, and the working journal behind what is. A finished item moves from one to the other rather than staying as a `[x]` in a list of what remains — `TODO.md` is meant to be read start to finish, which it stops being once four fifths of it is done. `DONE.md` carries the measurements, the hypotheses that were ruled out and how, and why each solution looks the way it does rather than like the obvious alternative; several entries record a claim that turned out to be wrong, which is the part that is most expensive to discover twice. |
