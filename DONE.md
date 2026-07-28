@@ -240,6 +240,37 @@ ett facit.
 
 ## Ljud / export
 
+- [x] **`Popcorn` ut, `Rust Foundry` in.** Popcorn togs bort på begäran; den
+  finns kvar i headroom-tabellen längre ner som historik, men filen är borta.
+  Ersättaren är industrimetall i 140 BPM, 64 takter, sju spår: ett
+  E-frygiskt chuggriff *dubbelspårat* hårt vänster och höger (den enda
+  produktionsknepet genren står och faller med — riffet blir brett i stället
+  för högt), ringmodulerad maskindrone, FM-larm, bas och två trumkit.
+  Skriven med en generator i stället för för hand: riffet är samma figur med
+  variationer, och 4400 handskrivna objekt är precis så en transponering
+  hamnar en halvton fel i takt 43 och ingen annanstans.
+  Det som den *visar upp* är det du faktiskt hör i genren: velocity på varje
+  slag (spöknoter på 0.3 mot full backbeat, hi-hats accentuerade på slaget
+  och nedtryckta emellan), pukfyllningar som vandrar tvärs över stereofältet
+  med `hit.pan`, skrotpercussion som klankar avsiktligt bredvid rutnätet,
+  bitcrush använt som distortion snarare än som effekt, mid-scoopad EQ per
+  spår *och* på mastern, parallellkompression och kickutlöst duckning.
+  Portamenton sitter på dronens egna noter — de ligger kant i kant på samma
+  tonhöjd, så glidet hörs inte som en tonhöjdsändring; vad det gör är att ta
+  bort *omanslaget*, vilket är skillnaden mellan en drone och samma ton spelad
+  sexton gånger. Inte på takt 36: dess mål är den arpeggierade noten, och ett
+  glid *konsumerar* sitt mål i stället för att schemalägga det, vilket hade
+  slukat arpeggiot.
+  **Nivån är mätt, inte gissad**, och den här låten är just det fall som
+  headroom-genomgången nedan varnade för: den har en kompressor på mastern, så
+  `masterVol` skalar *inte* linjärt. 0.30 → −7.58 dBFS, 0.70 → −2.36 (linjärt
+  hade förutsagt −0.22, kompressorn åt 2,14 dB), 0.86 → **−1.35 dBFS, noll
+  sampel över fullskala** — samma band som de andra medföljande låtarna
+  (−0.89 till −1.13). RMS landar på −17.5 mot Technos −24.3, alltså en klart
+  tätare och hårdare komprimerad mix, vilket är hela poängen med genren.
+  Kontrollerat separat att den *spelar* också, inte bara renderar: 12 sekunders
+  uppspelning i headless, 3278 noter och 1150 slag över sju spår, inga
+  konsolfel.
 - [x] **Tre nya vågformer: brus, ringmodulering och half-sine.** Nio totalt nu,
   över två rader i väljaren (nio på en rad hade gett ~19px per knapp, för litet
   för att formen ska gå att läsa; ett femkolumnsrutnät ger ~35px, bredare än de
