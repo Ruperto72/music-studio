@@ -807,6 +807,54 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   också att ett nollavstånd — två hi-hats i samma kolumn, vilket `hitsConflict`
   räknar som krock — förtjänar ett eget felmeddelande i stället för en
   Infinity-kvot, så det lades till.
+- [x] **Startupplägg i stället för ett tomt rytmspår — och två buggar det
+  avslöjade.** Appen startade med ett enda tomt Rhythm-spår. Nu startar den med
+  `STARTER_TRACKS`: Lead (square), Harmony (square, 25 % duty), Bass (triangle),
+  Pad (pwm, långsam ADSR) och kittet. Det är NES:ens egen kanaluppsättning —
+  två pulskanaler, en triangel som bas, brus till trummor — vilket är vad appen
+  är en modell av; andra pulsen ligger på 25 % så den läses som en *egen* stämma
+  i stället för att dubbla leaden. Motiveringen är användarens: att radera ett
+  spår är ett klick, att lägga till ett kräver namn, vågform och nivå.
+  Ett bord, `starterProject()`, används av både boot-tillståndet och
+  Songs-dialogens "Starter tracks" — ingen andra kopia av upplägget.
+  **Fyra tomma tonspår fick första skärmen att spricka.** En tom bana öppnade
+  på 28 halvtoner ≈ 321 px, så av fem spår syntes två. En tom bana har inget
+  att anpassa sig till, så den returnerar nu `MIN_SPAN` direkt från mitt-C och
+  hoppar över ±3-paddingen som finns för att ge *noter* luft: 185 px, fyra spår
+  synliga.
+  **Bugg 1: Patterns-knappen gjorde inget om ett tonspår var aktivt.**
+  `insertPatternIntoRhythm()` arbetar på `state.activeTrack`, och knappens egen
+  `stopPropagation()` hindrade rubrikens `setActive`. Osynligt när det enda
+  spåret alltid var aktivt. Knappen aktiverar sitt eget spår nu.
+  **Bugg 2, den allvarliga: första klicket i ett icke-aktivt spår hamnade fel.**
+  Bägge Pen-hanterarna anropade `setActive(track)` *före* de läste sin rect —
+  men `setActive` renderar om, vilket byter ut själva elementet hanteraren
+  sitter på, så rect:en lästes från en frånkopplad nod och blev noll. Klicket
+  landade där de råa skärmkoordinaterna råkade dela sig. Mätt: ett klick avsett
+  för virveln på takt 1 lade en ride på takt 3; i en tonbana G#0 i stället för
+  B4. Geometrin läses före aktiveringen nu.
+  Det var trasigt hela tiden — men oåtkomligt medan en ny låt hade *ett* spår
+  som alltid var aktivt. Det var också det som fick brusbuffert-testet att
+  falla, vilket är hur jag hittade det.
+  **Tre teststeg vilade på "första spåret är trumspåret"** och lagades att
+  peka på rytmspåret efter *sort* i stället för position; två `> 1`-väntningar
+  efter "Add track" hade blivit sanna redan vid boot och räknar nu +1; och
+  Duty-testet asserterar numera både den handsatta och `STARTER_TRACKS` egen.
+  **Två teststeg vilade dessutom på en tonhöjd de aldrig nämnde.** De klickade
+  på en pixelposition och antog vad som hamnade där. När den tomma banan
+  krympte flyttades tonen — och vibrato-steget föll. Det räknar nu ut väntat
+  djup ur den frekvens appen faktiskt schemalade (50 cent = f·(2^(50/1200)−1)),
+  vilket är exakt i stället för intervallet "någonstans mellan 5 och 40 Hz".
+  Och vågformstestet: den gamla 3 dB-grinden höll bara för att en tom bana råkade
+  lägga tonen på D5. Mätt på fyra tonhöjder är oscillatorformerna inom ~1,5 dB
+  överallt, men **brus och ringmodulation driver upp till 4,4 dB** beroende på
+  tonhöjd (brusloopen är 93 sampel vars fas mot enveloppen skiftar med
+  `playbackRate`; ringmodens topp följer svävningen). Testet delar nu de två
+  familjerna åt och redovisar mätningen i stället för att låtsas om en tolerans
+  appen inte håller. Att nivålägga de två över registret är eget arbete:
+- [ ] **Brus och ringmodulation är inte nivålagda över tonhöjd.** Se mätningen
+  ovan: 0,8 dB spridning på D5 men 4,4 dB på A#4 och C#4. Oscillatorformerna
+  är opåverkade. Kräver en frekvensberoende skalning, inte en konstant.
 - [x] **Genomgång av `DESIGN.md` och `README.md` mot koden — fjorton fel.**
   Uppföljning av emoji-städningen: om ikonografin hade legat kvar inaktuell,
   vad mer hade det? Sätten som gav utdelning var att räkna: varje
