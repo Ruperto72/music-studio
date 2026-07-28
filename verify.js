@@ -518,42 +518,70 @@ async function main() {
       await waitFor(`document.querySelectorAll('.automation-point').length > ${before}`);
     });
 
-    step('opens the FX panel and adjusts the Delay slider', async () => {
-      await cdp.evaluate(`Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('FX')).click()`);
-      await waitFor(`!!document.querySelector('.th-fx-panel')`);
-      await cdp.evaluate(`
-        const field = Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === 'Delay');
-        const slider = field.querySelector('input[type=range]');
-        slider.value = 0.5;
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-      `);
-      const text = await cdp.evaluate(`
-        Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === 'Delay').querySelector('.th-fx-val').textContent
-      `);
+    // Small helpers shared by every FX-panel step below. `panel` is always
+    // the first track's (`.track`s[0]) — same target the old slider-grid
+    // tests used, kept for continuity with the rest of the suite.
+    const fxPanelSel = `document.querySelectorAll('.track')[0].querySelector('.th-fx-panel')`;
+    async function openFxPanel() {
+      await cdp.evaluate(`(() => {
+        if (${fxPanelSel}) return;
+        Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('FX')).click();
+      })()`);
+      await waitFor(`!!(${fxPanelSel})`);
+    }
+    // Adds `label` (e.g. 'EQ') via the "+ Add effect" menu if not already a
+    // chip, and returns once its popover is open (adding auto-opens it).
+    async function addFxEffect(label) {
+      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`);
+      if (already) return;
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
+      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key]')`);
+    }
+    // Steps a knob (identified by its label, e.g. 'Lo') by dispatching N
+    // keydowns rather than replaying pointer-drag pixel math — deterministic,
+    // and it exercises the knob's keyboard support as a side effect.
+    async function stepKnob(popoverKey, fieldLabel, key, times) {
+      const dialSel = `[...document.querySelector('.th-fx-popover[data-key="${popoverKey}"]').querySelectorAll('.th-knob')]` +
+        `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-dial')`;
+      await cdp.evaluate(`(() => {
+        const dial = ${dialSel};
+        dial.focus();
+        for (let i = 0; i < ${times}; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
+      })()`);
+    }
+    async function knobText(popoverKey, fieldLabel) {
+      return cdp.evaluate(`[...document.querySelector('.th-fx-popover[data-key="${popoverKey}"]').querySelectorAll('.th-knob')]` +
+        `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-val').textContent`);
+    }
+
+    step('FX panel: adding Delay opens its popover with a working knob', async () => {
+      await openFxPanel();
+      await addFxEffect('Delay');
+      // 0 -> 0.5 at a 0.02 step is exactly 25 presses.
+      await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
+      const text = await knobText('sendDelay', 'Delay');
       if (text !== '50%') throw new Error(`expected Delay to show 50%, got ${text}`);
     });
 
-    step('FX panel: per-track EQ sits ahead of the compressor and survives a reload', async () => {
-      const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.th-fx-panel .th-fx-label')).map(e => e.textContent)`);
-      for (const band of ['Lo', 'Mid', 'Hi']) {
-        if (!labels.includes(band)) throw new Error(`expected an EQ ${band} field, got ${labels.join(',')}`);
+    step('FX panel: EQ chip renders before Comp regardless of add order, and survives a reload', async () => {
+      // Comp added first, EQ second — if the chip row still shows EQ before
+      // Comp, the order is registry-driven (the real audio chain), not
+      // insertion order.
+      await addFxEffect('Comp');
+      await addFxEffect('EQ');
+      const chipLabels = await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body span')].map(s => s.textContent)`);
+      if (chipLabels.indexOf('EQ') === -1 || chipLabels.indexOf('EQ') > chipLabels.indexOf('Comp')) {
+        throw new Error(`EQ should render before Comp regardless of add order, got ${JSON.stringify(chipLabels)}`);
       }
-      // The registry order is the audio order: EQ feeds the compressor, so a
-      // band must render before Thr rather than after it.
-      if (labels.indexOf('Hi') > labels.indexOf('Thr')) {
-        throw new Error(`EQ should render before the compressor, got ${labels.join(',')}`);
-      }
-      const setBand = (band, value) => cdp.evaluate(`(() => {
-        const field = Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === ${JSON.stringify(band)});
-        const slider = field.querySelector('input[type=range]');
-        slider.value = ${value};
-        slider.dispatchEvent(new Event('input', { bubbles: true }));
-        return field.querySelector('.th-fx-val').textContent;
-      })()`);
-      const shown = await setBand('Lo', 6);
-      if (shown !== '6.0dB') throw new Error(`expected Lo to read 6.0dB, got ${shown}`);
-      const cut = await setBand('Hi', -4.5);
-      if (cut !== '-4.5dB') throw new Error(`expected Hi to read -4.5dB, got ${cut}`);
+      // 0 -> 6 and 0 -> -4.5 at a 0.5 step: 12 up, 9 down.
+      await stepKnob('eq', 'Lo', 'ArrowUp', 12);
+      await stepKnob('eq', 'Hi', 'ArrowDown', 9);
+      const lo = await knobText('eq', 'Lo');
+      const hi = await knobText('eq', 'Hi');
+      if (lo !== '6.0dB') throw new Error(`expected Lo to read 6.0dB, got ${lo}`);
+      if (hi !== '-4.5dB') throw new Error(`expected Hi to read -4.5dB, got ${hi}`);
       // Round-trip through the song payload the same way a save/load would.
       await new Promise((r) => setTimeout(r, 500)); // autosave is debounced
       const stored = await cdp.evaluate(`(() => {
@@ -565,9 +593,29 @@ async function main() {
       if (!stored || stored.low !== 6 || stored.high !== -4.5) {
         throw new Error(`EQ should be part of the saved song, got ${JSON.stringify(stored)}`);
       }
-      // Reset is registry-driven, so it must clear the new group too.
-      await cdp.evaluate(`document.querySelector('.th-fx-reset').click()`);
-      await waitFor(`Array.from(document.querySelectorAll('.th-fx-field')).find(f => f.querySelector('.th-fx-label').textContent === 'Lo').querySelector('.th-fx-val').textContent === '0.0dB'`);
+    });
+
+    step('FX panel: bypass dims the chip/popover but keeps showing the dialled value, and Reset clears every chip', async () => {
+      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
+      const bypassedState = await cdp.evaluate(`(() => {
+        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ');
+        const pop = (${fxPanelSel}).querySelector('.th-fx-popover[data-key="eq"]');
+        return { chipDimmed: chip.classList.contains('bypassed'), popDimmed: pop.classList.contains('bypassed') };
+      })()`);
+      if (!bypassedState.chipDimmed || !bypassedState.popDimmed) {
+        throw new Error(`bypass should dim both the chip and its popover: ${JSON.stringify(bypassedState)}`);
+      }
+      const stillShown = await knobText('eq', 'Lo');
+      if (stillShown !== '6.0dB') throw new Error(`bypass must not hide the real dialled value, Lo now reads ${stillShown}`);
+
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-reset').click()`);
+      await waitFor(`(${fxPanelSel}).querySelectorAll('.th-fx-chip').length === 0`);
+      // Re-adding EQ after Reset should start from default again.
+      await addFxEffect('EQ');
+      const backToDefault = await knobText('eq', 'Lo');
+      if (backToDefault !== '0.0dB') throw new Error(`Reset should clear EQ's values, Lo now reads ${backToDefault}`);
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-reset').click()`);
+      await waitFor(`(${fxPanelSel}).querySelectorAll('.th-fx-chip').length === 0`);
     });
 
     step('plays back for a moment with no errors', async () => {
@@ -1137,42 +1185,52 @@ async function main() {
         throw new Error(`pills must keep their glyph and aria-pressed: ${JSON.stringify(pills)}`);
       }
 
-      // FX panel: one glyphed heading per TRACK_FX_REGISTRY group, and all 13
-      // sliders still present now that the headings share their grid.
-      // An earlier step may already have opened an FX panel, in which case
-      // clicking the button would close it — open one only if none is showing.
+      // FX panel: every TRACK_FX_REGISTRY entry is offered, in the fixed
+      // registry order, each with a glyphed chip; adding all of them opens
+      // all their popovers (any number can be open at once), so the total
+      // knob count across all of them is the same 13/15 the old always-shown
+      // slider grid asserted. An earlier step may already have opened this
+      // panel, in which case clicking the button would close it.
       await cdp.evaluate(`(() => {
         if (document.querySelector('.th-fx-panel')) return;
         [...document.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
       })()`);
-      await waitFor(`!!document.querySelector('.th-fx-group')`);
+      await waitFor(`!!document.querySelector('.th-fx-panel')`);
+      const panelSel = `document.querySelector('.th-fx-panel')`;
+      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-wave-group')`);
+      for (let i = 0; i < 8; i++) {
+        const added = await cdp.evaluate(`(() => {
+          const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
+          if (!addBtn) return false;
+          addBtn.click();
+          const item = (${panelSel}).querySelector('.th-fx-add-menu button');
+          if (!item) { addBtn.click(); return false; } // menu was empty — close it back up and stop
+          item.click();
+          return true;
+        })()`);
+        if (!added) break;
+        await new Promise((r) => setTimeout(r, 60));
+      }
       const fx = await cdp.evaluate(`(() => {
-        // Same scoping caution as the waveform picker above — read one panel.
-        const panel = document.querySelector('.th-fx-panel');
-        const heads = [...panel.querySelectorAll('.th-fx-group')];
+        const panel = ${panelSel};
+        const chips = [...panel.querySelectorAll('.th-fx-chip')];
         return {
-          labels: heads.map(h => h.textContent.trim()),
-          drawn: heads.every(h => h.querySelectorAll('svg.glyph path').length > 0),
-          fields: panel.querySelectorAll('.th-fx-field').length,
+          labels: chips.map(c => c.querySelector('.th-fx-chip-body span').textContent),
+          drawn: chips.every(c => c.querySelectorAll('svg.glyph path').length > 0),
+          knobs: panel.querySelectorAll('.th-knob').length,
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
-          // Vibrato is tonal-only (it modulates each note's oscillator, so a
-          // drum has nothing for it to bend), so what this panel should show
-          // depends on which kind of track it belongs to.
-          tonal: !!panel.closest('.track-header').querySelector('.th-wave-group'),
         };
       })()`);
-      // Sends is now three separate registry entries (Delay/Chorus/Reverb,
-      // each its own chip candidate for Task 2), so this reflects the
-      // reshaped TRACK_FX_REGISTRY order — total field count is unchanged
-      // below since the same 15/13 fields just regroup differently.
-      const wantFx = ['EQ', 'Comp', 'Bitcrush', 'Tremolo', 'Delay', 'Chorus', 'Reverb'].concat(fx.tonal ? ['Vibrato'] : []);
+      const wantFx = ['EQ', 'Comp', 'Bitcrush', 'Tremolo', 'Delay', 'Chorus', 'Reverb'].concat(tonal ? ['Vibrato'] : []);
       if (fx.labels.join('|') !== wantFx.join('|')) {
-        throw new Error(`unexpected FX group headings on a ${fx.tonal ? 'tonal' : 'rhythm'} track: ${JSON.stringify(fx.labels)}`);
+        throw new Error(`unexpected FX chips on a ${tonal ? 'tonal' : 'rhythm'} track: ${JSON.stringify(fx.labels)}`);
       }
-      if (!fx.drawn) throw new Error('every FX group heading needs a glyph');
-      const wantFields = fx.tonal ? 15 : 13;
-      if (fx.fields !== wantFields) throw new Error(`expected ${wantFields} FX sliders, got ${fx.fields}`);
+      if (!fx.drawn) throw new Error('every FX chip needs a glyph');
+      const wantKnobs = tonal ? 15 : 13;
+      if (fx.knobs !== wantKnobs) throw new Error(`expected ${wantKnobs} FX knobs across every open popover, got ${fx.knobs}`);
       if (!fx.fits) throw new Error('the FX panel overflows the track header');
+      // Leave this track's panel clean for later steps that assume a fresh one.
+      await cdp.evaluate(`(${panelSel}).querySelector('.th-fx-reset').click()`);
     });
 
     step('Accessibility: landmarks, labelled grid and keyboard note selection', async () => {
@@ -2555,67 +2613,67 @@ async function main() {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.track')`);
 
-      // The rhythm track's FX panel must not offer Vibrato. Reached by its
-      // own header rather than "the first track" — the starter layout puts
-      // four tonal tracks ahead of it.
+      // The rhythm track's "+ Add effect" menu must not offer Vibrato.
+      // Reached by its own header rather than "the first track" — the
+      // starter layout puts four tonal tracks ahead of it.
       const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-wave-group'))`;
       await cdp.evaluate(`(() => {
         const head = ${rhythmHead};
         if (head.querySelector('.th-fx-panel')) return;
         [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
       })()`);
-      await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-group')`);
-      const rhythmGroups = await cdp.evaluate(
-        `[...(${rhythmHead}).querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')].map(h => h.textContent.trim())`);
-      if (rhythmGroups.includes('Vibrato')) {
-        throw new Error(`a rhythm track must not offer Vibrato: ${JSON.stringify(rhythmGroups)}`);
-      }
-      if (!rhythmGroups.includes('Tremolo')) {
-        throw new Error(`the rhythm FX panel lost its other groups: ${JSON.stringify(rhythmGroups)}`);
-      }
+      await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-panel')`);
+      await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-add-menu')`);
+      const rhythmMenu = await cdp.evaluate(`[...(${rhythmHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      if (rhythmMenu.includes('Vibrato')) throw new Error(`a rhythm track's add menu must not offer Vibrato: ${JSON.stringify(rhythmMenu)}`);
+      if (!rhythmMenu.includes('Tremolo')) throw new Error(`the rhythm add menu lost its other effects: ${JSON.stringify(rhythmMenu)}`);
+      await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-add-btn').click()`); // close the menu back up
 
-      // A tonal track must offer it.
+      // A tonal track must offer it. Add a fresh one so its FX panel starts
+      // empty (the starter tracks may already be dirtied by earlier steps).
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      const beforeAdd2 = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+      const idsBefore = await cdp.evaluate(`[...document.querySelectorAll('.track')].map(t => t.dataset.track)`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
-      // `> 1` used to mean "the added track showed up"; the starter layout is
-      // already five, so that would now pass without adding anything.
-      await waitFor(`document.querySelectorAll('.track').length === ${beforeAdd2} + 1`);
+      await waitFor(`document.querySelectorAll('.track').length === ${idsBefore.length} + 1`);
+      const newTrackId = await cdp.evaluate(
+        `[...document.querySelectorAll('.track')].map(t => t.dataset.track).find(id => !${JSON.stringify(idsBefore)}.includes(id))`);
+      // Keyed on the new track's own id rather than "the tonal track with no
+      // FX chip yet" — that predicate stops matching this very track the
+      // moment the steps below add one, so a live re-query of it would start
+      // silently picking a *different*, still-clean starter track instead.
+      const newTonalHead = `document.querySelector('.track[data-track="${newTrackId}"] .track-header')`;
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = ${newTonalHead};
         head.querySelector('.th-fx-panel') || [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
       })()`);
-      await waitFor(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        return !!head && !!head.querySelector('.th-fx-panel');
-      })()`);
-      const tonalGroups = await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        return [...head.querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')].map(h => h.textContent.trim());
-      })()`);
-      if (!tonalGroups.includes('Vibrato')) {
-        throw new Error(`a tonal track should offer Vibrato: ${JSON.stringify(tonalGroups)}`);
-      }
+      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-panel')`);
+      await cdp.evaluate(`(${newTonalHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-add-menu')`);
+      const tonalMenu = await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      if (!tonalMenu.includes('Vibrato')) throw new Error(`a tonal track's add menu should offer Vibrato: ${JSON.stringify(tonalMenu)}`);
+      await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
+      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
 
       // Set a depth, place a note, and confirm an LFO reaches its frequency.
       // 50 cents on a 523.25Hz note => 523.25 * (2^(50/1200) - 1) ~= 15.3Hz.
+      // 0 -> 50 at a 1-cent step is 50 presses.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        const panel = head.querySelector('.th-fx-panel');
-        const groups = [...panel.querySelectorAll('.th-fx-group')];
-        const vib = groups.find(g => g.textContent.trim() === 'Vibrato');
-        // The two fields after the Vibrato heading are its Rate and Depth.
-        let n = vib.nextElementSibling, fields = [];
-        while (n && !n.classList.contains('th-fx-group')) { if (n.classList.contains('th-fx-field')) fields.push(n); n = n.nextElementSibling; }
-        const depth = fields[1].querySelector('input[type=range]');
-        depth.value = 50; depth.dispatchEvent(new Event('input', { bubbles: true }));
+        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+          .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
+        dial.focus();
+        for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 300));
 
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`window.__freqMod = []`);
+      // Keyed on the same stable track id as newTonalHead above, rather than
+      // matching a `.lane` back to a header — `.lane` elements aren't direct
+      // children of `.track-header`, so that indirection is worth avoiding
+      // now that the id is already in hand.
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = document.querySelector('.track[data-track="${newTrackId}"] .lane');
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
       })()`);
@@ -2623,9 +2681,7 @@ async function main() {
       const mod = await cdp.evaluate(`window.__readFreqMod()`);
       // Exact, not a range: 50 cents of a note at f Hz is f * (2^(50/1200) - 1)
       // deep, so the check works out the expectation from the frequency the
-      // app actually used. The previous "somewhere between 5 and 40 Hz" only
-      // held for the pitch an empty lane happened to place the note at, and
-      // silently became a different test whenever that lane resized.
+      // app actually used.
       const want = (f) => f * (Math.pow(2, 50 / 1200) - 1);
       if (!mod.some((v) => v && Math.abs(v.gain - want(v.freq)) < 0.5)) {
         throw new Error(`a 50-cent track vibrato should modulate the note's own frequency, saw ${JSON.stringify(mod)}`);
@@ -2633,13 +2689,10 @@ async function main() {
 
       // At depth 0 nothing must be connected — an untouched track is unchanged.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        const groups = [...head.querySelector('.th-fx-panel').querySelectorAll('.th-fx-group')];
-        const vib = groups.find(g => g.textContent.trim() === 'Vibrato');
-        let n = vib.nextElementSibling, fields = [];
-        while (n && !n.classList.contains('th-fx-group')) { if (n.classList.contains('th-fx-field')) fields.push(n); n = n.nextElementSibling; }
-        const depth = fields[1].querySelector('input[type=range]');
-        depth.value = 0; depth.dispatchEvent(new Event('input', { bubbles: true }));
+        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+          .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
+        dial.focus();
+        for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`window.__freqMod = []`);

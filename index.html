@@ -443,29 +443,81 @@
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
   .track.silent .lane { opacity: 0.32; }
 
-  /* Track FX panel (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo)
-     — unlike Automation/Envelope this needs no timeline column width, so it
-     lives right inside the header as a compact 2-column grid instead of a
-     full-width row (see buildFxPanel()). */
-  .th-fx-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 2px; }
-  .th-fx-reset-wrap { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+  /* Track FX panel — an insert-chip rack (Pro Tools style) rather than an
+     always-all-visible slider grid: chips for whichever effects this track
+     actually has (visibleFxFor()), a "+ Add effect" menu, and a knob-based
+     popover per open chip. Unlike Automation/Envelope this needs no timeline
+     column width, so it lives right inside the header (see buildFxPanel()). */
+  .th-fx-panel { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+  .th-fx-reset-wrap { display: flex; justify-content: flex-end; }
   .th-fx-reset {
     background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
     font-size: 10px; padding: 2px 6px; cursor: pointer;
   }
   .th-fx-reset:hover { border-color: #55555f; }
-  .th-fx-group {
-    grid-column: 1 / -1; display: flex; align-items: center; gap: 5px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
-    color: #8f8f9b; border-top: 1px solid #3a3a44; padding-top: 5px; margin-top: 2px;
+  .th-fx-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
+  .th-fx-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #26262e; border: 1px solid #3a3a44; border-radius: 12px; padding: 2px 3px 2px 8px;
   }
-  .th-fx-group.first { border-top: 0; padding-top: 0; margin-top: 0; }
-  .th-fx-group .glyph { width: 18px; height: 9px; }
-  .th-fx-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .th-fx-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
-  .th-fx-label { font-size: 10px; font-weight: 700; color: var(--muted); }
-  .th-fx-val { font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .th-fx-field input[type=range] { width: 100%; cursor: pointer; }
+  .th-fx-chip.open { border-color: #7a4fd1; box-shadow: 0 0 6px rgba(122,79,209,0.35); }
+  .th-fx-chip.bypassed { opacity: 0.55; }
+  .th-fx-chip-body {
+    display: flex; align-items: center; gap: 4px; background: none; border: none;
+    font-size: 10px; font-weight: 700; color: var(--ink); cursor: pointer; padding: 2px 0;
+  }
+  .th-fx-chip-body .glyph { width: 16px; height: 8px; }
+  .th-fx-chip-bypass, .th-fx-chip-remove {
+    display: flex; align-items: center; justify-content: center; background: none; border: none;
+    width: 16px; height: 16px; padding: 0; border-radius: 3px; color: var(--muted); cursor: pointer;
+  }
+  .th-fx-chip-bypass .glyph-sq { width: 11px; height: 11px; }
+  .th-fx-chip-bypass.on { color: #ffb84f; }
+  .th-fx-chip-remove:hover { background: #3a1414; color: #ff9a9a; }
+  .th-fx-add { position: relative; }
+  .th-fx-add-btn {
+    background: #26262e; border: 1px dashed #4a4a54; border-radius: 12px; color: var(--muted);
+    font-size: 10px; padding: 3px 8px; cursor: pointer;
+  }
+  .th-fx-add-btn:hover { border-color: #6a6a76; color: var(--ink); }
+  .th-fx-add-menu {
+    position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 3px; min-width: 120px;
+    background: #1c1c22; border: 1px solid #3a3a44; border-radius: 6px; padding: 2px;
+    display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+  .th-fx-add-menu button {
+    display: flex; align-items: center; gap: 6px; background: none; border: none; text-align: left;
+    color: var(--ink); font-size: 10px; padding: 4px 6px; border-radius: 4px; cursor: pointer;
+  }
+  .th-fx-add-menu button:hover { background: #2c2c33; }
+  .th-fx-add-menu button .glyph { width: 16px; height: 8px; }
+  .th-fx-add-empty { font-size: 10px; color: var(--muted); padding: 4px 6px; }
+  .th-fx-popover { border: 1px solid #3a3a44; border-radius: 6px; background: #1c1c22; padding: 6px 8px; }
+  .th-fx-popover.bypassed { opacity: 0.55; }
+  .th-fx-popover-head {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+    font-size: 10px; font-weight: 700; color: var(--muted);
+  }
+  .th-fx-popover-head .glyph { width: 18px; height: 9px; }
+  .th-fx-popover-head-spacer { flex: 1; }
+  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+
+  /* Insert-effect parameter knob — a pointer-driven rotary control, not a
+     restyled <input type=range> (see buildKnob()). -135deg..+135deg sweep
+     (270deg), CSS conic-gradient for the lit arc and a rotated pointer stick
+     for the indicator, both using the same "0deg = top, clockwise" angle
+     convention so they always agree. */
+  .th-knob { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+  .th-knob-label { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; }
+  .th-knob-dial {
+    position: relative; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; touch-action: none;
+  }
+  .th-knob-dial:focus-visible { outline: 2px solid #7a4fd1; outline-offset: 2px; }
+  .th-knob-pointer {
+    position: absolute; left: 50%; top: 50%; width: 2px; height: 14px; background: #e8e8f0; border-radius: 1px;
+    margin-left: -1px; margin-top: -14px; transform-origin: 50% 14px;
+  }
+  .th-knob-val { font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
   .gutter {
     position: sticky; left: var(--header-w); z-index: 11; flex: 0 0 auto;
@@ -1372,6 +1424,10 @@ const GLYPHS = {
   envelope: { box: '0 0 24 24', paths: ['M3 19l4-13 4 9 3-4 3 5 4-2'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
+  // A power switch: the stem plus an open ring (broken at the top, where the
+  // stem crosses it) — the standard ISO bypass/power glyph, stroked like
+  // every other icon here rather than a filled symbol.
+  power:    { box: '0 0 24 24', paths: ['M12 4v7', 'M7.5 6.2a7 7 0 1 0 9 0'] },
   master:   { box: '0 0 24 24', paths: ['M5 20a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M5 12V4', 'M5 20v0', 'M15 14a4 4 0 0 1 0-8 4 4 0 0 1 0 8z', 'M15 6V4', 'M15 14v6'] },
   // A metronome seen from the front: the case, the swinging rod and the
   // weight that sets the tempo. Stroked like everything else, so it reads at
@@ -3116,6 +3172,8 @@ function removeTrack(id) {
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
   if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
+  for (const k of [...fxPopoverOpen]) if (k.startsWith(id + '::')) fxPopoverOpen.delete(k);
+  if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
@@ -3349,6 +3407,35 @@ function renderAutomationRow(track, param) {
 // ---------- ADSR envelope panel (tonal tracks only) ----------
 const adsrOpen = new Set(); // track ids with the envelope panel open
 const fxSendOpen = new Set(); // track ids with the Delay/Chorus send panel open
+// Which FX insert popovers are open, keyed by `${track}::${effectKey}` — any
+// number can be open at once, across tracks and effects (unlike
+// automationOpen/adsrOpen, which are one-per-track). Not serialized: purely
+// which panel is currently expanded, the same kind of state fxSendOpen above
+// already is.
+const fxPopoverOpen = new Set();
+// At most one "+ Add effect" menu open at a time, holding the track id it
+// belongs to (or null). A single value rather than a Set: unlike popovers,
+// which are worth comparing side by side, there is never a reason to have
+// two add-menus open at once.
+let fxAddMenuOpen = null;
+// Light-dismiss for both of the above — an outside click or Escape closes
+// whatever is open. Plain inline panels rather than <dialog> elements (see
+// buildFxPanel()), so this has to be done by hand instead of getting it from
+// the browser.
+document.addEventListener('pointerdown', (e) => {
+  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
+  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add')) return;
+  fxPopoverOpen.clear();
+  fxAddMenuOpen = null;
+  render();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
+  fxPopoverOpen.clear();
+  fxAddMenuOpen = null;
+  render();
+});
 const ADSR_FIELDS = [
   ['attack', 'A', 0, 0.5, 0.01],
   ['decay', 'D', 0, 0.5, 0.01],
@@ -3550,57 +3637,238 @@ function renderAdsrRow(track) {
 // and the compressor/crush/tremolo are all plain channel inserts with no
 // tonal-only concept either. buildFxPanel() itself just renders whatever's
 // in TRACK_FX_REGISTRY — see that table for what each effect actually is.
-function addFxField(panel, track, label, title_, value, min, max, step, format, onInput) {
-  const field = el('div', 'th-fx-field');
-  const row1 = el('div', 'th-fx-row1');
-  const cap = el('span', 'th-fx-label'); cap.textContent = label;
-  const val = el('span', 'th-fx-val'); val.textContent = format(value);
-  row1.append(cap, val);
-  const slider = document.createElement('input');
-  slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = value;
-  slider.style.accentColor = trackColor(track);
-  slider.title = title_;
-  slider.addEventListener('mousedown', (e) => e.stopPropagation());
-  slider.addEventListener('input', () => {
-    const v = parseFloat(slider.value);
-    val.textContent = format(v);
+// Insert-effect parameter knob — pointer-driven rotary control (the same
+// manual pointerdown/pointermove/pointerup gesture pattern as
+// startAutomationDrag and friends), not a restyled <input type=range>.
+// -135deg..+135deg sweep (270deg total): 0% at -135, 100% at +135. Renders
+// its own value text so a sighted read of the dial and the aria-valuetext a
+// screen reader gets never disagree.
+function buildKnob(track, effect, field, value, onInput) {
+  const wrap = el('div', 'th-knob');
+  const cap = el('span', 'th-knob-label'); cap.textContent = field.label;
+  const dial = el('div', 'th-knob-dial');
+  dial.tabIndex = 0;
+  dial.setAttribute('role', 'slider');
+  dial.setAttribute('aria-orientation', 'vertical');
+  dial.setAttribute('aria-valuemin', String(field.min));
+  dial.setAttribute('aria-valuemax', String(field.max));
+  dial.setAttribute('aria-label', `${field.label} — ${effect.label} on ${trackName(track)}`);
+  dial.title = field.title;
+  const pointer = el('div', 'th-knob-pointer');
+  dial.appendChild(pointer);
+  const val = el('span', 'th-knob-val');
+
+  function paint(v) {
+    const frac = Math.max(0, Math.min(1, (v - field.min) / (field.max - field.min)));
+    const sweep = frac * 270;
+    dial.style.background =
+      `conic-gradient(from -135deg, #7a4fd1 0deg, #7a4fd1 ${sweep}deg, ` +
+      `#4a4a56 ${sweep}deg, #4a4a56 270deg, transparent 270deg, transparent 360deg)`;
+    pointer.style.transform = `rotate(${-135 + sweep}deg)`;
+    dial.setAttribute('aria-valuenow', String(v));
+    dial.setAttribute('aria-valuetext', field.format(v));
+    val.textContent = field.format(v);
+  }
+  paint(value);
+
+  function commit(v) {
+    v = Math.max(field.min, Math.min(field.max, v));
+    // Snap to the field's own step, rounded in step units to avoid float
+    // drift (0.1 + 0.2 !== 0.3).
+    v = Math.round(v / field.step) * field.step;
+    paint(v);
     onInput(v);
+  }
+
+  dial.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dial.focus();
+    const pointerId = e.pointerId;
+    const startY = e.clientY;
+    const startVal = parseFloat(dial.getAttribute('aria-valuenow'));
+    const range = field.max - field.min;
+    function onMove(ev) {
+      if (ev.pointerId !== pointerId) return;
+      // A 150px drag covers the field's full range, whatever it is — a 0..1
+      // send and a -60..0 threshold both take one comfortable drag rather
+      // than one of them being twitchy.
+      commit(startVal + ((startY - ev.clientY) / 150) * range);
+    }
+    function onUp(ev) {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   });
-  field.append(row1, slider);
-  panel.appendChild(field);
+  dial.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    commit(FX_FIELD_DEFAULTS[effect.key][field.param]);
+  });
+  dial.addEventListener('keydown', (e) => {
+    const cur = parseFloat(dial.getAttribute('aria-valuenow'));
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); commit(cur + field.step); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); commit(cur - field.step); }
+    else if (e.key === 'Home') { e.preventDefault(); e.stopPropagation(); commit(field.min); }
+    else if (e.key === 'End') { e.preventDefault(); e.stopPropagation(); commit(field.max); }
+  });
+
+  wrap.append(cap, dial, val);
+  return wrap;
+}
+// Shared by the chip's own bypass/remove buttons and its popover's header —
+// same handlers either way, so toggling bypass from the chip and from inside
+// its own open popover can never disagree.
+function buildFxBypassButton(track, effect) {
+  const bypassed = isFxBypassed(track, effect.key);
+  const btn = el('button', 'th-fx-chip-bypass' + (bypassed ? ' on' : ''));
+  btn.type = 'button';
+  btn.appendChild(glyph('power'));
+  btn.title = bypassed ? `Bypassed — click to re-enable ${effect.label}` : `Bypass ${effect.label}`;
+  btn.setAttribute('aria-pressed', String(bypassed));
+  btn.setAttribute('aria-label', `Bypass ${effect.label} on ${trackName(track)}`);
+  btn.addEventListener('mousedown', (e) => e.stopPropagation());
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.activeFx[track] = state.activeFx[track] || {};
+    state.activeFx[track][effect.key] = { bypassed: !bypassed };
+    effect.apply();
+    render(); autosave();
+  });
+  return btn;
+}
+function buildFxRemoveButton(track, effect) {
+  const btn = el('button', 'th-fx-chip-remove');
+  btn.type = 'button';
+  btn.textContent = '✕';
+  btn.title = `Remove ${effect.label}`;
+  btn.setAttribute('aria-label', `Remove ${effect.label} from ${trackName(track)}`);
+  btn.addEventListener('mousedown', (e) => e.stopPropagation());
+  btn.addEventListener('click', (e) => { e.stopPropagation(); removeFxChip(track, effect); });
+  return btn;
+}
+// Resets one effect's own fields to default via set() — which merges, so the
+// three send entries sharing state.fxSend[track] only patch their own field
+// rather than wiping the other two sends — and drops it from
+// activeFx/fxPopoverOpen, so it disappears from the panel exactly like it
+// was never added and stops contributing anything audible.
+function removeFxChip(track, effect) {
+  effect.set(track, FX_FIELD_DEFAULTS[effect.key]);
+  if (state.activeFx[track]) delete state.activeFx[track][effect.key];
+  fxPopoverOpen.delete(track + '::' + effect.key);
+  effect.apply();
+  render(); autosave();
+}
+function buildFxChip(track, effect) {
+  const bypassed = isFxBypassed(track, effect.key);
+  const open = fxPopoverOpen.has(track + '::' + effect.key);
+  const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
+  const body = el('button', 'th-fx-chip-body');
+  body.type = 'button';
+  body.title = effect.label;
+  body.appendChild(glyph(effect.icon));
+  const label = document.createElement('span'); label.textContent = effect.label;
+  body.appendChild(label);
+  body.addEventListener('mousedown', (e) => e.stopPropagation());
+  body.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const popKey = track + '::' + effect.key;
+    if (fxPopoverOpen.has(popKey)) fxPopoverOpen.delete(popKey); else fxPopoverOpen.add(popKey);
+    render();
+  });
+  chip.append(body, buildFxBypassButton(track, effect), buildFxRemoveButton(track, effect));
+  return chip;
+}
+function buildFxPopover(track, effect) {
+  const bypassed = isFxBypassed(track, effect.key);
+  const pop = el('div', 'th-fx-popover' + (bypassed ? ' bypassed' : ''));
+  pop.dataset.key = effect.key;
+  const head = el('div', 'th-fx-popover-head');
+  head.appendChild(glyph(effect.icon));
+  const title = document.createElement('span'); title.textContent = effect.label;
+  head.append(title, el('span', 'th-fx-popover-head-spacer'), buildFxBypassButton(track, effect), buildFxRemoveButton(track, effect));
+  pop.appendChild(head);
+
+  const fields = el('div', 'th-fx-popover-fields');
+  const values = effect.get(track);
+  for (const f of effect.fields) {
+    fields.appendChild(buildKnob(track, effect, f, values[f.param],
+      (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); }));
+  }
+  pop.appendChild(fields);
+  return pop;
 }
 function buildFxPanel(track) {
   const panel = el('div', 'th-fx-panel');
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
-  resetBtn.title = 'Reset Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush and Tremolo to their defaults';
+  resetBtn.title = 'Remove every insert and send on this track';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    for (const effect of trackFxFor(track)) { delete state[effect.dataKey || effect.key][track]; effect.apply(); }
+    for (const effect of trackFxFor(track)) {
+      effect.set(track, FX_FIELD_DEFAULTS[effect.key]);
+      effect.apply();
+      fxPopoverOpen.delete(track + '::' + effect.key);
+    }
+    delete state.activeFx[track];
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);
   panel.appendChild(resetWrap);
 
-  // Each group gets a heading with its own glyph, rather than the bare hairline
-  // rule that used to separate them: the panel is 13 sliders in a two-column
-  // grid, and abbreviations like Thr/Rat/Atk/Rel only read as a compressor once
-  // you know which group you're looking at. The heading doubles as the
-  // separator, so the old .th-fx-divider is gone.
-  trackFxFor(track).forEach((effect, i) => {
-    const head = el('div', 'th-fx-group' + (i === 0 ? ' first' : ''));
-    head.appendChild(glyph(effect.icon));
-    const cap = el('span'); cap.textContent = effect.label;
-    head.appendChild(cap);
-    panel.appendChild(head);
-    const values = effect.get(track);
-    for (const f of effect.fields) {
-      addFxField(panel, track, f.label, f.title, values[f.param], f.min, f.max, f.step, f.format,
-        (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); });
-    }
+  const visible = visibleFxFor(track);
+  const chipRow = el('div', 'th-fx-chip-row');
+  for (const effect of visible) chipRow.appendChild(buildFxChip(track, effect));
+
+  const addWrap = el('div', 'th-fx-add');
+  const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+ Add effect';
+  addBtn.title = 'Add an effect to this track';
+  addBtn.setAttribute('aria-haspopup', 'true');
+  addBtn.setAttribute('aria-expanded', String(fxAddMenuOpen === track));
+  addBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  addBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fxAddMenuOpen = fxAddMenuOpen === track ? null : track;
+    render();
   });
+  addWrap.appendChild(addBtn);
+  if (fxAddMenuOpen === track) {
+    const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
+    const menu = el('div', 'th-fx-add-menu');
+    if (!notAdded.length) {
+      const none = el('div', 'th-fx-add-empty'); none.textContent = 'All effects added';
+      menu.appendChild(none);
+    }
+    for (const effect of notAdded) {
+      const item = el('button'); item.type = 'button';
+      item.appendChild(glyph(effect.icon));
+      const span = document.createElement('span'); span.textContent = effect.label;
+      item.appendChild(span);
+      item.addEventListener('mousedown', (e) => e.stopPropagation());
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.activeFx[track] = state.activeFx[track] || {};
+        state.activeFx[track][effect.key] = { bypassed: false };
+        fxPopoverOpen.add(track + '::' + effect.key);
+        fxAddMenuOpen = null;
+        effect.apply();
+        render(); autosave();
+      });
+      menu.appendChild(item);
+    }
+    addWrap.appendChild(menu);
+  }
+  chipRow.appendChild(addWrap);
+  panel.appendChild(chipRow);
+
+  for (const effect of visible) {
+    if (fxPopoverOpen.has(track + '::' + effect.key)) panel.appendChild(buildFxPopover(track, effect));
+  }
 
   return panel;
 }
