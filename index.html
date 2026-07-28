@@ -3578,7 +3578,7 @@ function buildFxPanel(track) {
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    for (const effect of trackFxFor(track)) { delete state[effect.key][track]; effect.apply(); }
+    for (const effect of trackFxFor(track)) { delete state[effect.dataKey || effect.key][track]; effect.apply(); }
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);

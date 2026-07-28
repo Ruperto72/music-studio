@@ -1161,7 +1161,11 @@ async function main() {
           tonal: !!panel.closest('.track-header').querySelector('.th-wave-group'),
         };
       })()`);
-      const wantFx = ['Sends', 'EQ', 'Comp', 'Bitcrush', 'Tremolo'].concat(fx.tonal ? ['Vibrato'] : []);
+      // Sends is now three separate registry entries (Delay/Chorus/Reverb,
+      // each its own chip candidate for Task 2), so this reflects the
+      // reshaped TRACK_FX_REGISTRY order — total field count is unchanged
+      // below since the same 15/13 fields just regroup differently.
+      const wantFx = ['EQ', 'Comp', 'Bitcrush', 'Tremolo', 'Delay', 'Chorus', 'Reverb'].concat(fx.tonal ? ['Vibrato'] : []);
       if (fx.labels.join('|') !== wantFx.join('|')) {
         throw new Error(`unexpected FX group headings on a ${fx.tonal ? 'tonal' : 'rhythm'} track: ${JSON.stringify(fx.labels)}`);
       }
