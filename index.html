@@ -3448,7 +3448,7 @@ let fxAddMenuOpen = null;
 // whatever is open. Plain inline panels rather than <dialog> elements (see
 // buildFxPanel()), so this has to be done by hand instead of getting it from
 // the browser.
-document.addEventListener('pointerdown', (e) => {
+document.addEventListener('click', (e) => {
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
   if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add')) return;
   fxPopoverOpen.clear();
@@ -3783,7 +3783,10 @@ function buildFxRemoveButton(track, effect) {
 // was never added and stops contributing anything audible.
 function removeFxChip(track, effect) {
   effect.set(track, FX_FIELD_DEFAULTS[effect.key]);
-  if (state.activeFx[track]) delete state.activeFx[track][effect.key];
+  if (state.activeFx[track]) {
+    delete state.activeFx[track][effect.key];
+    if (!Object.keys(state.activeFx[track]).length) delete state.activeFx[track];
+  }
   fxPopoverOpen.delete(track + '::' + effect.key);
   effect.apply();
   render(); autosave();
@@ -3837,7 +3840,7 @@ function buildFxPanel(track) {
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     for (const effect of trackFxFor(track)) {
-      effect.set(track, FX_FIELD_DEFAULTS[effect.key]);
+      delete state[effect.dataKey || effect.key][track];
       effect.apply();
       fxPopoverOpen.delete(track + '::' + effect.key);
     }
@@ -5562,6 +5565,7 @@ window.addEventListener('blur', releaseAllKeys);
 window.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (document.activeElement && document.activeElement.closest('.th-knob-dial')) return;
   if (helpDialog.open) { if (e.key === 'Escape') helpDialog.close(); return; }
   // Note keys, only while a track is armed — so the letter shortcuts below
   // keep working exactly as before until you explicitly arm something, and
@@ -7141,9 +7145,9 @@ function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
     if (!auto) continue;
     if (auto.gain && chanGain[ch] && audible(ch)) scheduleParamAutomation(chanGain[ch].gain, auto.gain, state.gains[ch], startAt, eighthSec, fromCol, toCol);
     if (auto.pan && chanPan[ch]) scheduleParamAutomation(chanPan[ch].pan, auto.pan, state.pan[ch], startAt, eighthSec, fromCol, toCol);
-    if (auto.delay && trackDelaySend[ch]) scheduleParamAutomation(trackDelaySend[ch].gain, auto.delay, getFxSend(ch).delay, startAt, eighthSec, fromCol, toCol);
-    if (auto.chorus && trackChorusSend[ch]) scheduleParamAutomation(trackChorusSend[ch].gain, auto.chorus, getFxSend(ch).chorus, startAt, eighthSec, fromCol, toCol);
-    if (auto.reverb && trackReverbSend[ch]) scheduleParamAutomation(trackReverbSend[ch].gain, auto.reverb, getFxSend(ch).reverb, startAt, eighthSec, fromCol, toCol);
+    if (auto.delay && trackDelaySend[ch] && !isFxBypassed(ch, 'sendDelay')) scheduleParamAutomation(trackDelaySend[ch].gain, auto.delay, effectiveFxSend(ch).delay, startAt, eighthSec, fromCol, toCol);
+    if (auto.chorus && trackChorusSend[ch] && !isFxBypassed(ch, 'sendChorus')) scheduleParamAutomation(trackChorusSend[ch].gain, auto.chorus, effectiveFxSend(ch).chorus, startAt, eighthSec, fromCol, toCol);
+    if (auto.reverb && trackReverbSend[ch] && !isFxBypassed(ch, 'sendReverb')) scheduleParamAutomation(trackReverbSend[ch].gain, auto.reverb, effectiveFxSend(ch).reverb, startAt, eighthSec, fromCol, toCol);
   }
 }
 // Sidechain-style ducking: Web Audio's DynamicsCompressorNode has no sidechain

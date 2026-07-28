@@ -2687,6 +2687,17 @@ async function main() {
         throw new Error(`a 50-cent track vibrato should modulate the note's own frequency, saw ${JSON.stringify(mod)}`);
       }
 
+      // The pen-tool click above was an outside click, which now correctly
+      // light-dismisses the vibrato popover (Fix 1) — reopen it via its chip
+      // before touching the dial again.
+      await cdp.evaluate(`(() => {
+        const head = ${newTonalHead};
+        if (head.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
+        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Vibrato')
+          .querySelector('.th-fx-chip-body').click();
+      })()`);
+      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
+
       // At depth 0 nothing must be connected — an untouched track is unchanged.
       await cdp.evaluate(`(() => {
         const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
@@ -2765,6 +2776,129 @@ async function main() {
 
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 6`);
+    });
+
+    step('FX panel: a bypassed send is not re-armed by its own automation curve', async () => {
+      // scheduleAutomationForChunk() has its own call site for the three FX
+      // sends, separate from every per-effect bypass path the step above
+      // covers — it used to write the raw dialled value straight to the
+      // send's gain AudioParam every chunk, ignoring bypass entirely.
+      await openFxPanel();
+      await addFxEffect('Delay');
+
+      // Draw one automation point on this track's Delay send at
+      // round2(0.9) — see yToValue(): clicking 6px below the top of a 60px
+      // lane on the 0..1 delay range lands exactly there. Nothing else in
+      // this session's audio graph has reason to write exactly 0.9 to an
+      // AudioParam, so a raw match below is unambiguous evidence of *this*
+      // curve reaching the graph.
+      await cdp.evaluate(`Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('Auto')).click()`);
+      await waitFor(`!!document.querySelector('.automation-lane-el')`);
+      await cdp.evaluate(`(() => {
+        const sel = document.querySelector('.automation-header select');
+        sel.value = 'delay';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.querySelector('.automation-header select').value === 'delay'`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.automation-lane-el');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 1, clientY: rect.top + 6 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.automation-point')`);
+      const pointLabel = await cdp.evaluate(`document.querySelector('.automation-point').title`);
+      if (pointLabel !== '90%') throw new Error(`expected the drawn automation point to read 90%, got ${pointLabel}`);
+      await cdp.evaluate(`[...document.querySelectorAll('.automation-header button')].find(b => b.title === 'Close automation lane').click()`);
+
+      // Patch AudioParam's own scheduling methods (not .value=, which the
+      // bug never touched) so a chunk's real setValueAtTime/ramp calls are
+      // observable regardless of which specific gain node they landed on.
+      await cdp.evaluate(`(() => {
+        if (AudioParam.prototype.__patchedForVerify) return;
+        window.__sendWrites = [];
+        const origSet = AudioParam.prototype.setValueAtTime;
+        const origRamp = AudioParam.prototype.linearRampToValueAtTime;
+        AudioParam.prototype.setValueAtTime = function (v, t) { window.__sendWrites.push(v); return origSet.call(this, v, t); };
+        AudioParam.prototype.linearRampToValueAtTime = function (v, t) { window.__sendWrites.push(v); return origRamp.call(this, v, t); };
+        AudioParam.prototype.__patchedForVerify = true;
+      })()`);
+      const has90 = (arr) => arr.some((v) => Math.abs(v - 0.9) < 1e-9);
+
+      // Baseline: send not bypassed yet — the curve must reach the graph,
+      // proving the harness (and the curve itself) actually works.
+      await cdp.evaluate(`window.__sendWrites = []`);
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+      const before = await cdp.evaluate(`window.__sendWrites.slice()`);
+      if (!has90(before)) {
+        throw new Error(`expected the Delay send's automation curve to reach the audio graph before bypassing, saw ${JSON.stringify(before)}`);
+      }
+
+      // Bypass the send, then replay — Fix 3: the curve must no longer be
+      // written at all, not merely written at a different (default) value.
+      await cdp.evaluate(`(() => {
+        const panel = ${fxPanelSel};
+        if (!panel.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
+          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Delay')
+            .querySelector('.th-fx-chip-body').click();
+        }
+      })()`);
+      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]')`);
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
+
+      await cdp.evaluate(`window.__sendWrites = []`);
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+      const after = await cdp.evaluate(`window.__sendWrites.slice()`);
+      if (has90(after)) {
+        throw new Error(`a bypassed Delay send must not be re-armed by its own automation curve, saw ${JSON.stringify(after)}`);
+      }
+    });
+
+    step('FX: a real trusted click through the grid still lands after light-dismiss closes a popover', async () => {
+      // Fix 1 regression test. The bug (light-dismiss rebuilding the DOM on
+      // 'pointerdown', detaching the click's real target before 'click'
+      // fires) only reproduces with a genuinely trusted click sequence —
+      // dispatching pointerdown/click directly via element.dispatchEvent()
+      // on a captured reference always reaches that reference's own
+      // listeners regardless of what render() did in between, so it can't
+      // exercise the browser's real click-retargeting. Input.dispatchMouseEvent
+      // goes through Chromium's actual input pipeline (pointerdown ->
+      // mousedown -> pointerup -> mouseup -> click, hit-tested for real on
+      // whatever the DOM looks like at each step), which is the only way to
+      // reproduce it — hence this one step uses it where every other step in
+      // this file deliberately doesn't (see the file's own header comment).
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
+      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click()`);
+      await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
+      const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
+      await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!${panelSel}.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...${panelSel}.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!${panelSel}.querySelector('.th-fx-popover[data-key="eq"]')`);
+
+      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
+      const rect = await cdp.evaluate(`(() => { const r = (${tonalLaneSel}).getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
+      const x = rect.left + 200, y = rect.top + 60;
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await new Promise((r) => setTimeout(r, 300));
+
+      const after = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
+      if (after !== before + 1) {
+        throw new Error(`a real click on the grid with a popover open should place exactly one note (light-dismiss must not eat the click), ${before} -> ${after}`);
+      }
+      const popoverStillOpen = await cdp.evaluate(`!!document.querySelector('.th-fx-popover')`);
+      if (popoverStillOpen) throw new Error('the same outside click should also have dismissed the open FX popover');
     });
 
     // Last on purpose: this step reloads the page to install its createGain
