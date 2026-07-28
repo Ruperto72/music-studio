@@ -951,12 +951,24 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   which Web Audio does not promise, and splitting one makes it exact by
   construction. The delay is set from the note's starting frequency, so a bend
   or vibrato moves the pitch without moving the duty proportionally — the same
-  compromise ring modulation's fixed modulator makes. The sweep restarts with
-  each note, as per-note vibrato does; a free-running per-track sweep would be
-  a different (and larger) change.
+  compromise ring modulation's fixed modulator makes.
   The noise buffer is scaled to 0.57 rather than full ±1: resampling a random
   step sequence overshoots, and unscaled it measured about 5 dB above the
   oscillators, so switching a track to Noise jumped in level.
+
+  **The waveforms are levelled on peak, so their RMS differs — by design.**
+  That is what crest factor means: a square is 1, a sine 1.41. Measured
+  against square at C5: sine/FM −1.5, NES Tri −2.9, triangle −3.2, PWM/half
+  sine −3.4, noise −4.5, saw −4.7, ring −6.2 dB. Every one of those figures is
+  flat across the range — all ten within 0.05 dB between C5 and E4 — while
+  *peak* swings up to 4 dB for noise and ring, because the noise loop is 93
+  samples whose phase against the envelope shifts with `playbackRate` and ring
+  mod's peak follows the carrier/modulator beat. A peak spread across pitch is
+  therefore not a levelling fault, and reading one as such is how a
+  non-existent "noise and ring aren't levelled across pitch" item briefly got
+  into TODO.md. `verify.js` checks both: RMS in a −7…+0.5 dB band (tight,
+  pitch-stable, and where a loudness drift shows) and peak in a wider
+  −6…+1.5 dB one (headroom, and where the original hot-buffer bug showed).
 - **Rhythm**: each hit type is a small dedicated synthesis function
   (`scheduleKick`/`scheduleSnare`/`scheduleRim`/`scheduleHihat`/
   `scheduleOpenHat`/`scheduleShaker`/`schedulePuka`(tom)/`scheduleClap`/

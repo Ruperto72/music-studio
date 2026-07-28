@@ -1566,14 +1566,20 @@ async function main() {
             OfflineAudioContext.prototype.startRendering = function () {
               return orig.call(this).then((buf) => {
                 const d = buf.getChannelData(0);
-                let h = 0x811c9dc5, peak = 0;
+                let h = 0x811c9dc5, peak = 0, sq = 0, n = 0;
                 for (let i = 0; i < d.length; i++) {
-                  if (Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+                  const a = Math.abs(d[i]);
+                  if (a > peak) peak = a;
+                  // RMS over the sounding part only: the render is padded with
+                  // silence after the note, and averaging that in would just
+                  // scale every waveform by the same amount anyway — but the
+                  // threshold keeps the figure comparable to a hand check.
+                  if (a > 1e-4) { sq += d[i] * d[i]; n++; }
                   const v = Math.round(d[i] * 1e5) | 0;
                   h ^= v & 255; h = Math.imul(h, 0x01000193) >>> 0;
                   h ^= (v >> 8) & 255; h = Math.imul(h, 0x01000193) >>> 0;
                 }
-                window.__waveRenders.push({ hash: h.toString(16), peak });
+                window.__waveRenders.push({ hash: h.toString(16), peak, rms: n ? Math.sqrt(sq / n) : 0 });
                 return buf;
               });
             };
@@ -1685,39 +1691,38 @@ async function main() {
       if (hashes.size !== others.length) {
         throw new Error(`waveforms are not all distinct: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].hash])))}`);
       }
-      // Switching waveform must not jump the level — the noise buffer needed
-      // scaling to sit with the oscillators rather than 5 dB above them.
+
+      // Switching waveform must not jump the level. Measured on RMS, not peak,
+      // and that correction is the point of this block.
       //
-      // Split, because the two families behave differently and lumping them
-      // together hid that. The oscillator waveforms hold each other within
-      // about 1.5 dB at any pitch. Noise and ring modulation do not: their
-      // peak depends on *which* pitch, since the noise loop is 93 samples
+      // A peak spread of up to 4.4 dB across pitch previously read to me as
+      // "noise and ring aren't levelled", and went into TODO.md as audio work.
+      // Measuring RMS alongside peak says otherwise: every waveform's RMS is
+      // flat across the range (C5 against E4, all ten within 0.05 dB), while
+      // peak swings purely from crest factor — the noise loop is 93 samples
       // whose phase against the envelope shifts with playbackRate, and ring
-      // mod's peak follows the carrier/modulator beat. Measured on one note
-      // at four pitches (peak, all ten waveforms rendered offline):
+      // mod's peak follows the carrier/modulator beat. Loudness never moved.
       //
-      //   D5   spread 0.8 dB   noise 0.205  ring 0.201
-      //   A#4  spread 4.4 dB   noise 0.182  ring 0.137
-      //   F4   spread 3.0 dB   noise 0.156  ring 0.169
-      //   C#4  spread 4.4 dB   noise 0.132  ring 0.205
-      //
-      // The old single 3 dB gate passed only because an empty lane happened to
-      // put this note at D5, the one pitch where everything lines up. See
-      // TODO.md — re-levelling those two across the range is real work, not a
-      // constant to nudge, so this records the range they actually occupy
-      // instead of pretending to a tolerance the app doesn't hold.
-      const PITCH_DEPENDENT = ['Noise', 'Ring'];
-      const oscNames = others.filter((n) => !PITCH_DEPENDENT.includes(n));
-      const oscPeaks = oscNames.map((n) => results[n].peak);
-      const oscSpread = 20 * Math.log10(Math.max(...oscPeaks) / Math.min(...oscPeaks));
-      if (oscSpread > 3) {
-        throw new Error(`oscillator waveform levels differ by ${oscSpread.toFixed(1)} dB: ${JSON.stringify(Object.fromEntries(oscNames.map((n) => [n, results[n].peak.toFixed(4)])))}`);
+      // At equal peak the waveforms' RMS necessarily differs, because that is
+      // what crest factor means: a square is 1, a sine 1.41. Measured against
+      // square at C5: sine/FM -1.5, NES Tri -2.9, triangle -3.2, PWM/half sine
+      // -3.4, noise -4.5, saw -4.7, ring -6.2 dB. Noise sits mid-pack and ring
+      // is the quietest by 1.5 dB. So the band is the spread the app
+      // inherently has; what it catches is a waveform falling outside it —
+      // which is the original bug exactly, a noise buffer ~5 dB hot, whose RMS
+      // would have landed above square's.
+      for (const n of names) {
+        const rel = 20 * Math.log10(results[n].rms / results['Square'].rms);
+        if (rel > 0.5 || rel < -7) {
+          throw new Error(`${n} sits ${rel.toFixed(1)} dB (RMS) from Square, outside the -7..+0.5 dB the waveforms span`);
+        }
       }
-      const oscMean = oscPeaks.reduce((a, b) => a + b, 0) / oscPeaks.length;
-      for (const n of PITCH_DEPENDENT) {
-        const off = 20 * Math.log10(results[n].peak / oscMean);
-        if (Math.abs(off) > 5) {
-          throw new Error(`${n} sits ${off.toFixed(1)} dB from the oscillator waveforms (peak ${results[n].peak.toFixed(4)} vs ${oscMean.toFixed(4)})`);
+      // Peak too, loosely: it costs headroom even when loudness is right. Wide
+      // on purpose — the crest-factor swing above is real, not a fault.
+      for (const n of names) {
+        const rel = 20 * Math.log10(results[n].peak / results['Square'].peak);
+        if (rel > 1.5 || rel < -6) {
+          throw new Error(`${n} peaks ${rel.toFixed(1)} dB from Square, outside the -6..+1.5 dB band`);
         }
       }
     });

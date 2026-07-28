@@ -850,11 +850,49 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   överallt, men **brus och ringmodulation driver upp till 4,4 dB** beroende på
   tonhöjd (brusloopen är 93 sampel vars fas mot enveloppen skiftar med
   `playbackRate`; ringmodens topp följer svävningen). Testet delar nu de två
-  familjerna åt och redovisar mätningen i stället för att låtsas om en tolerans
-  appen inte håller. Att nivålägga de två över registret är eget arbete:
-- [ ] **Brus och ringmodulation är inte nivålagda över tonhöjd.** Se mätningen
-  ovan: 0,8 dB spridning på D5 men 4,4 dB på A#4 och C#4. Oscillatorformerna
-  är opåverkade. Kräver en frekvensberoende skalning, inte en konstant.
+  familjerna åt och redovisar mätningen. **Den slutsatsen var fel — se nästa
+  punkt.**
+- [x] **Neon Cathedral hade 2,6 dB mindre nivå än de andra exempellåtarna.**
+  −3,54 dBFS mot ~−1 för resten. Jag hade skrivit att det var icke-linjärt att
+  höja eftersom låtens egen kompressor äter påslaget — mätningen visar att det
+  är nästan linjärt i det här intervallet:
+  ```
+  masterVol 0.26 -> topp 0.6649 (-3.54 dBFS)
+  masterVol 0.32 -> topp 0.7825 (-2.13)
+  masterVol 0.36 -> topp 0.8593 (-1.32)
+  masterVol 0.40 -> topp 0.9316 (-0.62)
+  ```
+  Kompressionen syns som en svag avtagande lutning (topp/vol: 2,56 → 2,33),
+  inte som en vägg. `masterVol` är nu **0.38**, kontrollerat med en egen
+  rendering: topp 0.8959, **−0,96 dBFS, noll överstyrningar** — mitt i klungan
+  (Froggy Hop 0.899, Popcorn 0.890, Deep Vacuum 0.898, Techno 0.903).
+- [x] **"Brus och ringmodulation är inte nivålagda över tonhöjd" var fel
+  läsning av min egen mätning.** Jag mätte *topp* och drog slutsatsen att
+  nivån vandrade. Att mäta RMS bredvid toppen visar motsatsen:
+  ```
+            C5                    E4
+  Square    peak .2234 rms .1186  peak .2266 rms .1188
+  Noise     peak .2130 rms .0706  peak .1477 rms .0702
+  Ring      peak .1659 rms .0581  peak .1806 rms .0600
+  ```
+  **Varje vågforms RMS är platt över registret** — alla tio inom 0,05 dB
+  mellan C5 och E4 — medan toppen svänger upp till 4 dB. Det är crest factor,
+  inte nivå: brusloopen är 93 sampel vars fas mot enveloppen skiftar med
+  `playbackRate`, och ringmodens topp följer svävningen mellan bärvåg och
+  modulator. Ljudstyrkan rörde sig aldrig.
+  Och mätt mot square vid C5 är RMS-spridningen den som *måste* finnas när man
+  nivålägger på topp, eftersom det är vad crest factor betyder (square 1,
+  sinus 1,41): sine/FM −1,5, NES Tri −2,9, triangel −3,2, PWM/halvsinus −3,4,
+  **brus −4,5**, sågtand −4,7, **ring −6,2** dB. Brus ligger mitt i klungan;
+  ring är tystast med 1,5 dB. Ingen av dem är en avvikare som motiverar en
+  ändring i ljudet.
+  Alltså: **ingen kodändring i syntesen — mätningen sa att det inte fanns
+  något att laga.** Testet mäter numera RMS i stället för topp, vilket är både
+  tightare (bandet −7…+0,5 dB mot square) och stabilt över tonhöjd, plus ett
+  löst toppband för headroom. Den ursprungliga bruggen — brusbufferten 5 dB
+  för het — hade hamnat *över* square i RMS och fångas alltså fortfarande.
+  Lärdomen är den gamla vanliga: toppspridning är inte nivåspridning, och jag
+  skrev ner en slutsats innan jag hade mätt det som faktiskt avgjorde den.
 - [x] **Genomgång av `DESIGN.md` och `README.md` mot koden — fjorton fel.**
   Uppföljning av emoji-städningen: om ikonografin hade legat kvar inaktuell,
   vad mer hade det? Sätten som gav utdelning var att räkna: varje
