@@ -1646,13 +1646,18 @@ async function main() {
         return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
       })()`);
 
-      // Armed but stopped: the key sounds, and records nothing.
+      // Plain Play with a track armed means "listen", not "type into the song":
+      // only Record captures. (Stopped is a different case — that is step
+      // entry, covered by its own step below.)
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 3000);
       await key('KeyZ', 'keydown');
       await new Promise((r) => setTimeout(r, 150));
       await key('KeyZ', 'keyup');
-      await new Promise((r) => setTimeout(r, 500));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 400));
       const idle = await bassNotes();
-      if (idle.length !== 0) throw new Error(`playing while stopped should record nothing, got ${JSON.stringify(idle)}`);
+      if (idle.length !== 0) throw new Error(`playing without recording should capture nothing, got ${JSON.stringify(idle)}`);
 
       // Record: a bar of count-in, then capture.
       await cdp.evaluate(`document.getElementById('record-btn').click()`);
@@ -1711,6 +1716,116 @@ async function main() {
       await new Promise((r) => setTimeout(r, 400));
       const after = await bassNotes();
       if (after.length !== 3) throw new Error(`a disarmed track should ignore note keys, got ${JSON.stringify(after)}`);
+    });
+
+    step('Step entry: with the transport stopped, keys write notes at the playhead', async () => {
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+
+      const key = (code, type) => cdp.evaluate(`window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code, bubbles: true }))`.replace('code,', `code: ${JSON.stringify(code)},`));
+      const tap = async (code) => {
+        await key(code, 'keydown');
+        await new Promise((r) => setTimeout(r, 40));
+        await key(code, 'keyup');
+        await new Promise((r) => setTimeout(r, 80));
+      };
+      const arm = (name) => cdp.evaluate(`(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === ${JSON.stringify(name)});
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`);
+      const items = (name) => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === ${JSON.stringify(name)}) || {}).id;
+        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq, type: n.type }))
+          .sort((a, b) => a.start - b.start || (a.freq || 0) - (b.freq || 0));
+      })()`);
+      const playheadLeft = () => cdp.evaluate(`document.querySelector('.playhead').style.left`);
+      // autosave() debounces by 400ms, and items() reads that draft.
+      const settle = () => new Promise((r) => setTimeout(r, 700));
+      const spoken = () => cdp.evaluate(`document.querySelector('#a11y-status').textContent`);
+
+      await arm('Bass');
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const atStart = await playheadLeft();
+
+      // One key at a time: C, D and E on consecutive grid steps, each a step
+      // long. Nothing is playing — this is the whole point of step entry.
+      for (const c of ['KeyZ', 'KeyX', 'KeyC']) await tap(c);
+      await settle();
+      let notes = await items('Bass');
+      if (notes.length !== 3) throw new Error(`three taps should write three notes, got ${JSON.stringify(notes)}`);
+      if (notes.map((n) => n.start).join(',') !== '0,1,2') {
+        throw new Error(`each tap should advance the playhead one grid step, got ${JSON.stringify(notes.map((n) => n.start))}`);
+      }
+      if (notes.map((n) => Math.round(n.freq)).join(',') !== '262,294,330') {
+        throw new Error(`Z/X/C should write C, D and E, got ${JSON.stringify(notes.map((n) => Math.round(n.freq)))}`);
+      }
+      if (notes.some((n) => n.len !== 1)) throw new Error(`a stepped note should be one grid step long: ${JSON.stringify(notes)}`);
+      if (await playheadLeft() === atStart) throw new Error('the playhead should have moved with the entry cursor');
+      if (!/C4|D4|E4/.test(await spoken())) throw new Error(`each stepped note should be announced, heard "${await spoken()}"`);
+
+      // Keys held together are a chord: one column, and the cursor moves once.
+      for (const c of ['KeyZ', 'KeyC', 'KeyB']) await key(c, 'keydown');
+      await new Promise((r) => setTimeout(r, 80));
+      for (const c of ['KeyZ', 'KeyC', 'KeyB']) await key(c, 'keyup');
+      await settle();
+      notes = await items('Bass');
+      const chord = notes.filter((n) => n.start === 3);
+      if (chord.length !== 3) throw new Error(`a held chord should land on one column, got ${JSON.stringify(notes)}`);
+      await tap('KeyX');
+      await settle();
+      notes = await items('Bass');
+      if (!notes.some((n) => n.start === 4) || notes.some((n) => n.start > 4)) {
+        throw new Error(`the cursor should advance once for a whole chord, not once per key: ${JSON.stringify(notes.map((n) => n.start))}`);
+      }
+
+      // Right arrow leaves a rest; the next note skips that step.
+      await key('ArrowRight', 'keydown');
+      await new Promise((r) => setTimeout(r, 100));
+      await tap('KeyV');   // F
+      await settle();
+      notes = await items('Bass');
+      if (!notes.some((n) => n.start === 6 && Math.round(n.freq) === 349)) {
+        throw new Error(`the right arrow should leave a rest, got ${JSON.stringify(notes)}`);
+      }
+      const before = notes.length;
+
+      // Backspace steps back over the last step and clears it.
+      await key('Backspace', 'keydown');
+      await settle();
+      notes = await items('Bass');
+      if (notes.length !== before - 1 || notes.some((n) => n.start === 6)) {
+        throw new Error(`Backspace should clear the step it steps back onto, got ${JSON.stringify(notes)}`);
+      }
+      if (!/Removed 1/.test(await spoken())) throw new Error(`clearing a step should be announced, heard "${await spoken()}"`);
+      // And it left the cursor there, so the next note fills the gap it made.
+      await tap('KeyN');   // A
+      await settle();
+      notes = await items('Bass');
+      if (!notes.some((n) => n.start === 6 && Math.round(n.freq) === 440)) {
+        throw new Error(`Backspace should leave the cursor on the step it cleared, got ${JSON.stringify(notes)}`);
+      }
+
+      // Drums step in the same way, from the same row of keys.
+      await cdp.evaluate(`document.getElementById('rtz').click()`);
+      await arm('Rhythm');
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      await tap('KeyZ');
+      await tap('KeyX');
+      await settle();
+      const hits = await items('Rhythm');
+      if (hits.length !== 2 || hits[0].type !== 'kick' || hits[1].type !== 'snare') {
+        throw new Error(`stepping on a rhythm track should write kit hits, got ${JSON.stringify(hits)}`);
+      }
+      if (hits.map((h) => h.start).join(',') !== '0,1') {
+        throw new Error(`stepped hits should advance the same way notes do, got ${JSON.stringify(hits.map((h) => h.start))}`);
+      }
+      // Arming the rhythm track moved the arm rather than adding to it, so
+      // those two taps reached the kit and nothing else.
+      if ((await items('Bass')).length !== before) {
+        throw new Error('arming a second track should move the arm, not add to it');
+      }
     });
 
     step('Noise buffers are seeded: identical across two page loads', async () => {
