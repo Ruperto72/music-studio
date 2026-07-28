@@ -852,6 +852,34 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   `playbackRate`; ringmodens topp följer svävningen). Testet delar nu de två
   familjerna åt och redovisar mätningen. **Den slutsatsen var fel — se nästa
   punkt.**
+- [x] **Pan per not.** `note.pan` (−1..1, **frånvarande = centrerat**, samma
+  kontrakt som `hitVel`), en `StereoPannerNode` som `connectVoiceOutput()`
+  lägger in *sist* före destinationen — så noten placeras inuti det spårets
+  egen pan redan gjort, i stället för att slåss med den. Echo- och
+  reverb-avtappningarna sitter kvar på noden *före* pannern med flit: en send
+  är en send, så en hårt panorerad not släpar inte med sig sin egen svans
+  tvärs över bilden.
+  Vid centrum byggs **ingen nod alls**, samma "ingen nod när den är neutral"
+  som en trumträff på full velocity — en låt som aldrig rört pan bygger exakt
+  den graf den byggde förut. Att centrera i inspektorn *raderar* egenskapen i
+  stället för att skriva 0, så filen växer inte heller.
+  Reglaget ligger bredvid Velocity i notinspektorn, dubbelklick centrerar
+  (som spårets egen pan-slider), och panoreringen står i notens aria-etikett
+  eftersom rutnätet annars inte säger det.
+  Testet verifierat mot två injicerade kontraktsbrott: en panner som alltid
+  byggs (*"a centred note should add no panner, saw [0]"*) och en inspektor som
+  sparar `pan: 0` i stället för att radera (*"re-centring should remove the
+  property"*).
+- [ ] **Voice pooling är avstängt av en kvarglömd debugrad.** `acquireVoice()`
+  börjar med `return null; // TEST: pooling disabled`, så hela poolen är död
+  kod och varje not allokerar egna noder. Hittat under pan-arbetet, eftersom
+  pan måste veta om en not kan använda en poolad röst. `DESIGN.md` och
+  `README.md` påstod bägge att pooling *fanns*; det är rättat nu, men själva
+  återinkopplingen är eget arbete: `busyUntil`-bokföringen och
+  `cancelScheduledValues`-vägarna har inte körts på länge, och de behöver egen
+  testning. (Panorerade noter måste stå utanför poolen precis som
+  bitcrushade — en poolad röst kopplas till destinationen en gång och har
+  ingenstans att lägga en panner. Det villkoret ligger redan på plats.)
 - [x] **Neon Cathedral hade 2,6 dB mindre nivå än de andra exempellåtarna.**
   −3,54 dBFS mot ~−1 för resten. Jag hade skrivit att det var icke-linjärt att
   höja eftersom låtens egen kompressor äter påslaget — mätningen visar att det

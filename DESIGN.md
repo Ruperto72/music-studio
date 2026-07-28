@@ -308,7 +308,10 @@ through the one channel node those inserts and sends tap.
 A **note** gets the fuller set, grouped into:
 
 - **Selected note**: track-color badge, pitch name + frequency, note length,
-  Velocity slider. Velocity is drawn on the grid as brightness (opacity
+  Velocity and **Pan** sliders. Pan is −1..1 on top of the track's own pan,
+  double-click to re-centre, and re-centring *deletes* the property rather
+  than writing 0 — the same rule per-hit velocity follows, so a note that was
+  never panned serialises as it always did. Velocity is drawn on the grid as brightness (opacity
   `0.4 + 0.6 × vel`) for notes and hits alike, so an accent is visible without
   opening anything.
 - **Modulation**: Vibrato / Tremolo toggle buttons, Portamento toggle
@@ -621,7 +624,8 @@ than inside it, rebuilt by `refreshTrackArrays()` whenever `trackList`
 changes.
 
 A `Note` is `{ start, len, freq, vel, bend, vib, trem, duty, arp, porta,
-crush, echo, chorus, reverb }` (columns are in eighth-note units; `MICRO = 1/6`
+crush, echo, chorus, reverb, pan? }` (`pan` −1..1, **absent means centred** —
+see `notePan()`) (columns are in eighth-note units; `MICRO = 1/6`
 eighth is the finest shared lattice, so triplet and straight subdivisions
 never drift). A `Hit` is `{ start, type, vel? }` where `type` is one of
 `RHYTHM_ROWS` and `vel` (0.1–1) is how hard it's struck; **absent means full**,
@@ -861,12 +865,24 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   `linearRampToValueAtTime` mid-note; arpeggio steps the frequency every
   30ms through the chord tones; chorus adds a second, detuned oscillator
   into the same gain node; portamento glides the oscillator frequency into
-  the next contiguous note instead of retriggering. **Voice pooling**
-  (`acquireVoice()`, `VOICE_POOL_SIZE = 16` per channel) reuses a fixed pool
-  of filter+gain+echoSend+reverbSend node sets across notes instead of
-  building fresh ones each time — bitcrushed notes are excluded (their
-  `WaveShaperNode.curve` can't be safely reused for a future-scheduled note)
-  and get an ad-hoc node set instead.
+  the next contiguous note instead of retriggering. **Pan** is a
+  `StereoPannerNode` inserted last, just before the destination, so it places
+  the note inside whatever the track's own pan has already done rather than
+  fighting it; the echo and reverb taps come off the *pre-pan* node
+  deliberately, so a hard-panned note doesn't drag its own tail across the
+  field with it. At centre no panner is built at all — the same "no node when
+  neutral" contract a full-velocity drum hit keeps, so a song that never
+  touched pan builds the graph it always did.
+  **Voice pooling** (`acquireVoice()`, `VOICE_POOL_SIZE = 16` per channel) was
+  meant to reuse a fixed pool of filter+gain+echoSend+reverbSend node sets
+  across notes instead of building fresh ones each time, with bitcrushed notes
+  excluded (their `WaveShaperNode.curve` can't be safely reused for a
+  future-scheduled note) and panned ones too (a pooled voice is wired to the
+  destination once, so it has nowhere to put a panner). **It is currently
+  switched off** by an early `return null` left in `acquireVoice()` — a debug
+  line, not a decision — so every note allocates its own nodes. See TODO.md:
+  re-enabling needs its own testing, since none of that bookkeeping has run in
+  a long time.
 - **Per-track insert chain** (`chanGain[id] → chanEq[id] → chanComp[id] → chanCrush[id]? →
   chanTremolo[id]`, built by `buildChannelChain()`): a `DynamicsCompressorNode`
   (`createChanComp()`), an optional bitcrush `AudioWorkletNode` reusing the
