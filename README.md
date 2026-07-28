@@ -95,9 +95,8 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 
 Most of the original audio-engine roadmap is now built — wavetable
 synthesis, FM, a per-track resonant filter, aux sends for reverb/delay,
-custom DSP via `AudioWorklet`, spectrum + LUFS metering, parallel compression
-and sidechain ducking all ship today. (Voice pooling is written but currently
-switched off — see `TODO.md`.)
+custom DSP via `AudioWorklet`, spectrum + LUFS metering, parallel compression,
+sidechain ducking and voice pooling all ship today.
 
 Still open (see `TODO.md` for the full breakdown):
 

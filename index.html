@@ -6868,14 +6868,15 @@ function ensureReverb(destGain) {
 // crushed notes get their own ad-hoc WaveShaperNode instead, as before.
 const VOICE_POOL_SIZE = 16; // per channel — generous for chords/arps, still bounded
 const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, reverbSend, busyUntil }]
+// A voice is only handed out again once the previous note's envelope has
+// finished *and* a little more. envelopeTimes() ends its release exactly at
+// startAt + dur, so reusing at that instant means voiceGainFor()'s
+// cancelScheduledValues(startAt) lands on the release ramp's own end event and
+// deletes it — the gain would jump from the sustain level straight to silence
+// instead of ramping there, which is a click on every pair of back-to-back
+// notes. The pad costs at most a voice or two per channel.
+const VOICE_RELEASE_PAD = 0.005;
 function acquireVoice(destGain, startAt) {
-  // NOTE: voice pooling is switched off by this early return — a leftover
-  // debug line, not a decision. Everything below is unreachable, so every note
-  // allocates its own filter+gain. DESIGN.md and README.md both still claim
-  // pooling ships; see TODO.md for the re-enable, which needs its own testing
-  // (the busyUntil bookkeeping and cancelScheduledValues paths have not run in
-  // a long time).
-  return null; // TEST: pooling disabled
   let pool = voicePools.get(destGain);
   if (!pool) { pool = []; voicePools.set(destGain, pool); }
   for (const v of pool) if (v.busyUntil <= startAt) return v;
@@ -7052,9 +7053,7 @@ const notePeak = (note) => 0.5 * (note.vel != null ? note.vel : 1);
 function voiceGainFor(note, destGain, startAt, dur) {
   // A pooled voice is wired to destGain once, when it is built, so it has
   // nowhere to put a per-note panner — same reason a bitcrushed note can't use
-  // one. Pooling is currently disabled outright inside acquireVoice() (see the
-  // note there), but this keeps the two facts independent: turning it back on
-  // must not silently drop pan.
+  // one. Both opt out here and get an ad-hoc gain+filter pair instead.
   if (!note.crush && !notePan(note)) {
     const voice = acquireVoice(destGain, startAt);
     if (voice) {
@@ -7063,7 +7062,7 @@ function voiceGainFor(note, destGain, startAt, dur) {
       voice.echoSend.gain.setValueAtTime(note.echo ? 1 : 0, startAt);
       voice.reverbSend.gain.cancelScheduledValues(startAt);
       voice.reverbSend.gain.setValueAtTime(note.reverb ? 1 : 0, startAt);
-      voice.busyUntil = startAt + dur;
+      voice.busyUntil = startAt + dur + VOICE_RELEASE_PAD;
       return { gain: voice.gain, filter: voice.filter, pooled: true };
     }
   }

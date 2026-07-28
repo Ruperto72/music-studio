@@ -886,16 +886,21 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   panorerar dock fortfarande ingenting — de kunde göra det (hi-hat åt sidan,
   tomtrummor spridda) och det vore en ren tabelländring, men det är eget
   arbete och något man vill höra innan det går in.
-- [ ] **Voice pooling är avstängt av en kvarglömd debugrad.** `acquireVoice()`
-  börjar med `return null; // TEST: pooling disabled`, så hela poolen är död
-  kod och varje not allokerar egna noder. Hittat under pan-arbetet, eftersom
-  pan måste veta om en not kan använda en poolad röst. `DESIGN.md` och
-  `README.md` påstod bägge att pooling *fanns*; det är rättat nu, men själva
-  återinkopplingen är eget arbete: `busyUntil`-bokföringen och
-  `cancelScheduledValues`-vägarna har inte körts på länge, och de behöver egen
-  testning. (Panorerade noter måste stå utanför poolen precis som
-  bitcrushade — en poolad röst kopplas till destinationen en gång och har
-  ingenstans att lägga en panner. Det villkoret ligger redan på plats.)
+- [x] **Voice pooling var avstängt av en kvarglömd debugrad** — `acquireVoice()`
+  började med `return null; // TEST: pooling disabled`, så hela poolen var död
+  kod och varje not allokerade egna noder. Hittat under pan-arbetet, eftersom
+  pan måste veta om en not kan använda en poolad röst. Nu återinkopplad, med
+  en riktig bugg åtgärdad på vägen: en röst frigavs vid `startAt + dur`, men
+  `envelopeTimes()` lägger release-rampens *slut* exakt där, så
+  `voiceGainFor()`:s `cancelScheduledValues(startAt)` råkade radera just den
+  rampen och gainet hoppade från sustain rakt till tystnad istället för att
+  rampa dit — ett klick vid varje par av noter som ligger kant i kant. Löst
+  med `VOICE_RELEASE_PAD` (5 ms), vilket kostar på sin höjd en röst eller två
+  per kanal. Mätt: 24 filter bar 117 noter i demolåtens första
+  lookahead-fönster, mot 108 opoolat. Verifierat med ett eget steg i
+  `verify.js` som mäter själva invarianten (flera notkällor kopplade till
+  *samma* `BiquadFilterNode`) och inte en nodräkning — opoolat är förhållandet
+  exakt 1:1, så testet kan inte passera av misstag.
 - [x] **Neon Cathedral hade 2,6 dB mindre nivå än de andra exempellåtarna.**
   −3,54 dBFS mot ~−1 för resten. Jag hade skrivit att det var icke-linjärt att
   höja eftersom låtens egen kompressor äter påslaget — mätningen visar att det

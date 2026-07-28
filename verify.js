@@ -1828,6 +1828,58 @@ async function main() {
       }
     });
 
+    step('Voice pooling: notes share filter+gain nodes instead of one pair each', async () => {
+      // Pooling shipped, then sat switched off behind a leftover `return null`
+      // for long enough that both README and DESIGN had drifted into claiming
+      // something the build didn't do. What is asserted here is the invariant
+      // itself rather than a node count: several note sources connect into the
+      // *same* BiquadFilterNode. Unpooled that ratio is exactly 1:1, so this
+      // cannot pass by accident.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__pool = { conns: 0, ids: [] };
+            let nextId = 1;
+            const make = BaseAudioContext.prototype.createBiquadFilter;
+            BaseAudioContext.prototype.createBiquadFilter = function (...a) {
+              const n = make.apply(this, a);
+              n.__poolId = nextId++;
+              return n;
+            };
+            const connect = AudioNode.prototype.connect;
+            AudioNode.prototype.connect = function (dest, ...rest) {
+              // Only a note's own voice source feeds a biquad directly: the
+              // channel chain's EQ is fed from a GainNode, and the vibrato/
+              // tremolo/FM LFOs connect to AudioParams, not nodes.
+              if (dest instanceof BiquadFilterNode
+                  && (this instanceof OscillatorNode || this instanceof AudioBufferSourceNode)) {
+                window.__pool.conns++;
+                window.__pool.ids.push(dest.__poolId);
+              }
+              return connect.call(this, dest, ...rest);
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      await loadExample('Froggy Hop');
+      await cdp.evaluate(`document.querySelector('#play').click()`);
+      await new Promise((r) => setTimeout(r, 2500));
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
+
+      const pool = await cdp.evaluate(`({ conns: window.__pool.conns, distinct: new Set(window.__pool.ids).size })`);
+      if (pool.conns < 20) {
+        throw new Error(`too few notes scheduled to say anything about pooling: ${JSON.stringify(pool)}`);
+      }
+      // Unpooled this is 1:1. Pooled, a channel's handful of voices carry the
+      // whole part, so the margin is large — but assert a modest one, since the
+      // exact ratio depends on how much of the song the lookahead reached.
+      if (pool.distinct * 2 > pool.conns) {
+        throw new Error(`notes should share pooled filters, got ${pool.distinct} filters for ${pool.conns} notes`);
+      }
+    });
+
     step('Noise buffers are seeded: identical across two page loads', async () => {
       // The reverb tail and the six noise-based drum sounds used to be filled
       // from Math.random(), so they differed on every page load. Checksum the

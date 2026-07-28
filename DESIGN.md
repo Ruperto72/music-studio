@@ -1003,16 +1003,27 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   field with it. At centre no panner is built at all — the same "no node when
   neutral" contract a full-velocity drum hit keeps, so a song that never
   touched pan builds the graph it always did.
-  **Voice pooling** (`acquireVoice()`, `VOICE_POOL_SIZE = 16` per channel) was
-  meant to reuse a fixed pool of filter+gain+echoSend+reverbSend node sets
-  across notes instead of building fresh ones each time, with bitcrushed notes
-  excluded (their `WaveShaperNode.curve` can't be safely reused for a
-  future-scheduled note) and panned ones too (a pooled voice is wired to the
-  destination once, so it has nowhere to put a panner). **It is currently
-  switched off** by an early `return null` left in `acquireVoice()` — a debug
-  line, not a decision — so every note allocates its own nodes. See TODO.md:
-  re-enabling needs its own testing, since none of that bookkeeping has run in
-  a long time.
+  **Voice pooling** (`acquireVoice()`/`voiceGainFor()`, `VOICE_POOL_SIZE = 16`
+  per channel) reuses a fixed pool of filter+gain+echoSend+reverbSend node sets
+  across notes instead of building fresh ones each time — 24 filters carried
+  117 notes of the demo song's first lookahead window, against 108 unpooled.
+  Bitcrushed notes are excluded (their `WaveShaperNode.curve` is a plain
+  property, not an `AudioParam`, so it can't be scheduled for a future note
+  without retroactively corrupting whichever earlier note is still playing
+  through that node) and panned ones too (a pooled voice is wired to the
+  destination once, so it has nowhere to put a panner); both fall back to an
+  ad-hoc gain+filter pair, as does an exhausted pool.
+  A voice frees up at `startAt + dur + VOICE_RELEASE_PAD`, **not** at
+  `startAt + dur`. `envelopeTimes()` ends the release exactly at `startAt +
+  dur`, so reusing at that instant makes `voiceGainFor()`'s
+  `cancelScheduledValues(startAt)` land on the release ramp's own end event and
+  delete it — the gain then jumps from the sustain level straight to silence
+  instead of ramping there, which is a click on every pair of back-to-back
+  notes. The pad costs at most a voice or two per channel.
+  `resetAudioCaches()` clears `voicePools` whenever the context is torn down or
+  swapped, which is what keeps an offline render (a different `AudioContext`,
+  and its nodes cannot be mixed with a live one's) from ever seeing a live
+  context's voices or vice versa.
 - **Per-track insert chain** (`chanGain[id] → chanEq[id] → chanComp[id] → chanCrush[id]? →
   chanTremolo[id]`, built by `buildChannelChain()`): a `DynamicsCompressorNode`
   (`createChanComp()`), an optional bitcrush `AudioWorkletNode` reusing the
