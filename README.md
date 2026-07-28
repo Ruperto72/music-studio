@@ -54,9 +54,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
 - Per-note effects: velocity, **pan**, bend, vibrato, tremolo, pulse width
   (duty), arpeggio, portamento, bitcrush, echo, chorus and reverb — pan places
   a single note in the stereo field on top of its track's own pan
-- **Per-hit velocity** on rhythm tracks — click a drum hit to set how hard
-  it's struck, so a pattern can have accents instead of sounding mechanical;
-  quieter notes and hits are drawn dimmer
+- **Per-hit velocity and pan** on rhythm tracks — click a drum hit to set how
+  hard it's struck, so a pattern can have accents instead of sounding
+  mechanical, and where it sits in the stereo field, so the kit spreads out
+  instead of stacking in one spot; quieter notes and hits are drawn dimmer
 - **Automation curves** per track — draw Volume, Pan, or Delay/Chorus/Reverb
   send over time
 - **Master bus**: 3-band EQ, compressor with a parallel ("New York") blend,

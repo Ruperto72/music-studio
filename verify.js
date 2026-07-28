@@ -1455,7 +1455,7 @@ async function main() {
       }
     });
 
-    step('Per-note pan reaches the audio graph, and centre inserts no node', async () => {
+    step('Per-note and per-hit pan reach the audio graph; centre inserts no node', async () => {
       // A panned note looks identical in the DOM, so the DOM alone can't show
       // that pan is applied. Patch createStereoPanner before the page loads
       // and watch what gets built when a note is auditioned.
@@ -1548,6 +1548,55 @@ async function main() {
       if (!recentred || 'pan' in recentred) {
         throw new Error(`re-centring should remove the property, saved note is ${JSON.stringify(recentred)}`);
       }
+
+      // A drum hit gets the same control, through scheduleDrum()'s one dispatch
+      // point rather than the ten individual schedulers — which is why it can
+      // be the same two assertions.
+      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-wave-group')).map((t) => t.querySelector('.lane'))[0]`;
+      await cdp.evaluate(`(() => {
+        const lane = ${rhythmLane};
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 100, clientY: r.top + 8 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.hit')`);
+      const hitFields = await cdp.evaluate(`[...document.querySelectorAll('.insp-field span:first-child')].map((e) => e.textContent)`);
+      if (hitFields.join(',') !== 'Velocity,Pan') {
+        throw new Error(`a hit's inspector should offer Velocity and Pan, got ${JSON.stringify(hitFields)}`);
+      }
+      await cdp.evaluate(`window.__panners.length = 0`);
+      await cdp.evaluate(`document.querySelector('.hit').click()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const hitCentre = await cdp.evaluate(`window.__panVals()`);
+      if (hitCentre.length !== 0) {
+        throw new Error(`a centred hit should add no panner, saw ${JSON.stringify(hitCentre)}`);
+      }
+      await cdp.evaluate(`(() => {
+        const s = (${panField}).querySelector('input[type=range]');
+        s.value = 0.6;
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const hitLabel = await cdp.evaluate(`document.querySelector('.hit').getAttribute('aria-label')`);
+      if (!/pan R60/.test(hitLabel || '')) {
+        throw new Error(`a panned hit must say so in its accessible name: ${JSON.stringify(hitLabel)}`);
+      }
+      await cdp.evaluate(`window.__panners.length = 0`);
+      await cdp.evaluate(`document.querySelector('.hit').click()`);
+      await new Promise((r) => setTimeout(r, 500));
+      const hitPanned = await cdp.evaluate(`window.__panVals()`);
+      if (hitPanned.length !== 1 || Math.abs(hitPanned[0] - 0.6) > 1e-6) {
+        throw new Error(`auditioning a hit panned to 0.6 should build exactly that panner, saw ${JSON.stringify(hitPanned)}`);
+      }
+      // And it must be the *only* thing stored on an otherwise untouched hit —
+      // full velocity still writes nothing.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find((t) => t.kind === 'rhythm').id;
+        const h = (d.tracks[id] || [])[0];
+        return h && Math.abs(h.pan - 0.6) < 1e-6 && !('vel' in h);
+      })()`, 4000);
     });
 
     step('Noise buffers are seeded: identical across two page loads', async () => {
