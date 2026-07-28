@@ -50,9 +50,11 @@ hur roligt det vore att bygga.
   samma låt skiljer sig fortfarande — **även två i rad i samma sidladdning**,
   vilket visar att det som återstår sitter i själva renderingen och inte i
   vad sidan bygger vid uppstart.
-  Vad mätningen visar för `Popcorn` (92 s): de första 6 sekunderna är exakt
-  lika, sedan skiljer sig 36 av 92 sekunder. Alltså ingen genomgående
-  nivåskillnad, utan något som slår till för vissa ljud.
+  Vad mätningen visade för `Popcorn` (92 s): de första 6 sekunderna var exakt
+  lika, sedan skilde sig 36 av 92 sekunder. Alltså ingen genomgående
+  nivåskillnad, utan något som slår till för vissa ljud. (`Popcorn` togs
+  senare bort ur biblioteket — mätningen står som den gjordes, men vill man
+  köra om den får man välja en annan låt.)
   **Uteslutet, med mätning:** de seedade buffertarna (hashade *under* varje
   rendering — bitidentiska, så seedningen gör exakt vad den ska),
   AudioWorklet-nedsamplaren (blockerad modulladdning → 0 worklets, ändå

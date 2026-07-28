@@ -20,11 +20,6 @@
     "desc": "An original 80s synth-pop song at 120 BPM — verse, chorus, bridge and a soaring final chorus, with a sequenced arp, lush swelling pad, synth-bass slides and a proper melodic hook."
   },
   {
-    "file": "popcorn.json",
-    "name": "Popcorn",
-    "desc": "A chiptune interpretation of the classic bouncy synth riff — a punchy square-wave hook alternating between two keys a whole step apart, with a contrasting bridge."
-  },
-  {
     "file": "space-miner.json",
     "name": "Deep Vacuum",
     "desc": "A 132 BPM techno track for the Space Miner game — sparse vacuum-drone intros/outros build into hard-hitting drops via riser arps and crash transitions, with bitcrushed lead stabs, chorused pads and a tightened master EQ/compressor for a deeper, punchier sound."
@@ -33,5 +28,10 @@
     "file": "neon-cathedral.json",
     "name": "Neon Cathedral",
     "desc": "A 2-minute symphonic/techno hybrid at 128 BPM — intro, build, drop, breakdown and a key-change climax before the outro. Six tracks (sine pad, square arp lead, FM brass stabs, triangle sub-bass, and two rhythm kits) showcase nearly every feature: per-note bend/vibrato/arpeggio/portamento/bitcrush/duty-cycle, ADSR + filter envelopes, FM synthesis, volume/pan/delay/reverb automation curves, per-track Delay/Chorus/Reverb sends, Compressor, Bitcrush and Tremolo inserts, plus master EQ, compressor, parallel compression, kick-triggered sidechain ducking and a touch of master bitcrush."
+  },
+  {
+    "file": "rust-foundry.json",
+    "name": "Rust Foundry",
+    "desc": "Industrial metal at 140 BPM — a downtuned E-phrygian chug riff double-tracked hard left and right, a ring-modulated machine drone, an FM alarm lead and two kits. Built around how hard things are hit and where they sit: ghost snares against a full backbeat, hats accented on the beat, tom fills that walk across the stereo field, and scrap percussion clanking off-grid. Bitcrush as distortion, a mid-scooped master, parallel compression and kick-triggered ducking."
   }
 ]
