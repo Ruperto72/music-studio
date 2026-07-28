@@ -2942,6 +2942,32 @@ function visibleFxFor(track) {
 function isFxBypassed(track, key) {
   return !!(state.activeFx[track] && state.activeFx[track][key] && state.activeFx[track][key].bypassed);
 }
+// Bypass-aware value for whatever WRITES a value into the Web Audio graph —
+// both a channel's creation-time initial values and every apply*() function
+// below. Never used by the UI: a popover's knob always shows the real
+// dialled-in value via the plain getTrackX() getters, bypassed or not — see
+// TRACK_FX_REGISTRY/buildFxPopover(). One helper rather than gating each of
+// the ten call sites by hand, so "what does a bypassed effect actually send
+// to the graph" has exactly one answer.
+function fxEffective(track, key, rawGetter, DEFAULT) {
+  return isFxBypassed(track, key) ? DEFAULT : rawGetter(track);
+}
+const effectiveTrackEq = (id) => fxEffective(id, 'eq', getTrackEq, DEFAULT_TRACK_EQ);
+const effectiveTrackComp = (id) => fxEffective(id, 'comp', getTrackComp, DEFAULT_TRACK_COMP);
+const effectiveTrackCrush = (id) => fxEffective(id, 'crush', getTrackCrush, DEFAULT_TRACK_CRUSH);
+const effectiveTrackTremolo = (id) => fxEffective(id, 'tremolo', getTrackTremolo, DEFAULT_TREMOLO);
+const effectiveTrackVibrato = (id) => fxEffective(id, 'vibrato', getTrackVibrato, DEFAULT_VIBRATO);
+// The three sends bypass independently (sendDelay/sendChorus/sendReverb are
+// separate chips on one shared state.fxSend[track] object), so this can't
+// delegate to the single-key fxEffective() above — it merges per field.
+function effectiveFxSend(id) {
+  const s = getFxSend(id);
+  return {
+    delay: isFxBypassed(id, 'sendDelay') ? DEFAULT_FX_SEND.delay : s.delay,
+    chorus: isFxBypassed(id, 'sendChorus') ? DEFAULT_FX_SEND.chorus : s.chorus,
+    reverb: isFxBypassed(id, 'sendReverb') ? DEFAULT_FX_SEND.reverb : s.reverb,
+  };
+}
 function getMasterEQ() { return state.masterEQ || DEFAULT_MASTER_EQ; }
 function getMasterComp() { return state.masterComp || DEFAULT_MASTER_COMP; }
 function getMasterParallel() { return state.masterParallel || DEFAULT_MASTER_PARALLEL; }
@@ -6747,7 +6773,7 @@ function createChanEq(id) {
   mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 0.7;
   const high = ctx.createBiquadFilter();
   high.type = 'highshelf'; high.frequency.value = 4000;
-  const e = getTrackEq(id);
+  const e = effectiveTrackEq(id);
   low.gain.value = e.low; mid.gain.value = e.mid; high.gain.value = e.high;
   chanGain[id].connect(low).connect(mid).connect(high);
   chanEq[id] = { low, mid, high };
@@ -6756,7 +6782,7 @@ function createChanEq(id) {
 // createChanEq() must have run first (buildChannelChain() orders them).
 function createChanComp(id) {
   chanComp[id] = ctx.createDynamicsCompressor();
-  const c = getTrackComp(id);
+  const c = effectiveTrackComp(id);
   chanComp[id].threshold.value = c.threshold;
   chanComp[id].ratio.value = c.ratio;
   chanComp[id].attack.value = c.attack;
@@ -6775,7 +6801,7 @@ function createChanComp(id) {
 // serves as the fixed downstream anchor ensureTrackCrusher() connects into.
 function createChanTremolo(id) {
   chanTremolo[id] = ctx.createGain();
-  const t = getTrackTremolo(id);
+  const t = effectiveTrackTremolo(id);
   chanTremolo[id].gain.value = 1 - t.depth / 2;
   chanTremoloLfo[id] = ctx.createOscillator();
   chanTremoloLfo[id].frequency.value = t.rate;
@@ -6815,7 +6841,7 @@ function ensureTrackCrusher(id, c, inputNode, outputNode) {
   return c.audioWorklet.addModule('js/downsample-processor.js').then(() => {
     if (c !== ctx || c.state === 'closed' || !chanComp[id] || !chanTremolo[id]) return;
     const node = new AudioWorkletNode(c, 'downsample-processor', {
-      parameterData: { hold: crushAmountToHold(getTrackCrush(id).amount) },
+      parameterData: { hold: crushAmountToHold(effectiveTrackCrush(id).amount) },
     });
     inputNode.disconnect(outputNode);
     inputNode.connect(node).connect(outputNode);
@@ -6827,14 +6853,15 @@ function ensureTrackCrusher(id, c, inputNode, outputNode) {
 // chanGain[id] directly. Called once per channel, right after chanTremolo[id]
 // exists, from buildChannelChain() below.
 function createTrackFxSends(id) {
+  const s = effectiveFxSend(id);
   trackDelaySend[id] = ctx.createGain();
-  trackDelaySend[id].gain.value = getFxSend(id).delay;
+  trackDelaySend[id].gain.value = s.delay;
   chanTremolo[id].connect(trackDelaySend[id]).connect(fxDelayBus);
   trackChorusSend[id] = ctx.createGain();
-  trackChorusSend[id].gain.value = getFxSend(id).chorus;
+  trackChorusSend[id].gain.value = s.chorus;
   chanTremolo[id].connect(trackChorusSend[id]).connect(fxChorusBus);
   trackReverbSend[id] = ctx.createGain();
-  trackReverbSend[id].gain.value = getFxSend(id).reverb;
+  trackReverbSend[id].gain.value = s.reverb;
   chanTremolo[id].connect(trackReverbSend[id]).connect(fxReverbBus);
 }
 
@@ -7054,7 +7081,7 @@ function applyPan() {
 }
 function applyFxSend() {
   for (const ch of ALL_TRACKS) {
-    const s = getFxSend(ch);
+    const s = effectiveFxSend(ch);
     if (trackDelaySend[ch]) trackDelaySend[ch].gain.value = s.delay;
     if (trackChorusSend[ch]) trackChorusSend[ch].gain.value = s.chorus;
     if (trackReverbSend[ch]) trackReverbSend[ch].gain.value = s.reverb;
@@ -7063,7 +7090,7 @@ function applyFxSend() {
 function applyTrackEq() {
   for (const ch of ALL_TRACKS) {
     if (!chanEq[ch]) continue;
-    const e = getTrackEq(ch);
+    const e = effectiveTrackEq(ch);
     chanEq[ch].low.gain.value = e.low;
     chanEq[ch].mid.gain.value = e.mid;
     chanEq[ch].high.gain.value = e.high;
@@ -7072,7 +7099,7 @@ function applyTrackEq() {
 function applyTrackComp() {
   for (const ch of ALL_TRACKS) {
     if (!chanComp[ch]) continue;
-    const c = getTrackComp(ch);
+    const c = effectiveTrackComp(ch);
     chanComp[ch].threshold.value = c.threshold;
     chanComp[ch].ratio.value = c.ratio;
     chanComp[ch].attack.value = c.attack;
@@ -7082,13 +7109,13 @@ function applyTrackComp() {
 function applyTrackCrush() {
   for (const ch of ALL_TRACKS) {
     if (!chanCrush[ch]) continue; // worklet not loaded (or still bypassed) yet — nothing to push to
-    chanCrush[ch].parameters.get('hold').value = crushAmountToHold(getTrackCrush(ch).amount);
+    chanCrush[ch].parameters.get('hold').value = crushAmountToHold(effectiveTrackCrush(ch).amount);
   }
 }
 function applyTrackTremolo() {
   for (const ch of ALL_TRACKS) {
     if (!chanTremolo[ch]) continue;
-    const t = getTrackTremolo(ch);
+    const t = effectiveTrackTremolo(ch);
     chanTremolo[ch].gain.value = 1 - t.depth / 2;
     chanTremoloLfoGain[ch].gain.value = t.depth / 2;
     chanTremoloLfo[ch].frequency.value = t.rate;
@@ -7539,7 +7566,7 @@ const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_
 function getTrackVoice(track) {
   return {
     adsr: getAdsr(track), filter: getFilterState(track), fm: getFmState(track),
-    vib: getTrackVibrato(track), duty: getTrackDuty(track),
+    vib: effectiveTrackVibrato(track), duty: getTrackDuty(track),
     // The free-running sweep shared by every `pwm` note on this track. Absent
     // (a track with no channel yet) falls back to a note-local LFO.
     pwmLfo: chanPwmLfo[track] || null,

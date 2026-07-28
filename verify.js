@@ -2704,6 +2704,69 @@ async function main() {
       }
     });
 
+    step('FX panel: bypass writes the default value to the audio graph, not the dialled one', async () => {
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__biquads = [];
+            const orig = BaseAudioContext.prototype.createBiquadFilter;
+            BaseAudioContext.prototype.createBiquadFilter = function () {
+              const n = orig.call(this);
+              window.__biquads.push(n);
+              return n;
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      // The audio graph is built lazily by ensureCtx(), not at page load —
+      // window.__biquads is empty until something actually starts audio, so
+      // place a note (the same trigger the pan test above uses: previewNote()
+      // calls ensureCtx()) before looking at any node it builds.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      await cdp.evaluate(`(() => {
+        const lane = ${tonalLane};
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 60 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.lane .note')`);
+
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
+      })()`);
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
+      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!(${headSel}).querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!(${headSel}).querySelector('.th-fx-popover[data-key="eq"]')`);
+      // 0 -> 6 at a 0.5 step is 12 presses.
+      await cdp.evaluate(`(() => {
+        const dial = [...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+          .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial');
+        dial.focus();
+        for (let i = 0; i < 12; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      })()`);
+      // ensureCtx() builds the song-global master EQ (buildMasterFXChain, its
+      // own low/mid/high trio) before it builds any per-track chain, so this
+      // track's own low-shelf band is NOT reliably window.__biquads[0] — find
+      // it by the one gain value only this dial press can have produced,
+      // rather than assuming a fixed index into creation order.
+      await waitFor(`window.__biquads.some(b => b.gain.value === 6)`);
+      const idx = await cdp.evaluate(`window.__biquads.findIndex(b => b.gain.value === 6)`);
+
+      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`window.__biquads[${idx}].gain.value === 0`);
+      const knobStillSix = await cdp.evaluate(`[...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+        .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-val').textContent`);
+      if (knobStillSix !== '6.0dB') throw new Error(`bypass must not change what the knob displays, Lo now reads ${knobStillSix}`);
+
+      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`window.__biquads[${idx}].gain.value === 6`);
+    });
+
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
     step('Rhythm: a hit carries a velocity that reaches the audio graph and the saved file', async () => {
