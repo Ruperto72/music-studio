@@ -1212,6 +1212,35 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   uppdaterades på tre ställen för att peka på nya platsen.
 ## Kvalitet
 
+- [x] **Fyra Web Audio-antaganden kontrollerade mot specen i stället för mot
+  minnet.** Tre ställen i koden ser ut som godtyckliga fudge-faktorer och är
+  det inte, och en fjärde egenskap är hela skälet till att en LFO får lämnas
+  inkopplad. Alla fyra höll — ingen kodändring behövdes, bara citat på de
+  ställen där en senare läsare annars rimligen "förenklar" sönder dem.
+  (`www.w3.org` var blockerad av sessionens nätverkspolicy; specens
+  Bikeshed-källa på `raw.githubusercontent.com/WebAudio/web-audio-api/main/
+  index.bs` gick att hämta i sin helhet och är dessutom greppbar,
+  `Level: 1.1`.)
+  1. **`cancelScheduledValues` tar bort händelser `>=` cancelTime**, inte `>`.
+     Release-rampens slutevent som ligger exakt på `startAt` raderas alltså —
+     precis antagandet bakom `VOICE_RELEASE_PAD`. Specen går längre än jag
+     skrev: den varnar uttryckligen att avbrutna automationer "may cause
+     discontinuities because the original value … is restored immediately".
+     Klicket var alltså en dokumenterad fallgrop, inte en härledning.
+  2. **En exponentiell ramp kan varken nå eller lämna noll.** "If \(V_0\) and
+     \(V_1\) have opposite signs or if \(V_0\) is zero, then \(v(t) = V_0\) …
+     This also implies an exponential ramp to 0 is not possible." Det är
+     därför `applyAdsrEnvelope()` använder `0.0001` i bägge ändar; med `0` i
+     starten hade rampen varit en no-op och **varje not tyst**.
+  3. **`AudioParam`-ingångar summeras** — "the sum of the
+     `paramIntrinsicValue` value and the value of the input AudioParam
+     buffer". Det är specificerat, inte tur, och är vad som gör att per-spårs-
+     vibrato *adderas till* per-not-flaggan och att tremolo-LFO:n kan läggas
+     ovanpå en gain-nods eget värde.
+  4. **En stoppad källa tystnar, den försvinner inte** — "after a source has
+     been stopped … the source MUST then output silence (0)". Tillsammans med
+     punkt 3 är det skälet till att en förbrukad tremolo-LFO får sitta kvar
+     inkopplad på en *poolad* gain-nod: den bidrar med 0 till nästa not.
 - [x] **Vågformer och effekter är ritade i stället för enbart namngivna.**
   En tabell, `GLYPHS`, håller små inline-SVG:er i en 24×12-viewBox med y=6
   som nollinje, ritade med `currentColor` så samma glyf funkar på en tänd

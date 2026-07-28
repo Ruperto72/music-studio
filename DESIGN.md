@@ -13,6 +13,16 @@ not built yet, and `DONE.md` for the working journal behind what is — the
 measurements, the ruled-out hypotheses, and why a solution looks the way it
 does rather than like the obvious alternative.
 
+Where this document quotes the **Web Audio API**, it means
+[Web Audio 1.1](https://www.w3.org/TR/webaudio-1.1/). Several things in B.6
+look like arbitrary fudge factors and are not — a 5 ms pad before a voice is
+reused, `0.0001` instead of `0` in an envelope, an LFO left connected to a
+node that outlives it — so the normative sentence behind each is quoted at
+the point it matters, rather than left as something a later reader has to
+rediscover by breaking it. The spec's own source is
+[`index.bs` in WebAudio/web-audio-api](https://github.com/WebAudio/web-audio-api/blob/main/index.bs),
+which is greppable when the published version is inconvenient to search.
+
 ---
 
 ## Part A — GUI Specification
@@ -1014,7 +1024,12 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   lowpass `BiquadFilterNode` (`applyFilterEnvelope()` sweeps its cutoff
   using the track's ADSR shape when `filterState.envAmount !== 0`) →
   `GainNode`, shaped by `applyAdsrEnvelope()` (scaled down proportionally if
-  attack+decay+release would exceed the note's own duration) → optionally a
+  attack+decay+release would exceed the note's own duration; note its
+  `0.0001` floors are load-bearing rather than cosmetic — an exponential ramp
+  cannot reach or leave zero. Web Audio 1.1: "If \(V_0\) and \(V_1\) have
+  opposite signs or if \(V_0\) is zero, then \(v(t) = V_0\) … This also
+  implies an exponential ramp to 0 is not possible." Starting the attack at 0
+  would pin the whole envelope there, silencing every note) → optionally a
   bitcrush `WaveShaperNode` → `chanGain[track]`, with echo/reverb aux sends
   if `note.echo`/`note.reverb` (these are separate, per-track, always-on-if-
   toggled loops — distinct from the continuous Delay/Chorus/Reverb sends in
@@ -1048,6 +1063,18 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   delete it — the gain then jumps from the sustain level straight to silence
   instead of ramping there, which is a click on every pair of back-to-back
   notes. The pad costs at most a voice or two per channel.
+  That the end event is caught rather than spared is the spec's wording rather
+  than an inference: `cancelScheduledValues` "cancels all scheduled parameter
+  changes with times **greater than or equal to** `cancelTime`", and cancelling
+  an active automation "may cause discontinuities because the original value
+  (from before such automation) is restored immediately" (Web Audio 1.1,
+  §AudioParam). A click at that boundary is a documented hazard of reusing a
+  node at the exact instant its ramp lands; the pad steps around it.
+  The tremolo LFO a note may have connected into a pooled gain is never
+  disconnected, and does not need to be: "after a source has been stopped …
+  the source MUST then output silence (0)" (§AudioScheduledSourceNode), and
+  `AudioParam` inputs sum, so a spent LFO contributes zero to whichever note
+  reuses the voice next.
   `resetAudioCaches()` clears `voicePools` whenever the context is torn down or
   swapped, which is what keeps an offline render (a different `AudioContext`,
   and its nodes cannot be mixed with a live one's) from ever seeing a live

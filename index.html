@@ -6938,6 +6938,15 @@ const voicePools = new Map(); // destGain -> [{ gain, filter, echoSend, reverbSe
 // deletes it — the gain would jump from the sustain level straight to silence
 // instead of ramping there, which is a click on every pair of back-to-back
 // notes. The pad costs at most a voice or two per channel.
+//
+// That the end event is caught rather than spared is the spec's wording, not
+// an inference: cancelScheduledValues "cancels all scheduled parameter changes
+// with times **greater than or equal to** cancelTime" (Web Audio 1.1,
+// §AudioParam). The spec calls out the consequence too — cancelling an active
+// automation "may cause discontinuities because the original value (from
+// before such automation) is restored immediately" — so a click here is a
+// documented hazard of reusing a node at the exact instant its ramp lands,
+// and the pad is what steps around it.
 const VOICE_RELEASE_PAD = 0.005;
 function acquireVoice(destGain, startAt) {
   let pool = voicePools.get(destGain);
@@ -7020,7 +7029,11 @@ function resetAudioCaches() {
 // connects another LFO into osc.frequency, and AudioParam inputs sum, so a
 // flagged note on a vibrato'd track gets both rather than one overriding the
 // other — the same "independent of the per-note flag" contract the per-track
-// Crush and Tremolo already have.
+// Crush and Tremolo already have. The summing is specified rather than
+// incidental: an AudioParam's computed value "is the sum of the
+// paramIntrinsicValue value and the value of the input AudioParam buffer"
+// (Web Audio 1.1, §Computation of Value), which is also why the tremolo LFO
+// below can be added onto a GainNode's own .gain without replacing it.
 function addVibrato(src, freq, startAt, endAt, rate = 5.5, depthRatio = 0.02) {
   const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
   lfo.frequency.value = rate;
@@ -7055,6 +7068,12 @@ function addFmModulator(src, carrierFreq, ratio, depth, startAt, endAt) {
   modOsc.connect(modGain).connect(src.pitch);
   modOsc.start(startAt); modOsc.stop(endAt);
 }
+// Note this LFO is never disconnected, which matters once the gain node is a
+// *pooled* voice outliving the note: a stopped source is silent, not absent.
+// "After a source has been stopped (by calling stop()), the source MUST then
+// output silence (0)" (Web Audio 1.1, §AudioScheduledSourceNode) — and since
+// AudioParam inputs sum, adding 0 is a no-op, so a spent tremolo cannot bleed
+// into whichever note reuses the voice next.
 function addTremolo(gainNode, startAt, endAt) {
   const lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
   lfo.frequency.value = 18;
@@ -7080,6 +7099,13 @@ function envelopeTimes(startAt, dur, adsr) {
   const t4 = startAt + dur;
   return { t1, t2, t3, t4 };
 }
+// The 0.0001 floors are load-bearing, not superstition: an exponential ramp
+// *cannot* reach or leave zero. Web Audio 1.1 defines the ramp as
+// v(t) = V0 * (V1/V0)^((t-T0)/(T1-T0)), and then: "If V0 and V1 have opposite
+// signs or if V0 is zero, then v(t) = V0 … This also implies an exponential
+// ramp to 0 is not possible." So starting the attack at 0 would pin the whole
+// envelope at 0 — every note silent — and ramping the release to 0 would hold
+// the sustain level instead of decaying. Don't "simplify" these to 0.
 function applyAdsrEnvelope(gainParam, startAt, dur, peak, adsr) {
   const { t1, t2, t3, t4 } = envelopeTimes(startAt, dur, adsr);
   const sustainLevel = Math.max(0.0001, peak * adsr.sustain);
