@@ -90,7 +90,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   a game
 - **Keyboard & screen reader**: Tab reaches every control with a visible focus
   ring, Shift+←/→ walks the notes of a track and Home/End jump to its ends,
-  with each selection announced as pitch and bar/beat
+  with each selection announced as pitch and bar/beat — and step entry (above)
+  adds a cursor you can move around the grid in both directions, announcing
+  what's at each step, so a song can be written and read back without a mouse
 - **Installable PWA** — works offline once loaded, and can be added to the
   home screen as a standalone/fullscreen app; a **Fullscreen** menu item also
   toggles plain browser fullscreen
@@ -201,9 +203,12 @@ dev-server.js               tiny static server for local use
 dev.js                      starts dev-server.js and opens a browser
 start.cmd                   Windows double-click entry point
 verify.js                   headless-browser smoke test
+TODO.md / DONE.md           what's left, and the journal behind what's built
 docs/                       design notes and implementation plans
 ```
 
 For a deeper tour, `DESIGN.md` specifies the GUI and the internal architecture,
-`CLAUDE.md` is a shorter orientation for editing the code, and `TODO.md` tracks
-what's deliberately not built yet.
+`CLAUDE.md` is a shorter orientation for editing the code, `TODO.md` tracks what
+isn't built yet, and `DONE.md` is the working journal behind what is — the
+measurements, the hypotheses that were ruled out and why each solution looks the
+way it does.
