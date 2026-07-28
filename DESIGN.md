@@ -156,7 +156,12 @@ just name/M/S/VU — a slim overview strip so many tracks fit on screen;
 
 - Each tonal track's lane auto-fits its **pitch window** to the notes it
   contains (min span 15 semitones), so lanes stay compact instead of always
-  spanning the full MIDI range (33–96).
+  spanning the full MIDI range (33–96). An **empty** lane returns that
+  minimum span directly, starting at middle C, rather than going through the
+  ±3-semitone padding — there are no notes to pad around. It used to open at
+  28 semitones, which was fine when a new project was one rhythm lane and
+  became 300px of blank grid per track once it starts with four tonal ones.
+  The wheel pans the window; the first note placed hands it back to auto-fit.
 - Notes render as colored blocks (`.note`), width = duration × zoom,
   brightness = velocity; small badges/border styles indicate active effects
   (arpeggio ♪ badge; `.bend`/`.vib`/`.trem`/`.porta`/`.crush`/`.echo`/
@@ -382,8 +387,8 @@ untouched song's master bus is unaffected — see B.6 for the signal chain.
 
 Opened from the menu's **Songs** item; three sections:
 
-1. **New song** — name it up front, then either **Starter tracks**
-   (empty Melody/Bass/Rhythm) or **Empty project** (just Rhythm).
+1. **New song** — name it up front, then either **Starter tracks** (the
+   `STARTER_TRACKS` layout, empty) or **Empty project** (just Rhythm).
 2. **Examples** — fetched from `songs/index.json` + one `.json` per entry;
    loading replaces the current editor content (a warning tells the user to
    save first).
@@ -391,7 +396,7 @@ Opened from the menu's **Songs** item; three sections:
    (`localStorage`), or load/delete a previously saved one.
 
 This dialog is the *only* way a song's content gets loaded into the editor
-— the page itself always boots into a blank project (see B.8).
+— the page itself always boots into the starter layout (see B.8).
 
 ### A.11b Rhythm patterns dialog
 
@@ -746,7 +751,18 @@ notes/hits), `startMarquee` (rubber-band multi-select), `startScrub`
 Each captures whatever it needs at gesture start (bounding rects, clamping
 bounds from neighboring points/notes), applies `scheduleRender()` during
 `pointermove`, and commits with a synchronous `render()` + `autosave()` on
-`pointerup`. A drag that produces no net change (e.g., a plain click on an
+`pointerup`.
+
+**Read geometry before anything that can re-render.** `render()` rebuilds
+track lanes wholesale, so a handler attached to a lane is left holding a
+detached element — whose `getBoundingClientRect()` is all zeros. Both Pen
+handlers used to call `setActive(track)` first and read the rect after, so
+the *first* click into a lane belonging to some other track landed at
+whatever row and column the raw viewport coordinates happened to divide
+into (measured: a click meant for the snare on bar 1 placed a ride on bar 3;
+in a pitch lane, G#0 instead of B4). It was unreachable while a new project
+had a single always-active track, and immediate once the editor starts with
+five. A drag that produces no net change (e.g., a plain click on an
 automation point) deliberately skips the render/commit step — necessary so
 a `dblclick` (used to delete) doesn't get its target element swapped out
 mid-gesture by an intervening rebuild.
@@ -1030,10 +1046,10 @@ with the note and so picks the change up on the next scheduled chunk.
 - **Autosave**: every `render()` schedules a debounced (400ms) `localStorage`
   write of the full `currentSongData()`-shaped payload under a fixed key,
   purely as a crash-recovery safety net. It is **write-only** — never read
-  back automatically. The page always boots into a blank project (just a
-  Rhythm track; the `state` object's own initial literal, not seeded from
-  any saved data), so song selection always goes through the explicit
-  Songs menu (A.11) rather than a reload-time prompt.
+  back automatically. The page always boots into the **starter layout**
+  (`STARTER_TRACKS`, built by `starterProject()` — never seeded from saved
+  data), so song selection always goes through the explicit Songs menu
+  (A.11) rather than a reload-time prompt.
 - **Local songs**: named saves under a second `localStorage` key, an
   object keyed by name; listed/loaded/deleted from the Songs dialog.
 - **File save/load**: **Save file** downloads `currentSongData()` as a `.json`

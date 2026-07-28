@@ -126,7 +126,8 @@ specific one).
   name, and Load/Delete them from the same menu.
 - **Save file / Load file** in the menu download/upload a song as a `.json` file.
 
-The page always starts as a blank project; pick a song explicitly from the
+The page always starts as a fresh project with the starter tracks (Lead,
+Harmony, Bass, Pad and Rhythm, all empty); pick a song explicitly from the
 **Songs** menu. Work is autosaved to this browser in the background purely
 as crash recovery — it's never restored automatically.
 

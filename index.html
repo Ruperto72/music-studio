@@ -880,8 +880,8 @@
 
       <h3>Saving &amp; exporting</h3>
       <ul>
-        <li><span class="help-ico" data-glyph="songs"></span><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with empty <b>Melody</b>/<b>Bass</b>/<b>Rhythm</b> starter tracks or a blank project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
-        <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh blank project (just Rhythm) though, never auto-restoring that draft; pick a song explicitly via <b>Songs…</b> in the menu instead.</li>
+        <li><span class="help-ico" data-glyph="songs"></span><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with the empty <b>Lead</b>/<b>Harmony</b>/<b>Bass</b>/<b>Pad</b>/<b>Rhythm</b> starter tracks or an empty project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
+        <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh project with the starter tracks though, never auto-restoring that draft; pick a song explicitly via <b>Songs…</b> in the menu instead.</li>
         <li><span class="help-ico" data-glyph="code"></span><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
         <li><span class="help-ico" data-glyph="midiOut"></span><b>Export MIDI</b> / <span class="help-ico" data-glyph="midiIn"></span><b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><span class="help-ico" data-glyph="wav"></span><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
@@ -924,7 +924,7 @@
         <h3>New song</h3>
         <div class="song-save-row">
           <input id="new-song-name" type="text" placeholder="Name this song…" maxlength="60">
-          <button id="new-song-starter" data-glyph="addTrack" title="Melody, Bass and a Rhythm track, all empty">Starter tracks</button>
+          <button id="new-song-starter" data-glyph="addTrack" title="Lead, Harmony, Bass, Pad and a Rhythm track, all empty">Starter tracks</button>
           <button id="new-song-empty" data-glyph="addDrums" title="Just the Rhythm track — add your own tonal tracks">Empty project</button>
         </div>
       </section>
@@ -2044,25 +2044,69 @@ function hasRhythmTrackData(data) {
 // song via the Songs menu instead (js/song-data.js's TRACKS/RHYTHM_TRACKS
 // remain the "export as code" round-trip target — see fromColumnNotes()/
 // fromColumnHits() — they're just no longer imported for a startup default).
+// What a new project starts with — the page's own boot state and the Songs
+// dialog's "Starter tracks" both build from this one table, so there is no
+// second copy of the layout to fall out of step.
+//
+// It is the NES's own channel layout, which is what this app is a model of:
+// two pulse channels, a triangle carrying the bass, and noise for the kit.
+// The second pulse sits at 25% duty rather than the default 50% so it reads
+// as a *different* voice instead of doubling the lead — which is the whole
+// reason a chip has two of them. The pad is the one non-period addition, on
+// `pwm` with a slow envelope, because a sustained chord bed is what a modern
+// arrangement wants and the sweep keeps it from sitting still.
+//
+// Four tonal tracks plus the kit rather than one empty rhythm lane: deleting
+// a track you don't want is one click, while adding one means naming it,
+// picking a waveform and setting a level. Starting fuller is the cheaper
+// mistake.
+const STARTER_TRACKS = [
+  { id: 'lead',    name: 'Lead',    waveform: 'square',   gain: 0.9 },
+  { id: 'harmony', name: 'Harmony', waveform: 'square',   gain: 0.75, duty: 0.25 },
+  { id: 'bass',    name: 'Bass',    waveform: 'triangle', gain: 1.0 },
+  { id: 'pad',     name: 'Pad',     waveform: 'pwm',      gain: 0.65,
+    adsr: { attack: 0.35, decay: 0.2, sustain: 0.85, release: 0.4 } },
+];
+// Builds the seeded per-track maps for a fresh project, plus the two sparse
+// ones the starter layout actually uses (`duty`, `adsr`) — callers apply
+// those separately, since clearSparseTrackMaps() has just emptied them.
+function starterProject(withTonalTracks = true) {
+  const trackList = [];
+  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {}, duty = {}, adsr = {};
+  if (withTonalTracks) {
+    for (const t of STARTER_TRACKS) {
+      trackList.push({ id: t.id, name: t.name, color: TRACK_PALETTE[trackList.length % TRACK_PALETTE.length], kind: 'tone' });
+      tracks[t.id] = []; gains[t.id] = t.gain; waveform[t.id] = t.waveform;
+      pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
+      if (t.duty != null) duty[t.id] = t.duty;
+      if (t.adsr) adsr[t.id] = { ...t.adsr };
+    }
+  }
+  trackList.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
+  tracks.rhythm = []; gains.rhythm = 1.2; waveform.rhythm = 'kit';
+  pan.rhythm = 0; mute.rhythm = false; solo.rhythm = false;
+  return { trackList, tracks, gains, waveform, pan, mute, solo, duty, adsr };
+}
+const BOOT = starterProject();
 const state = {
-  trackList: [{ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' }], // ordered track descriptors ({ id, name, color, kind })
-  tracks: { rhythm: [] },    // id -> notes/hits
-  gains: { rhythm: 1.2 },    // id -> relative volume
-  waveform: { rhythm: 'kit' }, // id -> oscillator
-  pan: { rhythm: 0 },        // id -> stereo pan
-  mute: { rhythm: false },
-  solo: { rhythm: false },
+  trackList: BOOT.trackList, // ordered track descriptors ({ id, name, color, kind })
+  tracks: BOOT.tracks,       // id -> notes/hits
+  gains: BOOT.gains,         // id -> relative volume
+  waveform: BOOT.waveform,   // id -> oscillator
+  pan: BOOT.pan,             // id -> stereo pan
+  mute: BOOT.mute,
+  solo: BOOT.solo,
   tempo: 120,
   songName: 'Untitled Song', // current project's display name — not song "content", so it's
                              // not part of undo history (see snapshotSong())
   masterVol: 0.45,           // editor preview master level (not part of the game)
-  activeTrack: 'rhythm',
+  activeTrack: BOOT.trackList[0].id, // the Lead track — the first thing you'd write
   tool: 'pen',
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
   markers: [],               // [{ col, name }] editor-only timeline markers
   automation: {},            // id -> { <param>: [{col, value}] } for any AUTOMATION_PARAMS key — each sorted by col
-  adsr: {},                  // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
+  adsr: BOOT.adsr,           // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
   fxSend: {},                // id -> { delay, chorus, reverb } (0..1 each, any track kind) — see DEFAULT_FX_SEND
@@ -2070,7 +2114,7 @@ const state = {
   crush: {},                 // id -> { amount } (0..1, any track kind) — see DEFAULT_TRACK_CRUSH
   tremolo: {},               // id -> { rate, depth } (any track kind) — see DEFAULT_TREMOLO
   vibrato: {},               // id -> { rate, depth } (tonal tracks only) — see DEFAULT_VIBRATO
-  duty: {},                  // id -> pulse width (tonal tracks on the `square` waveform); absent = plain 50% square
+  duty: BOOT.duty,           // id -> pulse width (tonal tracks on the `square` waveform); absent = plain 50% square
   eq: {},                    // id -> { low, mid, high } dB (any track kind) — see DEFAULT_TRACK_EQ
   masterEQ: { ...DEFAULT_MASTER_EQ },     // song-global 3-band EQ on the master bus
   masterComp: { ...DEFAULT_MASTER_COMP }, // song-global compressor on the master bus
@@ -2276,7 +2320,7 @@ function restoreTrackList(data) {
   clearSparseTrackMaps();
 }
 
-// state above already starts as a blank project (just Rhythm) rather than the
+// state above already starts as the STARTER_TRACKS layout rather than the
 // game's demo song or a background autosave draft — song selection happens
 // explicitly via the Songs menu instead. This used to ask "restore your
 // unsaved draft?" on every reload, which became repetitive noise once
@@ -2443,8 +2487,15 @@ const manualPitchWindow = {};
 function autoFitPitchWindow(track) {
   const notes = state.tracks[track];
   let lo, hi;
-  if (!notes.length) { lo = 57; hi = 79; }
-  else {
+  // An empty lane has nothing to fit, so it gets the narrowest window the app
+  // ever draws (MIN_SPAN, starting at middle C) and returns straight away —
+  // the ±3 padding below is headroom around *notes*, and there are none. This
+  // used to open at 22 semitones and then pad to 28, which is two and a half
+  // octaves of blank grid: fine when a new project was a single rhythm lane,
+  // 300px of nothing per track once it starts with four tonal ones. The wheel
+  // pans this window, and the first note placed hands it back to the auto-fit.
+  if (!notes.length) return { min: 60, max: 60 + MIN_SPAN };
+  {
     lo = Infinity; hi = -Infinity;
     for (const n of notes) { const m = freqToMidi(n.freq); if (m < lo) lo = m; if (m > hi) hi = m; }
   }
@@ -3541,7 +3592,19 @@ function buildHeader(track) {
     setGlyphLabel(patternsBtn, 'drums', '');
     patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Funk, Bossa Nova, ...)';
     patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-    patternsBtn.addEventListener('click', (e) => { e.stopPropagation(); renderPatternList(); patternDialog.showModal(); });
+    patternsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // insertPatternIntoRhythm() works on state.activeTrack, and the
+      // stopPropagation above is exactly what stops the header's own
+      // mousedown handler from setting it — so the dialog has to activate
+      // its own track. Invisible while a new project was one rhythm lane
+      // that was always active; with a starter layout the drum track is the
+      // last of five, and Insert would have silently done nothing whenever
+      // a tonal track had focus.
+      setActive(track, true);
+      renderPatternList();
+      patternDialog.showModal();
+    });
     tools.append(patternsBtn);
   }
 
@@ -3707,8 +3770,15 @@ function renderPitchTrack(track) {
   // to a snapped (possibly sub-eighth) column, not just a whole-cell index.
   rollEl.addEventListener('click', (e) => {
     if (state.tool !== 'pen') return;
-    setActive(track);
+    // Geometry first, activation second. setActive() re-renders when the track
+    // wasn't already the active one, which replaces this very element — read
+    // its rect afterwards and you read a detached node's zeros, so the click
+    // lands at whatever row and column the raw viewport coordinates divide
+    // into. Invisible while a new project had one track that was always
+    // active; with the starter layout the first click into any other lane
+    // placed its note somewhere else entirely.
     const { col, midi } = laneCoords(e, rollEl, ROW_H, win.max);
+    setActive(track);
     onCellClick(track, midi, col);
   });
   rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
@@ -3810,10 +3880,11 @@ function renderRhythmTrack(track) {
   addSubgrid(rollEl, RHYTHM_ROWS.length * RHY_H);
   rollEl.addEventListener('click', (e) => {
     if (state.tool !== 'pen') return;
-    setActive(track);
+    // Rect before setActive() — see the pitch lane's handler for why.
     const rect = rollEl.getBoundingClientRect();
     const col = Math.max(0, Math.min(COLS - state.grid, snapToGrid((e.clientX - rect.left) / colPx)));
     const row = Math.max(0, Math.min(RHYTHM_ROWS.length - 1, Math.floor((e.clientY - rect.top) / RHY_H)));
+    setActive(track);
     onRhythmCellClick(track, row, col);
   });
   rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
@@ -5159,23 +5230,10 @@ function setCols(newCols) {
 document.getElementById('len-minus').addEventListener('click', () => setCols(COLS - eighthsPerBar()));
 document.getElementById('len-plus').addEventListener('click', () => setCols(COLS + eighthsPerBar()));
 
-// ---------- New song (from the Songs dialog: a blank project, named up front) ----------
+// ---------- New song (from the Songs dialog: named up front) ----------
 // Either just the Rhythm track ("empty project") or Rhythm plus a couple of
 // empty starter tonal tracks — same track-map shape gameDefaults()/addTrack()
 // build, just with no notes yet.
-function newSongTrackList(withStarterTracks) {
-  const trackList = [];
-  const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
-  const addTonal = (name, osc) => {
-    const id = nextTrackId();
-    trackList.push({ id, name, color: TRACK_PALETTE[trackList.length % TRACK_PALETTE.length], kind: 'tone' });
-    tracks[id] = []; gains[id] = 0.9; waveform[id] = osc; pan[id] = 0; mute[id] = false; solo[id] = false;
-  };
-  if (withStarterTracks) { addTonal('Melody', 'square'); addTonal('Bass', 'triangle'); }
-  trackList.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
-  tracks.rhythm = []; gains.rhythm = 1.2; waveform.rhythm = 'kit'; pan.rhythm = 0; mute.rhythm = false; solo.rhythm = false;
-  return { trackList, tracks, gains, waveform, pan, mute, solo };
-}
 function createNewSong(withStarterTracks, name) {
   stopPlayback();
   state.songName = name;
@@ -5184,9 +5242,13 @@ function createNewSong(withStarterTracks, name) {
   syncTimeSigUI();
   state.markers = [];
   clearSparseTrackMaps(); // was a hand-written nine, missing `filter` and `fm`
-  const nt = newSongTrackList(withStarterTracks);
+  // The same builder the page boots from (STARTER_TRACKS), so "Starter
+  // tracks" and a fresh page give the identical layout.
+  const nt = starterProject(withStarterTracks);
   state.trackList = nt.trackList; state.tracks = nt.tracks; state.gains = nt.gains;
   state.waveform = nt.waveform; state.pan = nt.pan; state.mute = nt.mute; state.solo = nt.solo;
+  // Applied after clearSparseTrackMaps() above, which has just emptied both.
+  state.duty = nt.duty; state.adsr = nt.adsr;
   refreshTrackArrays();
   state.activeTrack = state.trackList[0].id;
   for (const t of state.trackList) ensureChannelNodes(t.id);
