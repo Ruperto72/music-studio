@@ -1068,11 +1068,27 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
   `state.metronome` är redigerartillstånd, inte låtdata: sparas aldrig i
   filen och ligger inte i ångra-historiken (metronomen kommas ihåg per
   webbläsare i `localStorage`). Verifierat med ett nytt steg i `verify.js`.
-- [ ] **Steginmatning** (nästa steg ovanpå inspelningen) — samma
-  tangentlayout ska lägga en not vid uppspelningshuvudet när transporten
-  står stilla, och flytta huvudet ett gridsteg framåt. Det är den delen som
-  gör komponerande utan pekdon möjligt; realtidsinspelningen kräver både
-  händerna och tidskänsla.
+- [x] **Steginmatning** — med ett armerat spår och *stillastående* transport
+  skriver samma tangenter in i låten ett steg i taget: varje tangent lägger
+  en not vid uppspelningshuvudet och flyttar det ett gridsteg framåt, så man
+  kan skriva ut en stämma i sin egen takt istället för att spela den i tid.
+  Tangenter som trycks samtidigt blir ett ackord på *en* kolumn och huvudet
+  flyttas en gång (markören är en enda `stepAnchor` som första tangenten i
+  gruppen sätter och `endStepIfDone()` flyttar först när sista släpps —
+  annars hade ett ackord stavats ut som en arpeggio). En stegad not
+  committas vid key-*down* med fast enstegslängd: utan klocka kan det inte
+  betyda något hur länge man håller tangenten. `←`/`→` flyttar markören
+  (`→` lämnar en paus) och `Backspace` går tillbaka ett steg och rensar det,
+  med markören kvar där så nästa tangent fyller luckan. `setStepPlayhead()`
+  använder `quant()` och inte `seekTo()`:s `Math.round()` — att runda
+  uppspelningshuvudet till hela åttondelar hade slängt vartannat steg
+  tillbaka på föregående vid 1/16-grid eller trioler. Gäller bara när
+  *ingenting* rullar: vanlig Play med armerat spår betyder "lyssna", inte
+  "skriv in i låten". Allt annonseras via `announce()`, för det är den här
+  delen — inte realtidstagningen — som gör komponerande utan pekdon möjligt,
+  och den är värdelös om man inte hör vad som hamnade. Att armera aktiverar
+  också spåret, så verktyg och inspektor jobbar på samma spår man skriver i.
+  Verifierat med ett eget steg i `verify.js`.
 
 ## Lagring / delning
 
@@ -1503,13 +1519,11 @@ vågform. Det är avsiktligt: de hör hemma på kanalen, inte på en ton.
      namnger nu sitt spår.
   Dessutom: panelrubrikerna låg på 3.23:1 kontrast (under AA) och är nu
   5.32:1. Brödtext och dämpad text klarade redan AA.
-- [ ] **Skapa noter från tangentbordet** — delvis löst: man kan nu armera ett
-  spår med **R** och spela in en tagning från tangentbordet (se "Interaktion
-  / touch"). Det som återstår är steginmatning med stillastående transport —
-  lägga en not vid uppspelningshuvudet och stega framåt — vilket är den del
-  som faktiskt gör komponerande utan pekdon möjligt. Det behöver en rumslig
-  modell av griden (markör-position, oktav, kolumn) snarare än bara en
-  markering.
+- [x] **Skapa noter från tangentbordet** — löst: armera ett spår med **R** och
+  skriv in noter med steginmatning (se "Interaktion / touch"), med pilarna
+  som markör och `Backspace` som radering, allt uppläst. Det som återstår är
+  en *rumslig* modell av griden för skärmläsare — man komponerar framåt längs
+  tidslinjen istället för att navigera den fritt.
 
 ## Övrigt (mindre, ej verifierat som blockerande)
 

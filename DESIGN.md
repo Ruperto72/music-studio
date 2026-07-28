@@ -499,6 +499,11 @@ by default — these are the deliberate additions:
   nudge, so nothing already in muscle memory changed. Notes use a **roving
   tabindex** — only the selected one is a tab stop — so Tab reaches the grid
   without walking through hundreds of blocks.
+- **Keyboard note entry**: arming a track (**R**) turns the letter keys into
+  step entry (A.16) — notes at the playhead, arrows to move the cursor,
+  `Backspace` to clear the last step, each spoken through the same live
+  region. This is the one piece that makes *composing* possible without a
+  pointer rather than only editing what a pointer already placed.
 - **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
   5.32:1. Body and muted text already passed AA.
 - **Icons**: every glyph (A.14) is `aria-hidden`, and the control around it
@@ -506,12 +511,15 @@ by default — these are the deliberate additions:
   are icon-only, additionally spells the selected shape's name out below the
   row, so no information is available *only* as a picture.
 
-Partly solved since: notes *can* now be created from the keyboard by arming
-a track and recording (A.16). What is still missing is placing a note at the
-playhead with the transport **stopped** — recording is a real-time take, so
-it needs both hands and a sense of time — and any spatial model of the grid
-for a screen reader. You can reach and edit what exists, and play a part in,
-but composing note by note without a pointer is not there yet.
+Solved since: notes can now be **created** from the keyboard as well as
+reached and edited. Arm a track with its **R** button and the letter keys
+place notes at the playhead a step at a time, with the arrows moving the
+cursor and `Backspace` clearing the last step, each announced as it lands
+(A.16 — step entry, deliberately separate from the real-time take, which
+needs both hands and a sense of timing and so is not on its own an answer
+here). What is still missing is a spatial model of the grid for a screen
+reader: you compose forwards along the timeline rather than navigating it
+freely.
 
 ### A.14 Icon glyphs
 
@@ -603,16 +611,38 @@ positional and a non-US keyboard plays the same notes from the same places.
 
 Every key sounds immediately through the armed track's own channel — so
 what you hear while playing is the waveform, envelope and FX the note will
-have — whether or not the transport is rolling. While rolling, a note is
-committed on **key up** with a length taken from how long the key was held,
-floored at one grid step; a drum hit has no length and commits on key down.
-Both snap to the current grid resolution and go through the same collision
-predicates (B.5) as a mouse-placed note, so recording over an existing part
-replaces same-pitch/same-drum items rather than stacking on them.
+have — whether or not the transport is rolling. While **recording**, a note
+is committed on **key up** with a length taken from how long the key was
+held, floored at one grid step; a drum hit has no length and commits on key
+down. Both snap to the current grid resolution and go through the same
+collision predicates (B.5) as a mouse-placed note, so recording over an
+existing part replaces same-pitch/same-drum items rather than stacking on
+them.
+
+**Step entry.** With the transport **stopped**, the same keys write into the
+song a step at a time: each one places a note at the playhead and moves it
+on one grid step, so a part can be typed out at your own pace instead of
+played in time. This — not the real-time take, which needs both hands and a
+sense of timing — is what makes composing without a pointer possible, so
+every step announces what landed through the same live region the grid
+selection uses (A.13).
+
+- **Chords are one gesture.** Keys pressed together land on one column and
+  the playhead moves once, at the release of the last of them. Advancing
+  per key would spell a chord out as an arpeggio.
+- **A stepped note commits on key down** with a fixed one-step length: with
+  no clock running, how long you lean on a key can't mean anything.
+- **The arrows move the cursor** — `→` leaves a rest, `←` goes back — and
+  **`Backspace`** steps back and clears that step, leaving the cursor there
+  so the next key fills the gap. All three shadow the selection nudge and
+  delete, which is the same trade the letter keys already make.
+- **Only when nothing is rolling.** Plain Play with a track armed means
+  "listen", not "type into the song"; only Record captures.
 
 Note keys are live **only while a track is armed**, which is what leaves the
-plain letter shortcuts (`M` metronome, tool keys) working the rest of the
-time.
+plain letter shortcuts (`M` metronome, tool keys) and the selection arrows
+working the rest of the time. Arming also **activates** the track, so the
+lane the tools and inspector act on is the one being typed into.
 
 ---
 
@@ -668,7 +698,8 @@ state = {
   multiSelected, // Set<Note|Hit> — group selection within activeTrack
   playhead, loopStart, loopEnd,
   marquee,     // { col0, col1, track } | null, mid-drag only
-  recTrack,    // id of the record-armed track | null — one keyboard, one arm (A.16)
+  recTrack,    // id of the record-armed track | null — one keyboard, one arm (A.16);
+               // also gates step entry, and arming activates the track
   metronome,   // bool — click on every beat; per-browser, not song content
 }
 ```
@@ -678,9 +709,10 @@ is serialised into a save file, written by `autosave()`, or captured in an
 undo snapshot (`metronome` is remembered per browser under its own
 `localStorage` key, the way per-track collapse state is). The rest of the
 recording engine's own state — which keys are down, the octave, whether the
-transport is capturing — lives in module-level variables (`heldKeys`,
-`recOctave`, `recording`, `countingIn`) rather than in `state`, since none
-of it survives a render, let alone a reload.
+transport is capturing, where the step cursor's current chord is landing —
+lives in module-level variables (`heldKeys`, `recOctave`, `recording`,
+`countingIn`, `stepAnchor`) rather than in `state`, since none of it
+survives a render, let alone a reload.
 
 `PITCH_TRACKS`/`RHYTHM_TRACK_IDS`/`ALL_TRACKS` (derived id lists) and
 module-level `COLS` (song length in eighths) sit alongside `state` rather
@@ -886,6 +918,21 @@ held when the window loses focus never sends its `keyup`, and its note
 would otherwise stay down and be committed with an absurd length later —
 and `stopPlayback()` tears down the very clock those lengths are measured
 against, so anything still held has to be resolved *before* that happens.
+
+**Step entry** (A.16) reuses that machine with the clock taken out.
+`stepEntryActive()` gates it on a track being armed and *nothing* rolling.
+The cursor is a single `stepAnchor`: `beginStep()` fixes it on the first
+key of a group, `endStepIfDone()` advances it only once `heldKeys` is
+empty again — which is what makes a held chord one column instead of an
+arpeggio, and why `endStepIfDone()` sits outside `recKeyUp()`'s
+commit guard (a stepped key carries no `startCol` to commit against).
+`setStepPlayhead()` deliberately uses `quant()` rather than `seekTo()`'s
+`Math.round()`: rounding the playhead to whole eighths would drop every
+other step back onto the previous one on a 1/16 or triplet grid.
+`stepBack()` clears whatever starts within the step it moves back onto,
+and drops those items from `state.selected`/`state.multiSelected` so no
+stale reference survives — the same rule every other deletion path follows
+(see "Selection identity" above).
 
 ### B.6 Audio synthesis engine
 

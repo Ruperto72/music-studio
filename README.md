@@ -36,6 +36,11 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   Everything lands on the grid at the current snap resolution. A **metronome**
   clicks on every beat, accented on the downbeat, and never reaches an
   exported WAV
+- **Step entry** — with a track armed and the transport *stopped*, the same
+  keys write a note at the playhead and move it on one step, so you can type
+  a part out at your own pace. Keys held together land as a chord on one
+  column; `→` leaves a rest, `Backspace` steps back and clears. Every step is
+  announced, so this is also how you compose without a mouse at all
 - Built-in **rhythm patterns** (Rock, Techno, Disco, Swing, Hip-Hop, House,
   Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap) you can audition and
   stamp into a rhythm track. Every hit lands with its own velocity, so the
@@ -98,9 +103,9 @@ Still open (see `TODO.md` for the full breakdown):
 
 - **Sampling** — sample playback and granular synthesis
 - **Collaboration** — cloud sync and live multi-user editing
-- **Accessibility** — the grid is labelled and keyboard-navigable, and notes
-  can now be played in from the keyboard while recording; what's still
-  missing is placing a note at the playhead with the transport *stopped*
+- **Accessibility** — the grid is labelled and keyboard-navigable and notes
+  can now be *created* from the keyboard (step entry); what's still missing
+  is a spatial model of the grid for a screen reader
 
 ## Run it locally
 
