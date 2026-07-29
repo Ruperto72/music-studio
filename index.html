@@ -604,7 +604,8 @@
   .automation-point:hover { background: #fff; }
   .adsr-lane-el { display: flex; align-items: center; gap: 18px; padding: 0 14px; }
   .adsr-field { display: flex; align-items: center; gap: 6px; }
-  .adsr-label { font-size: 11px; font-weight: 700; color: var(--muted); width: 34px; text-align: center; }
+  .adsr-label { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .adsr-label .glyph { width: 16px; height: 8px; flex: 0 0 auto; }
   .adsr-divider { width: 1px; align-self: stretch; background: #3a3a44; margin: 4px 0; }
   .adsr-field input[type=range] { width: 90px; cursor: pointer; }
   /* Sized to the widest option ("Square (50%)") so the row doesn't reflow
@@ -3600,10 +3601,10 @@ document.getElementById('daw').addEventListener('scroll', (e) => {
   render();
 });
 const ADSR_FIELDS = [
-  ['attack', 'A', 0, 0.5, 0.01],
-  ['decay', 'D', 0, 0.5, 0.01],
-  ['sustain', 'S', 0, 1, 0.01],
-  ['release', 'R', 0.02, 0.6, 0.01],
+  ['attack', 'Attack', 0, 0.5, 0.01],
+  ['decay', 'Decay', 0, 0.5, 0.01],
+  ['sustain', 'Sustain', 0, 1, 0.01],
+  ['release', 'Release', 0.02, 0.6, 0.01],
 ];
 function setAdsr(track, patch) {
   const cur = { ...getAdsr(track), ...patch };
@@ -3636,9 +3637,22 @@ function renderAdsrRow(track) {
   lane.setAttribute('role', 'group');
   lane.setAttribute('aria-label', `${trackOf(track)?.name || track} — envelope and filter`);
   const adsr = getAdsr(track);
+  // A small local helper so every field's caption is built the same way:
+  // icon + full word, instead of the old bare-letter <span>.
+  function fieldLabel(iconName, text) {
+    const cap = el('span', 'adsr-label');
+    cap.appendChild(glyph(iconName));
+    const t = document.createElement('span'); t.textContent = text;
+    cap.appendChild(t);
+    return cap;
+  }
+
+  const envGroup = el('div', 'mfx-group');
+  const envCap = el('span', 'mfx-cap'); envCap.textContent = 'Envelope';
+  envGroup.appendChild(envCap);
   for (const [key, label, min, max, step] of ADSR_FIELDS) {
     const field = el('div', 'adsr-field');
-    const cap = el('span', 'adsr-label'); cap.textContent = label;
+    const cap = fieldLabel(key, label);
     const slider = document.createElement('input');
     slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = adsr[key];
     slider.style.accentColor = trackColor(track);
@@ -3652,15 +3666,18 @@ function renderAdsrRow(track) {
       autosave();
     });
     field.append(cap, slider, val);
-    lane.appendChild(field);
+    envGroup.appendChild(field);
   }
+  lane.appendChild(envGroup);
+  lane.appendChild(el('span', 'adsr-divider'));
 
-  const divider = el('span', 'adsr-divider');
-  lane.appendChild(divider);
+  const filterGroup = el('div', 'mfx-group');
+  const filterCap = el('span', 'mfx-cap'); filterCap.textContent = 'Filter';
+  filterGroup.appendChild(filterCap);
 
   const filterState = getFilterState(track);
   const cutoffField = el('div', 'adsr-field');
-  const cutoffCap = el('span', 'adsr-label'); cutoffCap.textContent = 'Hz';
+  const cutoffCap = fieldLabel('cutoff', 'Cutoff');
   const cutoffSlider = document.createElement('input');
   cutoffSlider.type = 'range'; cutoffSlider.min = 0; cutoffSlider.max = 1; cutoffSlider.step = 0.001;
   cutoffSlider.value = hzToSlider(filterState.cutoff);
@@ -3675,10 +3692,10 @@ function renderAdsrRow(track) {
     autosave();
   });
   cutoffField.append(cutoffCap, cutoffSlider, cutoffVal);
-  lane.appendChild(cutoffField);
+  filterGroup.appendChild(cutoffField);
 
   const qField = el('div', 'adsr-field');
-  const qCap = el('span', 'adsr-label'); qCap.textContent = 'Q';
+  const qCap = fieldLabel('resonance', 'Resonance');
   const qSlider = document.createElement('input');
   qSlider.type = 'range'; qSlider.min = 0.1; qSlider.max = 20; qSlider.step = 0.1; qSlider.value = filterState.q;
   qSlider.style.accentColor = trackColor(track);
@@ -3692,10 +3709,10 @@ function renderAdsrRow(track) {
     autosave();
   });
   qField.append(qCap, qSlider, qVal);
-  lane.appendChild(qField);
+  filterGroup.appendChild(qField);
 
-  const envField = el('div', 'adsr-field');
-  const envCap = el('span', 'adsr-label'); envCap.textContent = 'Env';
+  const envAmtField = el('div', 'adsr-field');
+  const envAmtCap = fieldLabel('envAmount', 'Env Amount');
   const envSlider = document.createElement('input');
   envSlider.type = 'range'; envSlider.min = -1; envSlider.max = 1; envSlider.step = 0.05; envSlider.value = filterState.envAmount;
   envSlider.style.accentColor = trackColor(track);
@@ -3708,15 +3725,20 @@ function renderAdsrRow(track) {
     setFilterState(track, { envAmount: amt });
     autosave();
   });
-  envField.append(envCap, envSlider, envVal);
-  lane.appendChild(envField);
+  envAmtField.append(envAmtCap, envSlider, envVal);
+  filterGroup.appendChild(envAmtField);
+  lane.appendChild(filterGroup);
 
-  // Same rule as the FM controls below: a waveform-specific per-track synth
-  // setting, shown only for the waveform it applies to.
+  // Same rule as before: a waveform-specific per-track synth setting, shown
+  // only for the waveform it applies to — now captioned like the two groups
+  // above instead of trailing off the row bare.
   if (state.waveform[track] === 'square') {
     lane.appendChild(el('span', 'adsr-divider'));
+    const dutyGroup = el('div', 'mfx-group');
+    const dutyGroupCap = el('span', 'mfx-cap'); dutyGroupCap.textContent = 'Duty';
+    dutyGroup.appendChild(dutyGroupCap);
     const dutyField = el('div', 'adsr-field');
-    const dutyCap = el('span', 'adsr-label'); dutyCap.textContent = 'Duty';
+    const dutyCap = document.createElement('span'); dutyCap.textContent = 'Width';
     const dutySelect = document.createElement('select');
     dutySelect.className = 'adsr-select';
     dutySelect.title = 'Pulse width for this track. A note can override it from the inspector.';
@@ -3738,19 +3760,23 @@ function renderAdsrRow(track) {
       autosave();
     });
     dutyField.append(dutyCap, dutySelect);
-    lane.appendChild(dutyField);
+    dutyGroup.appendChild(dutyField);
+    lane.appendChild(dutyGroup);
   }
 
   // Ring modulation uses the same Ratio as FM (a modulator at a multiple of the
   // note's frequency), so it gets the slider too — but not Depth, which has no
   // meaning there: the multiplication is always full.
   if (state.waveform[track] === 'fm' || state.waveform[track] === 'ringmod') {
-    const fmDivider = el('span', 'adsr-divider');
-    lane.appendChild(fmDivider);
+    lane.appendChild(el('span', 'adsr-divider'));
+    const modGroup = el('div', 'mfx-group');
+    const modGroupCap = el('span', 'mfx-cap');
+    modGroupCap.textContent = state.waveform[track] === 'fm' ? 'FM' : 'Ring';
+    modGroup.appendChild(modGroupCap);
 
     const fmState = getFmState(track);
     const ratioField = el('div', 'adsr-field');
-    const ratioCap = el('span', 'adsr-label'); ratioCap.textContent = 'Ratio';
+    const ratioCap = document.createElement('span'); ratioCap.textContent = 'Ratio';
     const ratioSlider = document.createElement('input');
     ratioSlider.type = 'range'; ratioSlider.min = 0.5; ratioSlider.max = 12; ratioSlider.step = 0.5; ratioSlider.value = fmState.ratio;
     ratioSlider.style.accentColor = trackColor(track);
@@ -3764,11 +3790,11 @@ function renderAdsrRow(track) {
       autosave();
     });
     ratioField.append(ratioCap, ratioSlider, ratioVal);
-    lane.appendChild(ratioField);
+    modGroup.appendChild(ratioField);
 
-    if (state.waveform[track] === 'ringmod') { row.append(header, gutter, lane); return row; }
+    if (state.waveform[track] === 'ringmod') { lane.appendChild(modGroup); row.append(header, gutter, lane); return row; }
     const depthField = el('div', 'adsr-field');
-    const depthCap = el('span', 'adsr-label'); depthCap.textContent = 'Depth';
+    const depthCap = document.createElement('span'); depthCap.textContent = 'Depth';
     const depthSlider = document.createElement('input');
     depthSlider.type = 'range'; depthSlider.min = 0; depthSlider.max = 1; depthSlider.step = 0.02; depthSlider.value = fmState.depth;
     depthSlider.style.accentColor = trackColor(track);
@@ -3782,7 +3808,8 @@ function renderAdsrRow(track) {
       autosave();
     });
     depthField.append(depthCap, depthSlider, depthVal);
-    lane.appendChild(depthField);
+    modGroup.appendChild(depthField);
+    lane.appendChild(modGroup);
   }
 
   row.append(header, gutter, lane);
