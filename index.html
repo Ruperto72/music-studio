@@ -1429,6 +1429,20 @@ const GLYPHS = {
   eq:       ['M1 9.5 C5 9.5 6 1.5 12 1.5 C18 1.5 19 9.5 23 9.5'],
   comp:     ['M1 2 L23 5', 'M1 10 L23 7'],                                // dynamic range squeezed into a wedge
   send:     ['M1 6 h14', 'M11 2 l4 4 l-4 4'],                             // signal tapped off to a shared bus
+  // Envelope stages, drawn as one consistent family so they read together:
+  // steeper/shallower rises and falls, ending at different heights.
+  attack:    ['M2 10 L20 2'],                                             // steep rise
+  decay:     ['M2 2 L20 8'],                                              // falls partway, not to zero
+  sustain:   ['M2 6 H22'],                                                // held flat
+  release:   ['M2 6 L20 11'],                                             // falls to (near) zero
+  // Filter response curves, building on the `eq` glyph's curve language
+  // above rather than a new visual idiom for "frequency response."
+  cutoff:    ['M1 3 H12 C17 3 18 3 22 10'],                                // flat, then rolls off
+  resonance: ['M1 8 H8 C11 8 11 1 14 1 C17 1 17 8 22 8'],                  // rolloff with a resonant peak at the knee
+  envAmount: ['M1 8 H10 C15 8 15 8 19 3', 'M16 1 L19 3 L17 6'],            // rolloff curve + arrowhead: the knee sweeps
+  // Sidechain ducking: a level pumping down and recovering, twice — distinct
+  // from `tremolo`'s evenly-spaced vertical bars (a smooth LFO, not a duck).
+  duck:      ['M1 6 H5 L7 10 L9 6 H14 L16 10 L18 6 H23'],
 
   // ---- Interface icons (square) ----
   // Drawn in a 24x24 box because these sit on square buttons, unlike the wide
