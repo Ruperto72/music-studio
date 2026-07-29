@@ -2668,7 +2668,7 @@ const timelineEl = document.getElementById('timeline');
 const tracksEl = document.getElementById('tracks');
 const masterTrackEl = document.getElementById('master-track');
 const inspector = document.getElementById('inspector');
-const HEADER_W = 200, GUTTER_W = 42;
+const HEADER_W = 260, GUTTER_W = 42; // must match --header-w/--gutter-w in the <style> block above
 const LANE_ORIGIN = HEADER_W + GUTTER_W; // x (within .daw content) where lane columns begin
 
 let playheadEl = null, playheadGrip = null, loopEls = null, rulerGridEl = null, markersLayer = null;
