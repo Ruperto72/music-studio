@@ -3006,6 +3006,86 @@ function visibleFxFor(track) {
 function isFxBypassed(track, key) {
   return !!(state.activeFx[track] && state.activeFx[track][key] && state.activeFx[track][key].bypassed);
 }
+// Master-bus counterpart to TRACK_FX_REGISTRY, driving the same chip +
+// floating-popover shell (buildMasterFxChip/buildMasterFxPopover below) —
+// but master's five groups are fixed (no add/remove, no letter prefix) and
+// four of them are "neutral by default" the same way a track insert is, so
+// isMasterFxActive() below drives a dim-when-neutral display cue instead of
+// a real bypass toggle. Sidechain is the one exception: ducking is a
+// discrete on/off (state.sidechain.enabled), not a knob resting at zero, so
+// its popover gets a real On/Off toggle and its "active" check reads
+// `enabled` directly. Deliberately a separate table from TRACK_FX_REGISTRY
+// (its own MASTER_FX_FIELD_DEFAULTS below, never mixed with
+// FX_FIELD_DEFAULTS) even though a couple of entries reuse the same *icon*
+// as their per-track counterpart — same precedent as the three per-track
+// sends sharing one 'send' icon.
+const MASTER_FX_REGISTRY = [
+  {
+    key: 'eq', label: 'EQ', icon: 'eq',
+    get: getMasterEQ,
+    set: (patch) => { state.masterEQ = { ...getMasterEQ(), ...patch }; },
+    apply: () => { if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel()); },
+    fields: [
+      { param: 'low', label: 'Lo', title: 'Low shelf (~200Hz)', min: -12, max: 12, step: 0.5, format: dbFormat },
+      { param: 'mid', label: 'Mid', title: 'Mid peak (~1kHz)', min: -12, max: 12, step: 0.5, format: dbFormat },
+      { param: 'high', label: 'Hi', title: 'High shelf (~4kHz)', min: -12, max: 12, step: 0.5, format: dbFormat },
+    ],
+  },
+  {
+    key: 'comp', label: 'Comp', icon: 'comp',
+    get: getMasterComp,
+    set: (patch) => { state.masterComp = { ...getMasterComp(), ...patch }; },
+    apply: () => { if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel()); },
+    fields: [
+      { param: 'threshold', label: 'Thr', title: 'Threshold', min: -60, max: 0, step: 1, format: (v) => v.toFixed(0) + 'dB' },
+      { param: 'ratio', label: 'Rat', title: 'Ratio (1:1 = off)', min: 1, max: 20, step: 0.5, format: (v) => v.toFixed(1) + ':1' },
+      { param: 'attack', label: 'Atk', title: 'Attack', min: 0, max: 1, step: 0.01, format: (v) => v.toFixed(2) + 's' },
+      { param: 'release', label: 'Rel', title: 'Release', min: 0.01, max: 1, step: 0.01, format: (v) => v.toFixed(2) + 's' },
+    ],
+  },
+  {
+    key: 'parcomp', label: 'Par Comp', icon: 'comp',
+    get: getMasterParallel,
+    set: (patch) => { state.masterParallel = { ...getMasterParallel(), ...patch }; },
+    apply: () => { if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel()); },
+    fields: [
+      { param: 'blend', label: 'Blend', title: 'Parallel ("New York") compression blend — mixes in a much harder-compressed copy alongside the main signal', min: 0, max: 1, step: 0.02, format: pctFormat },
+    ],
+  },
+  {
+    key: 'sidechain', label: 'Sidechain', icon: 'duck',
+    get: getSidechain,
+    set: (patch) => { state.sidechain = { ...getSidechain(), ...patch }; },
+    apply: () => {}, // ducking reads getSidechain() live on every kick/snare hit — nothing to push
+    fields: [
+      { param: 'depth', label: 'Depth', title: 'How far the master bus ducks on each kick/snare hit', min: 0.05, max: 0.95, step: 0.05, format: pctFormat },
+    ],
+  },
+  {
+    key: 'crush', label: 'Downsample', icon: 'crush',
+    get: getMasterCrush,
+    set: (patch) => { state.masterCrush = { ...getMasterCrush(), ...patch }; },
+    apply: () => applyMasterCrush(getMasterCrush().amount),
+    fields: [
+      { param: 'amount', label: 'Amt', title: 'Lo-fi sample-and-hold downsampler (AudioWorklet) on the master bus — 0 = full quality', min: 0, max: 1, step: 0.05, format: pctFormat },
+    ],
+  },
+];
+const MASTER_FX_FIELD_DEFAULTS = {
+  eq: DEFAULT_MASTER_EQ,
+  comp: DEFAULT_MASTER_COMP,
+  parcomp: DEFAULT_MASTER_PARALLEL,
+  sidechain: DEFAULT_SIDECHAIN,
+  crush: DEFAULT_MASTER_CRUSH,
+};
+// Sidechain's "is this doing anything" cue is its own enabled flag, not
+// field-equality against defaults (depth is meaningless while disabled).
+function isMasterFxActive(effect) {
+  if (effect.key === 'sidechain') return getSidechain().enabled;
+  const v = effect.get();
+  const d = MASTER_FX_FIELD_DEFAULTS[effect.key];
+  return !effect.fields.every((f) => v[f.param] === d[f.param]);
+}
 // Bypass-aware value for whatever WRITES a value into the Web Audio graph —
 // both a channel's creation-time initial values and every apply*() function
 // below. Never used by the UI: a popover's knob always shows the real
@@ -3048,6 +3128,7 @@ function render() {
   if (renderRafId != null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
   renderTimeline();
   renderTracks();
+  renderMasterFxChips();
   renderFloatingLayer();
   positionOverlays();
   renderInspector();
@@ -3093,6 +3174,12 @@ function renderFloatingLayer() {
     // as "trigger removed since this popover was opened".
     if (!effect || !chip || !chip.getClientRects().length) continue;
     place(chip, buildFxPopover(track, effect));
+  }
+  for (const key of masterFxPopoverOpen) {
+    const effect = MASTER_FX_REGISTRY.find((e) => e.key === key);
+    const chip = document.querySelector(`.th-master-fx-chip[data-key="${key}"]`);
+    if (!effect || !chip || !chip.getClientRects().length) continue;
+    place(chip, buildMasterFxPopover(effect));
   }
   if (fxAddMenuOpen != null) {
     const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
@@ -3553,6 +3640,7 @@ const adsrOpen = new Set(); // track ids with the envelope panel open
 // which panel is currently expanded — the Inserts section itself is always
 // visible now (no more show/hide toggle), only its popovers open and close.
 const fxPopoverOpen = new Set();
+const masterFxPopoverOpen = new Set(); // effect keys only — one master, no track id to prefix
 // At most one "+ Add effect" menu open at a time, holding the track id it
 // belongs to (or null). A single value rather than a Set: unlike popovers,
 // which are worth comparing side by side, there is never a reason to have
@@ -3566,8 +3654,8 @@ let oscPickerOpen = null;
 // closes whatever is open. Plain inline panels rather than <dialog>
 // elements (see buildFxPanel()), so this has to be done by hand instead of
 // getting it from the browser.
-function anyFloatingMenuOpen() { return fxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
-function closeAllFloatingMenus() { fxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
+function anyFloatingMenuOpen() { return fxPopoverOpen.size > 0 || masterFxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
+function closeAllFloatingMenus() { fxPopoverOpen.clear(); masterFxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
 document.addEventListener('click', (e) => {
   if (!anyFloatingMenuOpen()) return;
   if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu, .th-osc-trigger, .th-osc-menu')) return;
@@ -3833,7 +3921,7 @@ function renderAdsrRow(track) {
 // -135deg..+135deg sweep (270deg total): 0% at -135, 100% at +135. Renders
 // its own value text so a sighted read of the dial and the aria-valuetext a
 // screen reader gets never disagree.
-function buildKnob(track, effect, field, value, onInput) {
+function buildKnob(ariaLabel, field, value, onInput, defaultValue) {
   const wrap = el('div', 'th-knob');
   const cap = el('span', 'th-knob-label'); cap.textContent = field.label;
   const dial = el('div', 'th-knob-dial');
@@ -3842,7 +3930,7 @@ function buildKnob(track, effect, field, value, onInput) {
   dial.setAttribute('aria-orientation', 'vertical');
   dial.setAttribute('aria-valuemin', String(field.min));
   dial.setAttribute('aria-valuemax', String(field.max));
-  dial.setAttribute('aria-label', `${field.label} — ${effect.label} on ${trackName(track)}`);
+  dial.setAttribute('aria-label', ariaLabel);
   dial.title = field.title;
   const pointer = el('div', 'th-knob-pointer');
   dial.appendChild(pointer);
@@ -3896,7 +3984,7 @@ function buildKnob(track, effect, field, value, onInput) {
   });
   dial.addEventListener('dblclick', (e) => {
     e.stopPropagation();
-    commit(FX_FIELD_DEFAULTS[effect.key][field.param]);
+    commit(defaultValue);
   });
   dial.addEventListener('keydown', (e) => {
     const cur = parseFloat(dial.getAttribute('aria-valuenow'));
@@ -4002,11 +4090,91 @@ function buildFxPopover(track, effect) {
   const fields = el('div', 'th-fx-popover-fields');
   const values = effect.get(track);
   for (const f of effect.fields) {
-    fields.appendChild(buildKnob(track, effect, f, values[f.param],
-      (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); }));
+    fields.appendChild(buildKnob(`${f.label} — ${effect.label} on ${trackName(track)}`, f, values[f.param],
+      (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); },
+      FX_FIELD_DEFAULTS[effect.key][f.param]));
   }
   pop.appendChild(fields);
   return pop;
+}
+// Master counterpart to buildFxChip/buildFxPopover — same chip/popover
+// shell and CSS classes (an extra `th-master-fx-chip` class distinguishes
+// it from a track chip for renderFloatingLayer()'s lookup below, since
+// master chips carry no data-track), but no letter, no bypass/remove
+// buttons: master's five groups are fixed, and isMasterFxActive() drives
+// the dimmed look instead of a stored bypass flag.
+function buildMasterFxChip(effect) {
+  const active = isMasterFxActive(effect);
+  const open = masterFxPopoverOpen.has(effect.key);
+  const chip = el('div', 'th-fx-chip th-master-fx-chip' + (!active ? ' bypassed' : '') + (open ? ' open' : ''));
+  chip.dataset.key = effect.key;
+  const body = el('button', 'th-fx-chip-body');
+  body.type = 'button';
+  body.title = effect.label + ' (Master)';
+  body.setAttribute('aria-label', effect.label + ', Master');
+  body.appendChild(glyph(effect.icon));
+  const label = document.createElement('span'); label.textContent = effect.label;
+  body.appendChild(label);
+  body.addEventListener('mousedown', (e) => e.stopPropagation());
+  body.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (masterFxPopoverOpen.has(effect.key)) masterFxPopoverOpen.delete(effect.key); else masterFxPopoverOpen.add(effect.key);
+    render();
+  });
+  chip.appendChild(body);
+  return chip;
+}
+function buildMasterFxPopover(effect) {
+  const active = isMasterFxActive(effect);
+  // `th-master-fx-popover` is the disambiguator: a track's EQ popover and
+  // master's EQ popover both use the registry key 'eq', so anything
+  // selecting by [data-key] alone (tests, renderFloatingLayer's own lookup
+  // above) would otherwise match whichever one happens to be first in the
+  // DOM if both were open at once.
+  const pop = el('div', 'th-fx-popover th-master-fx-popover' + (!active ? ' bypassed' : ''));
+  pop.dataset.key = effect.key;
+  const head = el('div', 'th-fx-popover-head');
+  head.appendChild(glyph(effect.icon));
+  const title = document.createElement('span'); title.textContent = effect.label;
+  head.append(title, el('span', 'th-fx-popover-head-spacer'));
+  // Sidechain is the one master group with a real on/off, shown where a
+  // track chip's bypass button would sit — see MASTER_FX_REGISTRY's comment.
+  if (effect.key === 'sidechain') {
+    const sc = getSidechain();
+    const toggle = el('button', 'icon-btn');
+    toggle.type = 'button';
+    toggle.textContent = sc.enabled ? 'On' : 'Off';
+    toggle.title = sc.enabled ? 'Sidechain ducking is on — click to disable' : 'Sidechain ducking is off — click to enable';
+    toggle.setAttribute('aria-pressed', String(sc.enabled));
+    toggle.addEventListener('mousedown', (e) => e.stopPropagation());
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      effect.set({ enabled: !sc.enabled });
+      render(); autosave();
+    });
+    head.appendChild(toggle);
+  }
+  pop.appendChild(head);
+
+  const fields = el('div', 'th-fx-popover-fields');
+  const values = effect.get();
+  for (const f of effect.fields) {
+    fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
+      (v) => { effect.set({ [f.param]: v }); effect.apply(); autosave(); },
+      MASTER_FX_FIELD_DEFAULTS[effect.key][f.param]));
+  }
+  pop.appendChild(fields);
+  return pop;
+}
+// Rebuilds the master chip row from MASTER_FX_REGISTRY every render() —
+// same "clear and rebuild" approach buildFxPanel()'s chip row already uses.
+// #master-fx-chip-row is added to the static markup in the next task; until
+// then this is a harmless no-op (the `if (!row) return;` guard).
+function renderMasterFxChips() {
+  const row = document.getElementById('master-fx-chip-row');
+  if (!row) return;
+  row.innerHTML = '';
+  for (const effect of MASTER_FX_REGISTRY) row.appendChild(buildMasterFxChip(effect));
 }
 function buildFxPanel(track) {
   const panel = el('div', 'th-fx-panel th-section');
