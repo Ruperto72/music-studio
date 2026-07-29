@@ -22,7 +22,7 @@
     --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
     --strip: #131316; --strip2: #0c0c0f; --ink: #e8e8ee; --muted: #9a9aa6;
     --subgrid: rgba(120, 200, 255, 0.16);
-    --header-w: 200px; --gutter-w: 42px;
+    --header-w: 260px; --gutter-w: 42px;
   }
   * { box-sizing: border-box; }
   body {
@@ -337,8 +337,8 @@
      on screen at once (the full lane/gutter aren't even built when collapsed,
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
-  .track.collapsed .th-wave-row, .track.collapsed .th-tools,
-  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove,
+  .track.collapsed .th-osc-section, .track.collapsed .th-tools,
+  .track.collapsed .th-output-section, .track.collapsed .th-remove,
   .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
@@ -346,7 +346,32 @@
     flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
-  .th-wave-row { margin-top: 2px; }
+  /* Generic labelled-group pattern the redesigned header uses for all three
+     of its sections (Osc/Inserts/Output) — Task 3's floating popups reuse
+     the same caption styling for their title bar. */
+  .th-section { margin-top: 6px; padding-top: 6px; border-top: 1px solid #232329; }
+  .th-top + .th-section { margin-top: 0; padding-top: 0; border-top: 0; }
+  /* Shared typography only — Osc/Output's caption is also a layout container
+     (see below), Inserts' caption is a plain inline span inside
+     .th-fx-reset-wrap, which already provides that layout. */
+  .th-section-label {
+    font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a;
+    font-weight: 700;
+  }
+  .th-osc-section > .th-section-label, .th-output-section > .th-section-label {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
+  }
+  /* The waveform <select> replaces the old six-to-ten-button picker — a
+     dropdown only shows one shape at a time (deliberately accepted; see
+     docs/superpowers/specs/2026-07-29-track-header-redesign.md §3) against
+     the Pro Tools-style width/section goal. Same <select>-based pattern
+     renderAutomationRow() already uses for its own dropdown (not a
+     byte-identical style — this one is full-width and needs its own
+     cursor/padding for the header context). */
+  .th-osc-select {
+    width: 100%; background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
+    font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+  }
   /* Shared by every inline SVG from GLYPHS. Stroked with currentColor so one
      glyph works on a lit toggle, a muted panel caption and a hover state
      without needing a recoloured copy per context. */
@@ -386,20 +411,6 @@
   .insp-del { display: flex; align-items: center; justify-content: center; gap: 6px; }
   .mv-ico .glyph-sq { width: 14px; height: 14px; }
   #repeat-loop, #more-toggle { display: inline-flex; align-items: center; gap: 5px; }
-  /* Waveform picker: six shapes shown at once rather than hidden behind a
-     <select>, since the whole point is to compare them. Sized to share the
-     200px header (--header-w) minus its padding, so `flex: 1 1 0` splits the
-     row evenly however many WAVEFORMS there are. */
-  .th-wave-group { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
-  .th-wave-btn {
-    min-width: 0; padding: 3px 1px; display: flex; justify-content: center;
-    background: #26262d; border: 1px solid #3a3a44; border-radius: 4px;
-    color: #8f8f9b; cursor: pointer;
-  }
-  .th-wave-btn:hover { border-color: #55555f; color: #cfcfd8; }
-  .th-wave-btn.on { background: #3a6bd6; border-color: #2a55b5; color: #fff; }
-  .th-wave-btn .glyph { width: 100%; height: 12px; }
-  .th-wave-name { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; text-align: center; }
   .th-pan { display: flex; align-items: center; gap: 6px; }
   .th-pan input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-pan .pan-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -448,8 +459,8 @@
      actually has (visibleFxFor()), a "+ Add effect" menu, and a knob-based
      popover per open chip. Unlike Automation/Envelope this needs no timeline
      column width, so it lives right inside the header (see buildFxPanel()). */
-  .th-fx-panel { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-  .th-fx-reset-wrap { display: flex; justify-content: flex-end; }
+  .th-fx-panel { display: flex; flex-direction: column; gap: 6px; }
+  .th-fx-reset-wrap { display: flex; align-items: center; justify-content: space-between; }
   .th-fx-reset {
     background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
     font-size: 10px; padding: 2px 6px; cursor: pointer;
@@ -467,6 +478,7 @@
     font-size: 10px; font-weight: 700; color: var(--ink); cursor: pointer; padding: 2px 0;
   }
   .th-fx-chip-body .glyph { width: 16px; height: 8px; }
+  .th-fx-chip-letter { color: #6f6f7a; font-weight: 700; }
   .th-fx-chip-bypass, .th-fx-chip-remove {
     display: flex; align-items: center; justify-content: center; background: none; border: none;
     width: 16px; height: 16px; padding: 0; border-radius: 3px; color: var(--muted); cursor: pointer;
@@ -474,14 +486,17 @@
   .th-fx-chip-bypass .glyph-sq { width: 11px; height: 11px; }
   .th-fx-chip-bypass.on { color: #ffb84f; }
   .th-fx-chip-remove:hover { background: #3a1414; color: #ff9a9a; }
-  .th-fx-add { position: relative; }
   .th-fx-add-btn {
     background: #26262e; border: 1px dashed #4a4a54; border-radius: 12px; color: var(--muted);
     font-size: 10px; padding: 3px 8px; cursor: pointer;
   }
   .th-fx-add-btn:hover { border-color: #6a6a76; color: var(--ink); }
+  /* #floating-fx-layer itself needs no box styling — it's a plain
+     full-viewport-relative anchor point; each child inside it carries its
+     own position:fixed left/top set inline by renderFloatingFxLayer(). */
+  #floating-fx-layer { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 60; }
   .th-fx-add-menu {
-    position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 3px; min-width: 120px;
+    position: fixed; min-width: 120px;
     background: #1c1c22; border: 1px solid #3a3a44; border-radius: 6px; padding: 2px;
     display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
   }
@@ -492,15 +507,23 @@
   .th-fx-add-menu button:hover { background: #2c2c33; }
   .th-fx-add-menu button .glyph { width: 16px; height: 8px; }
   .th-fx-add-empty { font-size: 10px; color: var(--muted); padding: 4px 6px; }
-  .th-fx-popover { border: 1px solid #3a3a44; border-radius: 6px; background: #1c1c22; padding: 6px 8px; }
+  .th-fx-popover {
+    position: fixed; border: 1px solid #4a4a56; border-radius: 8px; background: #1c1c22;
+    padding: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.6); min-width: 140px;
+  }
   .th-fx-popover.bypassed { opacity: 0.55; }
+  /* Now a title bar (Pro Tools plugin-window style) rather than an inline
+     panel's in-flow heading — its own background/border-radius/border-bottom
+     frame the floating window's top edge. */
   .th-fx-popover-head {
-    display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
     font-size: 10px; font-weight: 700; color: var(--muted);
+    background: #26262e; border-bottom: 1px solid #3a3a44; border-radius: 8px 8px 0 0;
+    padding: 6px 8px;
   }
   .th-fx-popover-head .glyph { width: 18px; height: 9px; }
   .th-fx-popover-head-spacer { flex: 1; }
-  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 8px; }
 
   /* Insert-effect parameter knob — a pointer-driven rotary control, not a
      restyled <input type=range> (see buildKnob()). -135deg..+135deg sweep
@@ -1266,6 +1289,12 @@
   <button id="insp-close" title="Close editor panel">✕ Done</button>
 
   <textarea id="exportBox" style="display:none" readonly></textarea>
+
+  <!-- Portal target for the FX popover/add-menu — see renderFloatingFxLayer().
+       A plain top-level body child (not nested in .daw or .editor-layout) so
+       position:fixed content here is never clipped by .daw's own
+       overflow:auto, which a z-index fix alone cannot undo. -->
+  <div id="floating-fx-layer"></div>
 
 <script type="module">
 import { TEMPO_BPM } from './js/song-data.js';
@@ -2984,10 +3013,55 @@ function render() {
   if (renderRafId != null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
   renderTimeline();
   renderTracks();
+  renderFloatingFxLayer();
   positionOverlays();
   renderInspector();
   autosave();
   checkpointHistory();
+}
+// Rebuilds #floating-fx-layer from scratch every render — the same
+// "clear and rebuild" approach renderTracks() itself uses for #tracks,
+// rather than createOverlays()'s "build once, only reposition" pattern,
+// since the floating layer's *contents* are dynamic in count (any number of
+// popovers, at most one add-menu) while the playhead/loop chrome is always
+// exactly one of each. Must run AFTER renderTracks(), since it locates each
+// popup's trigger element (a chip or the add-button) by data-track/data-key
+// in the just-rebuilt header DOM to read its on-screen position.
+function renderFloatingFxLayer() {
+  const layer = document.getElementById('floating-fx-layer');
+  layer.innerHTML = '';
+  // Anchors a built popup element under its trigger's on-screen position —
+  // position:fixed, so viewport-relative regardless of #floating-fx-layer's
+  // own DOM location. 6px below the trigger, clamped so it can't render
+  // off the right/bottom edge of the viewport.
+  function place(triggerEl, popupEl) {
+    layer.appendChild(popupEl); // must be in the layer before measuring its own size
+    const r = triggerEl.getBoundingClientRect();
+    const pw = popupEl.offsetWidth, ph = popupEl.offsetHeight;
+    const left = Math.min(r.left, window.innerWidth - pw - 8);
+    const top = Math.min(r.bottom + 6, window.innerHeight - ph - 8);
+    popupEl.style.left = Math.max(8, left) + 'px';
+    popupEl.style.top = Math.max(8, top) + 'px';
+  }
+  for (const key of fxPopoverOpen) {
+    const sep = key.indexOf('::');
+    const track = key.slice(0, sep), effectKey = key.slice(sep + 2);
+    const effect = TRACK_FX_REGISTRY.find((e) => e.key === effectKey);
+    const chip = document.querySelector(`.th-fx-chip[data-track="${track}"][data-key="${effectKey}"]`);
+    // A collapsed track hides its .th-fx-panel via `display: none` rather
+    // than removing it, so the chip can still be found here — but a hidden
+    // element's getBoundingClientRect() is all zeros, which place() would
+    // clamp to the viewport's top-left corner, stranding the popover there
+    // with no visible anchor. getClientRects().length is 0 for anything not
+    // actually rendered (display:none or detached), so treat that the same
+    // as "trigger removed since this popover was opened".
+    if (!effect || !chip || !chip.getClientRects().length) continue;
+    place(chip, buildFxPopover(track, effect));
+  }
+  if (fxAddMenuOpen != null) {
+    const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
+    if (btn && btn.getClientRects().length) place(btn, buildFloatingAddMenu(fxAddMenuOpen));
+  }
 }
 
 // render() rebuilds the whole grid (every cell of every track), so calling it
@@ -3197,7 +3271,7 @@ function removeTrack(id) {
   // silently ticking forever, so stop it explicitly.
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
   if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
-  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
+  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
   for (const k of [...fxPopoverOpen]) if (k.startsWith(id + '::')) fxPopoverOpen.delete(k);
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
@@ -3432,12 +3506,11 @@ function renderAutomationRow(track, param) {
 
 // ---------- ADSR envelope panel (tonal tracks only) ----------
 const adsrOpen = new Set(); // track ids with the envelope panel open
-const fxSendOpen = new Set(); // track ids with the Delay/Chorus send panel open
 // Which FX insert popovers are open, keyed by `${track}::${effectKey}` — any
 // number can be open at once, across tracks and effects (unlike
 // automationOpen/adsrOpen, which are one-per-track). Not serialized: purely
-// which panel is currently expanded, the same kind of state fxSendOpen above
-// already is.
+// which panel is currently expanded — the Inserts section itself is always
+// visible now (no more show/hide toggle), only its popovers open and close.
 const fxPopoverOpen = new Set();
 // At most one "+ Add effect" menu open at a time, holding the track id it
 // belongs to (or null). A single value rather than a Set: unlike popovers,
@@ -3450,13 +3523,34 @@ let fxAddMenuOpen = null;
 // the browser.
 document.addEventListener('click', (e) => {
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
-  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add')) return;
+  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu')) return;
   fxPopoverOpen.clear();
   fxAddMenuOpen = null;
   render();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
+  fxPopoverOpen.clear();
+  fxAddMenuOpen = null;
+  render();
+});
+// A position:fixed popup does not move with .daw's own VERTICAL scroll, so
+// without this it would visually detach from the chip it belongs to the
+// instant the user scrolls .daw up/down — closing it (same as an outside
+// click) is simpler and more honest than live-repositioning it to track the
+// scroll. Horizontal scroll is deliberately excluded: .track-header is
+// position:sticky; left: 0, so it never moves horizontally as .daw scrolls
+// sideways, and a popover anchored to a chip inside it stays correctly
+// positioned through that. Closing on every scroll event regardless of axis
+// used to fire on followPlayhead()'s horizontal auto-scroll during playback
+// and on dragging the #hscroll bar, closing every open popover mid-playback
+// or aborting an in-progress knob drag.
+let dawLastScrollTop = 0;
+document.getElementById('daw').addEventListener('scroll', (e) => {
+  const top = e.currentTarget.scrollTop;
+  if (top === dawLastScrollTop) return; // horizontal-only scroll — sticky header didn't move
+  dawLastScrollTop = top;
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
   fxPopoverOpen.clear();
   fxAddMenuOpen = null;
@@ -3791,14 +3885,28 @@ function removeFxChip(track, effect) {
   effect.apply();
   render(); autosave();
 }
-function buildFxChip(track, effect) {
+function buildFxChip(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
   const open = fxPopoverOpen.has(track + '::' + effect.key);
   const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
+  chip.dataset.track = track; chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
   body.type = 'button';
-  body.title = effect.label;
-  body.appendChild(glyph(effect.icon));
+  body.title = `${letter} — ${effect.label}`;
+  // An explicit aria-label wins over whatever descendant text a button would
+  // otherwise concatenate, so this is the one place the letter and the label
+  // need to agree on wording — without it, the letter span below would have
+  // run into the label with no separator ("AEQ").
+  body.setAttribute('aria-label', `${letter}, ${effect.label}`);
+  // A separate element from the label span (not `${letter} ${effect.label}`
+  // concatenated into one string) so verify.js's existing exact-match label
+  // checks (`... === 'EQ'`) keep working unchanged — the letter is purely
+  // additive, visually and in the DOM. aria-hidden is belt-and-suspenders
+  // here (the aria-label above already wins outright) but matches the glyph
+  // beside it, which is aria-hidden for the same "decorative" reason.
+  const letterSpan = el('span', 'th-fx-chip-letter'); letterSpan.textContent = letter;
+  letterSpan.setAttribute('aria-hidden', 'true');
+  body.append(letterSpan, glyph(effect.icon));
   const label = document.createElement('span'); label.textContent = effect.label;
   body.appendChild(label);
   body.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -3831,9 +3939,12 @@ function buildFxPopover(track, effect) {
   return pop;
 }
 function buildFxPanel(track) {
-  const panel = el('div', 'th-fx-panel');
+  const panel = el('div', 'th-fx-panel th-section');
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
+  const insertsLabel = el('span', 'th-section-label');
+  insertsLabel.textContent = 'Inserts';
+  resetWrap.prepend(insertsLabel);
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
   resetBtn.title = 'Remove every insert and send on this track';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -3852,10 +3963,16 @@ function buildFxPanel(track) {
 
   const visible = visibleFxFor(track);
   const chipRow = el('div', 'th-fx-chip-row');
-  for (const effect of visible) chipRow.appendChild(buildFxChip(track, effect));
+  // A, B, C… by current position only — not a stored slot id. Recomputed
+  // fresh every render from visibleFxFor()'s current length, so removing
+  // chip "B" reflows the rest (what was "C" becomes "B") rather than
+  // leaving a gap, exactly as if nothing were persisted at all (because
+  // nothing is — see docs/superpowers/specs/2026-07-29-track-header-redesign.md §4).
+  visible.forEach((effect, i) => chipRow.appendChild(buildFxChip(track, effect, String.fromCharCode(65 + i))));
 
   const addWrap = el('div', 'th-fx-add');
   const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+ Add effect';
+  addBtn.dataset.track = track;
   addBtn.title = 'Add an effect to this track';
   addBtn.setAttribute('aria-haspopup', 'true');
   addBtn.setAttribute('aria-expanded', String(fxAddMenuOpen === track));
@@ -3866,40 +3983,43 @@ function buildFxPanel(track) {
     render();
   });
   addWrap.appendChild(addBtn);
-  if (fxAddMenuOpen === track) {
-    const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
-    const menu = el('div', 'th-fx-add-menu');
-    if (!notAdded.length) {
-      const none = el('div', 'th-fx-add-empty'); none.textContent = 'All effects added';
-      menu.appendChild(none);
-    }
-    for (const effect of notAdded) {
-      const item = el('button'); item.type = 'button';
-      item.appendChild(glyph(effect.icon));
-      const span = document.createElement('span'); span.textContent = effect.label;
-      item.appendChild(span);
-      item.addEventListener('mousedown', (e) => e.stopPropagation());
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.activeFx[track] = state.activeFx[track] || {};
-        state.activeFx[track][effect.key] = { bypassed: false };
-        fxPopoverOpen.add(track + '::' + effect.key);
-        fxAddMenuOpen = null;
-        effect.apply();
-        render(); autosave();
-      });
-      menu.appendChild(item);
-    }
-    addWrap.appendChild(menu);
-  }
   chipRow.appendChild(addWrap);
   panel.appendChild(chipRow);
-
-  for (const effect of visible) {
-    if (fxPopoverOpen.has(track + '::' + effect.key)) panel.appendChild(buildFxPopover(track, effect));
-  }
-
+  // Popovers and the add-menu itself no longer render here — see
+  // buildFloatingAddMenu()/buildFxPopover() and renderFloatingFxLayer(),
+  // called once after every track's header (this function included) has
+  // been rebuilt, so their trigger elements' on-screen positions are known.
   return panel;
+}
+// The "+ Add effect" menu's content, built the same way the old inline
+// version was, just relocated into the floating layer by
+// renderFloatingFxLayer() instead of appended here directly.
+function buildFloatingAddMenu(track) {
+  const visible = visibleFxFor(track);
+  const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
+  const menu = el('div', 'th-fx-add-menu');
+  if (!notAdded.length) {
+    const none = el('div', 'th-fx-add-empty'); none.textContent = 'All effects added';
+    menu.appendChild(none);
+  }
+  for (const effect of notAdded) {
+    const item = el('button'); item.type = 'button';
+    item.appendChild(glyph(effect.icon));
+    const span = document.createElement('span'); span.textContent = effect.label;
+    item.appendChild(span);
+    item.addEventListener('mousedown', (e) => e.stopPropagation());
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.activeFx[track] = state.activeFx[track] || {};
+      state.activeFx[track][effect.key] = { bypassed: false };
+      fxPopoverOpen.add(track + '::' + effect.key);
+      fxAddMenuOpen = null;
+      effect.apply();
+      render(); autosave();
+    });
+    menu.appendChild(item);
+  }
+  return menu;
 }
 
 function buildHeader(track) {
@@ -3980,61 +4100,48 @@ function buildHeader(track) {
     top.append(collapseBtn, reorder, name, btns);
   }
 
-  // Waveform picker (or the "Kit" label for rhythm) — its own full-width row,
-  // hidden while collapsed.
-  const waveRow = el('div', 'th-wave-row');
+  // Osc section: waveform dropdown (or the "Kit" label for rhythm) plus the
+  // Auto/Env/Preset (or Auto/Patterns) tool-toggle row, both hidden while
+  // collapsed via .th-osc-section's own class.
+  const oscSection = el('div', 'th-section th-osc-section');
+  const oscLabel = el('div', 'th-section-label');
+  oscLabel.textContent = 'Osc';
+  oscSection.appendChild(oscLabel);
   if (isRhythm(track)) {
     const kit = el('span', 'th-osc');
     kit.append(glyph('kit'), document.createTextNode(' ' + WAVE_LABEL.kit));
     kit.style.display = 'flex'; kit.style.alignItems = 'center'; kit.style.gap = '4px';
-    waveRow.append(kit);
+    oscSection.appendChild(kit);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
-    // via the exported VOICES config.
-    //
-    // Six icon buttons rather than the <select> this used to be: the choice is
-    // "which of these shapes", and a dropdown only ever showed one shape at a
-    // time (and a native <option> can't carry an SVG at all, so the shapes had
-    // nowhere to go while it stayed a select). Same role="radiogroup" +
-    // aria-checked pattern as the Pen/Eraser/Grab tool group, since this is
-    // likewise one choice out of a set and not a row of independent toggles.
-    // The glyphs are aria-hidden, so each button carries the waveform's name as
-    // its aria-label; the name of the *selected* one is also spelled out below
-    // the row, so nothing depends on recognising an icon.
-    const group = el('div', 'th-wave-group');
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', 'Waveform for ' + trackName(track));
+    // via the exported VOICES config. A plain <select> (same pattern
+    // renderAutomationRow() already uses for its own parameter dropdown) —
+    // deliberately reverted from the six-to-ten-button picker this used to
+    // be, trading "compare every shape at once" for the header's Pro
+    // Tools-style width/section goal; see the design spec §3 for the
+    // reasoning. Native <option> text carries the name (WAVE_LABEL) with no
+    // icon (a <option> can't hold an SVG glyph either way).
+    const select = document.createElement('select');
+    select.className = 'th-osc-select';
+    select.setAttribute('aria-label', 'Waveform for ' + trackName(track));
     for (const w of WAVEFORMS) {
-      const on = state.waveform[track] === w;
-      const btn = el('button', 'th-wave-btn' + (on ? ' on' : ''));
-      btn.type = 'button';
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', String(on));
-      btn.setAttribute('aria-label', WAVE_LABEL[w]);
-      btn.title = WAVE_LABEL[w] + ' (VOICES ' + track + ')';
-      btn.appendChild(glyph(w));
-      btn.addEventListener('mousedown', (e) => e.stopPropagation());
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.waveform[track] = w;
-        const n = state.tracks[track][0];
-        if (n) previewNote(track, n);
-        autosave();
-        // Always re-render now, not only when the Envelope panel is open (which
-        // is what the old <select> did): the picker itself has to restyle to
-        // move the lit state onto the clicked button, and the note inspector's
-        // Duty cycle field only exists while the waveform is `square`.
-        render();
-      });
-      group.appendChild(btn);
+      const opt = document.createElement('option');
+      opt.value = w; opt.textContent = WAVE_LABEL[w];
+      if (state.waveform[track] === w) opt.selected = true;
+      select.appendChild(opt);
     }
-    const name = el('span', 'th-wave-name');
-    name.textContent = WAVE_LABEL[state.waveform[track]] || state.waveform[track];
-    waveRow.append(group, name);
+    select.addEventListener('mousedown', (e) => e.stopPropagation());
+    select.addEventListener('change', () => {
+      state.waveform[track] = select.value;
+      const n = state.tracks[track][0];
+      if (n) previewNote(track, n);
+      autosave();
+      // Re-render so the note inspector's Duty cycle field (square-only)
+      // appears/disappears immediately, matching the old picker's behaviour.
+      render();
+    });
+    oscSection.appendChild(select);
   }
-
-  // A third row for the (less-frequently-used) automation/envelope toggles —
-  // keeping them out of .th-top avoids overflowing the header's fixed width.
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
   setGlyphLabel(autoBtn, 'automation', 'Auto');
@@ -4046,16 +4153,6 @@ function buildHeader(track) {
     render();
   });
   tools.append(autoBtn);
-  const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
-  setGlyphLabel(fxBtn, 'sparkle', 'FX');
-  fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags), a 3-band EQ, a Compressor, a Bitcrush downsampler and a Tremolo';
-  fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  fxBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (fxSendOpen.has(track)) fxSendOpen.delete(track); else fxSendOpen.add(track);
-    render();
-  });
-  tools.append(fxBtn);
   if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     setGlyphLabel(adsrBtn, 'envelope', 'Env');
@@ -4093,6 +4190,13 @@ function buildHeader(track) {
     });
     tools.append(patternsBtn);
   }
+  oscSection.appendChild(tools);
+
+  // Output section: volume, pan, VU meter.
+  const outputSection = el('div', 'th-section th-output-section');
+  const outputLabel = el('div', 'th-section-label');
+  outputLabel.textContent = 'Output';
+  outputSection.appendChild(outputLabel);
 
   const vol = el('div', 'th-vol');
   const slider = document.createElement('input');
@@ -4106,6 +4210,7 @@ function buildHeader(track) {
     applyGains(); autosave();
   });
   vol.append(slider, val);
+  outputSection.appendChild(vol);
 
   // Stereo pan (VOICES) — affects the editor preview AND the game.
   const panRow = el('div', 'th-pan');
@@ -4121,6 +4226,7 @@ function buildHeader(track) {
     applyPan(); autosave();
   });
   panRow.append(panSlider, panVal);
+  outputSection.appendChild(panRow);
 
   // Live level meter (VU) — updated by the meter RAF while audio is running.
   const vu = el('div', 'vu');
@@ -4128,8 +4234,7 @@ function buildHeader(track) {
   vu.appendChild(vuMask);
   vuMeters[track] = vuMask;
 
-  header.append(top, waveRow, tools, vol, panRow, vu);
-  if (fxSendOpen.has(track)) header.appendChild(buildFxPanel(track));
+  header.append(top, oscSection, buildFxPanel(track), outputSection, vu);
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }

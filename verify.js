@@ -417,7 +417,7 @@ async function main() {
     // layout puts four tonal tracks ahead of it, so `.track .lane` — which
     // used to mean "the drum grid" only because a new project had nothing
     // else — now picks the Lead track's piano roll.
-    const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-wave-group')).map(t => t.querySelector('.lane'))[0]`;
+    const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-osc-select')).map(t => t.querySelector('.lane'))[0]`;
 
     // First, and the only step that needs no browser: a song file the app
     // would silently mangle is worth hearing about before thirteen minutes of
@@ -442,13 +442,65 @@ async function main() {
       }
       // Four empty tonal lanes at the old 28-semitone empty window were 321px
       // each — you could not see the drum track at all. An empty lane shows
-      // MIN_SPAN now.
+      // MIN_SPAN now. The floor itself moved up from 220 to 270 with the
+      // Osc/Inserts/Output header redesign: the Inserts (FX) section is now
+      // always visible instead of hidden behind a toggle, and all three
+      // sections carry their own caption row — a real, ~35-40px increase in
+      // the header's own minimum height, not lane growth.
       const heights = await cdp.evaluate(`[...document.querySelectorAll('.track')].map(t => Math.round(t.getBoundingClientRect().height))`);
       const tallest = Math.max(...heights);
-      if (tallest > 220) throw new Error(`an empty starter lane should stay compact, tallest is ${tallest}px`);
+      if (tallest > 270) throw new Error(`an empty starter lane should stay compact, tallest is ${tallest}px`);
       // The kit is last and the melody voice is where you'd start writing.
       const active = await cdp.evaluate(`(document.querySelector('.track.active .th-name') || {}).textContent`);
       if (active !== 'Lead') throw new Error(`expected the Lead track to start active, got ${JSON.stringify(active)}`);
+    });
+
+    step('FX panel: the add-effect menu stays fully on-screen even opened near the bottom of a scrolled .daw', async () => {
+      // Reproduces the original bug's trigger condition directly: scroll
+      // .daw so a track's FX panel sits near the very bottom of the visible
+      // area, then open its add-menu and confirm the whole menu's
+      // bounding box is inside the viewport — the concrete, user-visible
+      // symptom "the menu doesn't show" was actually "renders outside what
+      // .daw lets you see."
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
+      await cdp.evaluate(`document.getElementById('daw').scrollTop = 999999`); // scroll to the bottom
+      // The browser dispatches the resulting 'scroll' event asynchronously
+      // (at the next "update the rendering" step), not synchronously with the
+      // scrollTop write above — without this wait, that event can land right
+      // after the click below opens the menu instead of before, and the new
+      // .daw scroll-close listener (Step 6) would then immediately close the
+      // very menu this step is trying to inspect.
+      await new Promise((r) => setTimeout(r, 150));
+      // Every track header now has a .th-fx-panel (Inserts is always-visible,
+      // no more show/hide toggle), so .find() above used to just grab the
+      // FIRST track — after scrolling .daw to its max that header sits far
+      // ABOVE the visible area, not "near the bottom" as this test's own name
+      // claims. .pop() instead grabs the LAST header with a .th-fx-panel,
+      // which is the one actually scrolled near .daw's bottom edge.
+      const headSel = `[...document.querySelectorAll('.track-header')].filter(h => h.querySelector('.th-fx-panel')).pop()`;
+      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const box = await cdp.evaluate(`(() => {
+        const r = document.querySelector('.th-fx-add-menu').getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, vw: window.innerWidth, vh: window.innerHeight };
+      })()`);
+      if (box.top < 0 || box.left < 0 || box.right > box.vw || box.bottom > box.vh) {
+        throw new Error(`add-effect menu rendered partly outside the viewport: ${JSON.stringify(box)}`);
+      }
+      // getBoundingClientRect() is unaffected by an ancestor's overflow
+      // clipping — an element clipped by .daw still reports a perfectly
+      // normal, in-viewport bounding box. So the bounds check above can never
+      // fail for the original bug (an invisible-but-technically-in-viewport
+      // popup). Hit-test the menu's own centre point to confirm it is
+      // actually the topmost painted element there, not just coordinates.
+      const hit = await cdp.evaluate(`(() => {
+        const m = document.querySelector('.th-fx-add-menu');
+        const r = m.getBoundingClientRect();
+        const topEl = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return m.contains(topEl);
+      })()`);
+      if (!hit) throw new Error('the add-effect menu is in the viewport but something else is painted on top of it at its own position');
     });
 
     step('Pen: clicking into a track that is not active places at the clicked cell', async () => {
@@ -522,22 +574,15 @@ async function main() {
     // the first track's (`.track`s[0]) — same target the old slider-grid
     // tests used, kept for continuity with the rest of the suite.
     const fxPanelSel = `document.querySelectorAll('.track')[0].querySelector('.th-fx-panel')`;
-    async function openFxPanel() {
-      await cdp.evaluate(`(() => {
-        if (${fxPanelSel}) return;
-        Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('FX')).click();
-      })()`);
-      await waitFor(`!!(${fxPanelSel})`);
-    }
     // Adds `label` (e.g. 'EQ') via the "+ Add effect" menu if not already a
     // chip, and returns once its popover is open (adding auto-opens it).
     async function addFxEffect(label) {
-      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`);
+      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent.trim() === ${JSON.stringify(label)})`);
       if (already) return;
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key]')`);
     }
     // Steps a knob (identified by its label, e.g. 'Lo') by dispatching N
     // keydowns rather than replaying pointer-drag pixel math — deterministic,
@@ -557,7 +602,6 @@ async function main() {
     }
 
     step('FX panel: adding Delay opens its popover with a working knob', async () => {
-      await openFxPanel();
       await addFxEffect('Delay');
       // 0 -> 0.5 at a 0.02 step is exactly 25 presses.
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
@@ -571,7 +615,8 @@ async function main() {
       // insertion order.
       await addFxEffect('Comp');
       await addFxEffect('EQ');
-      const chipLabels = await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body span')].map(s => s.textContent)`);
+      const chipLabels = await cdp.evaluate(
+        `[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].map(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent)`);
       if (chipLabels.indexOf('EQ') === -1 || chipLabels.indexOf('EQ') > chipLabels.indexOf('Comp')) {
         throw new Error(`EQ should render before Comp regardless of add order, got ${JSON.stringify(chipLabels)}`);
       }
@@ -596,10 +641,10 @@ async function main() {
     });
 
     step('FX panel: bypass dims the chip/popover but keeps showing the dialled value, and Reset clears every chip', async () => {
-      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
       const bypassedState = await cdp.evaluate(`(() => {
-        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ');
-        const pop = (${fxPanelSel}).querySelector('.th-fx-popover[data-key="eq"]');
+        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ');
+        const pop = document.querySelector('.th-fx-popover[data-key="eq"]');
         return { chipDimmed: chip.classList.contains('bypassed'), popDimmed: pop.classList.contains('bypassed') };
       })()`);
       if (!bypassedState.chipDimmed || !bypassedState.popDimmed) {
@@ -616,6 +661,31 @@ async function main() {
       if (backToDefault !== '0.0dB') throw new Error(`Reset should clear EQ's values, Lo now reads ${backToDefault}`);
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-reset').click()`);
       await waitFor(`(${fxPanelSel}).querySelectorAll('.th-fx-chip').length === 0`);
+    });
+
+    step('FX panel: the "+ Add effect" menu renders in the floating layer, not clipped by .daw', async () => {
+      // The bug this used to chase (a sibling track's header painting over
+      // the menu inside .daw's own stacking context) can't happen any more
+      // now that the menu is portaled to #floating-fx-layer, a
+      // document.body-level, position:fixed element with no ancestor
+      // overflow box left to clip against. This checks that portal
+      // relationship directly instead of re-deriving an overlap that no
+      // longer has anything to overlap with. Reuses the already-reset
+      // fxPanelSel track from the step above rather than reloading the
+      // page, so the Froggy Hop song and every other step's state stays
+      // intact for the steps that follow.
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const result = await cdp.evaluate(`(() => {
+        const menu = document.querySelector('.th-fx-add-menu');
+        return {
+          inLayer: menu.parentElement && menu.parentElement.id === 'floating-fx-layer',
+          position: getComputedStyle(menu).position,
+        };
+      })()`);
+      if (!result.inLayer) throw new Error('the add-effect menu should be a direct child of #floating-fx-layer');
+      if (result.position !== 'fixed') throw new Error(`expected the add-effect menu to be position:fixed, got ${result.position}`);
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`); // close the menu back up
     });
 
     step('plays back for a moment with no errors', async () => {
@@ -1112,49 +1182,38 @@ async function main() {
       // to draw — it's that adding them quietly costs a control its accessible
       // name, or that the six-button picker overflows the fixed-width header.
       // Check both, plus that clicking still writes through to state.
+      // A native <select> carries its own accessible name/value pair for
+      // free (aria-label + the selected <option>'s text) — the checks that
+      // mattered for the old button picker (every option named, exactly one
+      // "checked", the name spelled out as text) are now just "is it a
+      // <select> with the right options and the right one selected".
       const wave = await cdp.evaluate(`(() => {
-        const g = document.querySelector('.th-wave-group');
-        if (!g) return { missing: true };
-        const btns = [...g.querySelectorAll('.th-wave-btn')];
+        const s = document.querySelector('.th-osc-select');
+        if (!s) return { missing: true };
         return {
-          role: g.getAttribute('role'),
-          count: btns.length,
-          named: btns.every(b => b.getAttribute('aria-label')),
-          drawn: btns.every(b => b.querySelectorAll('svg.glyph path').length > 0),
-          hidden: btns.every(b => b.querySelector('svg.glyph').getAttribute('aria-hidden') === 'true'),
-          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
-          name: g.closest('.th-wave-row').querySelector('.th-wave-name')?.textContent,
-          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
+          tag: s.tagName,
+          named: !!s.getAttribute('aria-label'),
+          count: s.options.length,
+          selectedText: s.options[s.selectedIndex]?.textContent,
+          fits: s.scrollWidth <= s.closest('.track-header').clientWidth,
         };
       })()`);
       if (wave.missing) throw new Error('no tonal track waveform picker found');
-      if (wave.role !== 'radiogroup') throw new Error(`waveform picker should be a radiogroup, got ${wave.role}`);
-      if (wave.count !== 10) throw new Error(`expected 10 waveforms, got ${wave.count}`);
-      if (wave.count === 0 || !wave.named || !wave.drawn || !wave.hidden) {
-        throw new Error(`every waveform button needs a name and a decorative glyph: ${JSON.stringify(wave)}`);
-      }
-      // The glyph carries no accessible name of its own, so the selected
-      // waveform must still be readable as text somewhere.
-      if (wave.checked.length !== 1 || wave.name !== wave.checked[0]) {
-        throw new Error(`exactly one waveform should be checked and spelled out: ${JSON.stringify(wave)}`);
-      }
-      if (!wave.fits) throw new Error('the waveform buttons overflow the track header');
+      if (wave.tag !== 'SELECT') throw new Error(`waveform picker should be a <select>, got ${wave.tag}`);
+      if (!wave.named) throw new Error('waveform <select> needs an aria-label');
+      if (wave.count !== 10) throw new Error(`expected 10 waveform options, got ${wave.count}`);
+      if (wave.selectedText !== 'Square') throw new Error(`expected Square selected by default, got ${wave.selectedText}`);
+      if (!wave.fits) throw new Error('the waveform select overflows the track header');
       // Scope to one track's picker: by this point the song has several tonal
-      // tracks, each with its own group, so an unscoped query would mix their
-      // states together and read as many checked buttons as there are tracks.
+      // tracks, each with its own select, so an unscoped query would mix
+      // their states together.
       const switched = await cdp.evaluate(`(() => {
-        const row = document.querySelector('.th-wave-group').closest('.th-wave-row');
-        [...row.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Saw').click();
-        const row2 = document.querySelector('.th-wave-group').closest('.th-wave-row');
-        const btns = [...row2.querySelectorAll('.th-wave-btn')];
-        return {
-          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
-          name: row2.querySelector('.th-wave-name')?.textContent,
-        };
+        const s = document.querySelector('.th-osc-select');
+        s.value = 'sawtooth';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+        return document.querySelector('.th-osc-select').options[document.querySelector('.th-osc-select').selectedIndex].textContent;
       })()`);
-      if (switched.checked.join() !== 'Saw' || switched.name !== 'Saw') {
-        throw new Error(`picking Saw should move both the checked state and the caption: ${JSON.stringify(switched)}`);
-      }
+      if (switched !== 'Saw') throw new Error(`picking sawtooth should select the "Saw" option, got ${switched}`);
 
       // Per-note pills: select a note, then confirm each toggle still reads as
       // its own label rather than as an unnamed icon.
@@ -1191,19 +1250,15 @@ async function main() {
       // knob count across all of them is the same 13/15 the old always-shown
       // slider grid asserted. An earlier step may already have opened this
       // panel, in which case clicking the button would close it.
-      await cdp.evaluate(`(() => {
-        if (document.querySelector('.th-fx-panel')) return;
-        [...document.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
       await waitFor(`!!document.querySelector('.th-fx-panel')`);
       const panelSel = `document.querySelector('.th-fx-panel')`;
-      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-wave-group')`);
+      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-osc-select')`);
       for (let i = 0; i < 8; i++) {
         const added = await cdp.evaluate(`(() => {
           const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
           if (!addBtn) return false;
           addBtn.click();
-          const item = (${panelSel}).querySelector('.th-fx-add-menu button');
+          const item = document.querySelector('.th-fx-add-menu button');
           if (!item) { addBtn.click(); return false; } // menu was empty — close it back up and stop
           item.click();
           return true;
@@ -1215,9 +1270,13 @@ async function main() {
         const panel = ${panelSel};
         const chips = [...panel.querySelectorAll('.th-fx-chip')];
         return {
-          labels: chips.map(c => c.querySelector('.th-fx-chip-body span').textContent),
+          labels: chips.map(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent),
           drawn: chips.every(c => c.querySelectorAll('svg.glyph path').length > 0),
-          knobs: panel.querySelectorAll('.th-knob').length,
+          // Knobs live inside the popover, which now renders in
+          // #floating-fx-layer rather than nested under panel — but this
+          // track is the only one with any FX added at this point in the
+          // run, so a document-wide count is still exactly this track's.
+          knobs: document.querySelectorAll('.th-knob').length,
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
         };
       })()`);
@@ -1547,10 +1606,10 @@ async function main() {
       // it rode along in no shared loop. Checked through the real Save/Load
       // path rather than by poking state, since the gap was in that path.
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       // The starter layout's first tonal track (Lead) — no need to add one.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       // The Env panel's Duty picker: the only select offering pulse widths.
@@ -1588,7 +1647,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.track')`);
       await loadExample('DutyRoundTrip');
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!(${dutySel})`);
@@ -1620,9 +1679,9 @@ async function main() {
         `,
       });
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -1698,7 +1757,7 @@ async function main() {
       // A drum hit gets the same control, through scheduleDrum()'s one dispatch
       // point rather than the ten individual schedulers — which is why it can
       // be the same two assertions.
-      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-wave-group')).map((t) => t.querySelector('.lane'))[0]`;
+      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-osc-select')).map((t) => t.querySelector('.lane'))[0]`;
       await cdp.evaluate(`(() => {
         const lane = ${rhythmLane};
         const r = lane.getBoundingClientRect();
@@ -2205,10 +2264,10 @@ async function main() {
       await waitFor(`!!document.querySelector('.track')`);
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + 60 }));
       })()`);
@@ -2234,28 +2293,24 @@ async function main() {
         };
       })()`);
 
-      const layout = await cdp.evaluate(`(() => {
-        const g = document.querySelector('.th-wave-group');
-        const btns = [...g.querySelectorAll('.th-wave-btn')];
-        return {
-          labels: btns.map(b => b.getAttribute('aria-label')),
-          rows: [...new Set(btns.map(b => Math.round(b.getBoundingClientRect().top)))].length,
-          minWidth: Math.min(...btns.map(b => Math.round(b.getBoundingClientRect().width))),
-          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
-        };
-      })()`);
-      if (layout.rows !== 2 || !layout.fits) {
-        throw new Error(`the picker should wrap to two rows inside the header: ${JSON.stringify(layout)}`);
-      }
-      // Nine across one row would leave each button about 19px, too small for
-      // the shape to read; two rows keeps them at least as big as six were.
-      if (layout.minWidth < 29) throw new Error(`waveform buttons shrank to ${layout.minWidth}px`);
+      // The layout check (rows/min-width) was specific to the button grid —
+      // a <select> has nothing analogous to assert beyond "it fits", already
+      // covered by the Icons test above. Read the option values directly
+      // (WAVEFORMS' own internal ids, not the display labels) to drive the
+      // loop below, since setting select.value needs the option value.
+      const optionValues = await cdp.evaluate(
+        `[...document.querySelector('.th-osc-select').options].map(o => o.value)`);
+      if (optionValues.length !== 10) throw new Error(`expected 10 waveform options, got ${optionValues.length}`);
 
       const results = {};
       const delayMods = {};
-      for (const label of layout.labels) {
+      for (const value of optionValues) {
         const before = await cdp.evaluate(`window.__waveRenders.length`);
-        await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === ${JSON.stringify('')} + ${JSON.stringify(label)}).click()`);
+        await cdp.evaluate(`(() => {
+          const s = document.querySelector('.th-osc-select');
+          s.value = ${JSON.stringify(value)};
+          s.dispatchEvent(new Event('change', { bubbles: true }));
+        })()`);
         await new Promise((r) => setTimeout(r, 300));
         await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
         // Reset here, not before the waveform click: clicking a waveform button
@@ -2265,17 +2320,19 @@ async function main() {
         await cdp.evaluate(`window.__delayMod = 0`);
         await cdp.evaluate(`document.getElementById('export-wav').click()`);
         await waitFor(`window.__waveRenders.length > ${before}`, 90000);
-        results[label] = await cdp.evaluate(`window.__waveRenders[${before}]`);
-        delayMods[label] = await cdp.evaluate(`window.__delayMod`);
+        results[value] = await cdp.evaluate(`window.__waveRenders[${before}]`);
+        delayMods[value] = await cdp.evaluate(`window.__delayMod`);
       }
       // Not "PWM is the only one" — the shared chorus bus legitimately sweeps its
       // own delay on every render, so the baseline is non-zero. What must hold
       // is that every other waveform shares one baseline and PWM sits above it.
-      const baseline = Object.keys(delayMods).filter((n) => n !== 'PWM').map((n) => delayMods[n]);
+      // Keyed by the option's own value ('pwm'), not its display label ('PWM'),
+      // matching the loop above.
+      const baseline = Object.keys(delayMods).filter((n) => n !== 'pwm').map((n) => delayMods[n]);
       if (new Set(baseline).size !== 1) {
         throw new Error(`waveforms other than PWM should all modulate the same number of delays: ${JSON.stringify(delayMods)}`);
       }
-      if (delayMods['PWM'] <= baseline[0]) {
+      if (delayMods['pwm'] <= baseline[0]) {
         throw new Error(`PWM built no LFO on its pulse-width delay — the sweep is gone: ${JSON.stringify(delayMods)}`);
       }
       // Ten exports have just run through the Export WAV button's busy state.
@@ -2298,10 +2355,10 @@ async function main() {
       // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
       // early), so those two hashing alike is correct rather than a
       // fall-through. Asserting it keeps the check honest if that changes.
-      if (results['FM'].hash !== results['Sine'].hash) {
+      if (results['fm'].hash !== results['sine'].hash) {
         throw new Error('FM at depth 0 should be identical to a plain sine');
       }
-      const others = names.filter((n) => n !== 'FM');
+      const others = names.filter((n) => n !== 'fm');
       const hashes = new Set(others.map((n) => results[n].hash));
       if (hashes.size !== others.length) {
         throw new Error(`waveforms are not all distinct: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].hash])))}`);
@@ -2328,7 +2385,7 @@ async function main() {
       // which is the original bug exactly, a noise buffer ~5 dB hot, whose RMS
       // would have landed above square's.
       for (const n of names) {
-        const rel = 20 * Math.log10(results[n].rms / results['Square'].rms);
+        const rel = 20 * Math.log10(results[n].rms / results['square'].rms);
         if (rel > 0.5 || rel < -7) {
           throw new Error(`${n} sits ${rel.toFixed(1)} dB (RMS) from Square, outside the -7..+0.5 dB the waveforms span`);
         }
@@ -2336,7 +2393,7 @@ async function main() {
       // Peak too, loosely: it costs headroom even when loudness is right. Wide
       // on purpose — the crest-factor swing above is real, not a fault.
       for (const n of names) {
-        const rel = 20 * Math.log10(results[n].peak / results['Square'].peak);
+        const rel = 20 * Math.log10(results[n].peak / results['square'].peak);
         if (rel > 1.5 || rel < -6) {
           throw new Error(`${n} peaks ${rel.toFixed(1)} dB from Square, outside the -6..+1.5 dB band`);
         }
@@ -2391,7 +2448,7 @@ async function main() {
       // covers most of a cycle, short enough that each note is well inside it.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       const placed = await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         for (let i = 1; i < 8; i++) {
           lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 60 }));
@@ -2399,7 +2456,11 @@ async function main() {
         return document.querySelectorAll('.lane .note').length;
       })()`);
       if (placed !== 8) throw new Error(`expected 8 notes on the PWM track, got ${placed}`);
-      await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'PWM').click()`);
+      await cdp.evaluate(`(() => {
+        const s = document.querySelector('.th-osc-select');
+        s.value = 'pwm';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`document.getElementById('export-wav').click()`);
@@ -2451,7 +2512,7 @@ async function main() {
       // offer Duty — this step used to add a track first, from when a new
       // project had no tonal one to work with.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!document.querySelector('.adsr-select')`);
@@ -2470,7 +2531,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`window.__duty = []`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
       })()`);
@@ -2516,7 +2577,7 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const n = lane.querySelector('.note').getBoundingClientRect();
         // 1.2 columns along, not 1.5: the grid snap rounds, so aiming at the
         // middle of the next cell lands two columns away and leaves a gap —
@@ -2534,7 +2595,7 @@ async function main() {
         throw new Error(`the two notes must be contiguous and on one row for a glide: ${JSON.stringify(pair)}`);
       }
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         lane.querySelector('.note').click();
       })()`);
       await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
@@ -2557,8 +2618,10 @@ async function main() {
 
       // A non-square track must not offer the control at all.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        [...head.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Sine').click();
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
+        const s = head.querySelector('.th-osc-select');
+        s.value = 'sine';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 400));
       const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select').length`);
@@ -2616,16 +2679,11 @@ async function main() {
       // The rhythm track's "+ Add effect" menu must not offer Vibrato.
       // Reached by its own header rather than "the first track" — the
       // starter layout puts four tonal tracks ahead of it.
-      const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-wave-group'))`;
-      await cdp.evaluate(`(() => {
-        const head = ${rhythmHead};
-        if (head.querySelector('.th-fx-panel')) return;
-        [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
+      const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-osc-select'))`;
       await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-add-menu')`);
-      const rhythmMenu = await cdp.evaluate(`[...(${rhythmHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const rhythmMenu = await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
       if (rhythmMenu.includes('Vibrato')) throw new Error(`a rhythm track's add menu must not offer Vibrato: ${JSON.stringify(rhythmMenu)}`);
       if (!rhythmMenu.includes('Tremolo')) throw new Error(`the rhythm add menu lost its other effects: ${JSON.stringify(rhythmMenu)}`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-add-btn').click()`); // close the menu back up
@@ -2643,23 +2701,19 @@ async function main() {
       // moment the steps below add one, so a live re-query of it would start
       // silently picking a *different*, still-clean starter track instead.
       const newTonalHead = `document.querySelector('.track[data-track="${newTrackId}"] .track-header')`;
-      await cdp.evaluate(`(() => {
-        const head = ${newTonalHead};
-        head.querySelector('.th-fx-panel') || [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
       await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${newTonalHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-add-menu')`);
-      const tonalMenu = await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const tonalMenu = await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
       if (!tonalMenu.includes('Vibrato')) throw new Error(`a tonal track's add menu should offer Vibrato: ${JSON.stringify(tonalMenu)}`);
-      await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
 
       // Set a depth, place a note, and confirm an LFO reaches its frequency.
       // 50 cents on a 523.25Hz note => 523.25 * (2^(50/1200) - 1) ~= 15.3Hz.
       // 0 -> 50 at a 1-cent step is 50 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2692,15 +2746,15 @@ async function main() {
       // before touching the dial again.
       await cdp.evaluate(`(() => {
         const head = ${newTonalHead};
-        if (head.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
-        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Vibrato')
+        if (document.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
+        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Vibrato')
           .querySelector('.th-fx-chip-body').click();
       })()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
 
       // At depth 0 nothing must be connected — an untouched track is unchanged.
       await cdp.evaluate(`(() => {
-        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -2730,13 +2784,13 @@ async function main() {
         `,
       });
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       // The audio graph is built lazily by ensureCtx(), not at page load —
       // window.__biquads is empty until something actually starts audio, so
       // place a note (the same trigger the pan test above uses: previewNote()
       // calls ensureCtx()) before looking at any node it builds.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -2744,18 +2798,14 @@ async function main() {
       })()`);
       await waitFor(`!!document.querySelector('.lane .note')`);
 
-      await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${headSel}).querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!(${headSel}).querySelector('.th-fx-popover[data-key="eq"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
       // 0 -> 6 at a 0.5 step is 12 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 12; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2768,13 +2818,13 @@ async function main() {
       await waitFor(`window.__biquads.some(b => b.gain.value === 6)`);
       const idx = await cdp.evaluate(`window.__biquads.findIndex(b => b.gain.value === 6)`);
 
-      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 0`);
-      const knobStillSix = await cdp.evaluate(`[...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+      const knobStillSix = await cdp.evaluate(`[...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
         .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-val').textContent`);
       if (knobStillSix !== '6.0dB') throw new Error(`bypass must not change what the knob displays, Lo now reads ${knobStillSix}`);
 
-      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 6`);
     });
 
@@ -2783,7 +2833,6 @@ async function main() {
       // sends, separate from every per-effect bypass path the step above
       // covers — it used to write the raw dialled value straight to the
       // send's gain AudioParam every chunk, ignoring bypass entirely.
-      await openFxPanel();
       await addFxEffect('Delay');
 
       // Draw one automation point on this track's Delay send at
@@ -2839,14 +2888,14 @@ async function main() {
       // written at all, not merely written at a different (default) value.
       await cdp.evaluate(`(() => {
         const panel = ${fxPanelSel};
-        if (!panel.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
-          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Delay')
+        if (!document.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
+          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Delay')
             .querySelector('.th-fx-chip-body').click();
         }
       })()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]')`);
-      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
-      await waitFor(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="sendDelay"]')`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
 
       await cdp.evaluate(`window.__sendWrites = []`);
       await cdp.evaluate(`document.querySelector('#play').click()`);
@@ -2872,19 +2921,18 @@ async function main() {
       // reproduce it — hence this one step uses it where every other step in
       // this file deliberately doesn't (see the file's own header comment).
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
 
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
-      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click()`);
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'))`;
       await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
       const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
       await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!${panelSel}.querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...${panelSel}.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!${panelSel}.querySelector('.th-fx-popover[data-key="eq"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
 
-      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
       const rect = await cdp.evaluate(`(() => { const r = (${tonalLaneSel}).getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
       const x = rect.left + 200, y = rect.top + 60;
