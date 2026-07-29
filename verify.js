@@ -2916,6 +2916,87 @@ async function main() {
       }
     });
 
+    step('Envelope & Filter row: full-word labels, icons, and grouped captions', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+      // Scoped to .adsr-lane-el, not a bare .mfx-cap — the master panel's own
+      // static "Meter" caption reuses the same class and is present in the
+      // DOM (just display:none) on every fresh page load.
+      const caps = await cdp.evaluate(`[...document.querySelectorAll('.adsr-lane-el .mfx-cap')].map(c => c.textContent)`);
+      if (caps.join('|') !== 'Envelope|Filter|Duty') {
+        throw new Error(`expected Envelope/Filter/Duty group captions (starter Lead track is square), got ${JSON.stringify(caps)}`);
+      }
+      const labels = await cdp.evaluate(`[...document.querySelectorAll('.adsr-label span')].map(s => s.textContent)`);
+      const expected = ['Attack', 'Decay', 'Sustain', 'Release', 'Cutoff', 'Resonance', 'Env Amount'];
+      if (JSON.stringify(labels) !== JSON.stringify(expected)) {
+        throw new Error(`expected full-word field labels ${JSON.stringify(expected)}, got ${JSON.stringify(labels)}`);
+      }
+      const iconCount = await cdp.evaluate(`document.querySelectorAll('.adsr-label .glyph').length`);
+      if (iconCount !== expected.length) {
+        throw new Error(`expected one icon per field (${expected.length}), got ${iconCount}`);
+      }
+    });
+
+    step('Master FX: five fixed chips render, all dimmed at default', async () => {
+      await cdp.evaluate(`document.querySelector('#master-fx-toggle').click()`);
+      await waitFor(`document.querySelector('#master-fx-panel').style.display !== 'none'`);
+      const chips = await cdp.evaluate(`[...document.querySelectorAll('.th-master-fx-chip')].map(c => ({
+        label: c.querySelector('.th-fx-chip-body span').textContent,
+        dimmed: c.classList.contains('bypassed'),
+      }))`);
+      const labels = chips.map((c) => c.label);
+      if (labels.join('|') !== 'EQ|Comp|Par Comp|Sidechain|Downsample') {
+        throw new Error(`expected the five fixed master chips in registry order, got ${JSON.stringify(labels)}`);
+      }
+      if (!chips.every((c) => c.dimmed)) {
+        throw new Error(`a freshly loaded song has every master group at default — all five chips should be dimmed, got ${JSON.stringify(chips)}`);
+      }
+      // No add menu, no remove button — master's chip set is fixed.
+      if (await cdp.evaluate(`!!document.querySelector('.master-fx-panel .th-fx-add-btn')`)) {
+        throw new Error('master FX panel must not offer an "+ Add effect" button');
+      }
+      if (await cdp.evaluate(`!!document.querySelector('.th-master-fx-chip .th-fx-chip-remove')`)) {
+        throw new Error('master FX chips must not have a remove button');
+      }
+    });
+
+    step('Master FX: EQ knob updates state and un-dims its chip', async () => {
+      await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
+      // .th-master-fx-popover, not bare .th-fx-popover[data-key="eq"] — a
+      // track's own EQ popover shares the same registry key and could still
+      // be open from an earlier step in this same page session.
+      await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="eq"]')`);
+      const dialSel = `[...document.querySelector('.th-master-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]` +
+        `.find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial')`;
+      await cdp.evaluate(`(() => { const d = ${dialSel}; d.focus();
+        for (let i = 0; i < 12; i++) d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })); })()`);
+      const val = await cdp.evaluate(`${dialSel}.getAttribute('aria-valuetext')`);
+      if (val !== '6.0dB') throw new Error(`expected master EQ Lo to read 6.0dB after 12 steps, got ${val}`);
+      const dimmed = await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"]').classList.contains('bypassed')`);
+      if (dimmed) throw new Error('EQ chip should stop looking dimmed once a value moves off default');
+      // Reset for later steps/songs sharing this page load.
+      await cdp.evaluate(`(() => { const d = ${dialSel}; d.focus();
+        for (let i = 0; i < 12; i++) d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); })()`);
+    });
+
+    step('Master FX: Sidechain has a real On/Off toggle, not a bypass button', async () => {
+      await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
+      await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="sidechain"]')`);
+      const toggleSel = `document.querySelector('.th-master-fx-popover[data-key="sidechain"] .th-fx-popover-head .icon-btn')`;
+      const before = await cdp.evaluate(`${toggleSel}.textContent`);
+      if (before !== 'Off') throw new Error(`expected Sidechain to start Off, got ${before}`);
+      await cdp.evaluate(`${toggleSel}.click()`);
+      await waitFor(`${toggleSel}.textContent === 'On'`);
+      const dimmed = await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"]').classList.contains('bypassed')`);
+      if (dimmed) throw new Error('Sidechain chip should stop looking dimmed once enabled');
+      await cdp.evaluate(`${toggleSel}.click()`); // leave it Off for later steps/songs
+    });
+
     step('FX: a real trusted click through the grid still lands after light-dismiss closes a popover', async () => {
       // Fix 1 regression test. The bug (light-dismiss rebuilding the DOM on
       // 'pointerdown', detaching the click's real target before 'click'
