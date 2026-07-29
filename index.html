@@ -3801,7 +3801,7 @@ function renderAdsrRow(track) {
     const dutyGroupCap = el('span', 'mfx-cap'); dutyGroupCap.textContent = 'Duty';
     dutyGroup.appendChild(dutyGroupCap);
     const dutyField = el('div', 'adsr-field');
-    const dutyCap = document.createElement('span'); dutyCap.textContent = 'Width';
+    const dutyCap = el('span', 'adsr-label'); dutyCap.textContent = 'Width';
     const dutySelect = document.createElement('select');
     dutySelect.className = 'adsr-select';
     dutySelect.title = 'Pulse width for this track. A note can override it from the inspector.';
@@ -3839,7 +3839,7 @@ function renderAdsrRow(track) {
 
     const fmState = getFmState(track);
     const ratioField = el('div', 'adsr-field');
-    const ratioCap = document.createElement('span'); ratioCap.textContent = 'Ratio';
+    const ratioCap = el('span', 'adsr-label'); ratioCap.textContent = 'Ratio';
     const ratioSlider = document.createElement('input');
     ratioSlider.type = 'range'; ratioSlider.min = 0.5; ratioSlider.max = 12; ratioSlider.step = 0.5; ratioSlider.value = fmState.ratio;
     ratioSlider.style.accentColor = trackColor(track);
@@ -3857,7 +3857,7 @@ function renderAdsrRow(track) {
 
     if (state.waveform[track] === 'ringmod') { lane.appendChild(modGroup); row.append(header, gutter, lane); return row; }
     const depthField = el('div', 'adsr-field');
-    const depthCap = document.createElement('span'); depthCap.textContent = 'Depth';
+    const depthCap = el('span', 'adsr-label'); depthCap.textContent = 'Depth';
     const depthSlider = document.createElement('input');
     depthSlider.type = 'range'; depthSlider.min = 0; depthSlider.max = 1; depthSlider.step = 0.02; depthSlider.value = fmState.depth;
     depthSlider.style.accentColor = trackColor(track);
@@ -4140,7 +4140,7 @@ function buildMasterFxPopover(effect) {
     // knobs, this one has to call render() on every commit for the chip to
     // ever reflect it without waiting on an unrelated render elsewhere.
     fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
-      (v) => { effect.set({ [f.param]: v }); effect.apply(); render(); autosave(); },
+      (v) => { effect.set({ [f.param]: v }); effect.apply(); renderMasterFxChips(); autosave(); },
       MASTER_FX_FIELD_DEFAULTS[effect.key][f.param]));
   }
   pop.appendChild(fields);
@@ -4148,8 +4148,6 @@ function buildMasterFxPopover(effect) {
 }
 // Rebuilds the master chip row from MASTER_FX_REGISTRY every render() —
 // same "clear and rebuild" approach buildFxPanel()'s chip row already uses.
-// #master-fx-chip-row is added to the static markup in the next task; until
-// then this is a harmless no-op (the `if (!row) return;` guard).
 function renderMasterFxChips() {
   const row = document.getElementById('master-fx-chip-row');
   if (!row) return;

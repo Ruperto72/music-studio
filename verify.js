@@ -2973,14 +2973,28 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="eq"]')`);
       const dialSel = `[...document.querySelector('.th-master-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial')`;
-      await cdp.evaluate(`(() => { const d = ${dialSel}; d.focus();
+      // Stash the live element on window (not just re-derived by dialSel each
+      // time) so we can compare document.activeElement against this SAME
+      // reference after the commit — a synthetic KeyboardEvent dispatched on
+      // a captured reference still reaches its listeners even if that element
+      // gets detached from the DOM, so this identity check is the only thing
+      // in this step that would actually catch a re-render stealing focus.
+      await cdp.evaluate(`(() => { window.__testDial = ${dialSel}; window.__testDial.focus(); })()`);
+      await cdp.evaluate(`(() => { const d = window.__testDial;
         for (let i = 0; i < 12; i++) d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })); })()`);
       const val = await cdp.evaluate(`${dialSel}.getAttribute('aria-valuetext')`);
       if (val !== '6.0dB') throw new Error(`expected master EQ Lo to read 6.0dB after 12 steps, got ${val}`);
       const dimmed = await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"]').classList.contains('bypassed')`);
       if (dimmed) throw new Error('EQ chip should stop looking dimmed once a value moves off default');
+      // Each keyboard commit re-renders the chip row (so the dim state above
+      // reflects the new value) — that re-render must NOT rebuild the open
+      // popover itself, or the focused dial gets detached and falls back to
+      // <body>, silently breaking the global guard that stops arrow keys
+      // from reaching nudgeSelection() while a knob has focus.
+      const stillFocused = await cdp.evaluate(`document.activeElement === window.__testDial`);
+      if (!stillFocused) throw new Error('knob dial lost DOM focus after a keyboard commit — a render() rebuilt the floating layer out from under it, which would let the next arrow-key press fall through to note-nudging');
       // Reset for later steps/songs sharing this page load.
-      await cdp.evaluate(`(() => { const d = ${dialSel}; d.focus();
+      await cdp.evaluate(`(() => { const d = window.__testDial;
         for (let i = 0; i < 12; i++) d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); })()`);
     });
 
