@@ -455,6 +455,35 @@ async function main() {
       if (active !== 'Lead') throw new Error(`expected the Lead track to start active, got ${JSON.stringify(active)}`);
     });
 
+    step('FX panel: the add-effect menu stays fully on-screen even opened near the bottom of a scrolled .daw', async () => {
+      // Reproduces the original bug's trigger condition directly: scroll
+      // .daw so a track's FX panel sits near the very bottom of the visible
+      // area, then open its add-menu and confirm the whole menu's
+      // bounding box is inside the viewport — the concrete, user-visible
+      // symptom "the menu doesn't show" was actually "renders outside what
+      // .daw lets you see."
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
+      await cdp.evaluate(`document.getElementById('daw').scrollTop = 999999`); // scroll to the bottom
+      // The browser dispatches the resulting 'scroll' event asynchronously
+      // (at the next "update the rendering" step), not synchronously with the
+      // scrollTop write above — without this wait, that event can land right
+      // after the click below opens the menu instead of before, and the new
+      // .daw scroll-close listener (Step 6) would then immediately close the
+      // very menu this step is trying to inspect.
+      await new Promise((r) => setTimeout(r, 150));
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-fx-panel'))`;
+      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const box = await cdp.evaluate(`(() => {
+        const r = document.querySelector('.th-fx-add-menu').getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, vw: window.innerWidth, vh: window.innerHeight };
+      })()`);
+      if (box.top < 0 || box.left < 0 || box.right > box.vw || box.bottom > box.vh) {
+        throw new Error(`add-effect menu rendered partly outside the viewport: ${JSON.stringify(box)}`);
+      }
+    });
+
     step('Pen: clicking into a track that is not active places at the clicked cell', async () => {
       // setActive() re-renders, which replaces the lane element the handler is
       // attached to — so reading its rect after activating read a detached
@@ -532,9 +561,9 @@ async function main() {
       const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent.trim() === ${JSON.stringify(label)})`);
       if (already) return;
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key]')`);
     }
     // Steps a knob (identified by its label, e.g. 'Lo') by dispatching N
     // keydowns rather than replaying pointer-drag pixel math — deterministic,
@@ -596,7 +625,7 @@ async function main() {
       await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
       const bypassedState = await cdp.evaluate(`(() => {
         const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ');
-        const pop = (${fxPanelSel}).querySelector('.th-fx-popover[data-key="eq"]');
+        const pop = document.querySelector('.th-fx-popover[data-key="eq"]');
         return { chipDimmed: chip.classList.contains('bypassed'), popDimmed: pop.classList.contains('bypassed') };
       })()`);
       if (!bypassedState.chipDimmed || !bypassedState.popDimmed) {
@@ -613,6 +642,31 @@ async function main() {
       if (backToDefault !== '0.0dB') throw new Error(`Reset should clear EQ's values, Lo now reads ${backToDefault}`);
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-reset').click()`);
       await waitFor(`(${fxPanelSel}).querySelectorAll('.th-fx-chip').length === 0`);
+    });
+
+    step('FX panel: the "+ Add effect" menu renders in the floating layer, not clipped by .daw', async () => {
+      // The bug this used to chase (a sibling track's header painting over
+      // the menu inside .daw's own stacking context) can't happen any more
+      // now that the menu is portaled to #floating-fx-layer, a
+      // document.body-level, position:fixed element with no ancestor
+      // overflow box left to clip against. This checks that portal
+      // relationship directly instead of re-deriving an overlap that no
+      // longer has anything to overlap with. Reuses the already-reset
+      // fxPanelSel track from the step above rather than reloading the
+      // page, so the Froggy Hop song and every other step's state stays
+      // intact for the steps that follow.
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const result = await cdp.evaluate(`(() => {
+        const menu = document.querySelector('.th-fx-add-menu');
+        return {
+          inLayer: menu.parentElement && menu.parentElement.id === 'floating-fx-layer',
+          position: getComputedStyle(menu).position,
+        };
+      })()`);
+      if (!result.inLayer) throw new Error('the add-effect menu should be a direct child of #floating-fx-layer');
+      if (result.position !== 'fixed') throw new Error(`expected the add-effect menu to be position:fixed, got ${result.position}`);
+      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`); // close the menu back up
     });
 
     step('plays back for a moment with no errors', async () => {
@@ -1185,7 +1239,7 @@ async function main() {
           const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
           if (!addBtn) return false;
           addBtn.click();
-          const item = (${panelSel}).querySelector('.th-fx-add-menu button');
+          const item = document.querySelector('.th-fx-add-menu button');
           if (!item) { addBtn.click(); return false; } // menu was empty — close it back up and stop
           item.click();
           return true;
@@ -1199,7 +1253,11 @@ async function main() {
         return {
           labels: chips.map(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent),
           drawn: chips.every(c => c.querySelectorAll('svg.glyph path').length > 0),
-          knobs: panel.querySelectorAll('.th-knob').length,
+          // Knobs live inside the popover, which now renders in
+          // #floating-fx-layer rather than nested under panel — but this
+          // track is the only one with any FX added at this point in the
+          // run, so a document-wide count is still exactly this track's.
+          knobs: document.querySelectorAll('.th-knob').length,
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
         };
       })()`);
@@ -2605,8 +2663,8 @@ async function main() {
       const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-osc-select'))`;
       await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-add-menu')`);
-      const rhythmMenu = await cdp.evaluate(`[...(${rhythmHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const rhythmMenu = await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
       if (rhythmMenu.includes('Vibrato')) throw new Error(`a rhythm track's add menu must not offer Vibrato: ${JSON.stringify(rhythmMenu)}`);
       if (!rhythmMenu.includes('Tremolo')) throw new Error(`the rhythm add menu lost its other effects: ${JSON.stringify(rhythmMenu)}`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-add-btn').click()`); // close the menu back up
@@ -2626,17 +2684,17 @@ async function main() {
       const newTonalHead = `document.querySelector('.track[data-track="${newTrackId}"] .track-header')`;
       await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${newTonalHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-add-menu')`);
-      const tonalMenu = await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      const tonalMenu = await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
       if (!tonalMenu.includes('Vibrato')) throw new Error(`a tonal track's add menu should offer Vibrato: ${JSON.stringify(tonalMenu)}`);
-      await cdp.evaluate(`[...(${newTonalHead}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
 
       // Set a depth, place a note, and confirm an LFO reaches its frequency.
       // 50 cents on a 523.25Hz note => 523.25 * (2^(50/1200) - 1) ~= 15.3Hz.
       // 0 -> 50 at a 1-cent step is 50 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2669,15 +2727,15 @@ async function main() {
       // before touching the dial again.
       await cdp.evaluate(`(() => {
         const head = ${newTonalHead};
-        if (head.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
+        if (document.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
         [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Vibrato')
           .querySelector('.th-fx-chip-body').click();
       })()`);
-      await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
 
       // At depth 0 nothing must be connected — an untouched track is unchanged.
       await cdp.evaluate(`(() => {
-        const dial = [...(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -2723,12 +2781,12 @@ async function main() {
 
       const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!(${headSel}).querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!(${headSel}).querySelector('.th-fx-popover[data-key="eq"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
       // 0 -> 6 at a 0.5 step is 12 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 12; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2741,13 +2799,13 @@ async function main() {
       await waitFor(`window.__biquads.some(b => b.gain.value === 6)`);
       const idx = await cdp.evaluate(`window.__biquads.findIndex(b => b.gain.value === 6)`);
 
-      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 0`);
-      const knobStillSix = await cdp.evaluate(`[...(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+      const knobStillSix = await cdp.evaluate(`[...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
         .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-val').textContent`);
       if (knobStillSix !== '6.0dB') throw new Error(`bypass must not change what the knob displays, Lo now reads ${knobStillSix}`);
 
-      await cdp.evaluate(`(${headSel}).querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 6`);
     });
 
@@ -2811,14 +2869,14 @@ async function main() {
       // written at all, not merely written at a different (default) value.
       await cdp.evaluate(`(() => {
         const panel = ${fxPanelSel};
-        if (!panel.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
+        if (!document.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
           [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Delay')
             .querySelector('.th-fx-chip-body').click();
         }
       })()`);
-      await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]')`);
-      await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
-      await waitFor(`(${fxPanelSel}).querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="sendDelay"]')`);
+      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
 
       await cdp.evaluate(`window.__sendWrites = []`);
       await cdp.evaluate(`document.querySelector('#play').click()`);
@@ -2851,9 +2909,9 @@ async function main() {
       await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
       const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
       await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
-      await waitFor(`!!${panelSel}.querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...${panelSel}.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!${panelSel}.querySelector('.th-fx-popover[data-key="eq"]')`);
+      await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
 
       const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);

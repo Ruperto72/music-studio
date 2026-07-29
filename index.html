@@ -490,8 +490,12 @@
     font-size: 10px; padding: 3px 8px; cursor: pointer;
   }
   .th-fx-add-btn:hover { border-color: #6a6a76; color: var(--ink); }
+  /* #floating-fx-layer itself needs no box styling — it's a plain
+     full-viewport-relative anchor point; each child inside it carries its
+     own position:fixed left/top set inline by renderFloatingFxLayer(). */
+  #floating-fx-layer { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 60; }
   .th-fx-add-menu {
-    position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 3px; min-width: 120px;
+    position: fixed; min-width: 120px;
     background: #1c1c22; border: 1px solid #3a3a44; border-radius: 6px; padding: 2px;
     display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
   }
@@ -502,15 +506,23 @@
   .th-fx-add-menu button:hover { background: #2c2c33; }
   .th-fx-add-menu button .glyph { width: 16px; height: 8px; }
   .th-fx-add-empty { font-size: 10px; color: var(--muted); padding: 4px 6px; }
-  .th-fx-popover { border: 1px solid #3a3a44; border-radius: 6px; background: #1c1c22; padding: 6px 8px; }
+  .th-fx-popover {
+    position: fixed; border: 1px solid #4a4a56; border-radius: 8px; background: #1c1c22;
+    padding: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.6); min-width: 140px;
+  }
   .th-fx-popover.bypassed { opacity: 0.55; }
+  /* Now a title bar (Pro Tools plugin-window style) rather than an inline
+     panel's in-flow heading — its own background/border-radius/border-bottom
+     frame the floating window's top edge. */
   .th-fx-popover-head {
-    display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
     font-size: 10px; font-weight: 700; color: var(--muted);
+    background: #26262e; border-bottom: 1px solid #3a3a44; border-radius: 8px 8px 0 0;
+    padding: 6px 8px;
   }
   .th-fx-popover-head .glyph { width: 18px; height: 9px; }
   .th-fx-popover-head-spacer { flex: 1; }
-  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 8px; }
 
   /* Insert-effect parameter knob — a pointer-driven rotary control, not a
      restyled <input type=range> (see buildKnob()). -135deg..+135deg sweep
@@ -1276,6 +1288,12 @@
   <button id="insp-close" title="Close editor panel">✕ Done</button>
 
   <textarea id="exportBox" style="display:none" readonly></textarea>
+
+  <!-- Portal target for the FX popover/add-menu — see renderFloatingFxLayer().
+       A plain top-level body child (not nested in .daw or .editor-layout) so
+       position:fixed content here is never clipped by .daw's own
+       overflow:auto, which a z-index fix alone cannot undo. -->
+  <div id="floating-fx-layer"></div>
 
 <script type="module">
 import { TEMPO_BPM } from './js/song-data.js';
@@ -2994,10 +3012,48 @@ function render() {
   if (renderRafId != null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
   renderTimeline();
   renderTracks();
+  renderFloatingFxLayer();
   positionOverlays();
   renderInspector();
   autosave();
   checkpointHistory();
+}
+// Rebuilds #floating-fx-layer from scratch every render — the same
+// "clear and rebuild" approach renderTracks() itself uses for #tracks,
+// rather than createOverlays()'s "build once, only reposition" pattern,
+// since the floating layer's *contents* are dynamic in count (any number of
+// popovers, at most one add-menu) while the playhead/loop chrome is always
+// exactly one of each. Must run AFTER renderTracks(), since it locates each
+// popup's trigger element (a chip or the add-button) by data-track/data-key
+// in the just-rebuilt header DOM to read its on-screen position.
+function renderFloatingFxLayer() {
+  const layer = document.getElementById('floating-fx-layer');
+  layer.innerHTML = '';
+  // Anchors a built popup element under its trigger's on-screen position —
+  // position:fixed, so viewport-relative regardless of #floating-fx-layer's
+  // own DOM location. 6px below the trigger, clamped so it can't render
+  // off the right/bottom edge of the viewport.
+  function place(triggerEl, popupEl) {
+    layer.appendChild(popupEl); // must be in the layer before measuring its own size
+    const r = triggerEl.getBoundingClientRect();
+    const pw = popupEl.offsetWidth, ph = popupEl.offsetHeight;
+    const left = Math.min(r.left, window.innerWidth - pw - 8);
+    const top = Math.min(r.bottom + 6, window.innerHeight - ph - 8);
+    popupEl.style.left = Math.max(8, left) + 'px';
+    popupEl.style.top = Math.max(8, top) + 'px';
+  }
+  for (const key of fxPopoverOpen) {
+    const sep = key.indexOf('::');
+    const track = key.slice(0, sep), effectKey = key.slice(sep + 2);
+    const effect = TRACK_FX_REGISTRY.find((e) => e.key === effectKey);
+    const chip = document.querySelector(`.th-fx-chip[data-track="${track}"][data-key="${effectKey}"]`);
+    if (!effect || !chip) continue; // track/effect removed since this popover was opened
+    place(chip, buildFxPopover(track, effect));
+  }
+  if (fxAddMenuOpen != null) {
+    const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
+    if (btn) place(btn, buildFloatingAddMenu(fxAddMenuOpen));
+  }
 }
 
 // render() rebuilds the whole grid (every cell of every track), so calling it
@@ -3459,13 +3515,23 @@ let fxAddMenuOpen = null;
 // the browser.
 document.addEventListener('click', (e) => {
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
-  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add')) return;
+  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu')) return;
   fxPopoverOpen.clear();
   fxAddMenuOpen = null;
   render();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
+  fxPopoverOpen.clear();
+  fxAddMenuOpen = null;
+  render();
+});
+// A position:fixed popup does not move with .daw's own scroll, so without
+// this it would visually detach from the chip it belongs to the instant the
+// user scrolls .daw — closing it (same as an outside click) is simpler and
+// more honest than live-repositioning it to track the scroll.
+document.getElementById('daw').addEventListener('scroll', () => {
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
   fxPopoverOpen.clear();
   fxAddMenuOpen = null;
@@ -3804,6 +3870,7 @@ function buildFxChip(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
   const open = fxPopoverOpen.has(track + '::' + effect.key);
   const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
+  chip.dataset.track = track; chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
   body.type = 'button';
   body.title = `${letter} — ${effect.label}`;
@@ -3886,6 +3953,7 @@ function buildFxPanel(track) {
 
   const addWrap = el('div', 'th-fx-add');
   const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+ Add effect';
+  addBtn.dataset.track = track;
   addBtn.title = 'Add an effect to this track';
   addBtn.setAttribute('aria-haspopup', 'true');
   addBtn.setAttribute('aria-expanded', String(fxAddMenuOpen === track));
@@ -3896,40 +3964,43 @@ function buildFxPanel(track) {
     render();
   });
   addWrap.appendChild(addBtn);
-  if (fxAddMenuOpen === track) {
-    const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
-    const menu = el('div', 'th-fx-add-menu');
-    if (!notAdded.length) {
-      const none = el('div', 'th-fx-add-empty'); none.textContent = 'All effects added';
-      menu.appendChild(none);
-    }
-    for (const effect of notAdded) {
-      const item = el('button'); item.type = 'button';
-      item.appendChild(glyph(effect.icon));
-      const span = document.createElement('span'); span.textContent = effect.label;
-      item.appendChild(span);
-      item.addEventListener('mousedown', (e) => e.stopPropagation());
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.activeFx[track] = state.activeFx[track] || {};
-        state.activeFx[track][effect.key] = { bypassed: false };
-        fxPopoverOpen.add(track + '::' + effect.key);
-        fxAddMenuOpen = null;
-        effect.apply();
-        render(); autosave();
-      });
-      menu.appendChild(item);
-    }
-    addWrap.appendChild(menu);
-  }
   chipRow.appendChild(addWrap);
   panel.appendChild(chipRow);
-
-  for (const effect of visible) {
-    if (fxPopoverOpen.has(track + '::' + effect.key)) panel.appendChild(buildFxPopover(track, effect));
-  }
-
+  // Popovers and the add-menu itself no longer render here — see
+  // buildFloatingAddMenu()/buildFxPopover() and renderFloatingFxLayer(),
+  // called once after every track's header (this function included) has
+  // been rebuilt, so their trigger elements' on-screen positions are known.
   return panel;
+}
+// The "+ Add effect" menu's content, built the same way the old inline
+// version was, just relocated into the floating layer by
+// renderFloatingFxLayer() instead of appended here directly.
+function buildFloatingAddMenu(track) {
+  const visible = visibleFxFor(track);
+  const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
+  const menu = el('div', 'th-fx-add-menu');
+  if (!notAdded.length) {
+    const none = el('div', 'th-fx-add-empty'); none.textContent = 'All effects added';
+    menu.appendChild(none);
+  }
+  for (const effect of notAdded) {
+    const item = el('button'); item.type = 'button';
+    item.appendChild(glyph(effect.icon));
+    const span = document.createElement('span'); span.textContent = effect.label;
+    item.appendChild(span);
+    item.addEventListener('mousedown', (e) => e.stopPropagation());
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.activeFx[track] = state.activeFx[track] || {};
+      state.activeFx[track][effect.key] = { bypassed: false };
+      fxPopoverOpen.add(track + '::' + effect.key);
+      fxAddMenuOpen = null;
+      effect.apply();
+      render(); autosave();
+    });
+    menu.appendChild(item);
+  }
+  return menu;
 }
 
 function buildHeader(track) {
