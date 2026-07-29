@@ -476,6 +476,7 @@
     font-size: 10px; font-weight: 700; color: var(--ink); cursor: pointer; padding: 2px 0;
   }
   .th-fx-chip-body .glyph { width: 16px; height: 8px; }
+  .th-fx-chip-letter { color: #6f6f7a; font-weight: 700; }
   .th-fx-chip-bypass, .th-fx-chip-remove {
     display: flex; align-items: center; justify-content: center; background: none; border: none;
     width: 16px; height: 16px; padding: 0; border-radius: 3px; color: var(--muted); cursor: pointer;
@@ -3799,14 +3800,19 @@ function removeFxChip(track, effect) {
   effect.apply();
   render(); autosave();
 }
-function buildFxChip(track, effect) {
+function buildFxChip(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
   const open = fxPopoverOpen.has(track + '::' + effect.key);
   const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
   const body = el('button', 'th-fx-chip-body');
   body.type = 'button';
-  body.title = effect.label;
-  body.appendChild(glyph(effect.icon));
+  body.title = `${letter} — ${effect.label}`;
+  // A separate element from the label span (not `${letter} ${effect.label}`
+  // concatenated into one string) so verify.js's existing exact-match label
+  // checks (`... === 'EQ'`) keep working unchanged — the letter is purely
+  // additive, visually and in the DOM.
+  const letterSpan = el('span', 'th-fx-chip-letter'); letterSpan.textContent = letter;
+  body.append(letterSpan, glyph(effect.icon));
   const label = document.createElement('span'); label.textContent = effect.label;
   body.appendChild(label);
   body.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -3863,7 +3869,12 @@ function buildFxPanel(track) {
 
   const visible = visibleFxFor(track);
   const chipRow = el('div', 'th-fx-chip-row');
-  for (const effect of visible) chipRow.appendChild(buildFxChip(track, effect));
+  // A, B, C… by current position only — not a stored slot id. Recomputed
+  // fresh every render from visibleFxFor()'s current length, so removing
+  // chip "B" reflows the rest (what was "C" becomes "B") rather than
+  // leaving a gap, exactly as if nothing were persisted at all (because
+  // nothing is — see docs/superpowers/specs/2026-07-29-track-header-redesign.md §4).
+  visible.forEach((effect, i) => chipRow.appendChild(buildFxChip(track, effect, String.fromCharCode(65 + i))));
 
   const addWrap = el('div', 'th-fx-add');
   const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+ Add effect';

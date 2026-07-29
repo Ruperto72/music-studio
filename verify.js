@@ -567,7 +567,8 @@ async function main() {
       // insertion order.
       await addFxEffect('Comp');
       await addFxEffect('EQ');
-      const chipLabels = await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body span')].map(s => s.textContent)`);
+      const chipLabels = await cdp.evaluate(
+        `[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].map(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent)`);
       if (chipLabels.indexOf('EQ') === -1 || chipLabels.indexOf('EQ') > chipLabels.indexOf('Comp')) {
         throw new Error(`EQ should render before Comp regardless of add order, got ${JSON.stringify(chipLabels)}`);
       }
@@ -592,9 +593,9 @@ async function main() {
     });
 
     step('FX panel: bypass dims the chip/popover but keeps showing the dialled value, and Reset clears every chip', async () => {
-      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
       const bypassedState = await cdp.evaluate(`(() => {
-        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span').textContent === 'EQ');
+        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ');
         const pop = (${fxPanelSel}).querySelector('.th-fx-popover[data-key="eq"]');
         return { chipDimmed: chip.classList.contains('bypassed'), popDimmed: pop.classList.contains('bypassed') };
       })()`);
@@ -1196,7 +1197,7 @@ async function main() {
         const panel = ${panelSel};
         const chips = [...panel.querySelectorAll('.th-fx-chip')];
         return {
-          labels: chips.map(c => c.querySelector('.th-fx-chip-body span').textContent),
+          labels: chips.map(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent),
           drawn: chips.every(c => c.querySelectorAll('svg.glyph path').length > 0),
           knobs: panel.querySelectorAll('.th-knob').length,
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
@@ -2669,7 +2670,7 @@ async function main() {
       await cdp.evaluate(`(() => {
         const head = ${newTonalHead};
         if (head.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
-        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Vibrato')
+        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Vibrato')
           .querySelector('.th-fx-chip-body').click();
       })()`);
       await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-popover[data-key="vibrato"]')`);
@@ -2811,7 +2812,7 @@ async function main() {
       await cdp.evaluate(`(() => {
         const panel = ${fxPanelSel};
         if (!panel.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
-          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').textContent.trim() === 'Delay')
+          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Delay')
             .querySelector('.th-fx-chip-body').click();
         }
       })()`);
