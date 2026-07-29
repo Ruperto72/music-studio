@@ -338,7 +338,7 @@
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
   .track.collapsed .th-osc-section, .track.collapsed .th-tools,
-  .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove,
+  .track.collapsed .th-output-section, .track.collapsed .th-remove,
   .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
@@ -350,7 +350,7 @@
      of its sections (Osc/Inserts/Output) — Task 3's floating popups reuse
      the same caption styling for their title bar. */
   .th-section { margin-top: 6px; padding-top: 6px; border-top: 1px solid #232329; }
-  .th-section:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+  .th-top + .th-section { margin-top: 0; padding-top: 0; border-top: 0; }
   .th-section-label {
     display: flex; align-items: center; justify-content: space-between;
     font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a;
@@ -359,8 +359,10 @@
   /* The waveform <select> replaces the old six-to-ten-button picker — a
      dropdown only shows one shape at a time (deliberately accepted; see
      docs/superpowers/specs/2026-07-29-track-header-redesign.md §3) against
-     the Pro Tools-style width/section goal. Matches renderAutomationRow()'s
-     existing <select> styling exactly (no new select look is introduced). */
+     the Pro Tools-style width/section goal. Same <select>-based pattern
+     renderAutomationRow() already uses for its own dropdown (not a
+     byte-identical style — this one is full-width and needs its own
+     cursor/padding for the header context). */
   .th-osc-select {
     width: 100%; background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
     font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
@@ -452,7 +454,7 @@
      actually has (visibleFxFor()), a "+ Add effect" menu, and a knob-based
      popover per open chip. Unlike Automation/Envelope this needs no timeline
      column width, so it lives right inside the header (see buildFxPanel()). */
-  .th-fx-panel { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+  .th-fx-panel { display: flex; flex-direction: column; gap: 6px; }
   .th-fx-reset-wrap { display: flex; align-items: center; justify-content: space-between; }
   .th-fx-reset-wrap .th-section-label-text {
     font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a; font-weight: 700;
@@ -4122,9 +4124,8 @@ function buildHeader(track) {
   const vuMask = el('div', 'vu-mask');
   vu.appendChild(vuMask);
   vuMeters[track] = vuMask;
-  outputSection.appendChild(vu);
 
-  header.append(top, oscSection, buildFxPanel(track), outputSection);
+  header.append(top, oscSection, buildFxPanel(track), outputSection, vu);
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }
