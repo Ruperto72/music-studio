@@ -3807,11 +3807,17 @@ function buildFxChip(track, effect, letter) {
   const body = el('button', 'th-fx-chip-body');
   body.type = 'button';
   body.title = `${letter} — ${effect.label}`;
+  // aria-label carries both, so the letter isn't lost from the accessible
+  // name the way it would be if only the (visible, un-hidden) label span
+  // supplied it — the letterSpan itself stays aria-hidden, like the glyph
+  // beside it, since this one aria-label already announces both.
+  body.setAttribute('aria-label', `${letter}, ${effect.label}`);
   // A separate element from the label span (not `${letter} ${effect.label}`
   // concatenated into one string) so verify.js's existing exact-match label
   // checks (`... === 'EQ'`) keep working unchanged — the letter is purely
   // additive, visually and in the DOM.
   const letterSpan = el('span', 'th-fx-chip-letter'); letterSpan.textContent = letter;
+  letterSpan.setAttribute('aria-hidden', 'true');
   body.append(letterSpan, glyph(effect.icon));
   const label = document.createElement('span'); label.textContent = effect.label;
   body.appendChild(label);

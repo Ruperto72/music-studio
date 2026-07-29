@@ -529,7 +529,7 @@ async function main() {
     // Adds `label` (e.g. 'EQ') via the "+ Add effect" menu if not already a
     // chip, and returns once its popover is open (adding auto-opens it).
     async function addFxEffect(label) {
-      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.textContent.trim() === ${JSON.stringify(label)})`);
+      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent.trim() === ${JSON.stringify(label)})`);
       if (already) return;
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!(${fxPanelSel}).querySelector('.th-fx-add-menu')`);
