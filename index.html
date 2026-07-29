@@ -4134,8 +4134,13 @@ function buildMasterFxPopover(effect) {
   const fields = el('div', 'th-fx-popover-fields');
   const values = effect.get();
   for (const f of effect.fields) {
+    // Unlike a track chip (whose dim state is a stored bypass flag, untouched
+    // by a knob move), a master chip's dim state is isMasterFxActive()
+    // recomputed from the live value — so, unlike buildFxPopover's per-track
+    // knobs, this one has to call render() on every commit for the chip to
+    // ever reflect it without waiting on an unrelated render elsewhere.
     fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
-      (v) => { effect.set({ [f.param]: v }); effect.apply(); autosave(); },
+      (v) => { effect.set({ [f.param]: v }); effect.apply(); render(); autosave(); },
       MASTER_FX_FIELD_DEFAULTS[effect.key][f.param]));
   }
   pop.appendChild(fields);
