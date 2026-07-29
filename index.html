@@ -351,10 +351,15 @@
      the same caption styling for their title bar. */
   .th-section { margin-top: 6px; padding-top: 6px; border-top: 1px solid #232329; }
   .th-top + .th-section { margin-top: 0; padding-top: 0; border-top: 0; }
+  /* Shared typography only — Osc/Output's caption is also a layout container
+     (see below), Inserts' caption is a plain inline span inside
+     .th-fx-reset-wrap, which already provides that layout. */
   .th-section-label {
-    display: flex; align-items: center; justify-content: space-between;
     font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a;
-    font-weight: 700; margin-bottom: 5px;
+    font-weight: 700;
+  }
+  .th-osc-section > .th-section-label, .th-output-section > .th-section-label {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
   }
   /* The waveform <select> replaces the old six-to-ten-button picker — a
      dropdown only shows one shape at a time (deliberately accepted; see
@@ -456,9 +461,6 @@
      column width, so it lives right inside the header (see buildFxPanel()). */
   .th-fx-panel { display: flex; flex-direction: column; gap: 6px; }
   .th-fx-reset-wrap { display: flex; align-items: center; justify-content: space-between; }
-  .th-fx-reset-wrap .th-section-label-text {
-    font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a; font-weight: 700;
-  }
   .th-fx-reset {
     background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
     font-size: 10px; padding: 2px 6px; cursor: pointer;
@@ -484,7 +486,6 @@
   .th-fx-chip-bypass .glyph-sq { width: 11px; height: 11px; }
   .th-fx-chip-bypass.on { color: #ffb84f; }
   .th-fx-chip-remove:hover { background: #3a1414; color: #ff9a9a; }
-  .th-fx-add { position: relative; }
   .th-fx-add-btn {
     background: #26262e; border: 1px dashed #4a4a54; border-radius: 12px; color: var(--muted);
     font-size: 10px; padding: 3px 8px; cursor: pointer;
@@ -3047,12 +3048,19 @@ function renderFloatingFxLayer() {
     const track = key.slice(0, sep), effectKey = key.slice(sep + 2);
     const effect = TRACK_FX_REGISTRY.find((e) => e.key === effectKey);
     const chip = document.querySelector(`.th-fx-chip[data-track="${track}"][data-key="${effectKey}"]`);
-    if (!effect || !chip) continue; // track/effect removed since this popover was opened
+    // A collapsed track hides its .th-fx-panel via `display: none` rather
+    // than removing it, so the chip can still be found here — but a hidden
+    // element's getBoundingClientRect() is all zeros, which place() would
+    // clamp to the viewport's top-left corner, stranding the popover there
+    // with no visible anchor. getClientRects().length is 0 for anything not
+    // actually rendered (display:none or detached), so treat that the same
+    // as "trigger removed since this popover was opened".
+    if (!effect || !chip || !chip.getClientRects().length) continue;
     place(chip, buildFxPopover(track, effect));
   }
   if (fxAddMenuOpen != null) {
     const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
-    if (btn) place(btn, buildFloatingAddMenu(fxAddMenuOpen));
+    if (btn && btn.getClientRects().length) place(btn, buildFloatingAddMenu(fxAddMenuOpen));
   }
 }
 
@@ -3527,11 +3535,22 @@ document.addEventListener('keydown', (e) => {
   fxAddMenuOpen = null;
   render();
 });
-// A position:fixed popup does not move with .daw's own scroll, so without
-// this it would visually detach from the chip it belongs to the instant the
-// user scrolls .daw — closing it (same as an outside click) is simpler and
-// more honest than live-repositioning it to track the scroll.
-document.getElementById('daw').addEventListener('scroll', () => {
+// A position:fixed popup does not move with .daw's own VERTICAL scroll, so
+// without this it would visually detach from the chip it belongs to the
+// instant the user scrolls .daw up/down — closing it (same as an outside
+// click) is simpler and more honest than live-repositioning it to track the
+// scroll. Horizontal scroll is deliberately excluded: .track-header is
+// position:sticky; left: 0, so it never moves horizontally as .daw scrolls
+// sideways, and a popover anchored to a chip inside it stays correctly
+// positioned through that. Closing on every scroll event regardless of axis
+// used to fire on followPlayhead()'s horizontal auto-scroll during playback
+// and on dragging the #hscroll bar, closing every open popover mid-playback
+// or aborting an in-progress knob drag.
+let dawLastScrollTop = 0;
+document.getElementById('daw').addEventListener('scroll', (e) => {
+  const top = e.currentTarget.scrollTop;
+  if (top === dawLastScrollTop) return; // horizontal-only scroll — sticky header didn't move
+  dawLastScrollTop = top;
   if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
   fxPopoverOpen.clear();
   fxAddMenuOpen = null;
@@ -3923,7 +3942,7 @@ function buildFxPanel(track) {
   const panel = el('div', 'th-fx-panel th-section');
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
-  const insertsLabel = el('span', 'th-section-label-text');
+  const insertsLabel = el('span', 'th-section-label');
   insertsLabel.textContent = 'Inserts';
   resetWrap.prepend(insertsLabel);
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';

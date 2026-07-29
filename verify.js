@@ -472,7 +472,13 @@ async function main() {
       // .daw scroll-close listener (Step 6) would then immediately close the
       // very menu this step is trying to inspect.
       await new Promise((r) => setTimeout(r, 150));
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-fx-panel'))`;
+      // Every track header now has a .th-fx-panel (Inserts is always-visible,
+      // no more show/hide toggle), so .find() above used to just grab the
+      // FIRST track — after scrolling .daw to its max that header sits far
+      // ABOVE the visible area, not "near the bottom" as this test's own name
+      // claims. .pop() instead grabs the LAST header with a .th-fx-panel,
+      // which is the one actually scrolled near .daw's bottom edge.
+      const headSel = `[...document.querySelectorAll('.track-header')].filter(h => h.querySelector('.th-fx-panel')).pop()`;
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
       const box = await cdp.evaluate(`(() => {
@@ -482,6 +488,19 @@ async function main() {
       if (box.top < 0 || box.left < 0 || box.right > box.vw || box.bottom > box.vh) {
         throw new Error(`add-effect menu rendered partly outside the viewport: ${JSON.stringify(box)}`);
       }
+      // getBoundingClientRect() is unaffected by an ancestor's overflow
+      // clipping — an element clipped by .daw still reports a perfectly
+      // normal, in-viewport bounding box. So the bounds check above can never
+      // fail for the original bug (an invisible-but-technically-in-viewport
+      // popup). Hit-test the menu's own centre point to confirm it is
+      // actually the topmost painted element there, not just coordinates.
+      const hit = await cdp.evaluate(`(() => {
+        const m = document.querySelector('.th-fx-add-menu');
+        const r = m.getBoundingClientRect();
+        const topEl = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return m.contains(topEl);
+      })()`);
+      if (!hit) throw new Error('the add-effect menu is in the viewport but something else is painted on top of it at its own position');
     });
 
     step('Pen: clicking into a track that is not active places at the clicked cell', async () => {
