@@ -361,17 +361,36 @@
   .th-osc-section > .th-section-label, .th-output-section > .th-section-label {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;
   }
-  /* The waveform <select> replaces the old six-to-ten-button picker — a
-     dropdown only shows one shape at a time (deliberately accepted; see
-     docs/superpowers/specs/2026-07-29-track-header-redesign.md §3) against
-     the Pro Tools-style width/section goal. Same <select>-based pattern
-     renderAutomationRow() already uses for its own dropdown (not a
-     byte-identical style — this one is full-width and needs its own
-     cursor/padding for the header context). */
-  .th-osc-select {
-    width: 100%; background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
+  /* The waveform picker: a trigger button + floating listbox (same
+     document.body-portal pattern as the FX "+ Add effect" menu — see
+     renderFloatingLayer()), not a plain <select>. A native <select> was
+     tried first (see docs/superpowers/specs/2026-07-29-track-header-redesign.md
+     §3) and dropped once it became clear the whole point of the original
+     six-to-ten-button picker — seeing each waveform's glyph, not just its
+     name — was worth keeping; a native <option> still can't carry an SVG,
+     so this reuses the app's own floating-menu machinery instead. */
+  .th-osc-trigger {
+    width: 100%; display: flex; align-items: center; gap: 6px;
+    background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
     font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
   }
+  .th-osc-trigger:hover { border-color: #55555f; }
+  .th-osc-trigger.open { border-color: #7a4fd1; box-shadow: 0 0 6px rgba(122,79,209,0.35); }
+  .th-osc-trigger .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
+  .th-osc-trigger span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .th-osc-trigger .th-osc-caret { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
+  .th-osc-menu {
+    position: fixed; min-width: 140px; max-height: 60vh; overflow-y: auto;
+    background: #1c1c22; border: 1px solid #3a3a44; border-radius: 6px; padding: 2px;
+    display: flex; flex-direction: column; box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+  .th-osc-menu button {
+    display: flex; align-items: center; gap: 6px; background: none; border: none; text-align: left;
+    color: var(--ink); font-size: 10px; padding: 4px 6px; border-radius: 4px; cursor: pointer;
+  }
+  .th-osc-menu button:hover { background: #2c2c33; }
+  .th-osc-menu button.selected { background: #2c2c40; }
+  .th-osc-menu button .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
   /* Shared by every inline SVG from GLYPHS. Stroked with currentColor so one
      glyph works on a lit toggle, a muted panel caption and a hover state
      without needing a recoloured copy per context. */
@@ -491,10 +510,10 @@
     font-size: 10px; padding: 3px 8px; cursor: pointer;
   }
   .th-fx-add-btn:hover { border-color: #6a6a76; color: var(--ink); }
-  /* #floating-fx-layer itself needs no box styling — it's a plain
+  /* #floating-layer itself needs no box styling — it's a plain
      full-viewport-relative anchor point; each child inside it carries its
-     own position:fixed left/top set inline by renderFloatingFxLayer(). */
-  #floating-fx-layer { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 60; }
+     own position:fixed left/top set inline by renderFloatingLayer(). */
+  #floating-layer { position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 60; }
   .th-fx-add-menu {
     position: fixed; min-width: 120px;
     background: #1c1c22; border: 1px solid #3a3a44; border-radius: 6px; padding: 2px;
@@ -1290,11 +1309,12 @@
 
   <textarea id="exportBox" style="display:none" readonly></textarea>
 
-  <!-- Portal target for the FX popover/add-menu — see renderFloatingFxLayer().
-       A plain top-level body child (not nested in .daw or .editor-layout) so
-       position:fixed content here is never clipped by .daw's own
-       overflow:auto, which a z-index fix alone cannot undo. -->
-  <div id="floating-fx-layer"></div>
+  <!-- Portal target for the FX popover/add-menu and the waveform picker's
+       menu — see renderFloatingLayer(). A plain top-level body child (not
+       nested in .daw or .editor-layout) so position:fixed content here is
+       never clipped by .daw's own overflow:auto, which a z-index fix alone
+       cannot undo. -->
+  <div id="floating-layer"></div>
 
 <script type="module">
 import { TEMPO_BPM } from './js/song-data.js';
@@ -3013,25 +3033,26 @@ function render() {
   if (renderRafId != null) { cancelAnimationFrame(renderRafId); renderRafId = null; }
   renderTimeline();
   renderTracks();
-  renderFloatingFxLayer();
+  renderFloatingLayer();
   positionOverlays();
   renderInspector();
   autosave();
   checkpointHistory();
 }
-// Rebuilds #floating-fx-layer from scratch every render — the same
+// Rebuilds #floating-layer from scratch every render — the same
 // "clear and rebuild" approach renderTracks() itself uses for #tracks,
 // rather than createOverlays()'s "build once, only reposition" pattern,
 // since the floating layer's *contents* are dynamic in count (any number of
-// popovers, at most one add-menu) while the playhead/loop chrome is always
-// exactly one of each. Must run AFTER renderTracks(), since it locates each
-// popup's trigger element (a chip or the add-button) by data-track/data-key
-// in the just-rebuilt header DOM to read its on-screen position.
-function renderFloatingFxLayer() {
-  const layer = document.getElementById('floating-fx-layer');
+// popovers, at most one add-menu, at most one waveform picker) while the
+// playhead/loop chrome is always exactly one of each. Must run AFTER
+// renderTracks(), since it locates each popup's trigger element (a chip,
+// the add-button, or the waveform trigger) by data-track/data-key in the
+// just-rebuilt header DOM to read its on-screen position.
+function renderFloatingLayer() {
+  const layer = document.getElementById('floating-layer');
   layer.innerHTML = '';
   // Anchors a built popup element under its trigger's on-screen position —
-  // position:fixed, so viewport-relative regardless of #floating-fx-layer's
+  // position:fixed, so viewport-relative regardless of #floating-layer's
   // own DOM location. 6px below the trigger, clamped so it can't render
   // off the right/bottom edge of the viewport.
   function place(triggerEl, popupEl) {
@@ -3061,6 +3082,10 @@ function renderFloatingFxLayer() {
   if (fxAddMenuOpen != null) {
     const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
     if (btn && btn.getClientRects().length) place(btn, buildFloatingAddMenu(fxAddMenuOpen));
+  }
+  if (oscPickerOpen != null) {
+    const trigger = document.querySelector(`.th-osc-trigger[data-track="${oscPickerOpen}"]`);
+    if (trigger && trigger.getClientRects().length) place(trigger, buildFloatingOscMenu(oscPickerOpen));
   }
 }
 
@@ -3274,6 +3299,7 @@ function removeTrack(id) {
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
   for (const k of [...fxPopoverOpen]) if (k.startsWith(id + '::')) fxPopoverOpen.delete(k);
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
+  if (oscPickerOpen === id) oscPickerOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
   if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
@@ -3517,22 +3543,26 @@ const fxPopoverOpen = new Set();
 // which are worth comparing side by side, there is never a reason to have
 // two add-menus open at once.
 let fxAddMenuOpen = null;
-// Light-dismiss for both of the above — an outside click or Escape closes
-// whatever is open. Plain inline panels rather than <dialog> elements (see
-// buildFxPanel()), so this has to be done by hand instead of getting it from
-// the browser.
+// The waveform picker's floating listbox — same "at most one, holding the
+// track id" shape as fxAddMenuOpen, since it's the exact same kind of
+// trigger-button-opens-a-floating-menu widget.
+let oscPickerOpen = null;
+// Light-dismiss for all three of the above — an outside click or Escape
+// closes whatever is open. Plain inline panels rather than <dialog>
+// elements (see buildFxPanel()), so this has to be done by hand instead of
+// getting it from the browser.
+function anyFloatingMenuOpen() { return fxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
+function closeAllFloatingMenus() { fxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
 document.addEventListener('click', (e) => {
-  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
-  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu')) return;
-  fxPopoverOpen.clear();
-  fxAddMenuOpen = null;
+  if (!anyFloatingMenuOpen()) return;
+  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu, .th-osc-trigger, .th-osc-menu')) return;
+  closeAllFloatingMenus();
   render();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
-  fxPopoverOpen.clear();
-  fxAddMenuOpen = null;
+  if (!anyFloatingMenuOpen()) return;
+  closeAllFloatingMenus();
   render();
 });
 // A position:fixed popup does not move with .daw's own VERTICAL scroll, so
@@ -3551,9 +3581,8 @@ document.getElementById('daw').addEventListener('scroll', (e) => {
   const top = e.currentTarget.scrollTop;
   if (top === dawLastScrollTop) return; // horizontal-only scroll — sticky header didn't move
   dawLastScrollTop = top;
-  if (!fxPopoverOpen.size && fxAddMenuOpen == null) return;
-  fxPopoverOpen.clear();
-  fxAddMenuOpen = null;
+  if (!anyFloatingMenuOpen()) return;
+  closeAllFloatingMenus();
   render();
 });
 const ADSR_FIELDS = [
@@ -3986,14 +4015,14 @@ function buildFxPanel(track) {
   chipRow.appendChild(addWrap);
   panel.appendChild(chipRow);
   // Popovers and the add-menu itself no longer render here — see
-  // buildFloatingAddMenu()/buildFxPopover() and renderFloatingFxLayer(),
+  // buildFloatingAddMenu()/buildFxPopover() and renderFloatingLayer(),
   // called once after every track's header (this function included) has
   // been rebuilt, so their trigger elements' on-screen positions are known.
   return panel;
 }
 // The "+ Add effect" menu's content, built the same way the old inline
 // version was, just relocated into the floating layer by
-// renderFloatingFxLayer() instead of appended here directly.
+// renderFloatingLayer() instead of appended here directly.
 function buildFloatingAddMenu(track) {
   const visible = visibleFxFor(track);
   const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
@@ -4016,6 +4045,43 @@ function buildFloatingAddMenu(track) {
       fxAddMenuOpen = null;
       effect.apply();
       render(); autosave();
+    });
+    menu.appendChild(item);
+  }
+  return menu;
+}
+// The waveform picker's floating listbox — built fresh each time it's
+// opened, same as buildFloatingAddMenu() beside it. role="listbox"/"option"
+// name the widget for assistive tech; keyboard support is native Tab +
+// Enter/Space between plain <button> options plus the document-level
+// Escape handler, matching buildFloatingAddMenu()'s own level of keyboard
+// support exactly rather than inventing a roving-tabindex arrow-key scheme
+// this app's other floating menus don't have either.
+function buildFloatingOscMenu(track) {
+  const menu = el('div', 'th-osc-menu');
+  menu.setAttribute('role', 'listbox');
+  menu.setAttribute('aria-label', 'Waveform for ' + trackName(track));
+  for (const w of WAVEFORMS) {
+    const selected = state.waveform[track] === w;
+    const item = el('button', selected ? 'selected' : '');
+    item.type = 'button';
+    item.dataset.value = w;
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(selected));
+    item.appendChild(glyph(w));
+    const span = document.createElement('span'); span.textContent = WAVE_LABEL[w];
+    item.appendChild(span);
+    item.addEventListener('mousedown', (e) => e.stopPropagation());
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.waveform[track] = w;
+      oscPickerOpen = null;
+      const n = state.tracks[track][0];
+      if (n) previewNote(track, n);
+      autosave();
+      // Re-render so the note inspector's Duty cycle field (square-only)
+      // appears/disappears immediately, matching the old picker's behaviour.
+      render();
     });
     menu.appendChild(item);
   }
@@ -4114,33 +4180,33 @@ function buildHeader(track) {
     oscSection.appendChild(kit);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
-    // via the exported VOICES config. A plain <select> (same pattern
-    // renderAutomationRow() already uses for its own parameter dropdown) —
-    // deliberately reverted from the six-to-ten-button picker this used to
-    // be, trading "compare every shape at once" for the header's Pro
-    // Tools-style width/section goal; see the design spec §3 for the
-    // reasoning. Native <option> text carries the name (WAVE_LABEL) with no
-    // icon (a <option> can't hold an SVG glyph either way).
-    const select = document.createElement('select');
-    select.className = 'th-osc-select';
-    select.setAttribute('aria-label', 'Waveform for ' + trackName(track));
-    for (const w of WAVEFORMS) {
-      const opt = document.createElement('option');
-      opt.value = w; opt.textContent = WAVE_LABEL[w];
-      if (state.waveform[track] === w) opt.selected = true;
-      select.appendChild(opt);
-    }
-    select.addEventListener('mousedown', (e) => e.stopPropagation());
-    select.addEventListener('change', () => {
-      state.waveform[track] = select.value;
-      const n = state.tracks[track][0];
-      if (n) previewNote(track, n);
-      autosave();
-      // Re-render so the note inspector's Duty cycle field (square-only)
-      // appears/disappears immediately, matching the old picker's behaviour.
+    // via the exported VOICES config. A trigger button that opens a
+    // floating listbox (buildFloatingOscMenu(), same document.body-portal
+    // machinery as the FX "+ Add effect" menu) rather than a plain
+    // <select> — a native <select> was tried (see the design spec §3) and
+    // dropped once it was clear the point of the original six-to-ten-button
+    // picker (seeing each waveform's own glyph, not just its name) was
+    // worth keeping; a native <option> still can't carry an SVG, so this
+    // reuses the app's own floating-menu pattern instead of a select.
+    const trigger = el('button', 'th-osc-trigger' + (oscPickerOpen === track ? ' open' : ''));
+    trigger.type = 'button';
+    trigger.dataset.track = track;
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', String(oscPickerOpen === track));
+    trigger.setAttribute('aria-label', 'Waveform for ' + trackName(track));
+    trigger.appendChild(glyph(state.waveform[track]));
+    const triggerLabel = document.createElement('span');
+    triggerLabel.textContent = WAVE_LABEL[state.waveform[track]] || state.waveform[track];
+    trigger.appendChild(triggerLabel);
+    const caret = document.createElement('span'); caret.className = 'th-osc-caret'; caret.textContent = '▾';
+    trigger.appendChild(caret);
+    trigger.addEventListener('mousedown', (e) => e.stopPropagation());
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      oscPickerOpen = oscPickerOpen === track ? null : track;
       render();
     });
-    oscSection.appendChild(select);
+    oscSection.appendChild(trigger);
   }
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
