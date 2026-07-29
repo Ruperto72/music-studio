@@ -417,7 +417,7 @@ async function main() {
     // layout puts four tonal tracks ahead of it, so `.track .lane` — which
     // used to mean "the drum grid" only because a new project had nothing
     // else — now picks the Lead track's piano roll.
-    const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-wave-group')).map(t => t.querySelector('.lane'))[0]`;
+    const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-osc-select')).map(t => t.querySelector('.lane'))[0]`;
 
     // First, and the only step that needs no browser: a song file the app
     // would silently mangle is worth hearing about before thirteen minutes of
@@ -442,10 +442,14 @@ async function main() {
       }
       // Four empty tonal lanes at the old 28-semitone empty window were 321px
       // each — you could not see the drum track at all. An empty lane shows
-      // MIN_SPAN now.
+      // MIN_SPAN now. The floor itself moved up from 220 to 270 with the
+      // Osc/Inserts/Output header redesign: the Inserts (FX) section is now
+      // always visible instead of hidden behind a toggle, and all three
+      // sections carry their own caption row — a real, ~35-40px increase in
+      // the header's own minimum height, not lane growth.
       const heights = await cdp.evaluate(`[...document.querySelectorAll('.track')].map(t => Math.round(t.getBoundingClientRect().height))`);
       const tallest = Math.max(...heights);
-      if (tallest > 220) throw new Error(`an empty starter lane should stay compact, tallest is ${tallest}px`);
+      if (tallest > 270) throw new Error(`an empty starter lane should stay compact, tallest is ${tallest}px`);
       // The kit is last and the melody voice is where you'd start writing.
       const active = await cdp.evaluate(`(document.querySelector('.track.active .th-name') || {}).textContent`);
       if (active !== 'Lead') throw new Error(`expected the Lead track to start active, got ${JSON.stringify(active)}`);
@@ -522,13 +526,6 @@ async function main() {
     // the first track's (`.track`s[0]) — same target the old slider-grid
     // tests used, kept for continuity with the rest of the suite.
     const fxPanelSel = `document.querySelectorAll('.track')[0].querySelector('.th-fx-panel')`;
-    async function openFxPanel() {
-      await cdp.evaluate(`(() => {
-        if (${fxPanelSel}) return;
-        Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('FX')).click();
-      })()`);
-      await waitFor(`!!(${fxPanelSel})`);
-    }
     // Adds `label` (e.g. 'EQ') via the "+ Add effect" menu if not already a
     // chip, and returns once its popover is open (adding auto-opens it).
     async function addFxEffect(label) {
@@ -557,7 +554,6 @@ async function main() {
     }
 
     step('FX panel: adding Delay opens its popover with a working knob', async () => {
-      await openFxPanel();
       await addFxEffect('Delay');
       // 0 -> 0.5 at a 0.02 step is exactly 25 presses.
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
@@ -1112,49 +1108,38 @@ async function main() {
       // to draw — it's that adding them quietly costs a control its accessible
       // name, or that the six-button picker overflows the fixed-width header.
       // Check both, plus that clicking still writes through to state.
+      // A native <select> carries its own accessible name/value pair for
+      // free (aria-label + the selected <option>'s text) — the checks that
+      // mattered for the old button picker (every option named, exactly one
+      // "checked", the name spelled out as text) are now just "is it a
+      // <select> with the right options and the right one selected".
       const wave = await cdp.evaluate(`(() => {
-        const g = document.querySelector('.th-wave-group');
-        if (!g) return { missing: true };
-        const btns = [...g.querySelectorAll('.th-wave-btn')];
+        const s = document.querySelector('.th-osc-select');
+        if (!s) return { missing: true };
         return {
-          role: g.getAttribute('role'),
-          count: btns.length,
-          named: btns.every(b => b.getAttribute('aria-label')),
-          drawn: btns.every(b => b.querySelectorAll('svg.glyph path').length > 0),
-          hidden: btns.every(b => b.querySelector('svg.glyph').getAttribute('aria-hidden') === 'true'),
-          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
-          name: g.closest('.th-wave-row').querySelector('.th-wave-name')?.textContent,
-          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
+          tag: s.tagName,
+          named: !!s.getAttribute('aria-label'),
+          count: s.options.length,
+          selectedText: s.options[s.selectedIndex]?.textContent,
+          fits: s.scrollWidth <= s.closest('.track-header').clientWidth,
         };
       })()`);
       if (wave.missing) throw new Error('no tonal track waveform picker found');
-      if (wave.role !== 'radiogroup') throw new Error(`waveform picker should be a radiogroup, got ${wave.role}`);
-      if (wave.count !== 10) throw new Error(`expected 10 waveforms, got ${wave.count}`);
-      if (wave.count === 0 || !wave.named || !wave.drawn || !wave.hidden) {
-        throw new Error(`every waveform button needs a name and a decorative glyph: ${JSON.stringify(wave)}`);
-      }
-      // The glyph carries no accessible name of its own, so the selected
-      // waveform must still be readable as text somewhere.
-      if (wave.checked.length !== 1 || wave.name !== wave.checked[0]) {
-        throw new Error(`exactly one waveform should be checked and spelled out: ${JSON.stringify(wave)}`);
-      }
-      if (!wave.fits) throw new Error('the waveform buttons overflow the track header');
+      if (wave.tag !== 'SELECT') throw new Error(`waveform picker should be a <select>, got ${wave.tag}`);
+      if (!wave.named) throw new Error('waveform <select> needs an aria-label');
+      if (wave.count !== 10) throw new Error(`expected 10 waveform options, got ${wave.count}`);
+      if (wave.selectedText !== 'Square') throw new Error(`expected Square selected by default, got ${wave.selectedText}`);
+      if (!wave.fits) throw new Error('the waveform select overflows the track header');
       // Scope to one track's picker: by this point the song has several tonal
-      // tracks, each with its own group, so an unscoped query would mix their
-      // states together and read as many checked buttons as there are tracks.
+      // tracks, each with its own select, so an unscoped query would mix
+      // their states together.
       const switched = await cdp.evaluate(`(() => {
-        const row = document.querySelector('.th-wave-group').closest('.th-wave-row');
-        [...row.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Saw').click();
-        const row2 = document.querySelector('.th-wave-group').closest('.th-wave-row');
-        const btns = [...row2.querySelectorAll('.th-wave-btn')];
-        return {
-          checked: btns.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute('aria-label')),
-          name: row2.querySelector('.th-wave-name')?.textContent,
-        };
+        const s = document.querySelector('.th-osc-select');
+        s.value = 'sawtooth';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+        return document.querySelector('.th-osc-select').options[document.querySelector('.th-osc-select').selectedIndex].textContent;
       })()`);
-      if (switched.checked.join() !== 'Saw' || switched.name !== 'Saw') {
-        throw new Error(`picking Saw should move both the checked state and the caption: ${JSON.stringify(switched)}`);
-      }
+      if (switched !== 'Saw') throw new Error(`picking sawtooth should select the "Saw" option, got ${switched}`);
 
       // Per-note pills: select a note, then confirm each toggle still reads as
       // its own label rather than as an unnamed icon.
@@ -1191,13 +1176,9 @@ async function main() {
       // knob count across all of them is the same 13/15 the old always-shown
       // slider grid asserted. An earlier step may already have opened this
       // panel, in which case clicking the button would close it.
-      await cdp.evaluate(`(() => {
-        if (document.querySelector('.th-fx-panel')) return;
-        [...document.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
       await waitFor(`!!document.querySelector('.th-fx-panel')`);
       const panelSel = `document.querySelector('.th-fx-panel')`;
-      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-wave-group')`);
+      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-osc-select')`);
       for (let i = 0; i < 8; i++) {
         const added = await cdp.evaluate(`(() => {
           const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
@@ -1547,10 +1528,10 @@ async function main() {
       // it rode along in no shared loop. Checked through the real Save/Load
       // path rather than by poking state, since the gap was in that path.
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       // The starter layout's first tonal track (Lead) — no need to add one.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       // The Env panel's Duty picker: the only select offering pulse widths.
@@ -1588,7 +1569,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.track')`);
       await loadExample('DutyRoundTrip');
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!(${dutySel})`);
@@ -1620,9 +1601,9 @@ async function main() {
         `,
       });
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -1698,7 +1679,7 @@ async function main() {
       // A drum hit gets the same control, through scheduleDrum()'s one dispatch
       // point rather than the ten individual schedulers — which is why it can
       // be the same two assertions.
-      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-wave-group')).map((t) => t.querySelector('.lane'))[0]`;
+      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-osc-select')).map((t) => t.querySelector('.lane'))[0]`;
       await cdp.evaluate(`(() => {
         const lane = ${rhythmLane};
         const r = lane.getBoundingClientRect();
@@ -2205,10 +2186,10 @@ async function main() {
       await waitFor(`!!document.querySelector('.track')`);
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + 60 }));
       })()`);
@@ -2234,28 +2215,24 @@ async function main() {
         };
       })()`);
 
-      const layout = await cdp.evaluate(`(() => {
-        const g = document.querySelector('.th-wave-group');
-        const btns = [...g.querySelectorAll('.th-wave-btn')];
-        return {
-          labels: btns.map(b => b.getAttribute('aria-label')),
-          rows: [...new Set(btns.map(b => Math.round(b.getBoundingClientRect().top)))].length,
-          minWidth: Math.min(...btns.map(b => Math.round(b.getBoundingClientRect().width))),
-          fits: g.scrollWidth <= g.closest('.track-header').clientWidth,
-        };
-      })()`);
-      if (layout.rows !== 2 || !layout.fits) {
-        throw new Error(`the picker should wrap to two rows inside the header: ${JSON.stringify(layout)}`);
-      }
-      // Nine across one row would leave each button about 19px, too small for
-      // the shape to read; two rows keeps them at least as big as six were.
-      if (layout.minWidth < 29) throw new Error(`waveform buttons shrank to ${layout.minWidth}px`);
+      // The layout check (rows/min-width) was specific to the button grid —
+      // a <select> has nothing analogous to assert beyond "it fits", already
+      // covered by the Icons test above. Read the option values directly
+      // (WAVEFORMS' own internal ids, not the display labels) to drive the
+      // loop below, since setting select.value needs the option value.
+      const optionValues = await cdp.evaluate(
+        `[...document.querySelector('.th-osc-select').options].map(o => o.value)`);
+      if (optionValues.length !== 10) throw new Error(`expected 10 waveform options, got ${optionValues.length}`);
 
       const results = {};
       const delayMods = {};
-      for (const label of layout.labels) {
+      for (const value of optionValues) {
         const before = await cdp.evaluate(`window.__waveRenders.length`);
-        await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === ${JSON.stringify('')} + ${JSON.stringify(label)}).click()`);
+        await cdp.evaluate(`(() => {
+          const s = document.querySelector('.th-osc-select');
+          s.value = ${JSON.stringify(value)};
+          s.dispatchEvent(new Event('change', { bubbles: true }));
+        })()`);
         await new Promise((r) => setTimeout(r, 300));
         await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
         // Reset here, not before the waveform click: clicking a waveform button
@@ -2265,17 +2242,19 @@ async function main() {
         await cdp.evaluate(`window.__delayMod = 0`);
         await cdp.evaluate(`document.getElementById('export-wav').click()`);
         await waitFor(`window.__waveRenders.length > ${before}`, 90000);
-        results[label] = await cdp.evaluate(`window.__waveRenders[${before}]`);
-        delayMods[label] = await cdp.evaluate(`window.__delayMod`);
+        results[value] = await cdp.evaluate(`window.__waveRenders[${before}]`);
+        delayMods[value] = await cdp.evaluate(`window.__delayMod`);
       }
       // Not "PWM is the only one" — the shared chorus bus legitimately sweeps its
       // own delay on every render, so the baseline is non-zero. What must hold
       // is that every other waveform shares one baseline and PWM sits above it.
-      const baseline = Object.keys(delayMods).filter((n) => n !== 'PWM').map((n) => delayMods[n]);
+      // Keyed by the option's own value ('pwm'), not its display label ('PWM'),
+      // matching the loop above.
+      const baseline = Object.keys(delayMods).filter((n) => n !== 'pwm').map((n) => delayMods[n]);
       if (new Set(baseline).size !== 1) {
         throw new Error(`waveforms other than PWM should all modulate the same number of delays: ${JSON.stringify(delayMods)}`);
       }
-      if (delayMods['PWM'] <= baseline[0]) {
+      if (delayMods['pwm'] <= baseline[0]) {
         throw new Error(`PWM built no LFO on its pulse-width delay — the sweep is gone: ${JSON.stringify(delayMods)}`);
       }
       // Ten exports have just run through the Export WAV button's busy state.
@@ -2298,10 +2277,10 @@ async function main() {
       // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
       // early), so those two hashing alike is correct rather than a
       // fall-through. Asserting it keeps the check honest if that changes.
-      if (results['FM'].hash !== results['Sine'].hash) {
+      if (results['fm'].hash !== results['sine'].hash) {
         throw new Error('FM at depth 0 should be identical to a plain sine');
       }
-      const others = names.filter((n) => n !== 'FM');
+      const others = names.filter((n) => n !== 'fm');
       const hashes = new Set(others.map((n) => results[n].hash));
       if (hashes.size !== others.length) {
         throw new Error(`waveforms are not all distinct: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].hash])))}`);
@@ -2328,7 +2307,7 @@ async function main() {
       // which is the original bug exactly, a noise buffer ~5 dB hot, whose RMS
       // would have landed above square's.
       for (const n of names) {
-        const rel = 20 * Math.log10(results[n].rms / results['Square'].rms);
+        const rel = 20 * Math.log10(results[n].rms / results['square'].rms);
         if (rel > 0.5 || rel < -7) {
           throw new Error(`${n} sits ${rel.toFixed(1)} dB (RMS) from Square, outside the -7..+0.5 dB the waveforms span`);
         }
@@ -2336,7 +2315,7 @@ async function main() {
       // Peak too, loosely: it costs headroom even when loudness is right. Wide
       // on purpose — the crest-factor swing above is real, not a fault.
       for (const n of names) {
-        const rel = 20 * Math.log10(results[n].peak / results['Square'].peak);
+        const rel = 20 * Math.log10(results[n].peak / results['square'].peak);
         if (rel > 1.5 || rel < -6) {
           throw new Error(`${n} peaks ${rel.toFixed(1)} dB from Square, outside the -6..+1.5 dB band`);
         }
@@ -2391,7 +2370,7 @@ async function main() {
       // covers most of a cycle, short enough that each note is well inside it.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       const placed = await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         for (let i = 1; i < 8; i++) {
           lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 60 }));
@@ -2399,7 +2378,11 @@ async function main() {
         return document.querySelectorAll('.lane .note').length;
       })()`);
       if (placed !== 8) throw new Error(`expected 8 notes on the PWM track, got ${placed}`);
-      await cdp.evaluate(`[...document.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'PWM').click()`);
+      await cdp.evaluate(`(() => {
+        const s = document.querySelector('.th-osc-select');
+        s.value = 'pwm';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`document.getElementById('export-wav').click()`);
@@ -2451,7 +2434,7 @@ async function main() {
       // offer Duty — this step used to add a track first, from when a new
       // project had no tonal one to work with.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!document.querySelector('.adsr-select')`);
@@ -2470,7 +2453,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`window.__duty = []`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
       })()`);
@@ -2516,7 +2499,7 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         const n = lane.querySelector('.note').getBoundingClientRect();
         // 1.2 columns along, not 1.5: the grid snap rounds, so aiming at the
         // middle of the next cell lands two columns away and leaves a gap —
@@ -2534,7 +2517,7 @@ async function main() {
         throw new Error(`the two notes must be contiguous and on one row for a glide: ${JSON.stringify(pair)}`);
       }
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'));
+        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'));
         lane.querySelector('.note').click();
       })()`);
       await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
@@ -2557,8 +2540,10 @@ async function main() {
 
       // A non-square track must not offer the control at all.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        [...head.querySelectorAll('.th-wave-btn')].find(b => b.getAttribute('aria-label') === 'Sine').click();
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'));
+        const s = head.querySelector('.th-osc-select');
+        s.value = 'sine';
+        s.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 400));
       const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select').length`);
@@ -2616,12 +2601,7 @@ async function main() {
       // The rhythm track's "+ Add effect" menu must not offer Vibrato.
       // Reached by its own header rather than "the first track" — the
       // starter layout puts four tonal tracks ahead of it.
-      const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-wave-group'))`;
-      await cdp.evaluate(`(() => {
-        const head = ${rhythmHead};
-        if (head.querySelector('.th-fx-panel')) return;
-        [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
+      const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-osc-select'))`;
       await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-add-menu')`);
@@ -2643,10 +2623,6 @@ async function main() {
       // moment the steps below add one, so a live re-query of it would start
       // silently picking a *different*, still-clean starter track instead.
       const newTonalHead = `document.querySelector('.track[data-track="${newTrackId}"] .track-header')`;
-      await cdp.evaluate(`(() => {
-        const head = ${newTonalHead};
-        head.querySelector('.th-fx-panel') || [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
       await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${newTonalHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!(${newTonalHead}).querySelector('.th-fx-add-menu')`);
@@ -2730,13 +2706,13 @@ async function main() {
         `,
       });
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       // The audio graph is built lazily by ensureCtx(), not at page load —
       // window.__biquads is empty until something actually starts audio, so
       // place a note (the same trigger the pan test above uses: previewNote()
       // calls ensureCtx()) before looking at any node it builds.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -2744,11 +2720,7 @@ async function main() {
       })()`);
       await waitFor(`!!document.querySelector('.lane .note')`);
 
-      await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'));
-        [...head.querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click();
-      })()`);
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'))`;
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!(${headSel}).querySelector('.th-fx-add-menu')`);
       await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
@@ -2783,7 +2755,6 @@ async function main() {
       // sends, separate from every per-effect bypass path the step above
       // covers — it used to write the raw dialled value straight to the
       // send's gain AudioParam every chunk, ignoring bypass entirely.
-      await openFxPanel();
       await addFxEffect('Delay');
 
       // Draw one automation point on this track's Delay send at
@@ -2872,11 +2843,10 @@ async function main() {
       // reproduce it — hence this one step uses it where every other step in
       // this file deliberately doesn't (see the file's own header comment).
       await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.th-wave-group')`);
+      await waitFor(`!!document.querySelector('.th-osc-select')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
 
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-wave-group'))`;
-      await cdp.evaluate(`[...(${headSel}).querySelectorAll('.th-tool-btn')].find(b => /FX/.test(b.textContent)).click()`);
+      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-select'))`;
       await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
       const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
       await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
@@ -2884,7 +2854,7 @@ async function main() {
       await cdp.evaluate(`[...${panelSel}.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
       await waitFor(`!!${panelSel}.querySelector('.th-fx-popover[data-key="eq"]')`);
 
-      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-wave-group'))`;
+      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-select'))`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
       const rect = await cdp.evaluate(`(() => { const r = (${tonalLaneSel}).getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
       const x = rect.left + 200, y = rect.top + 60;

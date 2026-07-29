@@ -22,7 +22,7 @@
     --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
     --strip: #131316; --strip2: #0c0c0f; --ink: #e8e8ee; --muted: #9a9aa6;
     --subgrid: rgba(120, 200, 255, 0.16);
-    --header-w: 200px; --gutter-w: 42px;
+    --header-w: 260px; --gutter-w: 42px;
   }
   * { box-sizing: border-box; }
   body {
@@ -337,7 +337,7 @@
      on screen at once (the full lane/gutter aren't even built when collapsed,
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
-  .track.collapsed .th-wave-row, .track.collapsed .th-tools,
+  .track.collapsed .th-osc-section, .track.collapsed .th-tools,
   .track.collapsed .th-vol, .track.collapsed .th-pan, .track.collapsed .th-remove,
   .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
@@ -346,7 +346,25 @@
     flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .th-osc { display: block; font-size: 9px; color: var(--muted); font-weight: 400; }
-  .th-wave-row { margin-top: 2px; }
+  /* Generic labelled-group pattern the redesigned header uses for all three
+     of its sections (Osc/Inserts/Output) — Task 3's floating popups reuse
+     the same caption styling for their title bar. */
+  .th-section { margin-top: 6px; padding-top: 6px; border-top: 1px solid #232329; }
+  .th-section:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+  .th-section-label {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a;
+    font-weight: 700; margin-bottom: 5px;
+  }
+  /* The waveform <select> replaces the old six-to-ten-button picker — a
+     dropdown only shows one shape at a time (deliberately accepted; see
+     docs/superpowers/specs/2026-07-29-track-header-redesign.md §3) against
+     the Pro Tools-style width/section goal. Matches renderAutomationRow()'s
+     existing <select> styling exactly (no new select look is introduced). */
+  .th-osc-select {
+    width: 100%; background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
+    font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+  }
   /* Shared by every inline SVG from GLYPHS. Stroked with currentColor so one
      glyph works on a lit toggle, a muted panel caption and a hover state
      without needing a recoloured copy per context. */
@@ -386,20 +404,6 @@
   .insp-del { display: flex; align-items: center; justify-content: center; gap: 6px; }
   .mv-ico .glyph-sq { width: 14px; height: 14px; }
   #repeat-loop, #more-toggle { display: inline-flex; align-items: center; gap: 5px; }
-  /* Waveform picker: six shapes shown at once rather than hidden behind a
-     <select>, since the whole point is to compare them. Sized to share the
-     200px header (--header-w) minus its padding, so `flex: 1 1 0` splits the
-     row evenly however many WAVEFORMS there are. */
-  .th-wave-group { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
-  .th-wave-btn {
-    min-width: 0; padding: 3px 1px; display: flex; justify-content: center;
-    background: #26262d; border: 1px solid #3a3a44; border-radius: 4px;
-    color: #8f8f9b; cursor: pointer;
-  }
-  .th-wave-btn:hover { border-color: #55555f; color: #cfcfd8; }
-  .th-wave-btn.on { background: #3a6bd6; border-color: #2a55b5; color: #fff; }
-  .th-wave-btn .glyph { width: 100%; height: 12px; }
-  .th-wave-name { display: block; font-size: 9px; color: var(--muted); margin-top: 2px; text-align: center; }
   .th-pan { display: flex; align-items: center; gap: 6px; }
   .th-pan input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-pan .pan-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -449,7 +453,10 @@
      popover per open chip. Unlike Automation/Envelope this needs no timeline
      column width, so it lives right inside the header (see buildFxPanel()). */
   .th-fx-panel { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-  .th-fx-reset-wrap { display: flex; justify-content: flex-end; }
+  .th-fx-reset-wrap { display: flex; align-items: center; justify-content: space-between; }
+  .th-fx-reset-wrap .th-section-label-text {
+    font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6f6f7a; font-weight: 700;
+  }
   .th-fx-reset {
     background: #26262e; color: var(--ink); border: 1px solid #3a3a44; border-radius: 4px;
     font-size: 10px; padding: 2px 6px; cursor: pointer;
@@ -3197,7 +3204,7 @@ function removeTrack(id) {
   // silently ticking forever, so stop it explicitly.
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
   if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
-  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id); fxSendOpen.delete(id);
+  delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
   for (const k of [...fxPopoverOpen]) if (k.startsWith(id + '::')) fxPopoverOpen.delete(k);
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
@@ -3432,12 +3439,11 @@ function renderAutomationRow(track, param) {
 
 // ---------- ADSR envelope panel (tonal tracks only) ----------
 const adsrOpen = new Set(); // track ids with the envelope panel open
-const fxSendOpen = new Set(); // track ids with the Delay/Chorus send panel open
 // Which FX insert popovers are open, keyed by `${track}::${effectKey}` — any
 // number can be open at once, across tracks and effects (unlike
 // automationOpen/adsrOpen, which are one-per-track). Not serialized: purely
-// which panel is currently expanded, the same kind of state fxSendOpen above
-// already is.
+// which panel is currently expanded — the Inserts section itself is always
+// visible now (no more show/hide toggle), only its popovers open and close.
 const fxPopoverOpen = new Set();
 // At most one "+ Add effect" menu open at a time, holding the track id it
 // belongs to (or null). A single value rather than a Set: unlike popovers,
@@ -3831,9 +3837,12 @@ function buildFxPopover(track, effect) {
   return pop;
 }
 function buildFxPanel(track) {
-  const panel = el('div', 'th-fx-panel');
+  const panel = el('div', 'th-fx-panel th-section');
 
   const resetWrap = el('div', 'th-fx-reset-wrap');
+  const insertsLabel = el('span', 'th-section-label-text');
+  insertsLabel.textContent = 'Inserts';
+  resetWrap.prepend(insertsLabel);
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
   resetBtn.title = 'Remove every insert and send on this track';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -3980,61 +3989,48 @@ function buildHeader(track) {
     top.append(collapseBtn, reorder, name, btns);
   }
 
-  // Waveform picker (or the "Kit" label for rhythm) — its own full-width row,
-  // hidden while collapsed.
-  const waveRow = el('div', 'th-wave-row');
+  // Osc section: waveform dropdown (or the "Kit" label for rhythm) plus the
+  // Auto/Env/Preset (or Auto/Patterns) tool-toggle row, both hidden while
+  // collapsed via .th-osc-section's own class.
+  const oscSection = el('div', 'th-section th-osc-section');
+  const oscLabel = el('div', 'th-section-label');
+  oscLabel.textContent = 'Osc';
+  oscSection.appendChild(oscLabel);
   if (isRhythm(track)) {
     const kit = el('span', 'th-osc');
     kit.append(glyph('kit'), document.createTextNode(' ' + WAVE_LABEL.kit));
     kit.style.display = 'flex'; kit.style.alignItems = 'center'; kit.style.gap = '4px';
-    waveRow.append(kit);
+    oscSection.appendChild(kit);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
-    // via the exported VOICES config.
-    //
-    // Six icon buttons rather than the <select> this used to be: the choice is
-    // "which of these shapes", and a dropdown only ever showed one shape at a
-    // time (and a native <option> can't carry an SVG at all, so the shapes had
-    // nowhere to go while it stayed a select). Same role="radiogroup" +
-    // aria-checked pattern as the Pen/Eraser/Grab tool group, since this is
-    // likewise one choice out of a set and not a row of independent toggles.
-    // The glyphs are aria-hidden, so each button carries the waveform's name as
-    // its aria-label; the name of the *selected* one is also spelled out below
-    // the row, so nothing depends on recognising an icon.
-    const group = el('div', 'th-wave-group');
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', 'Waveform for ' + trackName(track));
+    // via the exported VOICES config. A plain <select> (same pattern
+    // renderAutomationRow() already uses for its own parameter dropdown) —
+    // deliberately reverted from the six-to-ten-button picker this used to
+    // be, trading "compare every shape at once" for the header's Pro
+    // Tools-style width/section goal; see the design spec §3 for the
+    // reasoning. Native <option> text carries the name (WAVE_LABEL) with no
+    // icon (a <option> can't hold an SVG glyph either way).
+    const select = document.createElement('select');
+    select.className = 'th-osc-select';
+    select.setAttribute('aria-label', 'Waveform for ' + trackName(track));
     for (const w of WAVEFORMS) {
-      const on = state.waveform[track] === w;
-      const btn = el('button', 'th-wave-btn' + (on ? ' on' : ''));
-      btn.type = 'button';
-      btn.setAttribute('role', 'radio');
-      btn.setAttribute('aria-checked', String(on));
-      btn.setAttribute('aria-label', WAVE_LABEL[w]);
-      btn.title = WAVE_LABEL[w] + ' (VOICES ' + track + ')';
-      btn.appendChild(glyph(w));
-      btn.addEventListener('mousedown', (e) => e.stopPropagation());
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.waveform[track] = w;
-        const n = state.tracks[track][0];
-        if (n) previewNote(track, n);
-        autosave();
-        // Always re-render now, not only when the Envelope panel is open (which
-        // is what the old <select> did): the picker itself has to restyle to
-        // move the lit state onto the clicked button, and the note inspector's
-        // Duty cycle field only exists while the waveform is `square`.
-        render();
-      });
-      group.appendChild(btn);
+      const opt = document.createElement('option');
+      opt.value = w; opt.textContent = WAVE_LABEL[w];
+      if (state.waveform[track] === w) opt.selected = true;
+      select.appendChild(opt);
     }
-    const name = el('span', 'th-wave-name');
-    name.textContent = WAVE_LABEL[state.waveform[track]] || state.waveform[track];
-    waveRow.append(group, name);
+    select.addEventListener('mousedown', (e) => e.stopPropagation());
+    select.addEventListener('change', () => {
+      state.waveform[track] = select.value;
+      const n = state.tracks[track][0];
+      if (n) previewNote(track, n);
+      autosave();
+      // Re-render so the note inspector's Duty cycle field (square-only)
+      // appears/disappears immediately, matching the old picker's behaviour.
+      render();
+    });
+    oscSection.appendChild(select);
   }
-
-  // A third row for the (less-frequently-used) automation/envelope toggles —
-  // keeping them out of .th-top avoids overflowing the header's fixed width.
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
   setGlyphLabel(autoBtn, 'automation', 'Auto');
@@ -4046,16 +4042,6 @@ function buildHeader(track) {
     render();
   });
   tools.append(autoBtn);
-  const fxBtn = el('button', 'th-tool-btn' + (fxSendOpen.has(track) ? ' on' : ''));
-  setGlyphLabel(fxBtn, 'sparkle', 'FX');
-  fxBtn.title = 'Track effects — Delay/Chorus/Reverb send (separate from the per-note Echo/Chorus/Reverb flags), a 3-band EQ, a Compressor, a Bitcrush downsampler and a Tremolo';
-  fxBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  fxBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (fxSendOpen.has(track)) fxSendOpen.delete(track); else fxSendOpen.add(track);
-    render();
-  });
-  tools.append(fxBtn);
   if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     setGlyphLabel(adsrBtn, 'envelope', 'Env');
@@ -4093,6 +4079,13 @@ function buildHeader(track) {
     });
     tools.append(patternsBtn);
   }
+  oscSection.appendChild(tools);
+
+  // Output section: volume, pan, VU meter.
+  const outputSection = el('div', 'th-section th-output-section');
+  const outputLabel = el('div', 'th-section-label');
+  outputLabel.textContent = 'Output';
+  outputSection.appendChild(outputLabel);
 
   const vol = el('div', 'th-vol');
   const slider = document.createElement('input');
@@ -4106,6 +4099,7 @@ function buildHeader(track) {
     applyGains(); autosave();
   });
   vol.append(slider, val);
+  outputSection.appendChild(vol);
 
   // Stereo pan (VOICES) — affects the editor preview AND the game.
   const panRow = el('div', 'th-pan');
@@ -4121,15 +4115,16 @@ function buildHeader(track) {
     applyPan(); autosave();
   });
   panRow.append(panSlider, panVal);
+  outputSection.appendChild(panRow);
 
   // Live level meter (VU) — updated by the meter RAF while audio is running.
   const vu = el('div', 'vu');
   const vuMask = el('div', 'vu-mask');
   vu.appendChild(vuMask);
   vuMeters[track] = vuMask;
+  outputSection.appendChild(vu);
 
-  header.append(top, waveRow, tools, vol, panRow, vu);
-  if (fxSendOpen.has(track)) header.appendChild(buildFxPanel(track));
+  header.append(top, oscSection, buildFxPanel(track), outputSection);
   header.addEventListener('mousedown', () => setActive(track, true));
   return header;
 }
