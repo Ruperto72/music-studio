@@ -1267,32 +1267,7 @@
           </div>
         </div>
         <div id="master-fx-panel" class="master-fx-panel" style="display:none">
-          <div class="mfx-group">
-            <span class="mfx-cap">EQ</span>
-            <div class="adsr-field"><span class="adsr-label">Lo</span><input id="eq-low" type="range" min="-12" max="12" step="0.5" title="Low shelf (~200Hz)"><span id="eq-low-val" class="adsr-val"></span></div>
-            <div class="adsr-field"><span class="adsr-label">Mid</span><input id="eq-mid" type="range" min="-12" max="12" step="0.5" title="Mid peak (~1kHz)"><span id="eq-mid-val" class="adsr-val"></span></div>
-            <div class="adsr-field"><span class="adsr-label">Hi</span><input id="eq-high" type="range" min="-12" max="12" step="0.5" title="High shelf (~4kHz)"><span id="eq-high-val" class="adsr-val"></span></div>
-          </div>
-          <div class="mfx-group">
-            <span class="mfx-cap">Comp</span>
-            <div class="adsr-field"><span class="adsr-label">Thr</span><input id="comp-threshold" type="range" min="-60" max="0" step="1" title="Threshold"><span id="comp-threshold-val" class="adsr-val"></span></div>
-            <div class="adsr-field"><span class="adsr-label">Rat</span><input id="comp-ratio" type="range" min="1" max="20" step="0.5" title="Ratio (1:1 = off)"><span id="comp-ratio-val" class="adsr-val"></span></div>
-            <div class="adsr-field"><span class="adsr-label">Atk</span><input id="comp-attack" type="range" min="0" max="1" step="0.01" title="Attack"><span id="comp-attack-val" class="adsr-val"></span></div>
-            <div class="adsr-field"><span class="adsr-label">Rel</span><input id="comp-release" type="range" min="0.01" max="1" step="0.01" title="Release"><span id="comp-release-val" class="adsr-val"></span></div>
-          </div>
-          <div class="mfx-group">
-            <span class="mfx-cap">Par Comp</span>
-            <div class="adsr-field"><span class="adsr-label">Blend</span><input id="parallel-blend" type="range" min="0" max="1" step="0.02" title="Parallel (&quot;New York&quot;) compression blend — mixes in a much harder-compressed copy alongside the main signal"><span id="parallel-blend-val" class="adsr-val"></span></div>
-          </div>
-          <div class="mfx-group">
-            <span class="mfx-cap">Sidechain</span>
-            <button id="sidechain-toggle" class="icon-btn" title="Duck the master bus on every kick/snare hit" aria-pressed="false">Off</button>
-            <div class="adsr-field"><span class="adsr-label">Depth</span><input id="sidechain-depth" type="range" min="0.05" max="0.95" step="0.05" title="How far the master bus ducks on each kick/snare hit"><span id="sidechain-depth-val" class="adsr-val"></span></div>
-          </div>
-          <div class="mfx-group">
-            <span class="mfx-cap">Downsample</span>
-            <div class="adsr-field"><span class="adsr-label">Amt</span><input id="crush-amount" type="range" min="0" max="1" step="0.05" title="Lo-fi sample-and-hold downsampler (AudioWorklet) on the master bus — 0 = full quality"><span id="crush-amount-val" class="adsr-val"></span></div>
-          </div>
+          <div id="master-fx-chip-row" class="th-fx-chip-row"></div>
           <div class="mfx-group">
             <span class="mfx-cap">Meter</span>
             <canvas id="spectrum-canvas" width="200" height="46" title="Master bus frequency spectrum (post-FX)"></canvas>
@@ -2840,8 +2815,8 @@ function applyTrackVibrato() { /* takes effect on the next scheduled note */ }
 function getTrackEq(track) { return state.eq[track] || DEFAULT_TRACK_EQ; }
 function setTrackEq(track, patch) { state.eq[track] = { ...getTrackEq(track), ...patch }; }
 const pctFormat = (v) => Math.round(v * 100) + '%';
-// Same rendering as the master EQ's readouts (see syncMasterFxUI/EQ_FIELDS), so
-// the two EQ panels don't show the same unit two different ways.
+// Same rendering as the master EQ's own knobs (see MASTER_FX_REGISTRY's
+// 'eq' entry), so the two EQ panels don't show the same unit two different ways.
 const dbFormat = (v) => v.toFixed(1) + 'dB';
 // Single source of truth for the FX panel's five per-track effects
 // (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo) — one entry per
@@ -2885,7 +2860,7 @@ const TRACK_FX_REGISTRY = [
   {
     // An insert (chanEq[track] -> chanComp[track] -> ...), not a send, so
     // it has no 0-100% "amount" the way the sends above do; same four
-    // params/ranges/formatting as the master compressor (COMP_FIELDS).
+    // params/ranges/formatting as MASTER_FX_REGISTRY's 'comp' entry.
     key: 'comp', label: 'Comp', icon: 'comp',
     get: getTrackComp, set: setTrackComp, apply: applyTrackComp,
     fields: [
@@ -6044,70 +6019,6 @@ masterVolInput.addEventListener('input', () => {
 });
 syncMasterVolUI();
 
-// ---------- Master EQ / compression ----------
-const EQ_FIELDS = [['low', 'dB'], ['mid', 'dB'], ['high', 'dB']];
-const COMP_FIELDS = [['threshold', 'dB'], ['ratio', ':1'], ['attack', 's'], ['release', 's']];
-function syncMasterFxUI() {
-  const eq = getMasterEQ(), comp = getMasterComp(), parallel = getMasterParallel();
-  for (const [key, unit] of EQ_FIELDS) {
-    document.getElementById('eq-' + key).value = eq[key];
-    document.getElementById('eq-' + key + '-val').textContent = eq[key].toFixed(1) + unit;
-  }
-  for (const [key, unit] of COMP_FIELDS) {
-    document.getElementById('comp-' + key).value = comp[key];
-    const decimals = key === 'threshold' ? 0 : (unit === ':1' ? 1 : 2);
-    document.getElementById('comp-' + key + '-val').textContent = comp[key].toFixed(decimals) + unit;
-  }
-  document.getElementById('parallel-blend').value = parallel.blend;
-  document.getElementById('parallel-blend-val').textContent = Math.round(parallel.blend * 100) + '%';
-  const sidechain = getSidechain();
-  const scBtn = document.getElementById('sidechain-toggle');
-  scBtn.textContent = sidechain.enabled ? 'On' : 'Off';
-  scBtn.setAttribute('aria-pressed', String(sidechain.enabled));
-  document.getElementById('sidechain-depth').value = sidechain.depth;
-  document.getElementById('sidechain-depth-val').textContent = Math.round(sidechain.depth * 100) + '%';
-  const crush = getMasterCrush();
-  document.getElementById('crush-amount').value = crush.amount;
-  document.getElementById('crush-amount-val').textContent = Math.round(crush.amount * 100) + '%';
-}
-for (const [key] of EQ_FIELDS) {
-  document.getElementById('eq-' + key).addEventListener('input', (e) => {
-    state.masterEQ = { ...getMasterEQ(), [key]: parseFloat(e.target.value) };
-    syncMasterFxUI();
-    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
-    autosave();
-  });
-}
-for (const [key] of COMP_FIELDS) {
-  document.getElementById('comp-' + key).addEventListener('input', (e) => {
-    state.masterComp = { ...getMasterComp(), [key]: parseFloat(e.target.value) };
-    syncMasterFxUI();
-    if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
-    autosave();
-  });
-}
-document.getElementById('parallel-blend').addEventListener('input', (e) => {
-  state.masterParallel = { blend: parseFloat(e.target.value) };
-  syncMasterFxUI();
-  if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
-  autosave();
-});
-document.getElementById('sidechain-toggle').addEventListener('click', () => {
-  state.sidechain = { ...getSidechain(), enabled: !getSidechain().enabled };
-  syncMasterFxUI();
-  autosave();
-});
-document.getElementById('sidechain-depth').addEventListener('input', (e) => {
-  state.sidechain = { ...getSidechain(), depth: parseFloat(e.target.value) };
-  syncMasterFxUI();
-  autosave();
-});
-document.getElementById('crush-amount').addEventListener('input', (e) => {
-  state.masterCrush = { amount: parseFloat(e.target.value) };
-  syncMasterFxUI();
-  applyMasterCrush(state.masterCrush.amount);
-  autosave();
-});
 document.getElementById('master-fx-toggle').addEventListener('click', () => {
   const panel = document.getElementById('master-fx-panel');
   const btn = document.getElementById('master-fx-toggle');
@@ -6115,7 +6026,6 @@ document.getElementById('master-fx-toggle').addEventListener('click', () => {
   panel.style.display = showing ? 'none' : 'flex';
   btn.setAttribute('aria-pressed', String(!showing));
 });
-syncMasterFxUI();
 
 // Collapse the whole bottom bar (Tempo/Length/Master) to a slim strip; remembered.
 const masterCollapseBtn = document.getElementById('master-collapse');
@@ -6268,7 +6178,6 @@ function createNewSong(withStarterTracks, name) {
   state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
   state.sidechain = { ...DEFAULT_SIDECHAIN };
   state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
-  syncMasterFxUI();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(state.masterCrush.amount);
   state.swing = DEFAULT_SWING;
@@ -6374,7 +6283,6 @@ function applySongData(data, name) {
   applySavedMix(data);
   state.activeTrack = state.trackList[0] ? state.trackList[0].id : 'rhythm';
   syncMasterVolUI();
-  syncMasterFxUI();
   syncGridUI();
   syncSwingUI();
   syncTimeSigUI();
