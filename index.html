@@ -268,6 +268,14 @@
   #master-track .th-vol { display: flex; align-items: center; gap: 6px; }
   #master-vol { width: 120px; cursor: pointer; accent-color: #cfcfe0; }
   #master-vol-val { color: var(--muted); font-size: 11px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  /* The master channel's own cells are selectable the way a track header is,
+     and carry the same "this one owns the inspector" outline .track.active
+     draws — one visual language for one concept. */
+  .mstrip-master-cell { cursor: pointer; border-radius: 5px; padding: 3px 6px; margin: -3px -6px; }
+  #master-track.master-selected .mstrip-master-cell {
+    background: linear-gradient(#2b2b34, #23232b);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
+  }
   .mstrip-collapsed-label { color: var(--muted); font-size: 11px; }
   #mstrip-song-name { color: var(--ink); font-weight: 700; }
   #master-track.collapsed .mstrip-body { display: none; }
@@ -526,24 +534,6 @@
   .th-fx-add-menu button:hover { background: #2c2c33; }
   .th-fx-add-menu button .glyph { width: 16px; height: 8px; }
   .th-fx-add-empty { font-size: 10px; color: var(--muted); padding: 4px 6px; }
-  .th-fx-popover {
-    position: fixed; border: 1px solid #4a4a56; border-radius: 8px; background: #1c1c22;
-    padding: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.6); min-width: 140px;
-  }
-  .th-fx-popover.bypassed { opacity: 0.55; }
-  /* Now a title bar (Pro Tools plugin-window style) rather than an inline
-     panel's in-flow heading — its own background/border-radius/border-bottom
-     frame the floating window's top edge. */
-  .th-fx-popover-head {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 10px; font-weight: 700; color: var(--muted);
-    background: #26262e; border-bottom: 1px solid #3a3a44; border-radius: 8px 8px 0 0;
-    padding: 6px 8px;
-  }
-  .th-fx-popover-head .glyph { width: 18px; height: 9px; }
-  .th-fx-popover-head-spacer { flex: 1; }
-  .th-fx-popover-fields { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 8px; }
-
   /* Insert-effect parameter knob — a pointer-driven rotary control, not a
      restyled <input type=range> (see buildKnob()). -135deg..+135deg sweep
      (270deg), CSS conic-gradient for the lit arc and a rotated pointer stick
@@ -999,7 +989,7 @@
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
         <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
         <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
-        <li>The <span class="help-ico" data-glyph="master"></span><b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: five chips that each open their own little window — a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit and a lo-fi <b>downsampler</b> — plus a live spectrum + approximate <b>LUFS</b> meter, which is always visible since it's a readout rather than a setting. A chip is dimmed while its effect is doing nothing, so you can see what's actually engaged. All on the master bus, post-FX.</li>
+        <li>The <span class="help-ico" data-glyph="master"></span><b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: five chips — a 3-band <b>EQ</b> (Lo/Mid/Hi), a <b>compressor</b> (threshold/ratio/attack/release) with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit and a lo-fi <b>downsampler</b> — plus a live spectrum + approximate <b>LUFS</b> meter, which is always visible since it's a readout rather than a setting. A chip is dimmed while its effect is doing nothing, so you can see what's actually engaged. The knobs work exactly like a track's: click the <b>Master</b> cell (or any chip) and the whole master chain appears in the inspector on the right, all five groups at once. All on the master bus, post-FX.</li>
       </ul>
 
       <h3>Transport &amp; timeline</h3>
@@ -1243,7 +1233,12 @@
             <span class="mstrip-cap">Song</span>
             <button id="song-name-display" title="Click to rename this song">Untitled Song</button>
           </div>
-          <div class="mstrip-cell">
+          <!-- The two cells that are the master *channel* rather than a song
+               setting; clicking either selects the master bus and shows its
+               effects in the inspector, the way clicking a track header does
+               (see selectMaster()). Tempo/Meter/Length/Grid/Swing deliberately
+               do not — they belong to the song, not to this channel. -->
+          <div class="mstrip-cell mstrip-master-cell" title="Master bus — click to show its effects in the inspector">
             <span class="mstrip-cap">Master</span>
             <div class="th-vol">
               <span class="mv-ico" data-glyph="wav"></span>
@@ -1251,7 +1246,7 @@
               <span id="master-vol-val" class="vol-val"></span>
             </div>
           </div>
-          <div class="mstrip-cell">
+          <div class="mstrip-cell mstrip-master-cell" title="Master bus — click to show its effects in the inspector">
             <span class="mstrip-cap">Output</span>
             <div class="vu vu-master" title="Master output level"><div class="vu-mask" id="master-vu"></div></div>
           </div>
@@ -3023,14 +3018,14 @@ function isFxBypassed(track, key) {
   return !!(state.activeFx[track] && state.activeFx[track][key] && state.activeFx[track][key].bypassed);
 }
 // Master-bus counterpart to TRACK_FX_REGISTRY, driving the same chip +
-// floating-popover shell (buildMasterFxChip/buildMasterFxPopover below) —
+// inspector-strip shell (buildMasterFxChip/buildMasterStripSection below) —
 // but master's five groups are fixed (no add/remove, no letter prefix) and
 // four of them are "neutral by default" the same way a track insert is, so
 // isMasterFxActive() below drives a dim-when-neutral display cue instead of
 // a real bypass toggle. Sidechain is the one exception: ducking is a
 // discrete on/off (state.sidechain.enabled), not a knob resting at zero, so
-// its popover gets a real On/Off toggle and its "active" check reads
-// `enabled` directly. Deliberately a separate table from TRACK_FX_REGISTRY
+// its strip section gets a real On/Off toggle where a track's bypass button
+// sits, and its "active" check reads `enabled` directly. Deliberately a separate table from TRACK_FX_REGISTRY
 // (its own MASTER_FX_FIELD_DEFAULTS below, never mixed with
 // FX_FIELD_DEFAULTS) even though a couple of entries reuse the same *icon*
 // as their per-track counterpart — that is the same "one concept, one glyph"
@@ -3178,12 +3173,6 @@ function renderFloatingLayer() {
     const top = Math.min(r.bottom + 6, window.innerHeight - ph - 8);
     popupEl.style.left = Math.max(8, left) + 'px';
     popupEl.style.top = Math.max(8, top) + 'px';
-  }
-  for (const key of masterFxPopoverOpen) {
-    const effect = MASTER_FX_REGISTRY.find((e) => e.key === key);
-    const chip = document.querySelector(`.th-master-fx-chip[data-key="${key}"]`);
-    if (!effect || !chip || !chip.getClientRects().length) continue;
-    place(chip, buildMasterFxPopover(effect));
   }
   if (fxAddMenuOpen != null) {
     const btn = document.querySelector(`.th-fx-add-btn[data-track="${fxAddMenuOpen}"]`);
@@ -3650,12 +3639,6 @@ function renderAutomationRow(track, param) {
 
 // ---------- ADSR envelope panel (tonal tracks only) ----------
 const adsrOpen = new Set(); // track ids with the envelope panel open
-// Which FX insert popovers are open, keyed by `${track}::${effectKey}` — any
-// number can be open at once, across tracks and effects (unlike
-// automationOpen/adsrOpen, which are one-per-track). Not serialized: purely
-// which panel is currently expanded — the Inserts section itself is always
-// visible now (no more show/hide toggle), only its popovers open and close.
-const masterFxPopoverOpen = new Set(); // effect keys only — one master, no track id to prefix
 // At most one "+ Add effect" menu open at a time, holding the track id it
 // belongs to (or null). A single value rather than a Set: unlike popovers,
 // which are worth comparing side by side, there is never a reason to have
@@ -3665,15 +3648,15 @@ let fxAddMenuOpen = null;
 // track id" shape as fxAddMenuOpen, since it's the exact same kind of
 // trigger-button-opens-a-floating-menu widget.
 let oscPickerOpen = null;
-// Light-dismiss for all three of the above — an outside click or Escape
-// closes whatever is open. Plain inline panels rather than <dialog>
-// elements (see buildFxPanel()), so this has to be done by hand instead of
-// getting it from the browser.
-function anyFloatingMenuOpen() { return masterFxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
-function closeAllFloatingMenus() { masterFxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
+// Light-dismiss for both of the above — an outside click or Escape closes
+// whatever is open. Plain inline panels rather than <dialog> elements (see
+// buildFxPanel()), so this has to be done by hand instead of getting it
+// from the browser.
+function anyFloatingMenuOpen() { return fxAddMenuOpen != null || oscPickerOpen != null; }
+function closeAllFloatingMenus() { fxAddMenuOpen = null; oscPickerOpen = null; }
 document.addEventListener('click', (e) => {
   if (!anyFloatingMenuOpen()) return;
-  if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu, .th-osc-trigger, .th-osc-menu')) return;
+  if (e.target.closest('.th-fx-chip, .th-fx-add, .th-fx-add-menu, .th-osc-trigger, .th-osc-menu')) return;
   closeAllFloatingMenus();
   render();
 });
@@ -4101,15 +4084,17 @@ function buildFxChip(track, effect, letter) {
   chip.appendChild(body);
   return chip;
 }
-// Master counterpart to buildFxChip — same chip/popover
-// shell and CSS classes (an extra `th-master-fx-chip` class distinguishes
-// it from a track chip for renderFloatingLayer()'s lookup below, since
-// master chips carry no data-track), but no letter, no bypass/remove
-// buttons: master's five groups are fixed, and isMasterFxActive() drives
-// the dimmed look instead of a stored bypass flag.
+// Master counterpart to buildFxChip — same chip shell and CSS classes (an
+// extra `th-master-fx-chip` class distinguishes it from a track chip, since
+// master chips carry no data-track and both use the registry key 'eq'), but
+// no letter and no bypass/remove buttons: master's five groups are fixed,
+// and isMasterFxActive() drives the dimmed look instead of a stored bypass
+// flag. Like a track chip it is status and navigation only — the knobs live
+// in the inspector column (renderMasterStrip()), one editing surface per
+// value.
 function buildMasterFxChip(effect) {
   const active = isMasterFxActive(effect);
-  const open = masterFxPopoverOpen.has(effect.key);
+  const open = stripFocus === 'master::' + effect.key;
   const chip = el('div', 'th-fx-chip th-master-fx-chip' + (!active ? ' bypassed' : '') + (open ? ' open' : ''));
   chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
@@ -4120,64 +4105,24 @@ function buildMasterFxChip(effect) {
   const label = document.createElement('span'); label.textContent = effect.label;
   body.appendChild(label);
   body.addEventListener('mousedown', (e) => e.stopPropagation());
+  // Always focus, never toggle — the same rule a track chip follows: with a
+  // note selected the strip isn't on screen, so a second click would switch
+  // off something invisible and read as a dead click.
   body.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (masterFxPopoverOpen.has(effect.key)) masterFxPopoverOpen.delete(effect.key); else masterFxPopoverOpen.add(effect.key);
-    render();
+    stripFocus = 'master::' + effect.key;
+    selectMaster();
   });
   chip.appendChild(body);
   return chip;
 }
-function buildMasterFxPopover(effect) {
-  const active = isMasterFxActive(effect);
-  // `th-master-fx-popover` is the disambiguator: a track's EQ popover and
-  // master's EQ popover both use the registry key 'eq', so anything
-  // selecting by [data-key] alone (tests, renderFloatingLayer's own lookup
-  // above) would otherwise match whichever one happens to be first in the
-  // DOM if both were open at once.
-  const pop = el('div', 'th-fx-popover th-master-fx-popover' + (!active ? ' bypassed' : ''));
-  pop.dataset.key = effect.key;
-  const head = el('div', 'th-fx-popover-head');
-  head.appendChild(glyph(effect.icon));
-  const title = document.createElement('span'); title.textContent = effect.label;
-  head.append(title, el('span', 'th-fx-popover-head-spacer'));
-  // Sidechain is the one master group with a real on/off, shown where a
-  // track chip's bypass button would sit — see MASTER_FX_REGISTRY's comment.
-  if (effect.key === 'sidechain') {
-    const sc = getSidechain();
-    const toggle = el('button', 'icon-btn');
-    toggle.type = 'button';
-    toggle.textContent = sc.enabled ? 'On' : 'Off';
-    toggle.title = sc.enabled ? 'Sidechain ducking is on — click to disable' : 'Sidechain ducking is off — click to enable';
-    toggle.setAttribute('aria-pressed', String(sc.enabled));
-    toggle.addEventListener('mousedown', (e) => e.stopPropagation());
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      effect.set({ enabled: !sc.enabled });
-      render(); autosave();
-    });
-    head.appendChild(toggle);
-  }
-  pop.appendChild(head);
-
-  const fields = el('div', 'th-fx-popover-fields');
-  const values = effect.get();
-  for (const f of effect.fields) {
-    // Unlike a track chip (whose dim state is a stored bypass flag, untouched
-    // by a knob move), a master chip's dim state is isMasterFxActive()
-    // recomputed from the live value — so, unlike buildStripSection's
-    // per-track knobs, this one has to call render() on every commit for the chip to
-    // ever reflect it without waiting on an unrelated render elsewhere.
-    fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
-      (v) => { effect.set({ [f.param]: v }); effect.apply(); renderMasterFxChips(); autosave(); },
-      MASTER_FX_FIELD_DEFAULTS[effect.key][f.param]));
-  }
-  pop.appendChild(fields);
-  return pop;
-}
 // Rebuilds the master chip row from MASTER_FX_REGISTRY every render() —
 // same "clear and rebuild" approach buildFxPanel()'s chip row already uses.
 function renderMasterFxChips() {
+  // The bus's "this one owns the inspector" state, drawn on its cells the way
+  // .track.active draws a track's. Set here rather than in render() because
+  // this is already the pass that redraws the master area.
+  masterTrackEl.classList.toggle('master-selected', masterStripOpen);
   const row = document.getElementById('master-fx-chip-row');
   if (!row) return;
   row.innerHTML = '';
@@ -5070,12 +5015,17 @@ function startLoopDrag(e, which) {
 // track's items into the new one. state.selected is left alone on purpose — it
 // carries its own track id, so it stays valid across a switch.
 function activateTrack(id) {
+  // Selecting a track deselects the master bus, and vice versa (selectMaster)
+  // — one inspector column, so exactly one of them can own it. Cleared before
+  // the early return: re-activating the track that was already active is
+  // still the click that takes the column back from master.
+  masterStripOpen = false;
   if (state.activeTrack === id) return;
   state.activeTrack = id;
   state.multiSelected.clear();
 }
 function setActive(track, forceRender) {
-  if (state.activeTrack === track) { if (forceRender) render(); return; }
+  if (state.activeTrack === track && !masterStripOpen) { if (forceRender) render(); return; }
   activateTrack(track);
   render();
 }
@@ -5567,7 +5517,21 @@ function startMoveHit(e, track, hit) {
 //
 // Which effect the strip is scrolled to, so a chip click can point at one.
 // Editor state, not song content: never serialised, cleared with the track.
+// The master bus uses the reserved id `master` here (`master::eq`), since it
+// takes the same strip and the same chip-click-focuses-it rule.
 let stripFocus = null; // `${track}::${effectKey}` | null
+// Whether the inspector is showing the master bus rather than a track.
+// Deliberately its own flag instead of state.activeTrack = 'master': every
+// nudge, paste, step-entry and pattern path reads state.activeTrack as a
+// real track id, and a sentinel there would be a track id that indexes
+// nothing. Selection stays exclusive because activateTrack() clears it.
+let masterStripOpen = false;
+function selectMaster() {
+  masterStripOpen = true;
+  state.selected = null;      // the note panel would otherwise win in renderInspector()
+  state.multiSelected.clear();
+  render();
+}
 function buildStripSection(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
   const focused = stripFocus === track + '::' + effect.key;
@@ -5597,6 +5561,88 @@ function buildStripSection(track, effect, letter) {
   }
   sec.appendChild(fields);
   return sec;
+}
+// The master bus's counterpart to buildStripSection. Same section shell, so
+// the two strips read as one idea, with master's three documented
+// differences (see MASTER_FX_REGISTRY): no letter, since lettering names a
+// position in an open-ended list and master's five are fixed; no
+// bypass/remove, since master's groups can neither be reordered nor taken
+// away; and dim-when-neutral instead of a stored bypass flag.
+function buildMasterStripSection(effect) {
+  const active = isMasterFxActive(effect);
+  const focused = stripFocus === 'master::' + effect.key;
+  const sec = el('div', 'th-strip-section insp-panel'
+    + (!active ? ' bypassed' : '') + (focused ? ' focused' : ''));
+  sec.dataset.track = 'master'; sec.dataset.key = effect.key;
+
+  const head = el('div', 'th-strip-section-head');
+  head.appendChild(glyph(effect.icon));
+  const title = el('span', 'th-strip-title'); title.textContent = effect.label;
+  head.append(title, el('span', 'th-strip-spacer'));
+  // Sidechain's ducking is a discrete on/off rather than a knob resting at
+  // zero, so it gets a real toggle — placed where a track section's bypass
+  // button sits, since it is the one thing here that answers the same
+  // question ("is this doing anything?").
+  if (effect.key === 'sidechain') {
+    const sc = getSidechain();
+    const toggle = el('button', 'icon-btn');
+    toggle.type = 'button';
+    toggle.textContent = sc.enabled ? 'On' : 'Off';
+    toggle.title = sc.enabled ? 'Sidechain ducking is on — click to disable' : 'Sidechain ducking is off — click to enable';
+    toggle.setAttribute('aria-pressed', String(sc.enabled));
+    toggle.addEventListener('mousedown', (e) => e.stopPropagation());
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      effect.set({ enabled: !sc.enabled });
+      render(); autosave();
+    });
+    head.appendChild(toggle);
+  }
+  sec.appendChild(head);
+
+  const fields = el('div', 'th-strip-fields');
+  const values = effect.get();
+  for (const f of effect.fields) {
+    fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
+      (v) => {
+        effect.set({ [f.param]: v }); effect.apply(); autosave();
+        // A track section's dim state is a stored bypass flag that a knob
+        // move cannot change; master's is isMasterFxActive() recomputed from
+        // the live value, so the chip row and this section have to be told.
+        // Both are patched in place rather than through render(), which
+        // would rebuild the very element the pointer is still dragging.
+        sec.classList.toggle('bypassed', !isMasterFxActive(effect));
+        renderMasterFxChips();
+      },
+      MASTER_FX_FIELD_DEFAULTS[effect.key][f.param]));
+  }
+  sec.appendChild(fields);
+  return sec;
+}
+function renderMasterStrip() {
+  inspector.className = 'inspector';
+  inspector.innerHTML = '';
+
+  const head = el('div', 'th-strip-head');
+  const swatch = el('div', 'th-strip-swatch');
+  swatch.style.background = '#8f8f9c'; // no track colour to borrow — master is the sum of all of them
+  const name = el('div', 'th-strip-name'); name.textContent = 'Master';
+  const kind = el('div', 'th-strip-kind'); kind.textContent = 'Bus';
+  head.append(swatch, name, el('span', 'th-strip-spacer'), kind);
+  inspector.appendChild(head);
+
+  for (const effect of MASTER_FX_REGISTRY) inspector.appendChild(buildMasterStripSection(effect));
+
+  // No "Not in use" row: master's five groups are always all shown, so
+  // there is never one waiting to be revealed. The Meter stays in the
+  // bottom bar — it is a live readout, not a setting.
+  if (stripFocus && stripFocus.startsWith('master::')) {
+    const key = stripFocus.slice('master::'.length);
+    requestAnimationFrame(() => {
+      const sec = inspector.querySelector(`.th-strip-section[data-key="${key}"]`);
+      if (sec) sec.scrollIntoView({ block: 'nearest' });
+    });
+  }
 }
 function renderTrackStrip(track) {
   inspector.className = 'inspector';
@@ -5673,6 +5719,12 @@ function renderInspector() {
     // strip must not resurrect it just because a track happens to be active —
     // there, it opens only when a chip is tapped (which sets stripFocus).
     const wide = !window.matchMedia('(max-width: 760px)').matches;
+    // The master bus takes the same strip under the same rule. Checked first
+    // because selecting it clears the track selection's claim on the column.
+    if (masterStripOpen && (wide || (stripFocus && stripFocus.startsWith('master::')))) {
+      renderMasterStrip();
+      return;
+    }
     const strip = state.activeTrack && trackOf(state.activeTrack)
       && (wide || (stripFocus && stripFocus.startsWith(state.activeTrack + '::')));
     if (strip) { renderTrackStrip(state.activeTrack); return; }
@@ -6174,7 +6226,20 @@ document.getElementById('master-fx-toggle').addEventListener('click', () => {
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'flex';
   btn.setAttribute('aria-pressed', String(!showing));
+  // Opening the chip row also hands the inspector to the master bus, so the
+  // knobs those chips point at are already on screen. Closing it doesn't take
+  // the column back — nothing else asked for it, and the strip is where the
+  // editing happens.
+  if (!showing) selectMaster();
 });
+
+// Clicking the master channel's own cells selects the bus, the same gesture
+// that selects a track by clicking its header. The volume slider inside one
+// of them keeps working: a drag there selects the master too, which is what
+// clicking a track's volume slider already does.
+for (const cell of document.querySelectorAll('.mstrip-master-cell')) {
+  cell.addEventListener('click', () => selectMaster());
+}
 
 // Collapse the whole bottom bar (Tempo/Length/Master) to a slim strip; remembered.
 const masterCollapseBtn = document.getElementById('master-collapse');

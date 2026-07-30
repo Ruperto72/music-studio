@@ -165,13 +165,15 @@ name/M/S/R/VU — a slim overview strip so many tracks fit on screen;
 **expanded** (▾) shows everything. Collapse state is per-browser
 (`localStorage`, keyed by track id), not part of the saved song.
 
-**Floating menus (shared mechanism).** The waveform listbox, the Inserts
-**+** menu (`buildFloatingAddMenu()`) and the master FX popovers (A.10) are
-all built into one `#floating-layer` by `renderFloatingLayer()`, which runs
-after `renderTracks()` and rebuilds the layer from scratch each frame — it
-locates each popup's trigger by `data-track`/`data-key` in the just-rebuilt
-DOM and anchors the popup 6px under it, `position: fixed`, clamped away from
-the viewport edges. They live at `document.body` level for one concrete
+**Floating menus (shared mechanism).** The waveform listbox and the Inserts
+**+** menu (`buildFloatingAddMenu()`) are both built into one
+`#floating-layer` by `renderFloatingLayer()`, which runs after
+`renderTracks()` and rebuilds the layer from scratch each frame — it locates
+each popup's trigger by `data-track`/`data-key` in the just-rebuilt DOM and
+anchors the popup 6px under it, `position: fixed`, clamped away from the
+viewport edges. Only menus live here now: master's FX popovers used it too
+until master moved to the inspector strip (A.10), and nothing in the app
+floats a set of knobs any more. They live at `document.body` level for one concrete
 reason: `.daw`'s `overflow-x: auto` computes `overflow-y: auto` too, so
 anything nested inside it that extends past its box is **clipped**, and no
 z-index can undo an ancestor's overflow clip. The `+` menu used to render
@@ -281,9 +283,10 @@ Seeing EQ and Compressor at once is the thing neither the popover nor a
 taller header gave you, and it is how mixing decisions get made.
 
 There is deliberately **one** editing surface per value: the per-insert
-popover was retired rather than kept alongside the strip. Master FX keeps
-its own chips and popovers (A.10) — five fixed groups in a strip of their
-own — and the `.th-fx-popover*` CSS with them.
+popover was retired rather than kept alongside the strip. The master bus
+now follows the same rule and shares the same column (A.10), so the
+floating FX popover — and its `.th-fx-popover*` CSS — is gone from the app
+entirely.
 
 Available on every track, tonal or rhythm alike. Six groups, listed here in
 `TRACK_FX_REGISTRY` order — which is the order the panel renders them in,
@@ -454,12 +457,12 @@ way but is only editable when there's room for the "click to rename"
 affordance. (Adding/removing tracks is a menu action, not part of this
 strip — see A.3.)
 
-The **Master FX** toggle opens that panel, which is a row of five **chips**
-that each open a floating popover of knobs (`renderMasterFxChips()`,
-`buildMasterFxChip()`/`buildMasterFxPopover()`, anchored by the same
-`renderFloatingLayer()` machinery as A.4's menus) — the same outer shell as a
-track's insert chip, so master reads like every other channel instead of the
-flat always-expanded row of bare sliders it was before:
+The **Master FX** toggle opens that panel: a row of five **chips**
+(`renderMasterFxChips()`/`buildMasterFxChip()`) that work exactly like a
+track's insert chips — status and navigation, no knobs. Clicking one hands
+the **inspector column** to the master bus, which then shows all five groups
+at once (`renderMasterStrip()`/`buildMasterStripSection()`), the same strip a
+track gets:
 
 - **EQ**: 3-band (Lo shelf ~200Hz, Mid peak ~1kHz, Hi shelf ~4kHz, ±12dB).
 - **Comp**: a `DynamicsCompressorNode` (threshold, ratio, attack, release).
@@ -474,17 +477,39 @@ flat always-expanded row of bare sliders it was before:
   chip** — it's a readout, not a setting, so it sits beside the chip row and
   is simply visible whenever the panel is open.
 
-Two deliberate differences from a track's chips, because master's effect set
-isn't the same kind of thing. They are **fixed**: master always has exactly
-these five, so there is no **+** menu, no ✕ remove and no A/B/C letter —
-lettering was about insert *order* in an open-ended list. And instead of a
-bypass toggle they **dim when neutral** (`isMasterFxActive()`, computed fresh
-each render against `MASTER_FX_FIELD_DEFAULTS`, never stored): EQ, Comp, Par
-Comp and Downsample are already neutral-by-default, so a bypass button would
-add nothing that turning the knobs back down doesn't already do. **Sidechain
-is the one exception** — its ducking is a discrete on/off rather than a knob
-resting at zero, so it keeps a real On/Off button in its popover head, where
-a track chip's bypass would sit.
+**Selecting the bus.** The master bar is mostly *song* settings (Tempo,
+Meter, Length, Grid, Swing), so it is not selectable as a whole — only the
+two cells that are the master *channel*, **Master** (volume) and **Output**
+(VU), plus the Master FX button and its chips. Those carry the same
+selected outline `.track.active` draws on a track header. Selection is
+exclusive in both directions: `selectMaster()` clears the note selection,
+and `activateTrack()` clears the master's — one column, one owner. It is a
+separate `masterStripOpen` flag rather than `state.activeTrack = 'master'`,
+because every nudge, paste, step-entry and pattern path reads
+`state.activeTrack` as a real track id and a sentinel there would be an id
+that indexes nothing.
+
+Three deliberate differences from a track's chips and sections, because
+master's effect set isn't the same kind of thing. They are **fixed**: master
+always has exactly these five, so there is no **+** menu, no ✕ remove, no
+A/B/C letter (lettering names a position in an open-ended list) and no "Not
+in use" row — there is never a group waiting to be revealed. Instead of a
+bypass toggle they **dim when neutral** (`isMasterFxActive()`, computed
+fresh against `MASTER_FX_FIELD_DEFAULTS`, never stored): EQ, Comp, Par Comp
+and Downsample are already neutral-by-default, so a bypass button would add
+nothing that turning the knobs back down doesn't already do. **Sidechain is
+the one exception** — its ducking is a discrete on/off rather than a knob
+resting at zero, so it keeps a real On/Off button in its section head, where
+a track's bypass sits.
+
+That dim state is also why master's knobs commit differently. A track
+section's dim is a stored bypass flag that a knob move cannot change; the
+master's is recomputed from the live value, so a commit has to refresh the
+chip row and the section's own class. Both are patched **in place** rather
+than through `render()` — a full render would rebuild the very element the
+pointer is still dragging, and (as `verify.js` pins) would drop keyboard
+focus off the dial, letting the next arrow key fall through to nudging
+notes.
 
 The five come from `MASTER_FX_REGISTRY`, a table parallel to
 `TRACK_FX_REGISTRY` (B.6) but deliberately separate — despite sharing a
@@ -971,10 +996,9 @@ render()
  │    ├─ renderAutomationRow(id, param)   if automationOpen.has(id)
  │    └─ renderAdsrRow(id)                if adsrOpen.has(id)
  ├─ renderMasterFxChips() → the master strip's five chips (A.10)
- ├─ renderFloatingLayer() → #floating-layer: open master popovers, the
- │                          "+" menu, the waveform listbox — anchored to
- │                          triggers in the DOM renderTracks() just built,
- │                          so it must run after it
+ ├─ renderFloatingLayer() → #floating-layer: the "+" menu and the waveform
+ │                          listbox — anchored to triggers in the DOM that
+ │                          renderTracks() just built, so it runs after it
  ├─ positionOverlays()    → updateOverlayHeights(), updatePlayheadPositions(),
  │                          updateLoopPositions(), updateHScroll()
  ├─ renderInspector()     → the selected note/hit, or the active track's
@@ -1003,8 +1027,8 @@ nor rebuilt incrementally: `renderFloatingLayer()` clears and refills it each
 frame, like `renderTracks()` does for `#tracks` and unlike `createOverlays()`'s
 build-once-then-reposition pattern. The distinction is that the playhead and
 loop chrome are always exactly one of each, while the floating layer's
-contents vary in count — any number of master popovers, at most one add menu,
-at most one waveform listbox.
+contents vary in count — at most one add menu, at most one waveform
+listbox, and often neither.
 
 Two independent `requestAnimationFrame` loops run during playback:
 `animatePlayhead()` (repositions the playhead and updates the Bars|Beats

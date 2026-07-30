@@ -81,7 +81,9 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   send over time
 - **Master bus**: 3-band EQ, compressor with a parallel ("New York") blend,
   kick/snare **sidechain** ducking, a lo-fi downsampler, and a live spectrum
-  plus approximate LUFS meter
+  plus approximate LUFS meter. It behaves like any other channel — click the
+  **Master** cell in the bottom bar (or one of its chips) and the whole
+  master chain opens in the same inspector column a track's effects use
 
 ### Saving & exporting
 
