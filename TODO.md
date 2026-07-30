@@ -90,6 +90,23 @@ hur roligt det vore att bygga.
   har specarna och planerna, så materialet finns — det är
   arkitekturdokumenten som halkat efter.
 
+## Kvalitet
+
+- [ ] **`verify.js` hängde en gång i Duty-steget och gick inte att
+  reproducera.** Loggen stod stilla i 25 minuter mitt i `'Duty: a square
+  track has its own default…'` medan processen levde; ingen timeout slog
+  till, eftersom `waitFor()` i det steget saknar en. Stegets egna moment
+  kördes sedan för hand och fungerade alla (Env-knappen hittas,
+  `.adsr-select` dyker upp, pennklicket placerar en not, inspektorn visar
+  den) och en omkörning på identisk kod gav 50/50 grönt — så det var inte
+  koden under test. Misstanke: `Page.addScriptToEvaluateOnNewDocument`
+  staplar på sig, så vid steg 37 ligger ett tiotal prototyp-patchar
+  (`createPeriodicWave`, `createGain`, `startRendering`, `AudioParam`) i
+  varje ny sida, och någon kombination låser sig ibland. Två saker som
+  skulle göra det billigare nästa gång: en timeout på `waitFor()` så en
+  hängning blir ett *fel* med stegnamn i stället för tystnad, och att
+  avregistrera patcharna när steget som behövde dem är klart.
+
 ## Småsaker
 
 - [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en
