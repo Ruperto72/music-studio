@@ -66,7 +66,13 @@ that point is at `(517, 261)` — `document.elementFromPoint` there returns
 `.inspector`, not the lane. The control case proves it is not light-dismiss:
 **the same click with no popover open also places no note** (`0 -> 0`).
 
-- [ ] **Step 1: Pick a point that is verified to be over the lane**
+- [x] **Step 1: Pick a point that is verified to be over the lane** — done
+  in 923ebe6. The bound turned out to be `.daw`, not the viewport: clamping
+  to `innerWidth` first *still* failed, but by then the new assertion said
+  why — `it hits "inspector empty" at (517, 261); lane right 1341 in
+  viewport 780`. The lane's rect is unclipped, so it reaches out under the
+  inspector; the visible grid is bounded by `.daw`, and on the left by
+  `--header-w + --gutter-w` of sticky header and gutter.
 
 Before dispatching, assert the target: compute the point, call
 `document.elementFromPoint(x, y)`, and require it to be inside the intended
@@ -78,16 +84,25 @@ Choose the point from the lane's *visible* intersection with the viewport
 rather than a fixed `+200/+60` offset, e.g. clamp to
 `min(lane.right, innerWidth) - margin`.
 
-- [ ] **Step 2: Re-run and confirm the step passes**
+- [x] **Step 2: Re-run and confirm the step passes** — `node verify.js`,
+  **46/46, no console errors**, and the second assertion is reached.
 
-`node verify.js` — the step must pass, and the second assertion (the outside
-click also dismissed the popover) must be *reached*, not skipped.
+- [x] **Step 3: Confirm it still catches the bug it was written for** —
+  done as a *targeted* reproduction rather than a full suite run: with the
+  light-dismiss handler moved back to `pointerdown`, every other interaction
+  step waits out its own timeout and the run never finishes. The scratch
+  script opens the EQ popover, computes the same aim, and lands one trusted
+  click:
 
-- [ ] **Step 3: Confirm it still catches the bug it was written for**
+  | | aim | hit | notes |
+  |---|---|---|---|
+  | clean | (477, 261) | `cell beat black` | 0 → **1**, click landed |
+  | `pointerdown` regression | (477, 261) | `cell beat black` | 0 → **0**, click eaten |
 
-Re-introduce the original regression (rebuild the DOM on `pointerdown` in the
-light-dismiss handler) and confirm the step fails. A geometry fix that also
-disarmed the assertion would be worse than the broken step.
+  Same coordinate, same verified target, opposite outcome — so the geometry
+  fix did not disarm the assertion. In the injected run the popover *was*
+  dismissed, which is the mechanism: `pointerdown` rebuilt the DOM and
+  detached the click's real target before `click` fired.
 
 ---
 
