@@ -2917,6 +2917,45 @@ async function main() {
       }
     });
 
+    step('Track header: no two chips draw the same glyph', async () => {
+      // Icon-only chips make a shared glyph a real defect: the three sends
+      // used to draw one 'send' arrow between them, so D/E/F were three
+      // identical pills distinguished only by their letter. Compares the
+      // actual path geometry rather than a name, so pointing two registry
+      // entries at different keys holding the same art still fails.
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
+      const dupes = await cdp.evaluate(`(() => {
+        const chips = [...document.querySelectorAll('.track')[0].querySelectorAll('.th-fx-chip')];
+        const seen = new Map();
+        const out = [];
+        for (const c of chips) {
+          const d = [...c.querySelectorAll('svg.glyph path')].map(p => p.getAttribute('d')).join('|');
+          if (!d) { out.push([c.dataset.key, 'no glyph at all']); continue; }
+          if (seen.has(d)) out.push([c.dataset.key, 'same glyph as ' + seen.get(d)]);
+          else seen.set(d, c.dataset.key);
+        }
+        return { dupes: out, n: chips.length };
+      })()`);
+      if (dupes.n !== 7) throw new Error(`expected seven chips, got ${dupes.n}`);
+      if (dupes.dupes.length) throw new Error(`every chip needs its own glyph: ${JSON.stringify(dupes.dupes)}`);
+
+      // Master's five groups are icon+label rather than icon-only, but two
+      // identical icons there were just as unhelpful (Comp and Par Comp).
+      await cdp.evaluate(`document.querySelector('#master-fx-toggle').click()`);
+      await waitFor(`document.querySelectorAll('.th-master-fx-chip').length > 0`);
+      const masterDupes = await cdp.evaluate(`(() => {
+        const seen = new Map(); const out = [];
+        for (const c of document.querySelectorAll('.th-master-fx-chip')) {
+          const d = [...c.querySelectorAll('svg.glyph path')].map(p => p.getAttribute('d')).join('|');
+          if (seen.has(d)) out.push([c.dataset.key, 'same glyph as ' + seen.get(d)]); else seen.set(d, c.dataset.key);
+        }
+        return out;
+      })()`);
+      if (masterDupes.length) throw new Error(`master chips need their own glyphs too: ${JSON.stringify(masterDupes)}`);
+    });
+
     step('Track header: the chip row stays compact with every effect in use', async () => {
       // The whole point of moving editing into the strip: a chip is a letter
       // and an icon, so seven of them wrap onto two short lines instead of

@@ -1433,7 +1433,7 @@ const GLYPHS = {
   // controls. A curve stays legible at any size.
   eq:       ['M1 9.5 C5 9.5 6 1.5 12 1.5 C18 1.5 19 9.5 23 9.5'],
   comp:     ['M1 2 L23 5', 'M1 10 L23 7'],                                // dynamic range squeezed into a wedge
-  send:     ['M1 6 h14', 'M11 2 l4 4 l-4 4'],                             // signal tapped off to a shared bus
+  parcomp:  ['M1 3 h7 c4 0 4 3 8 3 h7', 'M1 9 h7 c4 0 4 -3 8 -3'],         // two paths — dry and compressed — blended into one
   // Envelope stages, drawn as one consistent family so they read together:
   // steeper/shallower rises and falls, ending at different heights.
   attack:    ['M2 10 L20 2'],                                             // steep rise
@@ -2933,21 +2933,21 @@ const TRACK_FX_REGISTRY = [
     // dataKey rather than key so the three merge into one object instead of
     // each overwriting the last, and verify.js's auditBundledSongs() groups
     // the same way when reading this table's source text.
-    key: 'sendDelay', dataKey: 'fxSend', label: 'Delay', icon: 'send',
+    key: 'sendDelay', dataKey: 'fxSend', label: 'Delay', icon: 'echo',
     get: getFxSend, set: setFxSend, apply: applyFxSend,
     fields: [
       { param: 'delay', label: 'Delay', title: 'Continuous send to a shared tempo-synced delay — independent of the per-note Echo flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
     ],
   },
   {
-    key: 'sendChorus', dataKey: 'fxSend', label: 'Chorus', icon: 'send',
+    key: 'sendChorus', dataKey: 'fxSend', label: 'Chorus', icon: 'chorus',
     get: getFxSend, set: setFxSend, apply: applyFxSend,
     fields: [
       { param: 'chorus', label: 'Chorus', title: 'Continuous send to a shared modulated chorus effect — independent of the per-note Chorus flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
     ],
   },
   {
-    key: 'sendReverb', dataKey: 'fxSend', label: 'Reverb', icon: 'send',
+    key: 'sendReverb', dataKey: 'fxSend', label: 'Reverb', icon: 'reverb',
     get: getFxSend, set: setFxSend, apply: applyFxSend,
     fields: [
       { param: 'reverb', label: 'Reverb', title: 'Continuous send to a shared convolver reverb — independent of the per-note Reverb flag', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true, optional: true, default: 0 },
@@ -3033,8 +3033,11 @@ function isFxBypassed(track, key) {
 // `enabled` directly. Deliberately a separate table from TRACK_FX_REGISTRY
 // (its own MASTER_FX_FIELD_DEFAULTS below, never mixed with
 // FX_FIELD_DEFAULTS) even though a couple of entries reuse the same *icon*
-// as their per-track counterpart — same precedent as the three per-track
-// sends sharing one 'send' icon.
+// as their per-track counterpart — that is the same "one concept, one glyph"
+// rule the per-note flags and per-track controls already follow (see GLYPHS).
+// No two entries in either registry share a glyph with each other: once the
+// FX panel became a row of icon-only chips, two identical icons meant two
+// chips a user cannot tell apart.
 const MASTER_FX_REGISTRY = [
   {
     key: 'eq', label: 'EQ', icon: 'eq',
@@ -3060,7 +3063,7 @@ const MASTER_FX_REGISTRY = [
     ],
   },
   {
-    key: 'parcomp', label: 'Par Comp', icon: 'comp',
+    key: 'parcomp', label: 'Par Comp', icon: 'parcomp',
     get: getMasterParallel,
     set: (patch) => { state.masterParallel = { ...getMasterParallel(), ...patch }; },
     apply: () => { if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel()); },
