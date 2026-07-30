@@ -74,15 +74,12 @@ that point is at `(517, 261)` — `document.elementFromPoint` there returns
   inspector; the visible grid is bounded by `.daw`, and on the left by
   `--header-w + --gutter-w` of sticky header and gutter.
 
-Before dispatching, assert the target: compute the point, call
-`document.elementFromPoint(x, y)`, and require it to be inside the intended
-`.lane` (`el.closest('.lane') === lane`). If it is not, fail with the element
-that was hit and both rects — a silent mis-aim is what made this step look
-like an app bug for a day.
-
-Choose the point from the lane's *visible* intersection with the viewport
-rather than a fixed `+200/+60` offset, e.g. clamp to
-`min(lane.right, innerWidth) - margin`.
+As shipped: the point comes from the lane's intersection with **`.daw`**
+(not the viewport — see above), pushed in past the sticky header and gutter
+on the left, and is then verified with `document.elementFromPoint(x, y)`
+before a single event is dispatched, requiring `el.closest('.lane') ===
+lane`. A failed aim reports the element that was hit plus both rects — a
+silent mis-aim is what made this step look like an app bug for a day.
 
 - [x] **Step 2: Re-run and confirm the step passes** — `node verify.js`,
   **46/46, no console errors**, and the second assertion is reached.
