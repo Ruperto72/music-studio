@@ -483,7 +483,28 @@ two cells that are the master *channel*, **Master** (volume) and **Output**
 (VU), plus the Master FX button and its chips. Those carry the same
 selected outline `.track.active` draws on a track header. Selection is
 exclusive in both directions: `selectMaster()` clears the note selection,
-and `activateTrack()` clears the master's — one column, one owner. It is a
+and `activateTrack()` clears the master's — one column, one owner. Each
+also drops a `stripFocus` belonging to the other (`dropStripFocusUnless()`),
+since on the narrow layout the strip opens only for whoever that names — a
+leftover `lead::eq` left the master cells drawn as selected while the
+inspector went on showing Lead's chain.
+
+The **volume slider inside the Master cell is exempt**, matching a track:
+`buildHeader()`'s slider stops the header's own mousedown, so dragging a
+track's fader doesn't activate that track. Without the same exemption here,
+nudging the master fader would select the bus and throw away the note the
+user had selected. The guard matches any nested `input`/`button`/`select`
+rather than `#master-vol` by name, so a control added to these cells later
+inherits it.
+
+The cells are a **pointer convenience, not the only path**: they wrap a
+slider and a meter, so making them a `role="button"` would nest a focusable
+control inside a button. The keyboard path is the Master FX button — a real
+`<button>` in the tab order that selects the bus on both edges of its
+toggle, so Tab-and-Enter reaches the same state whichever way the panel was
+sitting. `selectMaster()` announces itself into `#a11y-status`, since the
+column that changed owner is nowhere near the control that was used and, on
+the keyboard path, focus doesn't move at all. It is a
 separate `masterStripOpen` flag rather than `state.activeTrack = 'master'`,
 because every nudge, paste, step-entry and pattern path reads
 `state.activeTrack` as a real track id and a sentinel there would be an id

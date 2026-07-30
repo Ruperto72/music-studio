@@ -3169,6 +3169,74 @@ async function main() {
       }
     });
 
+    step('Master FX: the master volume slider does not steal the selection', async () => {
+      // A track's volume slider deliberately does NOT activate its track (it
+      // stops the header's own mousedown), so master's must not either — or
+      // nudging the master fader throws away whatever the inspector was
+      // showing, note selection included.
+      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      await cdp.evaluate(`document.querySelector('#master-vol').click()`);
+      if (await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`)) {
+        throw new Error('clicking the master volume slider handed the inspector to the master bus');
+      }
+      if (await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+        throw new Error('the master volume slider must not mark the bus selected — only the cell around it does');
+      }
+      // The cell itself still does, which is the whole point of the gesture.
+      await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
+      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+    });
+
+    step('Master FX: selecting master drops a track-scoped strip focus', async () => {
+      // This bug only exists on the <=760px layout, where the strip opens
+      // *only* for whoever stripFocus names. On a wide viewport both owners
+      // render regardless and it leaves no trace in the DOM — which is how
+      // two earlier drafts of this step passed against the unfixed code.
+      //
+      // The setup has to happen wide, though: on the narrow layout the only
+      // way to give a track a strip focus is to tap one of its header chips,
+      // and a freshly loaded track has no effect in use, so it has no chip
+      // yet. So: reveal one wide, then narrow, then tap it.
+      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`!!document.querySelector('.inspector .th-strip-add button')`);
+      await cdp.evaluate(`document.querySelector('.inspector .th-strip-add button').click()`);
+      await waitFor(`!!document.querySelector('.th-fx-chip[data-track] .th-fx-chip-body')`);
+      const chipTrack = await cdp.evaluate(`document.querySelector('.th-fx-chip[data-track]').dataset.track`);
+
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 700, height: 900, deviceScaleFactor: 1, mobile: false,
+      });
+      try {
+        await cdp.evaluate(`document.querySelector('.th-fx-chip[data-track="${chipTrack}"] .th-fx-chip-body').click()`);
+        await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"]')`);
+
+        await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
+        // The bug: masterStripOpen is set and the cells draw as selected, but
+        // renderInspector() falls through to the track branch, because the
+        // stale `<track>::<fx>` focus still satisfies it — so the sheet goes
+        // on showing the track's chain under a master-selected bottom bar.
+        const marked = await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`);
+        const showsTrack = await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"]')`);
+        if (marked && showsTrack) {
+          throw new Error("the master cells read as selected while the inspector still showed the previous track's strip");
+        }
+        if (!marked) throw new Error('clicking the Master cell should mark the bus selected on the narrow layout too');
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+        // Put the track back the way this step found it — later steps and
+        // songs share this page load.
+        await cdp.evaluate(`(() => {
+          const c = document.querySelector('.th-fx-chip[data-track="${chipTrack}"] .th-fx-chip-body');
+          if (c) c.click();
+        })()`);
+        await cdp.evaluate(`(() => {
+          const rm = document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"] .th-fx-chip-remove');
+          if (rm) rm.click();
+        })()`);
+      }
+    });
+
     step('Master FX: EQ knob updates state and un-dims its chip', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
       await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`);
