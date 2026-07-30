@@ -488,7 +488,7 @@
   .th-fx-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
   .th-fx-chip {
     display: inline-flex; align-items: center; gap: 3px;
-    background: #26262e; border: 1px solid #3a3a44; border-radius: 12px; padding: 2px 3px 2px 8px;
+    background: #26262e; border: 1px solid #3a3a44; border-radius: 12px; padding: 2px 7px;
   }
   .th-fx-chip.open { border-color: #7a4fd1; box-shadow: 0 0 6px rgba(122,79,209,0.35); }
   .th-fx-chip.bypassed { opacity: 0.55; }
@@ -776,6 +776,35 @@
     display: flex; flex-direction: column; gap: 6px;
   }
   .insp-cap { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; }
+
+  /* ---- Track strip: what the inspector column shows when no note is
+     selected. Deliberately the same visual language as a note's .insp-panel
+     (dark inset card, tiny uppercase caption) rather than the floating
+     popover's title-bar look — this is in-flow panel content, not a window.
+     The knobs inside are the same .th-knob widget the popovers used. ---- */
+  .th-strip-head { display: flex; align-items: center; gap: 7px; padding: 0 2px 2px; }
+  .th-strip-swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+  .th-strip-name { font-size: 12px; font-weight: 700; }
+  .th-strip-kind { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; }
+  .th-strip-section { display: flex; flex-direction: column; gap: 6px; }
+  .th-strip-section.bypassed { opacity: 0.55; }
+  .th-strip-section.focused { outline: 1px solid #7a4fd1; outline-offset: 2px; border-radius: 6px; }
+  .th-strip-section-head { display: flex; align-items: center; gap: 6px; }
+  .th-strip-section-head .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
+  .th-strip-letter { color: #6f6f7a; font-weight: 700; font-size: 10px; }
+  .th-strip-title { font-size: 10px; font-weight: 700; color: var(--ink); }
+  .th-strip-spacer { flex: 1; }
+  .th-strip-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+  .th-strip-empty { font-size: 11px; color: var(--muted); padding: 2px; }
+  .th-strip-add { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .th-strip-add-cap { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; width: 100%; }
+  .th-strip-add button {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #1a1a20; color: var(--muted); border: 1px dashed #3a3a44; border-radius: 12px;
+    font-size: 10px; font-weight: 700; padding: 3px 8px; cursor: pointer;
+  }
+  .th-strip-add button:hover { border-color: #6a6a76; color: var(--ink); border-style: solid; }
+  .th-strip-add button .glyph { width: 16px; height: 8px; }
   .insp-head { display: flex; align-items: center; gap: 8px; }
   .insp-badge { font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: 4px; color: #04140a; }
   .insp-note {
@@ -2976,7 +3005,19 @@ function isEffectDefault(track, effect) {
 // activeFx at all, only isFxBypassed() below does).
 function visibleFxFor(track) {
   return trackFxFor(track).filter((effect) =>
-    (state.activeFx[track] && effect.key in state.activeFx[track]) || !isEffectDefault(track, effect));
+    (state.activeFx[track] && effect.key in state.activeFx[track])
+    || !isEffectDefault(track, effect)
+    // A send whose level is drawn as a curve is audibly doing something even
+    // with its knob at 0, so it has to show. Without this the Automation
+    // dropdown happily offers Delay on a track whose panel shows no Delay
+    // chip, and the curve plays with nothing on screen to explain it.
+    || fxHasAutomation(track, effect.key));
+}
+function clearFxAutomation(track, effectKey) {
+  const param = FX_AUTOMATION_PARAM[effectKey];
+  if (!param || !state.automation[track]) return;
+  delete state.automation[track][param];
+  if (!Object.keys(state.automation[track]).length) delete state.automation[track];
 }
 function isFxBypassed(track, key) {
   return !!(state.activeFx[track] && state.activeFx[track][key] && state.activeFx[track][key].bypassed);
@@ -3063,9 +3104,9 @@ function isMasterFxActive(effect) {
 }
 // Bypass-aware value for whatever WRITES a value into the Web Audio graph —
 // both a channel's creation-time initial values and every apply*() function
-// below. Never used by the UI: a popover's knob always shows the real
+// below. Never used by the UI: a strip knob always shows the real
 // dialled-in value via the plain getTrackX() getters, bypassed or not — see
-// TRACK_FX_REGISTRY/buildFxPopover(). One helper rather than gating each of
+// TRACK_FX_REGISTRY/buildStripSection(). One helper rather than gating each of
 // the ten call sites by hand, so "what does a bypassed effect actually send
 // to the graph" has exactly one answer.
 function fxEffective(track, key, rawGetter, DEFAULT) {
@@ -3134,21 +3175,6 @@ function renderFloatingLayer() {
     const top = Math.min(r.bottom + 6, window.innerHeight - ph - 8);
     popupEl.style.left = Math.max(8, left) + 'px';
     popupEl.style.top = Math.max(8, top) + 'px';
-  }
-  for (const key of fxPopoverOpen) {
-    const sep = key.indexOf('::');
-    const track = key.slice(0, sep), effectKey = key.slice(sep + 2);
-    const effect = TRACK_FX_REGISTRY.find((e) => e.key === effectKey);
-    const chip = document.querySelector(`.th-fx-chip[data-track="${track}"][data-key="${effectKey}"]`);
-    // A collapsed track hides its .th-fx-panel via `display: none` rather
-    // than removing it, so the chip can still be found here — but a hidden
-    // element's getBoundingClientRect() is all zeros, which place() would
-    // clamp to the viewport's top-left corner, stranding the popover there
-    // with no visible anchor. getClientRects().length is 0 for anything not
-    // actually rendered (display:none or detached), so treat that the same
-    // as "trigger removed since this popover was opened".
-    if (!effect || !chip || !chip.getClientRects().length) continue;
-    place(chip, buildFxPopover(track, effect));
   }
   for (const key of masterFxPopoverOpen) {
     const effect = MASTER_FX_REGISTRY.find((e) => e.key === key);
@@ -3374,7 +3400,7 @@ function removeTrack(id) {
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
   if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
-  for (const k of [...fxPopoverOpen]) if (k.startsWith(id + '::')) fxPopoverOpen.delete(k);
+  if (stripFocus && stripFocus.startsWith(id + '::')) stripFocus = null;
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   if (oscPickerOpen === id) oscPickerOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
@@ -3436,6 +3462,18 @@ const AUTOMATION_H = 60;
 const AUTOMATION_RANGE = { gain: { min: 0, max: 2 }, pan: { min: -1, max: 1 }, delay: { min: 0, max: 1 }, chorus: { min: 0, max: 1 }, reverb: { min: 0, max: 1 } };
 const AUTOMATION_LABEL = { gain: 'Volume', pan: 'Pan', delay: 'Delay', chorus: 'Chorus', reverb: 'Reverb' };
 const AUTOMATION_PARAMS = ['gain', 'pan', 'delay', 'chorus', 'reverb']; // dropdown order; single source of truth, reused by applySavedMix()
+// The three sends are the only TRACK_FX_REGISTRY entries with an automatable
+// parameter — everything else is an insert whose knobs have no curve, and
+// per-track Vibrato could not have one even in principle (it is threaded into
+// each note at schedule time, not a node downstream). Two places need to know
+// that: visibleFxFor(), so an automated send shows its chip, and
+// removeFxChip(), so removing one takes its curve with it.
+const FX_AUTOMATION_PARAM = { sendDelay: 'delay', sendChorus: 'chorus', sendReverb: 'reverb' };
+function fxHasAutomation(track, effectKey) {
+  const param = FX_AUTOMATION_PARAM[effectKey];
+  const pts = param && state.automation[track] && state.automation[track][param];
+  return !!(pts && pts.length);
+}
 // Per-param value formatting for the axis min/max labels and each point's
 // hover tooltip — replaces what used to be a `param === 'gain' ? ... : ...`
 // ternary back when gain/pan were the only two params.
@@ -3614,7 +3652,6 @@ const adsrOpen = new Set(); // track ids with the envelope panel open
 // automationOpen/adsrOpen, which are one-per-track). Not serialized: purely
 // which panel is currently expanded — the Inserts section itself is always
 // visible now (no more show/hide toggle), only its popovers open and close.
-const fxPopoverOpen = new Set();
 const masterFxPopoverOpen = new Set(); // effect keys only — one master, no track id to prefix
 // At most one "+ Add effect" menu open at a time, holding the track id it
 // belongs to (or null). A single value rather than a Set: unlike popovers,
@@ -3629,8 +3666,8 @@ let oscPickerOpen = null;
 // closes whatever is open. Plain inline panels rather than <dialog>
 // elements (see buildFxPanel()), so this has to be done by hand instead of
 // getting it from the browser.
-function anyFloatingMenuOpen() { return fxPopoverOpen.size > 0 || masterFxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
-function closeAllFloatingMenus() { fxPopoverOpen.clear(); masterFxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
+function anyFloatingMenuOpen() { return masterFxPopoverOpen.size > 0 || fxAddMenuOpen != null || oscPickerOpen != null; }
+function closeAllFloatingMenus() { masterFxPopoverOpen.clear(); fxAddMenuOpen = null; oscPickerOpen = null; }
 document.addEventListener('click', (e) => {
   if (!anyFloatingMenuOpen()) return;
   if (e.target.closest('.th-fx-popover, .th-fx-chip, .th-fx-add, .th-fx-add-menu, .th-osc-trigger, .th-osc-menu')) return;
@@ -4006,21 +4043,25 @@ function buildFxRemoveButton(track, effect) {
 // Resets one effect's own fields to default via set() — which merges, so the
 // three send entries sharing state.fxSend[track] only patch their own field
 // rather than wiping the other two sends — and drops it from
-// activeFx/fxPopoverOpen, so it disappears from the panel exactly like it
+// activeFx/stripFocus, so it disappears from the panel exactly like it
 // was never added and stops contributing anything audible.
 function removeFxChip(track, effect) {
   effect.set(track, FX_FIELD_DEFAULTS[effect.key]);
+  // Take the curve with it. Removal is not bypass, so without this the send
+  // keeps following its automation after the chip is gone —
+  // scheduleAutomationForChunk() only gates on isFxBypassed().
+  clearFxAutomation(track, effect.key);
   if (state.activeFx[track]) {
     delete state.activeFx[track][effect.key];
     if (!Object.keys(state.activeFx[track]).length) delete state.activeFx[track];
   }
-  fxPopoverOpen.delete(track + '::' + effect.key);
+  if (stripFocus === track + '::' + effect.key) stripFocus = null;
   effect.apply();
   render(); autosave();
 }
 function buildFxChip(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
-  const open = fxPopoverOpen.has(track + '::' + effect.key);
+  const open = stripFocus === track + '::' + effect.key;
   const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
   chip.dataset.track = track; chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
@@ -4031,48 +4072,33 @@ function buildFxChip(track, effect, letter) {
   // need to agree on wording — without it, the letter span below would have
   // run into the label with no separator ("AEQ").
   body.setAttribute('aria-label', `${letter}, ${effect.label}`);
-  // A separate element from the label span (not `${letter} ${effect.label}`
-  // concatenated into one string) so verify.js's existing exact-match label
-  // checks (`... === 'EQ'`) keep working unchanged — the letter is purely
-  // additive, visually and in the DOM. aria-hidden is belt-and-suspenders
-  // here (the aria-label above already wins outright) but matches the glyph
-  // beside it, which is aria-hidden for the same "decorative" reason.
+  // Letter + icon only. The name used to sit here too, which made a chip
+  // 98-129px wide in a 239px row — seven chips over six lines, ~152px of
+  // every track header. It now lives in the title/aria-label above and in
+  // the strip section this chip points at, so nothing is lost to a screen
+  // reader; the aria-label already carried "${letter}, ${effect.label}".
+  // aria-hidden on both children for the same "decorative" reason.
   const letterSpan = el('span', 'th-fx-chip-letter'); letterSpan.textContent = letter;
   letterSpan.setAttribute('aria-hidden', 'true');
   body.append(letterSpan, glyph(effect.icon));
-  const label = document.createElement('span'); label.textContent = effect.label;
-  body.appendChild(label);
   body.addEventListener('mousedown', (e) => e.stopPropagation());
+  // Navigation, not a second editing surface: point the inspector column's
+  // strip at this effect. Clears the note selection, since the strip is what
+  // the column shows when nothing is selected.
   body.addEventListener('click', (e) => {
     e.stopPropagation();
-    const popKey = track + '::' + effect.key;
-    if (fxPopoverOpen.has(popKey)) fxPopoverOpen.delete(popKey); else fxPopoverOpen.add(popKey);
+    // Always focus, never toggle off: with a note selected the strip isn't
+    // on screen at all, so a "toggle" would read as a dead click. The strip
+    // is the column's default content — there is nothing to switch off.
+    stripFocus = track + '::' + effect.key;
+    activateTrack(track);
+    state.selected = null;
     render();
   });
-  chip.append(body, buildFxBypassButton(track, effect), buildFxRemoveButton(track, effect));
+  chip.appendChild(body);
   return chip;
 }
-function buildFxPopover(track, effect) {
-  const bypassed = isFxBypassed(track, effect.key);
-  const pop = el('div', 'th-fx-popover' + (bypassed ? ' bypassed' : ''));
-  pop.dataset.key = effect.key;
-  const head = el('div', 'th-fx-popover-head');
-  head.appendChild(glyph(effect.icon));
-  const title = document.createElement('span'); title.textContent = effect.label;
-  head.append(title, el('span', 'th-fx-popover-head-spacer'), buildFxBypassButton(track, effect), buildFxRemoveButton(track, effect));
-  pop.appendChild(head);
-
-  const fields = el('div', 'th-fx-popover-fields');
-  const values = effect.get(track);
-  for (const f of effect.fields) {
-    fields.appendChild(buildKnob(`${f.label} — ${effect.label} on ${trackName(track)}`, f, values[f.param],
-      (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); },
-      FX_FIELD_DEFAULTS[effect.key][f.param]));
-  }
-  pop.appendChild(fields);
-  return pop;
-}
-// Master counterpart to buildFxChip/buildFxPopover — same chip/popover
+// Master counterpart to buildFxChip — same chip/popover
 // shell and CSS classes (an extra `th-master-fx-chip` class distinguishes
 // it from a track chip for renderFloatingLayer()'s lookup below, since
 // master chips carry no data-track), but no letter, no bypass/remove
@@ -4136,8 +4162,8 @@ function buildMasterFxPopover(effect) {
   for (const f of effect.fields) {
     // Unlike a track chip (whose dim state is a stored bypass flag, untouched
     // by a knob move), a master chip's dim state is isMasterFxActive()
-    // recomputed from the live value — so, unlike buildFxPopover's per-track
-    // knobs, this one has to call render() on every commit for the chip to
+    // recomputed from the live value — so, unlike buildStripSection's
+    // per-track knobs, this one has to call render() on every commit for the chip to
     // ever reflect it without waiting on an unrelated render elsewhere.
     fields.appendChild(buildKnob(`${f.label} — ${effect.label} (Master)`, f, values[f.param],
       (v) => { effect.set({ [f.param]: v }); effect.apply(); renderMasterFxChips(); autosave(); },
@@ -4168,10 +4194,11 @@ function buildFxPanel(track) {
     e.stopPropagation();
     for (const effect of trackFxFor(track)) {
       delete state[effect.dataKey || effect.key][track];
+      clearFxAutomation(track, effect.key);
       effect.apply();
-      fxPopoverOpen.delete(track + '::' + effect.key);
     }
     delete state.activeFx[track];
+    if (stripFocus && stripFocus.startsWith(track + '::')) stripFocus = null;
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);
@@ -4187,9 +4214,14 @@ function buildFxPanel(track) {
   visible.forEach((effect, i) => chipRow.appendChild(buildFxChip(track, effect, String.fromCharCode(65 + i))));
 
   const addWrap = el('div', 'th-fx-add');
-  const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+ Add effect';
+  const addBtn = el('button', 'th-fx-add-btn'); addBtn.type = 'button'; addBtn.textContent = '+';
   addBtn.dataset.track = track;
-  addBtn.title = 'Add an effect to this track';
+  // Not "add": every effect already exists in the audio graph for every track
+  // (createTrackFxSends builds all three sends unconditionally, and the
+  // inserts are neutral-by-default), so this reveals a control rather than
+  // inserting a node.
+  addBtn.title = 'Show a control for an effect this track is not using yet';
+  addBtn.setAttribute('aria-label', addBtn.title);
   addBtn.setAttribute('aria-haspopup', 'true');
   addBtn.setAttribute('aria-expanded', String(fxAddMenuOpen === track));
   addBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -4201,10 +4233,11 @@ function buildFxPanel(track) {
   addWrap.appendChild(addBtn);
   chipRow.appendChild(addWrap);
   panel.appendChild(chipRow);
-  // Popovers and the add-menu itself no longer render here — see
-  // buildFloatingAddMenu()/buildFxPopover() and renderFloatingLayer(),
-  // called once after every track's header (this function included) has
-  // been rebuilt, so their trigger elements' on-screen positions are known.
+  // The add-menu itself no longer renders here — see buildFloatingAddMenu()
+  // and renderFloatingLayer(), called once after every track's header (this
+  // function included) has been rebuilt, so its trigger element's on-screen
+  // position is known. A chip's own controls live in the inspector column's
+  // track strip (buildStripSection), not in a popover anchored here.
   return panel;
 }
 // The "+ Add effect" menu's content, built the same way the old inline
@@ -4228,7 +4261,8 @@ function buildFloatingAddMenu(track) {
       e.stopPropagation();
       state.activeFx[track] = state.activeFx[track] || {};
       state.activeFx[track][effect.key] = { bypassed: false };
-      fxPopoverOpen.add(track + '::' + effect.key);
+      stripFocus = track + '::' + effect.key;
+      activateTrack(track); state.selected = null;
       fxAddMenuOpen = null;
       effect.apply();
       render(); autosave();
@@ -4398,7 +4432,7 @@ function buildHeader(track) {
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
   setGlyphLabel(autoBtn, 'automation', 'Auto');
-  autoBtn.title = 'Automation (volume/pan over time)';
+  autoBtn.title = 'Automation — draw Volume, Pan or a Delay/Chorus/Reverb send over time';
   autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   autoBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5521,6 +5555,107 @@ function startMoveHit(e, track, hit) {
 }
 
 // ---------- Inspector ----------
+// ---------- Track strip ----------
+// The inspector column's second mode: with no note selected it shows the
+// active track's whole insert chain rather than "Nothing selected". This is
+// where a track's FX are edited — the header chips are status and
+// navigation only (see buildFxChip), and there is deliberately no second
+// surface for the same knob.
+//
+// Which effect the strip is scrolled to, so a chip click can point at one.
+// Editor state, not song content: never serialised, cleared with the track.
+let stripFocus = null; // `${track}::${effectKey}` | null
+function buildStripSection(track, effect, letter) {
+  const bypassed = isFxBypassed(track, effect.key);
+  const focused = stripFocus === track + '::' + effect.key;
+  const sec = el('div', 'th-strip-section insp-panel'
+    + (bypassed ? ' bypassed' : '') + (focused ? ' focused' : ''));
+  sec.dataset.track = track; sec.dataset.key = effect.key;
+
+  const head = el('div', 'th-strip-section-head');
+  const letterSpan = el('span', 'th-strip-letter');
+  letterSpan.textContent = letter;
+  letterSpan.setAttribute('aria-hidden', 'true'); // the title below already names the effect
+  head.append(letterSpan, glyph(effect.icon));
+  const title = el('span', 'th-strip-title'); title.textContent = effect.label;
+  // Bypass and remove live here and nowhere else — they used to sit on both
+  // the chip and the popover head, which is two of everything to keep in
+  // step. Both builders are reused verbatim.
+  head.append(title, el('span', 'th-strip-spacer'),
+    buildFxBypassButton(track, effect), buildFxRemoveButton(track, effect));
+  sec.appendChild(head);
+
+  const fields = el('div', 'th-strip-fields');
+  const values = effect.get(track);
+  for (const f of effect.fields) {
+    fields.appendChild(buildKnob(`${f.label} — ${effect.label} on ${trackName(track)}`, f, values[f.param],
+      (v) => { effect.set(track, { [f.param]: v }); effect.apply(); autosave(); },
+      FX_FIELD_DEFAULTS[effect.key][f.param]));
+  }
+  sec.appendChild(fields);
+  return sec;
+}
+function renderTrackStrip(track) {
+  inspector.className = 'inspector';
+  inspector.innerHTML = '';
+
+  const head = el('div', 'th-strip-head');
+  const swatch = el('div', 'th-strip-swatch');
+  swatch.style.background = trackColor(track);
+  const name = el('div', 'th-strip-name'); name.textContent = trackName(track);
+  name.style.color = trackColor(track);
+  const kind = el('div', 'th-strip-kind'); kind.textContent = isRhythm(track) ? 'Kit' : 'Track';
+  head.append(swatch, name, el('span', 'th-strip-spacer'), kind);
+  inspector.appendChild(head);
+
+  // Same order and lettering as the header chips, so "B" means the same
+  // thing in both places.
+  const visible = visibleFxFor(track);
+  visible.forEach((effect, i) => {
+    inspector.appendChild(buildStripSection(track, effect, String.fromCharCode(65 + i)));
+  });
+  if (!visible.length) {
+    const none = el('div', 'th-strip-empty');
+    none.textContent = 'No effects on this track yet.';
+    inspector.appendChild(none);
+  }
+
+  // The effects still sitting at their defaults. Adding one only reveals its
+  // controls — every effect already exists in the audio graph — so this is
+  // worded as showing rather than inserting.
+  const notAdded = trackFxFor(track).filter((e) => !visible.includes(e));
+  if (notAdded.length) {
+    const add = el('div', 'th-strip-add');
+    const cap = el('div', 'th-strip-add-cap'); cap.textContent = 'Not in use';
+    add.appendChild(cap);
+    for (const effect of notAdded) {
+      const btn = el('button'); btn.type = 'button';
+      btn.title = `Show ${effect.label} controls for ${trackName(track)}`;
+      btn.setAttribute('aria-label', btn.title);
+      btn.appendChild(glyph(effect.icon));
+      const span = document.createElement('span'); span.textContent = effect.label;
+      btn.appendChild(span);
+      btn.addEventListener('click', () => {
+        state.activeFx[track] = state.activeFx[track] || {};
+        state.activeFx[track][effect.key] = { bypassed: false };
+        stripFocus = track + '::' + effect.key;
+        effect.apply();
+        render(); autosave();
+      });
+      add.appendChild(btn);
+    }
+    inspector.appendChild(add);
+  }
+
+  if (stripFocus && stripFocus.startsWith(track + '::')) {
+    const key = stripFocus.slice(track.length + 2);
+    // After this render pass, so the section exists to scroll to.
+    requestAnimationFrame(() => {
+      const sec = inspector.querySelector(`.th-strip-section[data-key="${key}"]`);
+      if (sec) sec.scrollIntoView({ block: 'nearest' });
+    });
+  }
+}
 function renderInspector() {
   const sel = state.selected;
   // The selection holds the note itself, but it can still have been removed
@@ -5530,6 +5665,14 @@ function renderInspector() {
   const item = sel && state.tracks[track] && state.tracks[track].includes(sel.item) ? sel.item : null;
   document.body.classList.toggle('has-sel', !!item); // drives the mobile close button
   if (!item) {
+    // No note selected: show the active track's FX strip instead. On a narrow
+    // layout .inspector is a fixed bottom sheet hidden by `.empty`, so the
+    // strip must not resurrect it just because a track happens to be active —
+    // there, it opens only when a chip is tapped (which sets stripFocus).
+    const wide = !window.matchMedia('(max-width: 760px)').matches;
+    const strip = state.activeTrack && trackOf(state.activeTrack)
+      && (wide || (stripFocus && stripFocus.startsWith(state.activeTrack + '::')));
+    if (strip) { renderTrackStrip(state.activeTrack); return; }
     inspector.className = 'inspector empty';
     inspector.textContent = 'Nothing selected. Click a note or a drum hit to edit it, or pen a cell to add one.';
     return;
