@@ -222,18 +222,53 @@ above/below it):
   and clicking Clear again removes another parameter's points
   independently; there's no "clear all parameters" action).
 - With **no points** for a parameter, it behaves exactly as before
-  automation existed for it — driven by the channel strip's (or FX
-  panel's) static slider value for the whole song — fully backward
+  automation existed for it — driven by the channel strip's (or the FX
+  strip's) static knob value for the whole song — fully backward
   compatible.
+- A send **with** points shows its chip even at level 0
+  (`visibleFxFor()`/`fxHasAutomation()`): a curve is audibly doing
+  something, so the panel has to say so. Removing that effect takes the
+  curve with it (`removeFxChip()`/`clearFxAutomation()`) — removal is not
+  bypass, and `scheduleAutomationForChunk()` gates only on
+  `isFxBypassed()`, so a curve left behind would keep playing with nothing
+  on screen to explain it. `FX_AUTOMATION_PARAM` names the three sends as
+  the only automatable inserts, once, next to `AUTOMATION_PARAMS`.
 
-### A.7 Track FX panel
+### A.7 Track FX: header chips, inspector-column strip
 
-Opened per-track via its header's **FX** button (see A.4); unlike
-Automation/Envelope, this does **not** add a full-width timeline row — every
-field in it is a static per-track knob with nothing tied to a timeline
-column, so it renders as a compact two-column grid (`buildFxPanel()`)
-appended directly into the track header itself, expanding the header's
-height in place. Available on every track, tonal or rhythm alike. Six
+Split across two places, deliberately.
+
+**In the track header** (`buildFxPanel()`/`buildFxChip()`): a wrapping row
+of **chips**, one per effect in use, each a letter (A, B, C… by current
+position, recomputed every render) and an icon. Status and navigation only
+— there are no knobs here. A chip click points the inspector column's strip
+at that effect; it never toggles off, because with a note selected the
+strip is not on screen and a "toggle" would read as a dead click.
+
+**In the inspector column** (`renderTrackStrip()`/`buildStripSection()`):
+the actual controls. When no note is selected, the column shows the active
+track's whole insert chain — every effect, every knob, at once — instead of
+"Nothing selected". Each section carries the effect's letter, icon and name,
+its **bypass** and **remove** buttons, and its knobs.
+
+Why the split: the chips used to carry the knobs too, via a floating
+popover per effect. Measured, a seven-effect track's chip row was 152 px
+over six lines and the header 260 × 371 px, so two tracks filled the whole
+DAW viewport. Vertical space in a 260 px column is the scarce resource;
+the inspector column is 244 px wide, scrolls on its own, sits in the same
+place every time (no positioning logic, no light-dismiss) and was showing
+"Nothing selected" most of the time while mixing. Letter + icon chips are
+44 px, so seven fit two lines (46 px), and the header is 265 px.
+
+Seeing EQ and Compressor at once is the thing neither the popover nor a
+taller header gave you, and it is how mixing decisions get made.
+
+There is deliberately **one** editing surface per value: the per-insert
+popover was retired rather than kept alongside the strip. Master FX keeps
+its own chips and popovers (A.10) — five fixed groups in a strip of their
+own — and the `.th-fx-popover*` CSS with them.
+
+Available on every track, tonal or rhythm alike. Six
 groups, listed here in `TRACK_FX_REGISTRY` order — which is the order the
 panel renders them in, not a signal order, since the sends tap the end of
 the chain and Vibrato is not in the chain at all. Both come from that one
@@ -534,6 +569,13 @@ by default — these are the deliberate additions:
   pointer rather than only editing what a pointer already placed.
 - **Contrast**: the 8px uppercase panel captions were 3.23:1; they are now
   5.32:1. Body and muted text already passed AA.
+- **Two modes in one column**: the inspector `<aside>` shows the selected
+  note's panel, or — with nothing selected — the active track's FX strip
+  (A.7). Properties-follow-selection rather than a tab bar, since the two
+  are mutually exclusive. On a narrow layout the column is a fixed bottom
+  sheet hidden while `.empty`, so the strip deliberately does **not** open
+  it merely because a track is active; there it appears only on an explicit
+  chip tap.
 - **Icons**: every glyph (A.14) is `aria-hidden`, and the control around it
   keeps its own text label or `aria-label`. The waveform picker, whose buttons
   are icon-only, additionally spells the selected shape's name out below the
@@ -729,6 +771,12 @@ state = {
   vibrato,     // id -> { rate, depth } (tonal only) — DEFAULT_VIBRATO, see A.7/B.6
   duty,        // id -> pulse width (tonal, `square` waveform only); absent = plain 50% square
   eq,          // id -> { low, mid, high } dB (any track kind) — DEFAULT_TRACK_EQ
+  activeFx,    // id -> { [effectKey]: { bypassed } } — which effects the panel
+               // shows, plus each one's bypass flag. NOT an on/off switch for
+               // the effect itself: every effect exists in the graph for every
+               // track already (createTrackFxSends builds all three sends
+               // unconditionally, the inserts are neutral by default), and only
+               // isFxBypassed() ever reaches the audio. See A.7.
   masterEQ, masterComp, masterParallel, masterCrush, // song-global master-bus FX — see A.10/B.6
   sidechain,   // { enabled, depth } — song-global kick/snare-triggered ducking
   swing,       // % (0 = straight 8ths, up to 75 ≈ triplet feel) — swingOffsetCols()
