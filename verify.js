@@ -90,6 +90,10 @@ async function waitForHttp(url, timeoutMs) {
 // pub/sub for events (Runtime.consoleAPICalled etc). No dependencies beyond
 // Node's own built-in WebSocket (stable since Node 21) — see the file header
 // comment for why this exists instead of a browser-automation library.
+// A CDP request that gets no reply used to hang the whole run — see send().
+// Two minutes is far past any legitimate call (the slowest is an offline WAV
+// render inside Runtime.evaluate) and far short of noticing by hand.
+const CDP_REQUEST_TIMEOUT_MS = 120000;
 class CDP {
   constructor(wsUrl) {
     this.ws = new WebSocket(wsUrl);
@@ -115,10 +119,28 @@ class CDP {
     if (!this.listeners.has(method)) this.listeners.set(method, []);
     this.listeners.get(method).push(fn);
   }
-  send(method, params = {}) {
+  // Every request gets a deadline. Without one a reply that never arrives
+  // parks its promise in `pending` forever, and because waitFor() reaches the
+  // browser through here, *its* 5s timeout never gets to count down — it is
+  // blocked inside its very first cdp.evaluate(). That is how a run once sat
+  // silent for 25 minutes with a five-second timeout in the call stack.
+  //
+  // Generous on purpose: an offline WAV render inside Runtime.evaluate is a
+  // legitimate slow call, so this is a hang detector, not a performance
+  // budget. Individual calls can raise it.
+  send(method, params = {}, timeoutMs = CDP_REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       const id = this.nextId++;
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        // Drop it first: a late reply must not resolve an already-rejected
+        // promise, and leaving it in `pending` would leak one entry per hang.
+        this.pending.delete(id);
+        reject(new Error(`CDP ${method} did not reply within ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
