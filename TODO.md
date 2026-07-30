@@ -92,20 +92,28 @@ hur roligt det vore att bygga.
 
 ## Kvalitet
 
-- [ ] **`verify.js` hängde en gång i Duty-steget och gick inte att
-  reproducera.** Loggen stod stilla i 25 minuter mitt i `'Duty: a square
-  track has its own default…'` medan processen levde; ingen timeout slog
-  till, eftersom `waitFor()` i det steget saknar en. Stegets egna moment
-  kördes sedan för hand och fungerade alla (Env-knappen hittas,
-  `.adsr-select` dyker upp, pennklicket placerar en not, inspektorn visar
-  den) och en omkörning på identisk kod gav 50/50 grönt — så det var inte
-  koden under test. Misstanke: `Page.addScriptToEvaluateOnNewDocument`
-  staplar på sig, så vid steg 37 ligger ett tiotal prototyp-patchar
-  (`createPeriodicWave`, `createGain`, `startRendering`, `AudioParam`) i
-  varje ny sida, och någon kombination låser sig ibland. Två saker som
-  skulle göra det billigare nästa gång: en timeout på `waitFor()` så en
-  hängning blir ett *fel* med stegnamn i stället för tystnad, och att
-  avregistrera patcharna när steget som behövde dem är klart.
+- [ ] **`cdp.send()` kan hänga för evigt — sviten stod still i 25 minuter.**
+  Loggen rörde sig inte mitt i `'Duty: a square track has its own default…'`
+  medan processen levde. Stegets egna moment kördes sedan för hand och
+  fungerade alla (Env-knappen hittas, `.adsr-select` dyker upp, pennklicket
+  placerar en not, inspektorn visar den), och en omkörning på identisk kod
+  gav 50/50 grönt — så det var varken koden under test eller steget.
+  **Var timeouten saknas:** `waitFor()` *har* en (5 s), men den hjälper inte,
+  för `waitFor` anropar `cdp.evaluate` → `cdp.send`, och `send()` lägger sitt
+  löfte i `pending` utan att någonsin avvisa det. Uteblir CDP-svaret blockeras
+  `waitFor` inuti sitt allra första anrop och hinner aldrig räkna ned. Samma
+  sak gäller varje annat `cdp.send`-anrop i filen, och `Runtime.evaluate` med
+  `awaitPromise: true` hänger om sidans löfte aldrig löses.
+  **Åtgärden hör alltså hemma på `send()`**, inte på `waitFor()`: ge varje
+  begäran en deadline som avvisar med metodnamnet, så en hängning blir ett
+  namngivet fel i stället för tystnad. (En tidigare version av den här posten
+  påstod att `waitFor()` saknade timeout — fel, och det pekade åtgärden åt
+  fel håll.)
+  Vad som utlöser det är fortfarande okänt. Misstanke:
+  `Page.addScriptToEvaluateOnNewDocument` staplar på sig, så vid steg 37 bär
+  varje ny sida ett tiotal prototyp-patchar (`createPeriodicWave`,
+  `createGain`, `startRendering`, `AudioParam`) och någon kombination låser
+  sig ibland — men det är en gissning, inte en mätning.
 
 ## Småsaker
 
