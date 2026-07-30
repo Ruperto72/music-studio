@@ -6,7 +6,8 @@ Measured on `main` (61767df) at 1600×1000 with Rust Foundry loaded:
 
 | | |
 |---|---|
-| Track header | 260 × **371 px** — roughly 160 px of it seven insert chips, one per row |
+| Track header | 260 × **371 px** — of which the chip row is **152 px**, seven chips over six lines |
+| Chip widths | eq 98, comp 114, crush 129, sendDelay 115, sendChorus 121, sendReverb 122, vibrato 125 px, in a **239 px** row |
 | Track row height | 373 px, driven by the header rather than by the piano roll |
 | FX popover | **140 × 109 px** |
 | Visible at once | **two tracks** fill the whole 749 px `.daw` viewport; the song has seven |
@@ -27,25 +28,36 @@ A second, smaller problem sits underneath: `state.activeFx` is a *display*
 list that reads like an on/off switch, which leaves three places where the
 panel's picture of the world and the audio's picture disagree (see Part C).
 
-## Part A — the chip row stops being a column
+## Part A — the chips get narrower
 
-Insert chips (`.th-fx-panel`, `buildFxChip()`) currently stack one per line.
-They become a **wrapping row**: seven pills at ~70 px reflow onto two lines
-at 260 px instead of seven. Nothing about the chip itself changes — same
-letter prefix, same icon, same bypass/remove buttons, same popover trigger.
+**Correction to an earlier draft of this document**, which claimed the chips
+stack one per line and that letting the row wrap would fix it.
+`.th-fx-chip-row` already has `flex-wrap: wrap`, and it is already working.
+The measurement above says why it doesn't help: the row is 239 px and the
+chips are 98–129 px, so only the two narrowest — EQ (98) + Comp (114) = 216
+— ever fit together. Six lines for seven chips is wrapping doing its best.
 
-Expected: header 371 px → ~210 px, i.e. close to twice as many tracks on
-screen for a one-property CSS change.
+So the fix is not the container, it is the **chip**. Each one currently
+carries a letter, an icon, a full name, a bypass button and a remove
+button — five things, in a 260 px column, repeated on every track.
 
-A tighter variant worth prototyping in the same pass: **letter + icon only**
-in the row (`A B C D E F G`), with the effect's name living in the popover
-header and the `title`/`aria-label` where it already is. That fits one line
-(~40 px) and turns the row into what it is good at — a status strip — but it
-costs the at-a-glance readability of the names, so it should be judged from
-a screenshot at real size rather than decided here.
+With Part B taking editing into the strip, the chip's job narrows to
+**status and navigation**, and bypass/remove move to the strip section's own
+header (where a popover already puts them today). That leaves letter + icon
++ name at roughly 70 px → three per line, or letter + icon at roughly 55 px
+→ four per line.
+
+Recommended: **letter + icon**, name in `title`/`aria-label` and in the
+strip. Seven chips then occupy two lines of ~28 px instead of six of ~25 px
+— the chip row goes 152 px → ~56 px, and the header ~371 px → ~275 px.
+
+This one has to be judged from a screenshot at real size rather than from
+arithmetic: an icon-only chip row is a real readability trade, and the icons
+were only ever designed to sit *beside* a word. If it reads badly, the
+letter + icon + name variant still buys half the saving.
 
 The letters stay either way: A/B/C… is insert *order*, which is real
-information the wrap preserves.
+information.
 
 ## Part B — the track's own strip, in the inspector column
 
@@ -80,24 +92,21 @@ made.
 Clicking a chip in the header scrolls the strip to that effect and highlights
 it, so the chip row keeps its role as navigation.
 
-### Decision required: does the popover survive?
+### Decided: the per-insert popover is retired
 
-Two editing surfaces for one value is exactly the class of problem Part C
-exists to remove, so this should be settled deliberately rather than by
-accident.
+`buildFxPopover()` and `fxPopoverOpen` go. The chip becomes navigation and
+status; the knob lives in exactly one place. Two editing surfaces for one
+value is the class of problem Part C exists to remove, and keeping the
+popover would have reintroduced it on day one.
 
-- **Recommended: retire `buildFxPopover()`** for track inserts. The chip
-  becomes navigation + status; the knob lives in one place. `buildKnob()`,
-  `renderFloatingLayer()`, the add-menu and the oscillator picker all stay —
-  only the per-insert popover goes.
-- **Alternative: keep both**, popover for a quick single tweak, strip for
-  working on the whole track. Cheaper (nothing is deleted) but means two
-  paths to the same number, and two things to keep in sync.
+What stays: `buildKnob()` (the strip reuses it unchanged),
+`renderFloatingLayer()`, the "+ " add-menu, the oscillator picker, and the
+whole `.th-fx-popover*` CSS — **master FX popovers keep using it**.
+`masterFxPopoverOpen` is untouched: master has five fixed groups in a strip
+of its own and is out of scope here.
 
-This is a taste call about how the app should feel, and it discards work
-that shipped yesterday, so it is the author's rather than mine.
-Master FX chips are **out of scope either way** — master has one strip
-already and its five groups are fixed.
+The bypass and remove buttons that today sit on both the chip and the
+popover head move to the strip section header, so each appears once.
 
 ## Part C — make the panel report what is actually happening
 
