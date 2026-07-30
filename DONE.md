@@ -1653,3 +1653,37 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   Lärdomen är den vanliga, men den kostade tre körningar den här gången:
   **injicera buggen och kontrollera att testet faller på rätt rad** — inte
   bara att sviten blir röd.
+
+- [x] **De två uppskjutna punkterna från städningen, gjorda.** Bägge stod
+  beskrivna i #118 som "rätt på sikt, fel tillfälle". Tillfället kom.
+  1. **En ägare av inspektorkolumnen, i ett värde.** `masterStripOpen` plus
+     ett `owner::effectKey`-prefix stavade samma faktum två gånger, hölls i
+     takt av speglade anrop i bägge ändar, och behövde ett eget
+     regressionstest för att bevisa att de faktiskt gjorde det. Nu är det
+     `inspectorOwner` (ett spår-id eller `'master'`) och `stripFocusKey` (en
+     naken nyckel som hör till den). `setInspectorOwner()` nollar fokus vid
+     varje ägarbyte, så tillståndet där mastercellerna ser markerade ut medan
+     inspektorn visar Leads kedja är inte längre möjligt att nå — det är
+     borttaget ur representationen, inte bevakat.
+     Det som gjorde ändringen värd risken var att `state.activeTrack` sattes
+     direkt förbi `activateTrack()` på tre ställen (`restoreSnapshot`,
+     `createNewSong`, låtinläsningen). De går nu genom `activateTrack()`;
+     `toggleMultiSelect()` behåller sin egen hantering av `multiSelected` men
+     flyttar kolumnen via `setInspectorOwner()`. Kvar är exakt två direkta
+     tilldelningar, bägge inne i de funktioner som äger dem.
+  2. **Spårhuvudets sexton `stopPropagation`-rader ner till en vakt.** Varje
+     kontroll i huvudet stoppade `mousedown` för sig, så att huvudets eget
+     `setActive` → `render()` inte skulle bygga om kontrollen mitt i ett
+     klick. Det var sexton rader som ingenting kunde påminna en om att lägga
+     till. Nu är det `e.target.closest('input, button, select, .th-name')` på
+     containern.
+  **Och den intressanta delen: sviten kunde inte se någon av dem.**
+  `element.click()` skickar aldrig `mousedown`, så varenda befintligt steg
+  hade passerat med vakten helt borttagen. Det nya steget använder därför
+  `Input.dispatchMouseEvent` — ett riktigt klick genom Chromiums
+  inmatningspipeline. Två injektioner, två utfall:
+  - vakten helt borttagen → *"a real click on Mute was swallowed"*;
+  - `.th-name` struket ur listan → *"double-clicking the track name should
+    rename it"*.
+  Den andra är poängen: att namn-spannet behövde stå med i listan var något
+  jag hade resonerat mig fram till, inte mätt. Nu är det mätt.

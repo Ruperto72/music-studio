@@ -2663,7 +2663,7 @@ function restoreSnapshot(s) {
     // since an older snapshot predating a map must not leave today's values
     // standing after an undo.
     for (const k of SPARSE_TRACK_MAPS) state[k] = (data[k] && typeof data[k] === 'object') ? data[k] : {};
-    if (!trackOf(state.activeTrack)) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
+    if (!trackOf(state.activeTrack)) activateTrack((state.trackList[0] || { id: 'rhythm' }).id);
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
   }
@@ -3413,12 +3413,11 @@ function removeTrack(id) {
   if (chanTremoloLfo[id]) { try { chanTremoloLfo[id].stop(); } catch { /* already gone */ } delete chanTremoloLfo[id]; delete chanTremoloLfoGain[id]; }
   if (chanPwmLfo[id]) { try { chanPwmLfo[id].stop(); } catch { /* already gone */ } delete chanPwmLfo[id]; }
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
-  if (stripFocusIs(id)) stripFocus = null;
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   if (oscPickerOpen === id) oscPickerOpen = null;
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
-  if (state.activeTrack === id) state.activeTrack = (state.trackList[0] || { id: 'rhythm' }).id;
+  if (state.activeTrack === id) activateTrack((state.trackList[0] || { id: 'rhythm' }).id);
   if (state.selected && state.selected.track === id) state.selected = null;
   state.multiSelected.clear();
   render(); autosave();
@@ -4063,13 +4062,13 @@ function removeFxChip(track, effect) {
     delete state.activeFx[track][effect.key];
     if (!Object.keys(state.activeFx[track]).length) delete state.activeFx[track];
   }
-  if (stripFocusKey(track) === effect.key) stripFocus = null;
+  if (focusKeyOf(track) === effect.key) stripFocusKey = null;
   effect.apply();
   render(); autosave();
 }
 function buildFxChip(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
-  const open = stripFocusKey(track) === effect.key;
+  const open = focusKeyOf(track) === effect.key;
   const chip = el('div', 'th-fx-chip' + (bypassed ? ' bypassed' : '') + (open ? ' open' : ''));
   chip.dataset.track = track; chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
@@ -4089,7 +4088,6 @@ function buildFxChip(track, effect, letter) {
   const letterSpan = el('span', 'th-fx-chip-letter'); letterSpan.textContent = letter;
   letterSpan.setAttribute('aria-hidden', 'true');
   body.append(letterSpan, glyph(effect.icon));
-  body.addEventListener('mousedown', (e) => e.stopPropagation());
   // Navigation, not a second editing surface: point the inspector column's
   // strip at this effect. Clears the note selection, since the strip is what
   // the column shows when nothing is selected.
@@ -4098,7 +4096,7 @@ function buildFxChip(track, effect, letter) {
     // Always focus, never toggle off: with a note selected the strip isn't
     // on screen at all, so a "toggle" would read as a dead click. The strip
     // is the column's default content — there is nothing to switch off.
-    setStripFocus(track, effect.key);
+    focusStrip(track, effect.key);
     activateTrack(track);
     state.selected = null;
     render();
@@ -4116,7 +4114,7 @@ function buildFxChip(track, effect, letter) {
 // value.
 function buildMasterFxChip(effect) {
   const active = isMasterFxActive(effect);
-  const open = stripFocusKey('master') === effect.key;
+  const open = focusKeyOf('master') === effect.key;
   const chip = el('div', 'th-fx-chip th-master-fx-chip' + (!active ? ' bypassed' : '') + (open ? ' open' : ''));
   chip.dataset.key = effect.key;
   const body = el('button', 'th-fx-chip-body');
@@ -4132,7 +4130,7 @@ function buildMasterFxChip(effect) {
   // off something invisible and read as a dead click.
   body.addEventListener('click', (e) => {
     e.stopPropagation();
-    setStripFocus('master', effect.key);
+    focusStrip('master', effect.key);
     selectMaster();
   });
   chip.appendChild(body);
@@ -4146,7 +4144,7 @@ function buildMasterFxChip(effect) {
 // from should find it next to selectMaster(), not inside a function named for
 // something else.
 function syncMasterSelected() {
-  masterTrackEl.classList.toggle('master-selected', masterStripOpen);
+  masterTrackEl.classList.toggle('master-selected', inspectorOwner === 'master');
 }
 function renderMasterFxChips() {
   const row = document.getElementById('master-fx-chip-row');
@@ -4163,7 +4161,6 @@ function buildFxPanel(track) {
   resetWrap.prepend(insertsLabel);
   const resetBtn = el('button', 'th-fx-reset'); resetBtn.textContent = 'Reset';
   resetBtn.title = 'Remove every insert and send on this track';
-  resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   resetBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     for (const effect of trackFxFor(track)) {
@@ -4172,7 +4169,7 @@ function buildFxPanel(track) {
       effect.apply();
     }
     delete state.activeFx[track];
-    if (stripFocusIs(track)) stripFocus = null;
+    if (inspectorOwner === track) stripFocusKey = null;
     render(); autosave();
   });
   resetWrap.appendChild(resetBtn);
@@ -4198,7 +4195,6 @@ function buildFxPanel(track) {
   addBtn.setAttribute('aria-label', addBtn.title);
   addBtn.setAttribute('aria-haspopup', 'true');
   addBtn.setAttribute('aria-expanded', String(fxAddMenuOpen === track));
-  addBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   addBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     fxAddMenuOpen = fxAddMenuOpen === track ? null : track;
@@ -4235,7 +4231,7 @@ function buildFloatingAddMenu(track) {
       e.stopPropagation();
       state.activeFx[track] = state.activeFx[track] || {};
       state.activeFx[track][effect.key] = { bypassed: false };
-      setStripFocus(track, effect.key);
+      focusStrip(track, effect.key);
       activateTrack(track); state.selected = null;
       fxAddMenuOpen = null;
       effect.apply();
@@ -4292,7 +4288,6 @@ function buildHeader(track) {
   collapseBtn.textContent = collapsed ? '▸' : '▾';
   collapseBtn.title = collapsed ? 'Expand this track' : 'Collapse this track';
   collapseBtn.setAttribute('aria-expanded', String(!collapsed));
-  collapseBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTrackCollapsed(track); });
   // Name + Mute/Solo (+ Remove) share the top row — these are what stays
   // visible in the collapsed view. The waveform picker gets its own row below
@@ -4301,7 +4296,6 @@ function buildHeader(track) {
   const name = el('span', 'th-name'); name.textContent = trackName(track);
   name.style.color = trackColor(track);
   name.title = 'Double-click to rename';
-  name.addEventListener('mousedown', (e) => e.stopPropagation());
   name.addEventListener('dblclick', (e) => { e.stopPropagation(); renameTrack(track); });
   const btns = el('div', 'th-btns');
   for (const [cls, key, label] of [['m', 'mute', 'M'], ['s', 'solo', 'S']]) {
@@ -4314,7 +4308,6 @@ function buildHeader(track) {
     btn.setAttribute('aria-pressed', String(!!state[key][track]));
     // Swallow mousedown too: otherwise the header's own mousedown (setActive ->
     // render) rebuilds this button before the click completes, dropping the click.
-    btn.addEventListener('mousedown', (e) => e.stopPropagation());
     btn.addEventListener('click', (e) => { e.stopPropagation(); state[key][track] = !state[key][track]; applyGains(); render(); autosave(); });
     btns.append(btn);
   }
@@ -4329,14 +4322,12 @@ function buildHeader(track) {
     btn.title = armed ? 'Armed for recording — click to disarm' : 'Arm this track for recording';
     btn.setAttribute('aria-label', `Record-arm ${trackOf(track)?.name || track}`);
     btn.setAttribute('aria-pressed', String(armed));
-    btn.addEventListener('mousedown', (e) => e.stopPropagation());
     btn.addEventListener('click', (e) => { e.stopPropagation(); setRecTrack(armed ? null : track); });
     btns.append(btn);
   }
   if (canRemoveTrack(track)) {
     const rm = el('button', 'x th-remove'); rm.textContent = '✕'; rm.title = 'Remove this track';
     rm.setAttribute('aria-label', `Remove ${trackOf(track)?.name || track}`); // "✕" repeated per track says nothing on its own
-    rm.addEventListener('mousedown', (e) => e.stopPropagation());
     rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
     btns.append(rm);
   }
@@ -4354,7 +4345,6 @@ function buildHeader(track) {
     up.disabled = !prevT || prevT.kind !== kind;
     down.disabled = !nextT || nextT.kind !== kind;
     for (const [btn, dir] of [[up, -1], [down, 1]]) {
-      btn.addEventListener('mousedown', (e) => e.stopPropagation());
       btn.addEventListener('click', (e) => { e.stopPropagation(); moveTrack(track, dir); });
     }
     reorder.append(up, down);
@@ -4395,7 +4385,6 @@ function buildHeader(track) {
     trigger.appendChild(triggerLabel);
     const caret = document.createElement('span'); caret.className = 'th-osc-caret'; caret.textContent = '▾';
     trigger.appendChild(caret);
-    trigger.addEventListener('mousedown', (e) => e.stopPropagation());
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
       oscPickerOpen = oscPickerOpen === track ? null : track;
@@ -4407,7 +4396,6 @@ function buildHeader(track) {
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
   setGlyphLabel(autoBtn, 'automation', 'Auto');
   autoBtn.title = 'Automation — draw Volume, Pan or a Delay/Chorus/Reverb send over time';
-  autoBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   autoBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (automationOpen.has(track)) automationOpen.delete(track); else automationOpen.set(track, 'gain');
@@ -4418,7 +4406,6 @@ function buildHeader(track) {
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     setGlyphLabel(adsrBtn, 'envelope', 'Env');
     adsrBtn.title = 'Envelope (attack/decay/sustain/release)';
-    adsrBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     adsrBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (adsrOpen.has(track)) adsrOpen.delete(track); else adsrOpen.add(track);
@@ -4428,14 +4415,12 @@ function buildHeader(track) {
     const presetBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(presetBtn, 'preset', '');
     presetBtn.title = 'Instrument presets — save/load this track\'s waveform + envelope';
-    presetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     presetBtn.addEventListener('click', (e) => { e.stopPropagation(); openPresetDialog(track); });
     tools.append(presetBtn);
   } else {
     const patternsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(patternsBtn, 'drums', '');
     patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Funk, Bossa Nova, ...)';
-    patternsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     patternsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       // insertPatternIntoRhythm() works on state.activeTrack, and the
@@ -4464,7 +4449,6 @@ function buildHeader(track) {
   slider.type = 'range'; slider.min = 0; slider.max = 2; slider.step = 0.05; slider.value = state.gains[track];
   slider.title = 'Channel volume (mix)'; slider.style.accentColor = trackColor(track);
   const val = el('span', 'vol-val'); val.textContent = Number(state.gains[track]).toFixed(2);
-  slider.addEventListener('mousedown', (e) => e.stopPropagation());
   slider.addEventListener('input', () => {
     state.gains[track] = parseFloat(slider.value);
     val.textContent = state.gains[track].toFixed(2);
@@ -4479,7 +4463,6 @@ function buildHeader(track) {
   panSlider.type = 'range'; panSlider.min = -1; panSlider.max = 1; panSlider.step = 0.1; panSlider.value = state.pan[track];
   panSlider.title = 'Stereo pan'; panSlider.style.accentColor = trackColor(track);
   const panVal = el('span', 'pan-val'); panVal.textContent = panLabel(state.pan[track]);
-  panSlider.addEventListener('mousedown', (e) => e.stopPropagation());
   panSlider.addEventListener('dblclick', (e) => { e.stopPropagation(); panSlider.value = 0; panSlider.dispatchEvent(new Event('input')); });
   panSlider.addEventListener('input', () => {
     state.pan[track] = parseFloat(panSlider.value);
@@ -4496,7 +4479,19 @@ function buildHeader(track) {
   vuMeters[track] = vuMask;
 
   header.append(top, oscSection, buildFxPanel(track), outputSection, vu);
-  header.addEventListener('mousedown', () => setActive(track, true));
+  // Clicking the header activates its track — except on a control inside it,
+  // which has its own job. One guard on the container rather than a
+  // stopPropagation line on each of the fifteen controls: that was a line
+  // nothing could remind you to add, and forgetting it meant the header
+  // re-rendered under a half-finished click and swallowed it.
+  //
+  // `.th-name` is in the list because it is interactive without being a form
+  // element — double-click renames — and a render triggered by the first
+  // mousedown would replace the span before the second click landed on it.
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.closest('input, button, select, .th-name')) return;
+    setActive(track, true);
+  });
   return header;
 }
 
@@ -5045,14 +5040,13 @@ function activateTrack(id) {
   // — one inspector column, so exactly one of them can own it. Cleared before
   // the early return: re-activating the track that was already active is
   // still the click that takes the column back from master.
-  masterStripOpen = false;
-  dropStripFocusUnless(id); // the mirror of selectMaster()'s own call
+  setInspectorOwner(id); // takes the column back from the master bus, if it had it
   if (state.activeTrack === id) return;
   state.activeTrack = id;
   state.multiSelected.clear();
 }
 function setActive(track, forceRender) {
-  if (state.activeTrack === track && !masterStripOpen) { if (forceRender) render(); return; }
+  if (state.activeTrack === track && inspectorOwner === track) { if (forceRender) render(); return; }
   activateTrack(track);
   render();
 }
@@ -5297,6 +5291,7 @@ function selectRange(lo, hi) {
 function toggleMultiSelect(track, item) {
   if (state.activeTrack !== track) {
     state.activeTrack = track;
+    setInspectorOwner(track); // not activateTrack(): this one manages multiSelected itself
     state.multiSelected.clear();
   } else if (state.selected && state.selected.track === track) {
     state.multiSelected.add(state.selected.item);
@@ -5542,27 +5537,44 @@ function startMoveHit(e, track, hit) {
 // navigation only (see buildFxChip), and there is deliberately no second
 // surface for the same knob.
 //
-// Which effect the strip is scrolled to, so a chip click can point at one.
-// Editor state, not song content: never serialised, cleared with the track.
-// The master bus uses the reserved id `master` here (`master::eq`), since it
-// takes the same strip and the same chip-click-focuses-it rule.
-let stripFocus = null; // `${track}::${effectKey}` | null
-// Whether the inspector is showing the master bus rather than a track.
-// Deliberately its own flag instead of state.activeTrack = 'master': every
-// nudge, paste, step-entry and pattern path reads state.activeTrack as a
-// real track id, and a sentinel there would be a track id that indexes
-// nothing. Selection stays exclusive because activateTrack() clears it.
-let masterStripOpen = false;
+// **Who owns the inspector column** — a track id, or the reserved `'master'`
+// for the bus. One value, because it is one column: the pair this replaced
+// (`masterStripOpen` plus an `owner::effectKey` string) encoded the same fact
+// twice, had to be kept in step by mirrored calls at each end, and needed its
+// own regression test to prove they were. Editor state, not song content:
+// never serialised.
+//
+// It is deliberately NOT `state.activeTrack`. That is read as a live index in
+// some twenty places (`state.tracks[state.activeTrack]`, `orderedItems()`,
+// `isRhythm()`, …), so a `'master'` sentinel there would be an id that indexes
+// nothing. The two travel together for tracks — every path that moves
+// activeTrack calls setInspectorOwner() with it — and diverge only when the
+// master bus takes the column.
+// Starts on the track the app boots into, so a fresh page shows that track's
+// strip rather than "Nothing selected" — which is what state.activeTrack
+// alone used to give it.
+let inspectorOwner = state.activeTrack;
+// Which of that owner's effects the strip is scrolled to, as a bare key.
+// *Whose* it is, is the line above.
+let stripFocusKey = null;
+function setInspectorOwner(owner) {
+  if (inspectorOwner === owner) return;
+  inspectorOwner = owner;
+  stripFocusKey = null; // a focus belongs to its owner and dies with it
+}
+// Point the strip at one effect of one owner. One call rather than two
+// statements, because setInspectorOwner() clears the focus — so "owner first,
+// then key" would be an order to get right at every call site.
+function focusStrip(owner, key) {
+  setInspectorOwner(owner);
+  stripFocusKey = key;
+}
+// The focused key, but only if `owner` is the one holding the column.
+const focusKeyOf = (owner) => (inspectorOwner === owner ? stripFocusKey : null);
 function selectMaster() {
-  masterStripOpen = true;
+  setInspectorOwner('master');
   state.selected = null;      // the note panel would otherwise win in renderInspector()
   state.multiSelected.clear();
-  // A track-scoped focus has to go with it. On the narrow layout the strip
-  // only opens for whoever stripFocus names, so leaving `lead::eq` behind
-  // meant the master cells drew as selected while the inspector went on
-  // showing Lead's chain. A chip click sets its own `master::…` first, so
-  // that path keeps its target.
-  dropStripFocusUnless('master');
   render();
   // The inspector column is nowhere near the control that was just used, and
   // on the keyboard path (the Master FX button) focus doesn't move at all —
@@ -5570,19 +5582,6 @@ function selectMaster() {
   // cursor announces what it lands on.
   announce('Master bus selected — its effects are in the inspector');
 }
-// stripFocus belongs to whoever owns the inspector; clear it when the other
-// one takes over. `owner` is a track id or 'master'.
-function dropStripFocusUnless(owner) {
-  if (!stripFocusIs(owner)) stripFocus = null;
-}
-// The `<owner>::<effectKey>` spelling is parsed in one place. It used to be
-// read three different ways — startsWith(id + '::'), slice('master::'.length),
-// slice(track.length + 2) — which is three chances to disagree about what the
-// separator is.
-const STRIP_SEP = '::';
-function stripFocusIs(owner) { return !!stripFocus && stripFocus.startsWith(owner + STRIP_SEP); }
-function stripFocusKey(owner) { return stripFocusIs(owner) ? stripFocus.slice(owner.length + STRIP_SEP.length) : null; }
-function setStripFocus(owner, key) { stripFocus = owner + STRIP_SEP + key; }
 // The strip's header row: a colour swatch, the name, and what kind of thing
 // this is. Shared so the master strip and a track strip cannot drift into
 // looking like two different panels.
@@ -5597,10 +5596,10 @@ function buildStripHead(color, name, kind) {
   return head;
 }
 // Scroll whichever section stripFocus names into view, after this render pass
-// has put it in the DOM. Owner-agnostic: the two strips differ only in whose
-// focus they are honouring.
-function scrollStripFocusIntoView(owner) {
-  const key = stripFocusKey(owner);
+// has put it in the DOM. Whose strip this is, is already settled by the time
+// it runs: only the owner of the column gets rendered at all.
+function scrollStripFocusIntoView() {
+  const key = stripFocusKey;
   if (!key) return;
   requestAnimationFrame(() => {
     const sec = inspector.querySelector(`.th-strip-section[data-key="${key}"]`);
@@ -5609,7 +5608,7 @@ function scrollStripFocusIntoView(owner) {
 }
 function buildStripSection(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
-  const focused = stripFocusKey(track) === effect.key;
+  const focused = focusKeyOf(track) === effect.key;
   const sec = el('div', 'th-strip-section insp-panel'
     + (bypassed ? ' bypassed' : '') + (focused ? ' focused' : ''));
   sec.dataset.track = track; sec.dataset.key = effect.key;
@@ -5645,7 +5644,7 @@ function buildStripSection(track, effect, letter) {
 // away; and dim-when-neutral instead of a stored bypass flag.
 function buildMasterStripSection(effect) {
   const active = isMasterFxActive(effect);
-  const focused = stripFocusKey('master') === effect.key;
+  const focused = focusKeyOf('master') === effect.key;
   const sec = el('div', 'th-strip-section insp-panel'
     + (!active ? ' bypassed' : '') + (focused ? ' focused' : ''));
   sec.dataset.track = 'master'; sec.dataset.key = effect.key;
@@ -5715,7 +5714,7 @@ function renderMasterStrip() {
   // No "Not in use" row: master's five groups are always all shown, so
   // there is never one waiting to be revealed. The Meter stays in the
   // bottom bar — it is a live readout, not a setting.
-  scrollStripFocusIntoView('master');
+  scrollStripFocusIntoView();
 }
 function renderTrackStrip(track) {
   inspector.className = 'inspector';
@@ -5753,7 +5752,7 @@ function renderTrackStrip(track) {
       btn.addEventListener('click', () => {
         state.activeFx[track] = state.activeFx[track] || {};
         state.activeFx[track][effect.key] = { bypassed: false };
-        setStripFocus(track, effect.key);
+        focusStrip(track, effect.key);
         effect.apply();
         render(); autosave();
       });
@@ -5762,7 +5761,7 @@ function renderTrackStrip(track) {
     inspector.appendChild(add);
   }
 
-  scrollStripFocusIntoView(track);
+  scrollStripFocusIntoView();
 }
 function renderInspector() {
   const sel = state.selected;
@@ -5773,20 +5772,17 @@ function renderInspector() {
   const item = sel && state.tracks[track] && state.tracks[track].includes(sel.item) ? sel.item : null;
   document.body.classList.toggle('has-sel', !!item); // drives the mobile close button
   if (!item) {
-    // No note selected: show the active track's FX strip instead. On a narrow
-    // layout .inspector is a fixed bottom sheet hidden by `.empty`, so the
-    // strip must not resurrect it just because a track happens to be active —
-    // there, it opens only when a chip is tapped (which sets stripFocus).
+    // No note selected: the column goes to whoever owns it — a track's FX
+    // strip, or the master bus's. On a narrow layout .inspector is a fixed
+    // bottom sheet hidden by `.empty`, so the strip must not resurrect it just
+    // because something happens to be active: there it opens only once a chip
+    // has been tapped, which is what leaves a focused effect behind.
     const wide = !window.matchMedia('(max-width: 760px)').matches;
-    // The master bus takes the same strip under the same rule. Checked first
-    // because selecting it clears the track selection's claim on the column.
-    if (masterStripOpen && (wide || stripFocusIs('master'))) {
-      renderMasterStrip();
+    const owner = inspectorOwner === 'master' || trackOf(inspectorOwner) ? inspectorOwner : null;
+    if (owner && (wide || stripFocusKey)) {
+      if (owner === 'master') renderMasterStrip(); else renderTrackStrip(owner);
       return;
     }
-    const strip = state.activeTrack && trackOf(state.activeTrack)
-      && (wide || stripFocusIs(state.activeTrack));
-    if (strip) { renderTrackStrip(state.activeTrack); return; }
     inspector.className = 'inspector empty';
     inspector.textContent = 'Nothing selected. Click a note or a drum hit to edit it, or pen a cell to add one.';
     return;
@@ -6445,7 +6441,7 @@ function createNewSong(withStarterTracks, name) {
   // Applied after clearSparseTrackMaps() above, which has just emptied both.
   state.duty = nt.duty; state.adsr = nt.adsr;
   refreshTrackArrays();
-  state.activeTrack = state.trackList[0].id;
+  activateTrack(state.trackList[0].id);
   for (const t of state.trackList) ensureChannelNodes(t.id);
   applyPan();
   state.tempo = 120;
@@ -6567,7 +6563,7 @@ function applySongData(data, name) {
   state.loopStart = 0; state.loopEnd = COLS;
   state.playhead = Math.min(state.playhead, COLS - 1); visualPlayhead = state.playhead;
   applySavedMix(data);
-  state.activeTrack = state.trackList[0] ? state.trackList[0].id : 'rhythm';
+  activateTrack(state.trackList[0] ? state.trackList[0].id : 'rhythm');
   syncMasterVolUI();
   syncGridUI();
   syncSwingUI();
