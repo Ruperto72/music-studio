@@ -3124,13 +3124,56 @@ async function main() {
       }
     });
 
+    step('Master FX: a chip click hands the inspector to the master bus', async () => {
+      await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
+      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`);
+      // The whole point of the change: master's knobs live in the same column
+      // as a track's, so all five groups are on screen at once rather than one
+      // popover at a time.
+      const sections = await cdp.evaluate(`[...document.querySelectorAll('.inspector .th-strip-section[data-track="master"]')]
+        .map(s => s.querySelector('.th-strip-title').textContent)`);
+      if (sections.join('|') !== 'EQ|Comp|Par Comp|Sidechain|Downsample') {
+        throw new Error(`expected all five master groups in the inspector, got ${JSON.stringify(sections)}`);
+      }
+      if (await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent !== 'Master'`)) {
+        throw new Error('the inspector strip head should name the master bus');
+      }
+      // Retired with this change — there must not be a second surface for the
+      // same knob (the rule track FX already follow).
+      if (await cdp.evaluate(`!!document.querySelector('.th-master-fx-popover, .th-fx-popover')`)) {
+        throw new Error('master FX popovers were retired in favour of the inspector strip, but one rendered');
+      }
+      // Master's sections carry no letter and no bypass/remove: the five are
+      // fixed, so there is no order to name and nothing to take away.
+      const extras = await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="master"] .th-strip-letter, ' +
+        '.inspector .th-strip-section[data-track="master"] .th-fx-chip-bypass, ' +
+        '.inspector .th-strip-section[data-track="master"] .th-fx-chip-remove')`);
+      if (extras) throw new Error('master strip sections must have no letter and no bypass/remove buttons');
+    });
+
+    step('Master FX: selecting a track takes the inspector back from master', async () => {
+      // :not(.automation-header) — an open Automation/Envelope row builds its
+      // own .track-header, and those carry no setActive listener.
+      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      const shown = await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent`);
+      if (shown === 'Master') throw new Error('clicking a track header should hand the inspector back to that track');
+      if (await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+        throw new Error('the master cells should stop looking selected once a track takes the inspector');
+      }
+      // ...and back again, so the two directions are both covered.
+      await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
+      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      if (!await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+        throw new Error('clicking the Master cell should mark the bus selected');
+      }
+    });
+
     step('Master FX: EQ knob updates state and un-dims its chip', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
-      // .th-master-fx-popover, not bare .th-strip-section[data-key="eq"] — a
-      // track's own EQ popover shares the same registry key and could still
-      // be open from an earlier step in this same page session.
-      await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="eq"]')`);
-      const dialSel = `[...document.querySelector('.th-master-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]` +
+      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`);
+      const secSel = `document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`;
+      const dialSel = `[...${secSel}.querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial')`;
       // Stash the live element on window (not just re-derived by dialSel each
       // time) so we can compare document.activeElement against this SAME
@@ -3145,13 +3188,16 @@ async function main() {
       if (val !== '6.0dB') throw new Error(`expected master EQ Lo to read 6.0dB after 12 steps, got ${val}`);
       const dimmed = await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"]').classList.contains('bypassed')`);
       if (dimmed) throw new Error('EQ chip should stop looking dimmed once a value moves off default');
-      // Each keyboard commit re-renders the chip row (so the dim state above
-      // reflects the new value) — that re-render must NOT rebuild the open
-      // popover itself, or the focused dial gets detached and falls back to
+      if (await cdp.evaluate(`${secSel}.classList.contains('bypassed')`)) {
+        throw new Error('the EQ strip section should stop looking dimmed once a value moves off default');
+      }
+      // Each keyboard commit refreshes the chip row (so the dim state above
+      // reflects the new value) — that refresh must NOT rebuild the strip
+      // section itself, or the focused dial gets detached and falls back to
       // <body>, silently breaking the global guard that stops arrow keys
       // from reaching nudgeSelection() while a knob has focus.
       const stillFocused = await cdp.evaluate(`document.activeElement === window.__testDial`);
-      if (!stillFocused) throw new Error('knob dial lost DOM focus after a keyboard commit — a render() rebuilt the floating layer out from under it, which would let the next arrow-key press fall through to note-nudging');
+      if (!stillFocused) throw new Error('knob dial lost DOM focus after a keyboard commit — a render() rebuilt the strip out from under it, which would let the next arrow-key press fall through to note-nudging');
       // Reset for later steps/songs sharing this page load.
       await cdp.evaluate(`(() => { const d = window.__testDial;
         for (let i = 0; i < 12; i++) d.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); })()`);
@@ -3159,8 +3205,8 @@ async function main() {
 
     step('Master FX: Sidechain has a real On/Off toggle, not a bypass button', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
-      await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="sidechain"]')`);
-      const toggleSel = `document.querySelector('.th-master-fx-popover[data-key="sidechain"] .th-fx-popover-head .icon-btn')`;
+      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="sidechain"]')`);
+      const toggleSel = `document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="sidechain"] .th-strip-section-head .icon-btn')`;
       const before = await cdp.evaluate(`${toggleSel}.textContent`);
       if (before !== 'Off') throw new Error(`expected Sidechain to start Off, got ${before}`);
       await cdp.evaluate(`${toggleSel}.click()`);
