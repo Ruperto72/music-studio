@@ -76,6 +76,20 @@ hur roligt det vore att bygga.
   ingen delning via länk och ingen synk mellan enheter. Save file / Load
   file är i dag hela svaret på "flytta en låt någon annanstans".
 
+## Dokumentationsskuld
+
+- [ ] **Spårhuvudets redesign är inte dokumenterad.** PR #111 och de två
+  FX-omgångarna efter den byggde om spårhuvudet (Osc/Inserts/Output),
+  gjorde vågformsväljaren till en flytande listbox, införde
+  `MASTER_FX_REGISTRY` med chips/popovers för mastern, och skrev om
+  Envelope & Filter-raden — utan att röra `CLAUDE.md`, `DESIGN.md` eller
+  `README.md`. FX-panelen och `activeFx` är ikappskrivna (den här
+  omgången), men resten beskriver fortfarande appen som den såg ut innan:
+  vågformsväljaren som en `role="radiogroup"`, masterns FX som en rad
+  reglage, Envelope-raden med enbokstavsetiketter. `docs/superpowers/`
+  har specarna och planerna, så materialet finns — det är
+  arkitekturdokumenten som halkat efter.
+
 ## Småsaker
 
 - [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en

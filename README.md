@@ -66,7 +66,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   reusable **preset**
 - Per-track **FX**: continuous Delay / Chorus / Reverb sends, a 3-band
   **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
-  **vibrato** on tonal tracks — all neutral by default
+  **vibrato** on tonal tracks — all neutral by default. The track header
+  shows them as compact **chips** (which effect, in what order, what's
+  bypassed); the knobs live in the inspector column, which shows the active
+  track's whole chain whenever no note is selected
 - Per-note effects: velocity, **pan**, bend, vibrato, tremolo, pulse width
   (duty), arpeggio, portamento, bitcrush, echo, chorus and reverb — pan places
   a single note in the stereo field on top of its track's own pan

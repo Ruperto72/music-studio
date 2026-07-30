@@ -116,7 +116,7 @@ silent mis-aim is what made this step look like an app bug for a day.
 - Produces: `renderTrackStrip(track)` and `buildStripSection(track, effect)`,
   both called only from `renderInspector()`.
 
-- [ ] **Step 1: Second mode in `renderInspector()`**
+- [x] **Step 1: Second mode in `renderInspector()`**
 
 Today (line ~5532):
 
@@ -137,7 +137,7 @@ class must keep meaning "genuinely nothing to show".
 `document.body.classList.toggle('has-sel', …)` keeps its current meaning
 (a *note* is selected) — the mobile close button is about the note sheet.
 
-- [ ] **Step 2: `renderTrackStrip(track)`**
+- [x] **Step 2: `renderTrackStrip(track)`**
 
 Header: track name + colour swatch, so it is obvious which track the strip
 belongs to when the grid is scrolled away from it.
@@ -147,7 +147,7 @@ chips use, so the letters match. Below them, a muted list of the effects
 that are still at their defaults with a "+" to reveal one — the same set the
 add-menu offers (Task 5 Step 3).
 
-- [ ] **Step 3: `buildStripSection(track, effect)`**
+- [x] **Step 3: `buildStripSection(track, effect)`**
 
 Section head: the effect's letter, `glyph(effect.icon)`, `effect.label`,
 then the **bypass** and **remove** buttons — reuse
@@ -162,14 +162,14 @@ the one place its code is worth keeping).
 A bypassed section gets the existing dimmed treatment (`.th-fx-popover.bypassed`
 is `opacity: 0.55`; use an equivalent `.th-strip-section.bypassed`).
 
-- [ ] **Step 4: `aria-label` on the column**
+- [x] **Step 4: `aria-label` on the column**
 
 `<aside class="inspector-column" aria-label="Note inspector">` becomes
 something covering both modes, e.g. `aria-label="Inspector"`, since it now
 shows either a note or a track. The inner `#inspector` div keeps its id —
 `renderInspector()`, the mobile CSS and `#insp-close` all key off it.
 
-- [ ] **Step 5: Mobile**
+- [x] **Step 5: Mobile**
 
 Below ~760 px, `.inspector` is a fixed bottom sheet hidden while `.empty`.
 The strip must **not** open that sheet merely because a track is active:
@@ -177,7 +177,7 @@ gate the strip mode on a wide layout, or on an explicit chip tap that sets a
 "strip requested" flag cleared on dismiss. Verify by hand at ≤760 px that
 the sheet is still absent on load.
 
-- [ ] **Step 6: Screenshot check**
+- [x] **Step 6: Screenshot check**
 
 Capture at 1600×1000 with Rust Foundry loaded and confirm the strip is
 legible at 244 px with seven effects — this is the width question the spec
@@ -196,7 +196,7 @@ Depends on Task 2: the strip must exist before the popover goes.
 `removeTrack()`'s cleanup (3377), `removeFxChip()` (4017) and
 `buildFxPanel()`'s Reset handler (~4172).
 
-- [ ] **Step 1: Chip click selects instead of toggling a popover**
+- [x] **Step 1: Chip click selects instead of toggling a popover**
 
 In `buildFxChip()`, replace the click body:
 
@@ -212,7 +212,7 @@ focused section, `render()`, then scroll that section into view. The
 `.th-fx-chip.open` class now means "this is the section the strip is showing"
 — same CSS, new meaning.
 
-- [ ] **Step 2: Delete `buildFxPopover()` and `fxPopoverOpen`**
+- [x] **Step 2: Delete `buildFxPopover()` and `fxPopoverOpen`**
 
 Remove the function, the `const fxPopoverOpen = new Set()`, the
 `for (const key of fxPopoverOpen)` block in `renderFloatingLayer()`, and the
@@ -223,7 +223,7 @@ terms but keep `masterFxPopoverOpen`, `fxAddMenuOpen` and `oscPickerOpen`.
 The light-dismiss selector at 3636 keeps `.th-fx-popover` — **master
 popovers still use that class**. Only `.th-fx-chip` changes meaning.
 
-- [ ] **Step 3: Confirm master popovers are unaffected**
+- [x] **Step 3: Confirm master popovers are unaffected**
 
 Open a master FX chip and confirm it still opens, positions, dismisses on
 Escape/outside-click, and closes on `.daw` scroll.
@@ -238,19 +238,19 @@ them.
 **Files:** Modify `index.html` — `buildFxChip()` and `.th-fx-chip*` CSS
 (lines ~489-500).
 
-- [ ] **Step 1: Drop bypass/remove from the chip**
+- [x] **Step 1: Drop bypass/remove from the chip**
 
 `chip.append(body, buildFxBypassButton(...), buildFxRemoveButton(...))`
 becomes `chip.append(body)`. Both buttons now live in the strip section head
 (Task 2 Step 3), so each control appears exactly once.
 
-- [ ] **Step 2: Letter + icon only**
+- [x] **Step 2: Letter + icon only**
 
 Remove the name span from `body`; keep the `title` and `aria-label` (they
 already carry `"${letter}, ${effect.label}"`, so the accessible name is
 unchanged). Keep `.th-fx-chip-letter` and the glyph.
 
-- [ ] **Step 3: Measure**
+- [x] **Step 3: Measure**
 
 Re-run the measurement from the spec and record the real numbers in the
 commit message. Target: chip row 152 px → ~56 px, header ~371 px → ~275 px.
@@ -266,7 +266,7 @@ having, and the spec anticipated this.
 (4009), `buildFxPanel()`'s add button (~4190), and the automation toggle's
 label.
 
-- [ ] **Step 1: `visibleFxFor()` consults automation**
+- [x] **Step 1: `visibleFxFor()` consults automation**
 
 A chip shows when the effect is non-default **or** when a curve exists for
 one of its params. Only the three sends have automatable params, so this is
@@ -277,7 +277,7 @@ non-empty point list.
 Put the mapping next to `AUTOMATION_PARAMS` rather than inline — it is the
 second place that has to know sends are the automatable subset.
 
-- [ ] **Step 2: `removeFxChip()` clears the curve too**
+- [x] **Step 2: `removeFxChip()` clears the curve too**
 
 After `effect.set(track, FX_FIELD_DEFAULTS[effect.key])`, delete the
 matching `state.automation[track][param]` (same mapping as Step 1) and drop
@@ -287,7 +287,7 @@ and `scheduleAutomationForChunk()` only gates on `isFxBypassed()`.
 
 The track-level `Reset` handler in `buildFxPanel()` gets the same treatment.
 
-- [ ] **Step 3: "+ Add effect" says what it does**
+- [x] **Step 3: "+ Add effect" says what it does**
 
 The button becomes `+` with `title` along the lines of "Show a control for
 an effect this track isn't using yet". The menu still lists the effects
@@ -295,7 +295,7 @@ currently at their defaults. Nothing about `state.activeFx` writing changes
 — `buildFloatingAddMenu`'s `state.activeFx[track][effect.key] = { bypassed:
 false }` is exactly right under the new wording: it means "show this".
 
-- [ ] **Step 4: Stale automation label**
+- [x] **Step 4: Stale automation label**
 
 The automation toggle still reads `Automation (volume/pan over time)`
 though `AUTOMATION_PARAMS` has offered five since Delay/Chorus/Reverb became
@@ -308,7 +308,7 @@ parenthetical.
 
 **Files:** Modify `verify.js`.
 
-- [ ] **Step 1: Repoint the three helpers**
+- [x] **Step 1: Repoint the three helpers**
 
 `addFxEffect` waits on `.th-fx-popover[data-key]` today; `stepKnob` and
 `knobText` locate a knob inside `.th-fx-popover[data-key="…"]`. All three
@@ -322,27 +322,27 @@ pass with no other edit. **Treat any step that needs more than the container
 selector changed as a signal the strip diverged from the popover**, not as a
 test to loosen.
 
-- [ ] **Step 2: New step — the strip is the editing surface**
+- [x] **Step 2: New step — the strip is the editing surface**
 
 Nothing selected → the inspector shows the active track's strip, with one
 section per visible chip in the same order; selecting a note replaces it
 with the note inspector; deselecting brings it back. Assert there is **no**
 `.th-fx-popover` with a track `data-key` anywhere after clicking a chip.
 
-- [ ] **Step 3: New step — a curve makes its chip appear**
+- [x] **Step 3: New step — a curve makes its chip appear**
 
 On a fresh track with `chips: []`, draw a Delay automation curve, and assert
 a `sendDelay` chip appears. Inject the bug (drop the automation clause from
 `visibleFxFor`) and confirm the step fails — this is the exact asymmetry the
 spec was written around, and it is invisible without an explicit check.
 
-- [ ] **Step 4: New step — removing an effect removes its curve**
+- [x] **Step 4: New step — removing an effect removes its curve**
 
 Add a Delay chip, set a send level, draw a curve, remove the chip. Assert
 both `fxSend[track].delay` is back to default **and**
 `automation[track].delay` is gone, read from the autosave draft.
 
-- [ ] **Step 5: New step — the chip row is compact**
+- [x] **Step 5: New step — the chip row is compact**
 
 Assert the chip row's height for a seven-effect track is under a threshold
 (~70 px), so a future change that puts the names back gets caught rather
@@ -357,20 +357,20 @@ two FX passes that followed, so they already describe a pre-redesign app —
 the FX panel as "a compact 2-column grid" of static sliders, the waveform
 picker as a `role="radiogroup"`, `SPARSE_TRACK_MAPS` with eleven entries.
 
-- [ ] **Step 1: Catch up the sections this work touches**
+- [x] **Step 1: Catch up the sections this work touches**
 
 DESIGN.md A.4 (track header), A.7 (track FX panel), A.13 (accessibility —
 the inspector column now has two modes), B.2 (`activeFx` in the state
 model). CLAUDE.md's Rendering and Audio-synthesis paragraphs. README's
 feature bullets.
 
-- [ ] **Step 2: Note what is *not* caught up**
+- [x] **Step 2: Note what is *not* caught up**
 
 The rest of yesterday's redesign (osc picker, master FX chips, envelope row)
 is a separate documentation debt. Record it in `TODO.md` rather than
 silently leaving the docs half-true.
 
-- [ ] **Step 3: `sw.js`**
+- [x] **Step 3: `sw.js`**
 
 Bump `CACHE_NAME` — `index.html` is precached.
 
@@ -385,3 +385,53 @@ Bump `CACHE_NAME` — `index.html` is precached.
   deliberately a no-op, so there is no downstream node to ramp.
 - Song-file format, `applySavedMix()`, `currentSongData()`.
 - The note inspector's own contents — only *when* it renders changes.
+
+
+---
+
+## Outcome
+
+Tasks 1-7 done. Measured before/after, same song and window:
+
+| | before | after |
+|---|---|---|
+| chip row | 152 px, 6 lines | **46 px, 2 lines** |
+| widest chip | 129 px | **44 px** |
+| track header | 260 × 371 | **260 × 265** |
+| tracks on screen | 2 | **3** |
+
+`node verify.js`: **49 steps, all pass, no console errors.**
+
+All three new assertions were confirmed against injected breakage:
+
+| injection | result |
+|---|---|
+| `visibleFxFor()` ignores automation | `drawing a Reverb curve should reveal its chip, chips are []` |
+| `removeFxChip()` leaves the curve | `curve present, chips ["sendDelay"]` — the removed chip reappears, since `visibleFxFor()` now reads automation |
+| the name put back on the chip | row 96 px, widest 94 px, against the step's 70/60 px thresholds |
+
+Injections 2 and 3 were run as *targeted* reproductions, not full suite
+runs: leaving a curve behind makes the removed chip reappear immediately, so
+a later step's `waitFor` spins and the run never finishes. Same reason as
+Task 1 step 3.
+
+### Two things the plan did not anticipate
+
+1. **The chip click must not toggle.** I wrote it as a toggle; with a note
+   selected the strip is not on screen, so the second click switched off
+   something invisible and read as a dead click. The per-track vibrato step
+   caught it — it reopens the section via its chip after a pen click, and
+   the toggle turned it off instead. A chip click now always focuses. There
+   is nothing to switch off: the strip is the column's default content.
+2. **The chord step was asserting the wrong thing.** It required
+   `.inspector.empty` after a chord is multi-selected. With the strip that
+   is no longer what happens, and it was never the point — it now asserts
+   the *note* panel is gone.
+
+### Still open
+
+The chips are letter + icon, and **the three sends share one `send` icon**,
+so D/E/F are three identical arrows distinguished only by their letter. The
+strip beside them spells every name out, so this is arguably fine, but it is
+exactly the readability trade the spec reserved for a screenshot rather than
+arithmetic — worth a look with real eyes before calling it settled.

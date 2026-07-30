@@ -575,20 +575,21 @@ async function main() {
     // tests used, kept for continuity with the rest of the suite.
     const fxPanelSel = `document.querySelectorAll('.track')[0].querySelector('.th-fx-panel')`;
     // Adds `label` (e.g. 'EQ') via the "+ Add effect" menu if not already a
-    // chip, and returns once its popover is open (adding auto-opens it).
+    // chip, and returns once its section is showing in the inspector column's
+    // track strip (adding points the strip at it).
     async function addFxEffect(label) {
-      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent.trim() === ${JSON.stringify(label)})`);
+      const already = await cdp.evaluate(`!![...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].find(b => b.getAttribute('aria-label').split(', ').slice(1).join(', ') === ${JSON.stringify(label)})`);
       if (already) return;
       await cdp.evaluate(`(${fxPanelSel}).querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
       await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key]')`);
+      await waitFor(`!!document.querySelector('.th-strip-section[data-key]')`);
     }
     // Steps a knob (identified by its label, e.g. 'Lo') by dispatching N
     // keydowns rather than replaying pointer-drag pixel math — deterministic,
     // and it exercises the knob's keyboard support as a side effect.
-    async function stepKnob(popoverKey, fieldLabel, key, times) {
-      const dialSel = `[...document.querySelector('.th-fx-popover[data-key="${popoverKey}"]').querySelectorAll('.th-knob')]` +
+    async function stepKnob(sectionKey, fieldLabel, key, times) {
+      const dialSel = `[...document.querySelector('.th-strip-section[data-key="${sectionKey}"]').querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-dial')`;
       await cdp.evaluate(`(() => {
         const dial = ${dialSel};
@@ -596,8 +597,8 @@ async function main() {
         for (let i = 0; i < ${times}; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
       })()`);
     }
-    async function knobText(popoverKey, fieldLabel) {
-      return cdp.evaluate(`[...document.querySelector('.th-fx-popover[data-key="${popoverKey}"]').querySelectorAll('.th-knob')]` +
+    async function knobText(sectionKey, fieldLabel) {
+      return cdp.evaluate(`[...document.querySelector('.th-strip-section[data-key="${sectionKey}"]').querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-val').textContent`);
     }
 
@@ -616,7 +617,7 @@ async function main() {
       await addFxEffect('Comp');
       await addFxEffect('EQ');
       const chipLabels = await cdp.evaluate(
-        `[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].map(b => b.querySelector('span:not(.th-fx-chip-letter)').textContent)`);
+        `[...(${fxPanelSel}).querySelectorAll('.th-fx-chip-body')].map(b => b.getAttribute('aria-label').split(', ').slice(1).join(', '))`);
       if (chipLabels.indexOf('EQ') === -1 || chipLabels.indexOf('EQ') > chipLabels.indexOf('Comp')) {
         throw new Error(`EQ should render before Comp regardless of add order, got ${JSON.stringify(chipLabels)}`);
       }
@@ -640,15 +641,17 @@ async function main() {
       }
     });
 
-    step('FX panel: bypass dims the chip/popover but keeps showing the dialled value, and Reset clears every chip', async () => {
-      await cdp.evaluate(`[...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ').querySelector('.th-fx-chip-bypass').click()`);
+    step('FX panel: bypass dims the chip and its strip section but keeps showing the dialled value, and Reset clears every chip', async () => {
+      // Bypass moved off the chip and onto the strip section head, so each
+      // control exists once rather than on both surfaces.
+      await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="eq"] .th-fx-chip-bypass').click()`);
       const bypassedState = await cdp.evaluate(`(() => {
-        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent === 'EQ');
-        const pop = document.querySelector('.th-fx-popover[data-key="eq"]');
-        return { chipDimmed: chip.classList.contains('bypassed'), popDimmed: pop.classList.contains('bypassed') };
+        const chip = [...(${fxPanelSel}).querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').getAttribute('aria-label').split(', ').slice(1).join(', ') === 'EQ');
+        const sec = document.querySelector('.th-strip-section[data-key="eq"]');
+        return { chipDimmed: chip.classList.contains('bypassed'), secDimmed: sec.classList.contains('bypassed') };
       })()`);
-      if (!bypassedState.chipDimmed || !bypassedState.popDimmed) {
-        throw new Error(`bypass should dim both the chip and its popover: ${JSON.stringify(bypassedState)}`);
+      if (!bypassedState.chipDimmed || !bypassedState.secDimmed) {
+        throw new Error(`bypass should dim both the chip and its strip section: ${JSON.stringify(bypassedState)}`);
       }
       const stillShown = await knobText('eq', 'Lo');
       if (stillShown !== '6.0dB') throw new Error(`bypass must not hide the real dialled value, Lo now reads ${stillShown}`);
@@ -752,8 +755,12 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 4`);
       const multiCount = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note.multi-selected').length`);
       if (multiCount !== 3) throw new Error(`expected 3 notes multi-selected as the chord group, got ${multiCount}`);
-      const inspectorEmpty = await cdp.evaluate(`document.querySelector('.inspector').classList.contains('empty')`);
-      if (!inspectorEmpty) throw new Error('expected the single-note inspector to close after the chord is selected as a group');
+      // No single note is selected any more, so the column falls back to the
+      // active track's FX strip (or the empty placeholder on a narrow layout).
+      // Either way the *note* panel must be gone — that is what this asserts,
+      // rather than the specific thing that replaced it.
+      const noteePanelGone = await cdp.evaluate(`!document.querySelector('.inspector .insp-panel .fx-toggle')`);
+      if (!noteePanelGone) throw new Error('expected the single-note inspector to close after the chord is selected as a group');
     });
 
     step('Chord buttons: re-running on the same root adds nothing (no stacked duplicates)', async () => {
@@ -1276,7 +1283,7 @@ async function main() {
         const panel = ${panelSel};
         const chips = [...panel.querySelectorAll('.th-fx-chip')];
         return {
-          labels: chips.map(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent),
+          labels: chips.map(c => c.querySelector('.th-fx-chip-body').getAttribute('aria-label').split(', ').slice(1).join(', ')),
           drawn: chips.every(c => c.querySelectorAll('svg.glyph path').length > 0),
           // Knobs live inside the popover, which now renders in
           // #floating-layer rather than nested under panel — but this
@@ -2716,13 +2723,13 @@ async function main() {
       const tonalMenu = await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].map(b => b.textContent.trim())`);
       if (!tonalMenu.includes('Vibrato')) throw new Error(`a tonal track's add menu should offer Vibrato: ${JSON.stringify(tonalMenu)}`);
       await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'Vibrato').click()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await waitFor(`!!document.querySelector('.th-strip-section[data-key="vibrato"]')`);
 
       // Set a depth, place a note, and confirm an LFO reaches its frequency.
       // 50 cents on a 523.25Hz note => 523.25 * (2^(50/1200) - 1) ~= 15.3Hz.
       // 0 -> 50 at a 1-cent step is 50 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-strip-section[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2755,15 +2762,15 @@ async function main() {
       // before touching the dial again.
       await cdp.evaluate(`(() => {
         const head = ${newTonalHead};
-        if (document.querySelector('.th-fx-popover[data-key="vibrato"]')) return;
-        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Vibrato')
+        if (document.querySelector('.th-strip-section[data-key="vibrato"]')) return;
+        [...head.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').getAttribute('aria-label').split(', ').slice(1).join(', ') === 'Vibrato')
           .querySelector('.th-fx-chip-body').click();
       })()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="vibrato"]')`);
+      await waitFor(`!!document.querySelector('.th-strip-section[data-key="vibrato"]')`);
 
       // At depth 0 nothing must be connected — an untouched track is unchanged.
       await cdp.evaluate(`(() => {
-        const dial = [...document.querySelector('.th-fx-popover[data-key="vibrato"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-strip-section[data-key="vibrato"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Depth').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 50; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -2811,10 +2818,10 @@ async function main() {
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
       await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
+      await waitFor(`!!document.querySelector('.th-strip-section[data-key="eq"]')`);
       // 0 -> 6 at a 0.5 step is 12 presses.
       await cdp.evaluate(`(() => {
-        const dial = [...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+        const dial = [...document.querySelector('.th-strip-section[data-key="eq"]').querySelectorAll('.th-knob')]
           .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial');
         dial.focus();
         for (let i = 0; i < 12; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
@@ -2827,14 +2834,105 @@ async function main() {
       await waitFor(`window.__biquads.some(b => b.gain.value === 6)`);
       const idx = await cdp.evaluate(`window.__biquads.findIndex(b => b.gain.value === 6)`);
 
-      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 0`);
-      const knobStillSix = await cdp.evaluate(`[...document.querySelector('.th-fx-popover[data-key="eq"]').querySelectorAll('.th-knob')]
+      const knobStillSix = await cdp.evaluate(`[...document.querySelector('.th-strip-section[data-key="eq"]').querySelectorAll('.th-knob')]
         .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-val').textContent`);
       if (knobStillSix !== '6.0dB') throw new Error(`bypass must not change what the knob displays, Lo now reads ${knobStillSix}`);
 
-      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
+      await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="eq"]').querySelector('.th-fx-chip-bypass').click()`);
       await waitFor(`window.__biquads[${idx}].gain.value === 6`);
+    });
+
+    // A shared helper for the two steps below: opens the automation lane on
+    // the first track, picks `param`, and clicks one point near the top.
+    async function drawAutomationPoint(param) {
+      await cdp.evaluate(`Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('Auto')).click()`);
+      await waitFor(`!!document.querySelector('.automation-lane-el')`);
+      await cdp.evaluate(`(() => {
+        const sel = document.querySelector('.automation-header select');
+        sel.value = ${JSON.stringify(param)};
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.querySelector('.automation-header select').value === ${JSON.stringify(param)}`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.automation-lane-el');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 1, clientY: rect.top + 6 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.automation-point')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.automation-header button')].find(b => b.title === 'Close automation lane').click()`);
+    }
+
+    step('FX panel: an automated send shows its chip even with the knob at zero', async () => {
+      // The asymmetry this was written for: the Automation dropdown offers
+      // Delay/Chorus/Reverb regardless of which chips exist, so a curve could
+      // be audibly moving a send while the panel showed nothing at all —
+      // isEffectDefault() is true when the level is still 0.
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      const chipKeys = `[...document.querySelectorAll('.track')[0].querySelectorAll('.th-fx-chip')].map(c => c.dataset.key)`;
+      const fresh = await cdp.evaluate(chipKeys);
+      if (fresh.length) throw new Error(`a starter track should begin with no chips, got ${JSON.stringify(fresh)}`);
+
+      await drawAutomationPoint('reverb');
+      const after = await cdp.evaluate(chipKeys);
+      if (!after.includes('sendReverb')) {
+        throw new Error(`drawing a Reverb curve should reveal its chip, chips are ${JSON.stringify(after)}`);
+      }
+      // And the strip section it points at exists, so the curve is reachable.
+      const inStrip = await cdp.evaluate(`!!document.querySelector('.th-strip-section[data-key="sendReverb"]')`);
+      if (!inStrip) throw new Error('the revealed effect should also have a section in the track strip');
+    });
+
+    step('FX panel: removing an effect removes its automation curve too', async () => {
+      // Removal is not bypass, and scheduleAutomationForChunk() only gates on
+      // isFxBypassed() — so a curve left behind by a removed chip keeps
+      // playing with nothing on screen that explains it.
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      await addFxEffect('Delay');
+      await drawAutomationPoint('delay');
+      await new Promise((r) => setTimeout(r, 700)); // autosave debounce
+      const draft = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k) || '{}');
+        const id = (d.trackList || [])[0] && d.trackList[0].id;
+        return { delay: ((d.fxSend || {})[id] || {}).delay, curve: (((d.automation || {})[id]) || {}).delay };
+      })()`);
+      const withCurve = await draft();
+      if (!withCurve.curve || !withCurve.curve.length) {
+        throw new Error(`the Delay curve should be in the saved song before removal, got ${JSON.stringify(withCurve)}`);
+      }
+
+      await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="sendDelay"] .th-fx-chip-remove').click()`);
+      await new Promise((r) => setTimeout(r, 700));
+      const gone = await draft();
+      if (gone.curve) {
+        throw new Error(`removing the Delay chip should take its curve with it, still saved: ${JSON.stringify(gone)}`);
+      }
+      const chipsLeft = await cdp.evaluate(`[...document.querySelectorAll('.track')[0].querySelectorAll('.th-fx-chip')].map(c => c.dataset.key)`);
+      if (chipsLeft.includes('sendDelay')) {
+        throw new Error(`the chip should be gone too, chips are ${JSON.stringify(chipsLeft)}`);
+      }
+    });
+
+    step('Track header: the chip row stays compact with every effect in use', async () => {
+      // The whole point of moving editing into the strip: a chip is a letter
+      // and an icon, so seven of them wrap onto two short lines instead of
+      // six long ones (152px of every track header before this).
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
+      const row = await cdp.evaluate(`(() => {
+        const r = document.querySelectorAll('.track')[0].querySelector('.th-fx-chip-row');
+        const chips = [...r.querySelectorAll('.th-fx-chip')];
+        return { h: Math.round(r.getBoundingClientRect().height), n: chips.length,
+                 widest: Math.round(Math.max(...chips.map(c => c.getBoundingClientRect().width))) };
+      })()`);
+      if (row.n !== 7) throw new Error(`expected seven chips, got ${row.n}`);
+      if (row.h > 70) throw new Error(`seven chips should fit in ~two lines, the row is ${row.h}px tall`);
+      if (row.widest > 60) throw new Error(`a chip should be a letter and an icon, the widest is ${row.widest}px`);
     });
 
     step('FX panel: a bypassed send is not re-armed by its own automation curve', async () => {
@@ -2897,14 +2995,14 @@ async function main() {
       // written at all, not merely written at a different (default) value.
       await cdp.evaluate(`(() => {
         const panel = ${fxPanelSel};
-        if (!document.querySelector('.th-fx-popover[data-key="sendDelay"]')) {
-          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body span:not(.th-fx-chip-letter)').textContent.trim() === 'Delay')
+        if (!document.querySelector('.th-strip-section[data-key="sendDelay"]')) {
+          [...panel.querySelectorAll('.th-fx-chip')].find(c => c.querySelector('.th-fx-chip-body').getAttribute('aria-label').split(', ').slice(1).join(', ') === 'Delay')
             .querySelector('.th-fx-chip-body').click();
         }
       })()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="sendDelay"]')`);
-      await cdp.evaluate(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
-      await waitFor(`document.querySelector('.th-fx-popover[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
+      await waitFor(`!!document.querySelector('.th-strip-section[data-key="sendDelay"]')`);
+      await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').click()`);
+      await waitFor(`document.querySelector('.th-strip-section[data-key="sendDelay"]').querySelector('.th-fx-chip-bypass').getAttribute('aria-pressed') === 'true'`);
 
       await cdp.evaluate(`window.__sendWrites = []`);
       await cdp.evaluate(`document.querySelector('#play').click()`);
@@ -2967,7 +3065,7 @@ async function main() {
 
     step('Master FX: EQ knob updates state and un-dims its chip', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
-      // .th-master-fx-popover, not bare .th-fx-popover[data-key="eq"] — a
+      // .th-master-fx-popover, not bare .th-strip-section[data-key="eq"] — a
       // track's own EQ popover shares the same registry key and could still
       // be open from an earlier step in this same page session.
       await waitFor(`!!document.querySelector('.th-master-fx-popover[data-key="eq"]')`);
@@ -3031,10 +3129,11 @@ async function main() {
       const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'))`;
       await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
       const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
+      // The floating layer to dismiss is now the "+ Add effect" menu: per-track
+      // FX popovers were retired in favour of the inspector column's strip, and
+      // the add-menu is the remaining per-track member of that layer.
       await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
-      await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
-      await waitFor(`!!document.querySelector('.th-fx-popover[data-key="eq"]')`);
 
       const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'))`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
@@ -3088,8 +3187,8 @@ async function main() {
       if (after !== before + 1) {
         throw new Error(`a real click on the grid with a popover open should place exactly one note (light-dismiss must not eat the click), ${before} -> ${after}`);
       }
-      const popoverStillOpen = await cdp.evaluate(`!!document.querySelector('.th-fx-popover')`);
-      if (popoverStillOpen) throw new Error('the same outside click should also have dismissed the open FX popover');
+      const menuStillOpen = await cdp.evaluate(`!!document.querySelector('.th-fx-add-menu')`);
+      if (menuStillOpen) throw new Error('the same outside click should also have dismissed the open add-menu');
     });
 
     // Last on purpose: this step reloads the page to install its createGain
