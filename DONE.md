@@ -1210,6 +1210,45 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   strippen ÄR kollapsad) — samma `state.songName`, två element som CSS
   redan växlade mellan, `updateSongNameUI()` uppdaterar båda. Hjälptexten
   uppdaterades på tre ställen för att peka på nya platsen.
+## Dokumentationsskuld
+
+- [x] **Spårhuvudets redesign är ikappskriven.** PR #111 och de två
+  FX-omgångarna efter den byggde om spårhuvudet, vågformsväljaren, mastern
+  och Envelope-raden utan att röra arkitekturdokumenten, så `DESIGN.md` och
+  `CLAUDE.md` beskrev en app som inte längre fanns. Nu stämmer de igen:
+  - **Spårhuvudet** (A.2/A.4): 260px, identitetsrad plus tre rubricerade
+    sektioner — Osc / Inserts / Output — i stället för en orubricerad
+    lodrät stapel i en 200px-kolumn.
+  - **Vågformsväljaren** (A.4/A.13): en triggerknapp som öppnar en flytande
+    listbox, inte längre en `role="radiogroup"` med tio knappar. Specen
+    (`docs/superpowers/specs/2026-07-29-track-header-redesign.md` §3) föreslog
+    en vanlig `<select>`; den provades och ratades — en `<option>` kan inte
+    bära en SVG, och att *se* vågformen var hela poängen med knapparna den
+    skulle ersätta. Dokumentet beskriver nu vad som byggdes, inte vad som
+    föreslogs.
+  - **Den flytande lagren** var odokumenterad helt och hållet, trots att den
+    är svaret på en riktig bugg: `.daw` har `overflow-x: auto`, vilket
+    beräknar `overflow-y: auto` också och klipper allt som sticker ut ur
+    dess box — ingen z-index kan upphäva en förfaders overflow-klippning.
+    Därför portal-renderas menyerna till `#floating-layer` på `body`-nivå.
+    Med i dokumentationen nu: att passet måste köra *efter* `renderTracks()`
+    (den letar upp sina triggers i den DOM som just byggts) och att
+    `.daw`-scroll bara stänger på **lodrät** rörelse — att stänga på bägge
+    axlarna slog till vid `followPlayhead()`s autoscroll och avbröt
+    pågående rattdrag mitt i uppspelningen.
+  - **Master FX** (A.10): fem chips med flytande popovers och
+    `MASTER_FX_REGISTRY`, med två avsiktliga skillnader mot ett spårs chips
+    (fasta — ingen `+`, inget ✕, ingen bokstav; och dämpade-när-neutrala i
+    stället för bypass, med sidechain som enda undantag eftersom dess
+    duckning är ett av/på och inte en ratt som vilar på noll).
+  - **Envelope & Filter** (A.8): hela ord med egna ikoner i rubricerade
+    grupper, i stället för sju bara bokstäver med betydelsen enbart i en
+    `title`. Ring-gruppen fanns inte i dokumentet alls.
+  - Dessutom: `SPARSE_TRACK_MAPS` är tolv poster, inte elva (`activeFx`
+    tillkom), `render()`-pipelinen hade kvar ett `fxSendOpen` som inte finns
+    längre, och hjälpdialogen beskrev FX-knappen, tio vågformsknappar och en
+    rad masterreglage som alla är borta.
+
 ## Kvalitet
 
 - [x] **Fyra Web Audio-antaganden kontrollerade mot specen i stället för mot
@@ -1558,3 +1597,20 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   ingenting om vad man gått förbi; det är skillnaden mellan att navigera en
   stämma och att räkna takter i mörker. Därmed går griden att *läsa* utan
   pekdon, inte bara skriva till.
+
+- [x] **`cdp.send()` har fått en deadline.** Sviten kunde hänga för evigt:
+  `send()` la sitt löfte i `pending` och ingenting avvisade det någonsin, så
+  ett uteblivet CDP-svar blev tystnad i 25 minuter i stället för ett fel.
+  `waitFor()` *har* en timeout (5 s) men den hjälpte inte — `waitFor` blockeras
+  inuti sitt allra första `cdp.evaluate`, så dess klocka hinner aldrig räkna
+  ned. Åtgärden hörde alltså hemma på `send()`, inte på `waitFor()`. Två
+  minuter per begäran: långt bortom varje legitimt anrop (det trögaste är en
+  offline-WAV-rendering inne i `Runtime.evaluate`) och långt innanför vad man
+  hinner upptäcka för hand. Nästa hängning blir ett namngivet fel med
+  metodnamnet i. 50/50 gröna steg med deadlinen på plats, så inget legitimt
+  anrop ligger i närheten av taket. **Vad som utlöser hängningen är
+  fortfarande okänt** — misstanken är att
+  `Page.addScriptToEvaluateOnNewDocument` staplar på sig så att varje ny sida
+  vid steg 37 bär ett tiotal prototyp-patchar, men det är en gissning, inte
+  en mätning, och den här posten fixar symptomet med flit: en tyst hängning
+  går inte att felsöka, ett namngivet fel gör det.

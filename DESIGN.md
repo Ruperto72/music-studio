@@ -72,17 +72,14 @@ which is greppable when the published version is inconvenient to search.
 │ BARS  │ ruler (bar numbers, loop region)       │                 │
 │ ──────┼────────────────────────────────────────┤                 │
 │ Track │ piano roll / rhythm grid               │   Inspector     │
-│ header│ (horizontally + vertically scrollable, │  (selected-note │
-│ (name,│  playhead line, markers)                │   effects, or   │
-│ M/S/  │                                         │   empty state)  │
-│ ✕,    │  ...one row per track, plus optional    │                 │
-│ wave, │  Automation / Envelope rows when open   │                 │
-│ Auto/ │  (the FX panel expands the header      │                 │
-│ Env/  │  in place instead — see A.7)             │                 │
-│ FX,   │                                         │                 │
-│ vol,  │                                         │                 │
-│ pan,  │                                         │                 │
-│ VU)   │                                         │                 │
+│ header│ (horizontally + vertically scrollable, │  (the selected  │
+│ (name,│  playhead line, markers)                │   note or hit — │
+│ M/S/R,│                                         │   or, with      │
+│ ✕;    │  ...one row per track, plus optional    │   nothing       │
+│ Osc / │  Automation / Envelope rows when open   │   selected, the │
+│Inserts│                                         │   active track's│
+│/Output│                                         │   FX strip)     │
+│ )     │                                         │                 │
 ├───────┴────────────────────────────────────────┤                 │
 │ Master bar (sticky bottom): Master · Output ·   │                 │
 │ Tempo · Meter · Length · Grid · ＋ Add track     │                 │
@@ -124,46 +121,66 @@ On narrow screens, an "⋯ More" toggle collapses the less-essential panels
 
 ### A.4 Track headers & channel strips
 
-Each track's header (`buildHeader()`) is a **sticky-left column** (200px)
-with distinct rows, each independently hideable when the track is collapsed:
+Each track's header (`buildHeader()`) is a **sticky-left column** (260px):
+an identity row, then three **captioned sections** — Osc, Inserts, Output —
+each a small uppercase `.th-section-label` over its controls, separated by a
+hairline rule. It reads as a mixer channel strip rather than a list of
+controls, which is what the sections are for; before them it was an
+unlabelled vertical stack in a 200px column.
 
-1. **Top row** (always visible, even collapsed): collapse toggle (▾/▸),
-   track name (click-to-... double-click-to-rename, ellipsis-truncated),
+1. **Identity row** (always visible, even collapsed): collapse toggle (▾/▸),
+   reorder ▲/▼ (within-kind — a tonal track's neighbours are only ever
+   tonal), track name (double-click to rename, ellipsis-truncated),
    **M**ute, **S**olo, **R** (record-arm — see A.16), and (hidden when
    collapsed) **✕** remove.
-2. **Waveform row** (hidden when collapsed): for tonal tracks, ten icon
-   buttons over **two rows** of five — Square/PWM/Triangle/Saw/Sine on the
-   first, Half sine/NES Tri (wavetable)/Noise/Ring/FM on the second, each drawn
-   as the shape it produces — with the selected one's name spelled out
-   underneath. Ten across a single row would leave each button about 17px, too
-   small for the shape to read; the five-column grid keeps them at ~35px, wider
-   than the original six were; rhythm tracks get a static "Kit" label with its own glyph
-   instead. The buttons form a `role="radiogroup"` with `aria-checked`
-   (the same pattern as the Pen/Eraser/Grab tool group, since this is one
-   choice out of a set), and each carries the waveform's name as its
-   `aria-label` because the glyph itself is `aria-hidden`. This replaced a
-   `<select>`: the choice is "which of these shapes", which a dropdown can
-   only ever show one of at a time — and a native `<option>` cannot carry
-   an SVG at all. The group is a CSS grid of five equal columns, so the
-   buttons divide the fixed 200px header (`--header-w`) evenly and a new
-   waveform extends the second row instead of shrinking the first.
-3. **Tools row** (hidden when collapsed): **Auto** (toggles the
-   automation-curve row), **Env** (toggles the envelope/filter/FM row,
-   tonal tracks only — drum hits use fixed per-type envelopes), **FX**
-   (toggles the Delay/Chorus/Reverb-send + EQ + Compressor + Bitcrush + Tremolo
-   panel — see A.7), and **Preset** (saves/loads that track's
-   waveform+envelope+filter+FM as a named preset, shared across songs via
-   `localStorage`).
-4. **Volume row** (hidden when collapsed): a slider (0–2) + numeric readout.
-5. **Pan row** (hidden when collapsed): a slider (−1–1, double-click to
-   re-center) + L/C/R readout.
-6. **VU meter** (always visible, even collapsed): a live post-fader level
-   bar, silent when muted.
+2. **Osc**: the waveform picker plus the tool toggles — **Auto** (opens the
+   automation-curve row, A.6), **Env** (opens the envelope/filter row, A.8;
+   tonal only — drum hits use fixed per-type envelopes) and **Preset**
+   (saves/loads waveform+envelope+filter+FM as a named preset, shared across
+   songs via `localStorage`). A rhythm track has a static **Kit** label
+   instead of the picker, and keeps Auto but swaps Env/Preset for a
+   **Patterns** button (A.11b).
+3. **Inserts**: the FX chip row and its **+** and **Reset** buttons — see
+   A.7. The knobs are *not* here.
+4. **Output**: volume (0–2) and pan (−1–1, double-click to re-centre) with
+   their readouts. The live post-fader **VU meter** sits just below, a
+   sibling of the section rather than inside it, so that collapsing the
+   track keeps the meter while hiding the faders.
 
-**Collapsed** state (▸) hides rows 2–5 (and the FX panel, if open) and shows
-just name/M/S/VU — a slim overview strip so many tracks fit on screen;
+**The waveform picker is a trigger button that opens a floating listbox**
+(`buildFloatingOscMenu()`): the trigger shows the current shape's glyph, its
+name and a `▾`; the listbox lists all ten — Square, PWM, Triangle, Saw,
+Sine, Half sine, NES Tri (wavetable), Noise, Ring, FM — each as its own
+glyph plus name, with the current one marked. It replaced a ten-button
+`role="radiogroup"` grid that cost two rows of the header's height, and the
+design spec's own proposal of a plain `<select>` was tried and dropped: a
+native `<option>` cannot carry an SVG, and seeing each waveform *as its
+shape* was the whole point of the buttons it would have replaced. A
+trigger + listbox keeps the glyphs and costs one row. It is `role="listbox"`
+with `role="option"` items and `aria-selected`, and the trigger carries
+`aria-haspopup="listbox"`/`aria-expanded` plus a real `aria-label`.
+
+**Collapsed** state (▸) hides all three sections (and the ✕) and shows just
+name/M/S/R/VU — a slim overview strip so many tracks fit on screen;
 **expanded** (▾) shows everything. Collapse state is per-browser
 (`localStorage`, keyed by track id), not part of the saved song.
+
+**Floating menus (shared mechanism).** The waveform listbox, the Inserts
+**+** menu (`buildFloatingAddMenu()`) and the master FX popovers (A.10) are
+all built into one `#floating-layer` by `renderFloatingLayer()`, which runs
+after `renderTracks()` and rebuilds the layer from scratch each frame — it
+locates each popup's trigger by `data-track`/`data-key` in the just-rebuilt
+DOM and anchors the popup 6px under it, `position: fixed`, clamped away from
+the viewport edges. They live at `document.body` level for one concrete
+reason: `.daw`'s `overflow-x: auto` computes `overflow-y: auto` too, so
+anything nested inside it that extends past its box is **clipped**, and no
+z-index can undo an ancestor's overflow clip. The `+` menu used to render
+invisibly for exactly that reason. Light dismiss is by hand
+(`anyFloatingMenuOpen()`/`closeAllFloatingMenus()`): outside click, Escape,
+or `.daw` scrolling — but scrolling only on the **vertical** axis, since
+`.track-header` is `position: sticky; left: 0` and doesn't move sideways;
+closing on either axis fired on `followPlayhead()`'s auto-scroll and
+cancelled in-progress knob drags mid-playback.
 
 ### A.5 Piano roll (pitch lanes) & rhythm grid
 
@@ -268,11 +285,10 @@ popover was retired rather than kept alongside the strip. Master FX keeps
 its own chips and popovers (A.10) — five fixed groups in a strip of their
 own — and the `.th-fx-popover*` CSS with them.
 
-Available on every track, tonal or rhythm alike. Six
-groups, listed here in `TRACK_FX_REGISTRY` order — which is the order the
-panel renders them in, not a signal order, since the sends tap the end of
-the chain and Vibrato is not in the chain at all. Both come from that one
-table (see B.6). Each group
+Available on every track, tonal or rhythm alike. Six groups, listed here in
+`TRACK_FX_REGISTRY` order — which is the order the panel renders them in,
+not a signal order, since the sends tap the end of the chain and Vibrato is
+not in the chain at all. Both come from that one table (see B.6). Each group
 opens with a heading — its glyph plus its name — which doubles as the
 separator between groups; these replaced the thin dividers that used to
 stand there, because abbreviations like Thr/Rat/Atk/Rel only read as a
@@ -280,7 +296,7 @@ compressor once you can see which group you are in:
 
 - **Delay / Chorus / Reverb send** (0–100% each): continuous sends to three
   shared global effect buses, independent of the per-note Echo/Chorus/
-  Reverb toggle buttons in the note inspector (A.9) — this is a always-on
+  Reverb toggle buttons in the note inspector (A.9) — this is an always-on
   per-track level, not a per-note flag. Any of the three can instead be
   driven by a drawn curve from the Automation panel (A.6); the slider here
   is the value used wherever no curve point covers a column.
@@ -311,34 +327,54 @@ compressor once you can see which group you are in:
   `osc.frequency`, and `AudioParam` inputs sum — matching the same
   "independent of the per-note flag" contract Crush and Tremolo have.
   `Depth: 0` cents (default) leaves the pitch alone regardless of rate.
-A **Reset** button restores every field in all six groups to its default
-(neutral) value in one click; **✕** closes the panel without changing
-anything.
+Adding and removing: the header's **+** opens a floating menu of the effects
+this track isn't showing yet, and the strip lists the same ones at its foot
+under **Not in use**. Either way the wording is "show a control", not
+"insert a node" — every effect already exists in the audio graph for every
+track (`createTrackFxSends()` builds all three sends unconditionally, the
+inserts are neutral by default), so `state.activeFx` records only which
+effects the panel *shows* and each one's bypass flag. **Bypass** and
+**remove** live in the strip section's head and nowhere else; they used to
+sit on both the chip and the popover, which was two of everything to keep in
+step. The header's **Reset** clears the whole chain at once — every insert
+and send back to default, each one's automation curve with it.
 
 ### A.8 Envelope, filter & FM editor
 
 Opened per-track (tonal tracks only) via **Env**; same full-width-row
 placement convention as automation, but its "lane" is a plain flex row of
 sliders rather than a column-indexed curve — it doesn't need to scroll
-with the timeline:
+with the timeline.
 
-- **A**ttack, **D**ecay, **R**elease are shown as a **percentage of each
-  note's own length** (0–50%, or 2–60% for release) — they scale with short
-  vs. long notes rather than needing per-tempo absolute times.
-- **S**ustain is the held level (0–100% of the note's peak amplitude).
-- A per-track resonant **lowpass filter**: cutoff (60Hz–20kHz, log slider),
-  resonance (Q, 0.1–20), and an envelope amount (−1–1) that sweeps the
+The row is divided into **captioned groups** — Envelope, Filter, and (for
+the waveforms that have them) Duty / FM / Ring — using the same
+`.mfx-group`/`.mfx-cap` language the master strip uses, and each control
+carries **its full word and its own glyph**: Attack, Decay, Sustain,
+Release, Cutoff, Resonance, Env Amount. It was seven bare letters —
+A/D/S/R/Hz/Q/Env — with the meaning only in a `title` tooltip, so you had to
+already know what ADSR stood for, or hover every slider, to know what you
+were touching. `Thr`-style abbreviations only read as a compressor once you
+can see which group you are in; the same is true here.
+
+- **Attack**, **Decay** and **Release** are a **percentage of each note's own
+  length** (0–50%, or 2–60% for release) — they scale with short vs. long
+  notes rather than needing per-tempo absolute times.
+- **Sustain** is the held level (0–100% of the note's peak amplitude).
+- **Filter** — a per-track resonant lowpass: Cutoff (60Hz–20kHz, log
+  slider), Resonance (Q, 0.1–20), and Env Amount (−1–1), which sweeps the
   cutoff using the same ADSR shape above (0 = filter envelope off, cutoff
   stays at its base value).
-- Tracks on the **FM** waveform additionally show modulator **ratio** and
-  **depth** sliders (`state.fm`, `DEFAULT_FM`).
-- Tracks on the **Square** waveform show a **Duty** select (`state.duty`) —
-  the track's pulse width, applying to every note on it. Same rule as the FM
-  sliders above: a waveform-specific per-track synth setting, shown only for
-  the waveform it applies to. A single note can still override it from the
-  inspector (A.9); see B.6 for how the two resolve.
+- Tracks on the **FM** waveform get an **FM** group — modulator **Ratio** and
+  **Depth** (`state.fm`, `DEFAULT_FM`). **Ring** modulation gets the same
+  Ratio and no Depth: the multiplication is always full, so a depth there
+  would mean nothing.
+- Tracks on the **Square** waveform get a **Duty** group — a Width select
+  (`state.duty`), the track's pulse width, applying to every note on it. Same
+  rule as the FM sliders above: a waveform-specific per-track synth setting,
+  shown only for the waveform it applies to. A single note can still override
+  it from the inspector (A.9); see B.6 for how the two resolve.
 - The row's title reflects what's shown: "Envelope & Filter", or
-  "Envelope, Filter & FM" / "Envelope, Filter & Duty" for those waveforms.
+  "Envelope, Filter & FM" / "& Ring" / "& Duty" for those waveforms.
 - **Reset** restores every default (ADSR, filter, FM, duty); **✕** closes the
   panel without changing anything.
 
@@ -418,7 +454,12 @@ way but is only editable when there's room for the "click to rename"
 affordance. (Adding/removing tracks is a menu action, not part of this
 strip — see A.3.)
 
-The **Master FX** toggle opens that panel:
+The **Master FX** toggle opens that panel, which is a row of five **chips**
+that each open a floating popover of knobs (`renderMasterFxChips()`,
+`buildMasterFxChip()`/`buildMasterFxPopover()`, anchored by the same
+`renderFloatingLayer()` machinery as A.4's menus) — the same outer shell as a
+track's insert chip, so master reads like every other channel instead of the
+flat always-expanded row of bare sliders it was before:
 
 - **EQ**: 3-band (Lo shelf ~200Hz, Mid peak ~1kHz, Hi shelf ~4kHz, ±12dB).
 - **Comp**: a `DynamicsCompressorNode` (threshold, ratio, attack, release).
@@ -429,7 +470,29 @@ The **Master FX** toggle opens that panel:
 - **Downsample**: a lo-fi sample-and-hold `AudioWorkletNode` on the master
   bus (0 = full quality).
 - **Meter**: a live frequency-spectrum canvas plus an approximate momentary
-  LUFS readout (ITU-R BS.1770 K-weighting, not a certified meter).
+  LUFS readout (ITU-R BS.1770 K-weighting, not a certified meter). **Not a
+  chip** — it's a readout, not a setting, so it sits beside the chip row and
+  is simply visible whenever the panel is open.
+
+Two deliberate differences from a track's chips, because master's effect set
+isn't the same kind of thing. They are **fixed**: master always has exactly
+these five, so there is no **+** menu, no ✕ remove and no A/B/C letter —
+lettering was about insert *order* in an open-ended list. And instead of a
+bypass toggle they **dim when neutral** (`isMasterFxActive()`, computed fresh
+each render against `MASTER_FX_FIELD_DEFAULTS`, never stored): EQ, Comp, Par
+Comp and Downsample are already neutral-by-default, so a bypass button would
+add nothing that turning the knobs back down doesn't already do. **Sidechain
+is the one exception** — its ducking is a discrete on/off rather than a knob
+resting at zero, so it keeps a real On/Off button in its popover head, where
+a track chip's bypass would sit.
+
+The five come from `MASTER_FX_REGISTRY`, a table parallel to
+`TRACK_FX_REGISTRY` (B.6) but deliberately separate — despite sharing a
+couple of icons, master's groups are fixed and order-bound and have none of
+the per-track bypass/remove machinery, so folding them into one table would
+mean a table of exceptions. `buildKnob()` *is* shared: it takes an explicit
+label and default rather than a track/effect pair, so both callers reuse one
+drag/keyboard/paint implementation.
 
 All defaults are neutral (0dB, ratio 1:1, sidechain/downsample off), so an
 untouched song's master bus is unaffected — see B.6 for the signal chain.
@@ -549,11 +612,13 @@ by default — these are the deliberate additions:
   that only made sense positionally (**M**/**S**/**R**/**✕** per track) name
   their track.
 - **State**: Mute/Solo, record-arm and the per-note effect toggles expose
-  `aria-pressed`;
-  the Pen/Eraser/Grab cluster and the waveform picker are each a
-  `role="radiogroup"` with `aria-checked`, since both are a single choice
-  rather than a row of independent toggles. All of these previously carried
-  their state only in a CSS class.
+  `aria-pressed`; the Pen/Eraser/Grab cluster is a `role="radiogroup"` with
+  `aria-checked`, since it is a single choice rather than a row of
+  independent toggles. All of these previously carried their state only in a
+  CSS class. The waveform picker was that same radiogroup until it became a
+  floating listbox (A.4); it now names itself the way a listbox does —
+  `aria-haspopup="listbox"`/`aria-expanded` on the trigger, `role="option"`
+  plus `aria-selected` on each choice.
 - **Keyboard grid access**: **Shift+←/→** steps the selection through the
   active track and **Home**/**End** jump to its ends, with the selected item
   announced through a polite live region (`announce()`). Plain arrows still
@@ -577,9 +642,9 @@ by default — these are the deliberate additions:
   it merely because a track is active; there it appears only on an explicit
   chip tap.
 - **Icons**: every glyph (A.14) is `aria-hidden`, and the control around it
-  keeps its own text label or `aria-label`. The waveform picker, whose buttons
-  are icon-only, additionally spells the selected shape's name out below the
-  row, so no information is available *only* as a picture.
+  keeps its own text label or `aria-label`. The waveform picker spells its
+  shape's name out beside the glyph — on the trigger and on every option —
+  so no information is available *only* as a picture.
 
 Solved since: notes can now be **created** from the keyboard as well as
 reached and edited, and the grid has a cursor that can be moved around it
@@ -602,7 +667,11 @@ caller has to know. (A list rather than one string because chorus is two
 detuned waves and reverb an impulse plus its tail.)
 
 They cover the waveform picker (A.4), the per-note effect toggles (A.9), the
-FX panel's group headings (A.7), and the whole toolbar, menu and dialog set.
+FX chips and strip sections (A.7), the master chips (A.10), the individual
+envelope and filter controls (A.8 — Attack/Decay/Sustain/Release drawn as
+one family of rises and falls, Cutoff/Resonance/Env Amount as response
+curves built on the EQ glyph's own idiom), and the whole toolbar, menu and
+dialog set.
 Static markup carries `data-glyph="name"` and one boot pass fills them in;
 buttons built in JS use `setGlyphLabel(btn, name, label)`. Either way the label
 stays a real text node, so the accessible name is what it always was.
@@ -626,6 +695,14 @@ flag and a per-track control mean the same effect — Crush, Tremolo, Chorus,
 Reverb, and per-note Echo against per-track Delay — they deliberately share a
 glyph, so the two panels read as the same effect at two scopes; that one is
 a fixed flag and the other a dial-able amount is what the `title` text says.
+
+Sharing stops there. **No two different effects share an icon**: the three
+sends used to draw one generic `send` arrow, so Delay, Chorus and Reverb
+were three chips distinguishable only by their letter — which is the one
+thing on a chip that means position rather than identity. They now reuse
+the per-note Echo/Chorus/Reverb glyphs (the same-effect-two-scopes rule
+above), and Par Comp got its own `parcomp` — two curves converging, the
+blend — rather than borrowing Comp's.
 
 The waveform glyphs are literal: the NES triangle is drawn as the 16-step
 staircase that makes it sound unlike a plain triangle, and FM as a carrier
@@ -888,14 +965,20 @@ render()
  ├─ renderTimeline()      → ruler cells, bar numbers, renderMarkers()
  ├─ renderTracks()        → per state.trackList entry:
  │    ├─ renderPitchTrack(id) | renderRhythmTrack(id)
- │    │    └─ buildHeader(id) → ...; if (fxSendOpen.has(id)) appends
- │    │         buildFxPanel(id) in place (not a separate row — see A.7)
+ │    │    └─ buildHeader(id) → identity row + Osc / Inserts / Output
+ │    │         sections; buildFxPanel(id) is the Inserts one, built
+ │    │         in place rather than as a separate row (see A.7)
  │    ├─ renderAutomationRow(id, param)   if automationOpen.has(id)
  │    └─ renderAdsrRow(id)                if adsrOpen.has(id)
+ ├─ renderMasterFxChips() → the master strip's five chips (A.10)
+ ├─ renderFloatingLayer() → #floating-layer: open master popovers, the
+ │                          "+" menu, the waveform listbox — anchored to
+ │                          triggers in the DOM renderTracks() just built,
+ │                          so it must run after it
  ├─ positionOverlays()    → updateOverlayHeights(), updatePlayheadPositions(),
  │                          updateLoopPositions(), updateHScroll()
- ├─ renderInspector()     → selected-note effect controls, or empty state
- ├─ updateSongInfo()      → menu's Tempo/Meter/Length/Track-count text
+ ├─ renderInspector()     → the selected note/hit, or the active track's
+ │                          FX strip (renderTrackStrip), or the empty state
  ├─ autosave()            → debounced localStorage write
  └─ checkpointHistory()   → debounced undo-stack push if state changed
 ```
@@ -909,11 +992,19 @@ never flicker mid-drag (playhead, marker layer, loop region/handles) is
 created once by `createOverlays()` and only *repositioned*, never rebuilt,
 by `positionOverlays()`.
 
-Unlike Automation and Envelope, the FX panel (`buildFxPanel()`) needs no
-timeline-column width — every field in it is a static per-track knob — so
-it's built straight into `buildHeader()`'s own left-column header instead
-of being appended as a sibling `.track` row; toggling it open/closed just
-changes that header's height, not the row count `renderTracks()` iterates.
+Unlike Automation and Envelope, the FX chips (`buildFxPanel()`) need no
+timeline-column width — they are status, not a curve — so they're built
+straight into `buildHeader()`'s own left-column header instead of being
+appended as a sibling `.track` row, and the knobs they point at live in the
+inspector column (A.7) rather than in the grid at all.
+
+`#floating-layer` is the one piece of chrome that is neither in a track row
+nor rebuilt incrementally: `renderFloatingLayer()` clears and refills it each
+frame, like `renderTracks()` does for `#tracks` and unlike `createOverlays()`'s
+build-once-then-reposition pattern. The distinction is that the playhead and
+loop chrome are always exactly one of each, while the floating layer's
+contents vary in count — any number of master popovers, at most one add menu,
+at most one waveform listbox.
 
 Two independent `requestAnimationFrame` loops run during playback:
 `animatePlayhead()` (repositions the playhead and updates the Bars|Beats
@@ -1140,7 +1231,8 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   Reverb send, EQ, Compressor, Bitcrush, Tremolo, Vibrato) share one
   state-shape/UI registry, `TRACK_FX_REGISTRY` (get/set/apply functions plus
   each field's range/format/clamp-on-load rules per group) — both
-  `applySavedMix()` (Song I/O load/validate) and `buildFxPanel()` (A.7's UI)
+  `applySavedMix()` (Song I/O load/validate) and A.7's UI —
+  `buildFxPanel()`'s chips and `buildStripSection()`'s knobs alike —
   iterate this one table instead of six hand-written near-duplicate blocks; the underlying
   audio-graph wiring itself stays as separate functions (too heterogeneous —
   an async worklet insert vs. three send taps vs. a compressor insert — to
@@ -1280,7 +1372,11 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   enabled) → 3-band EQ → `DynamicsCompressorNode` → a parallel-compression
   dry/wet blend → `masterAnalyser` (drives the spectrum canvas + LUFS
   estimate) → a lo-fi sample-and-hold `AudioWorkletNode`
-  (`js/downsample-processor.js`) → `destination`.
+  (`js/downsample-processor.js`) → `destination`. Its five control groups'
+  state shape and UI come from `MASTER_FX_REGISTRY` — a second table beside
+  `TRACK_FX_REGISTRY`, deliberately not folded into it (A.10) — while the
+  chain construction above stays hand-written for the same reason the
+  per-track wiring does.
 - **Metronome** (`ensureMetronomeBus()`/`scheduleClick()`, A.16): a 35 ms
   square blip — 1800 Hz on a bar's downbeat, 1200 Hz otherwise — on its own
   `metroGain` connected **straight to `ctx.destination`**, deliberately
@@ -1362,8 +1458,8 @@ in two. The *seeded* maps — `tracks`, `gains`, `waveform`, `pan`, `mute`,
 `solo` — get one entry per track with a real default, so a load rebuilds
 them from the track list. The *sparse* maps — `automation`, `adsr`,
 `filter`, `fm`, `fxSend`, `comp`, `crush`, `tremolo`, `vibrato`, `duty`,
-`eq` — treat an absent entry as the default, so a load has to clear them
-wholesale before applying the file. Those eleven are named once, in
+`eq`, `activeFx` — treat an absent entry as the default, so a load has to
+clear them wholesale before applying the file. Those twelve are named once, in
 `SPARSE_TRACK_MAPS`, and `currentSongData()`, `snapshotSong()`,
 `restoreSnapshot()`, `restoreTrackList()`, `createNewSong()` and
 `removeTrack()` all walk it. **A new per-track setting goes in that list,
@@ -1372,7 +1468,7 @@ not into six call sites.**
 It is a list because it used to be six hand-written ones, and four had
 drifted apart — invisibly, since nothing about a missing key looks wrong:
 
-- `restoreTrackList()` cleared two of the eleven, so loading song B kept
+- `restoreTrackList()` cleared two of them, so loading song B kept
   song A's filter, FM, sends, EQ, compressor, crush and tremolo on every
   track id the two shared. Every song has a `rhythm`, so this always had
   something to land on.
