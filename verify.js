@@ -3038,8 +3038,47 @@ async function main() {
 
       const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'))`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
-      const rect = await cdp.evaluate(`(() => { const r = (${tonalLaneSel}).getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
-      const x = rect.left + 200, y = rect.top + 60;
+      // Pick the point from the lane's *visible* intersection with the
+      // viewport, not from a fixed offset. The lane is far wider than the
+      // window (1024px of lane in a 780px viewport at the default headless
+      // size), so `left + 200` can sit under the inspector rather than over
+      // the grid — which is exactly what it did, making this step fail for a
+      // day as if light-dismiss were eating the click when the click simply
+      // never reached the lane.
+      //
+      // Then verify it: elementFromPoint must land inside the intended lane
+      // before a single event is dispatched. A mis-aimed trusted click is
+      // indistinguishable from the bug this step exists to catch, so the
+      // aim is asserted separately and fails with both rects.
+      const aim = await cdp.evaluate(`(() => {
+        const lane = ${tonalLaneSel};
+        const r = lane.getBoundingClientRect();
+        // The lane's own rect is unclipped — 1024px of it in a 780px window —
+        // so it reaches out under the inspector. What bounds the *visible*
+        // grid is .daw, and within that the sticky track header + gutter
+        // cover the left edge, so push in past those too.
+        const daw = lane.closest('.daw').getBoundingClientRect();
+        const gutterEnd = daw.left
+          + parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-w'))
+          + parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter-w'));
+        const x0 = Math.max(r.left, gutterEnd) + 20, x1 = Math.min(r.right, daw.right) - 20;
+        const y0 = Math.max(r.top, daw.top) + 12, y1 = Math.min(r.bottom, daw.bottom) - 12;
+        const x = Math.round(Math.min(Math.max(r.left + 200, x0), x1));
+        const y = Math.round(Math.min(Math.max(r.top + 60, y0), y1));
+        const hit = document.elementFromPoint(x, y);
+        return {
+          x, y, ok: !!(hit && hit.closest('.lane') === lane && x1 > x0 && y1 > y0),
+          hit: hit ? (hit.className || hit.tagName) : 'null',
+          lane: { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) },
+          daw: { left: Math.round(daw.left), top: Math.round(daw.top), right: Math.round(daw.right), bottom: Math.round(daw.bottom) },
+          view: { w: innerWidth, h: innerHeight },
+        };
+      })()`);
+      if (!aim.ok) {
+        throw new Error(`the click point is not over the tonal lane — it hits "${aim.hit}" at `
+          + `(${aim.x}, ${aim.y}); lane ${JSON.stringify(aim.lane)} in viewport ${JSON.stringify(aim.view)}`);
+      }
+      const x = aim.x, y = aim.y;
       await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
       await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
