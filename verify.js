@@ -3101,6 +3101,17 @@ async function main() {
       }
     });
 
+    // Selectors and gestures the five master steps below all share. Spelled
+    // out once: the strip container class and the 'master' data-track
+    // sentinel are the contract these steps test, so they should move in one
+    // place if they ever change.
+    const masterSec = (key) => `document.querySelector('.inspector .th-strip-section[data-track="master"]${key ? `[data-key="${key}"]` : ''}')`;
+    const clickMasterCell = () => cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
+    const isMasterSelected = () => cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`);
+    // :not(.automation-header) — an open Automation/Envelope row builds its
+    // own .track-header, and those carry no setActive listener.
+    const selectFirstTrack = () => cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+
     step('Master FX: five fixed chips render, all dimmed at default', async () => {
       await cdp.evaluate(`document.querySelector('#master-fx-toggle').click()`);
       await waitFor(`document.querySelector('#master-fx-panel').style.display !== 'none'`);
@@ -3126,7 +3137,7 @@ async function main() {
 
     step('Master FX: a chip click hands the inspector to the master bus', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
-      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`);
+      await waitFor(`!!${masterSec('eq')}`);
       // The whole point of the change: master's knobs live in the same column
       // as a track's, so all five groups are on screen at once rather than one
       // popover at a time.
@@ -3140,31 +3151,27 @@ async function main() {
       }
       // Retired with this change — there must not be a second surface for the
       // same knob (the rule track FX already follow).
-      if (await cdp.evaluate(`!!document.querySelector('.th-master-fx-popover, .th-fx-popover')`)) {
+      if (await cdp.evaluate(`!!document.querySelector('.th-master-fx-popover')`)) {
         throw new Error('master FX popovers were retired in favour of the inspector strip, but one rendered');
       }
       // Master's sections carry no letter and no bypass/remove: the five are
       // fixed, so there is no order to name and nothing to take away.
-      const extras = await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="master"] .th-strip-letter, ' +
-        '.inspector .th-strip-section[data-track="master"] .th-fx-chip-bypass, ' +
-        '.inspector .th-strip-section[data-track="master"] .th-fx-chip-remove')`);
+      const extras = await cdp.evaluate(`!!${masterSec()}.querySelector('.th-strip-letter, .th-fx-chip-bypass, .th-fx-chip-remove')`);
       if (extras) throw new Error('master strip sections must have no letter and no bypass/remove buttons');
     });
 
     step('Master FX: selecting a track takes the inspector back from master', async () => {
-      // :not(.automation-header) — an open Automation/Envelope row builds its
-      // own .track-header, and those carry no setActive listener.
-      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
-      await waitFor(`!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      await selectFirstTrack();
+      await waitFor(`!${masterSec()}`);
       const shown = await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent`);
       if (shown === 'Master') throw new Error('clicking a track header should hand the inspector back to that track');
-      if (await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+      if (await isMasterSelected()) {
         throw new Error('the master cells should stop looking selected once a track takes the inspector');
       }
       // ...and back again, so the two directions are both covered.
-      await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
-      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
-      if (!await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+      await clickMasterCell();
+      await waitFor(`!!${masterSec()}`);
+      if (!await isMasterSelected()) {
         throw new Error('clicking the Master cell should mark the bus selected');
       }
     });
@@ -3174,18 +3181,18 @@ async function main() {
       // stops the header's own mousedown), so master's must not either — or
       // nudging the master fader throws away whatever the inspector was
       // showing, note selection included.
-      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
-      await waitFor(`!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      await selectFirstTrack();
+      await waitFor(`!${masterSec()}`);
       await cdp.evaluate(`document.querySelector('#master-vol').click()`);
-      if (await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`)) {
+      if (await cdp.evaluate(`!!${masterSec()}`)) {
         throw new Error('clicking the master volume slider handed the inspector to the master bus');
       }
-      if (await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`)) {
+      if (await isMasterSelected()) {
         throw new Error('the master volume slider must not mark the bus selected — only the cell around it does');
       }
       // The cell itself still does, which is the whole point of the gesture.
-      await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
-      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"]')`);
+      await clickMasterCell();
+      await waitFor(`!!${masterSec()}`);
     });
 
     step('Master FX: selecting master drops a track-scoped strip focus', async () => {
@@ -3198,7 +3205,7 @@ async function main() {
       // way to give a track a strip focus is to tap one of its header chips,
       // and a freshly loaded track has no effect in use, so it has no chip
       // yet. So: reveal one wide, then narrow, then tap it.
-      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await selectFirstTrack();
       await waitFor(`!!document.querySelector('.inspector .th-strip-add button')`);
       await cdp.evaluate(`document.querySelector('.inspector .th-strip-add button').click()`);
       await waitFor(`!!document.querySelector('.th-fx-chip[data-track] .th-fx-chip-body')`);
@@ -3211,36 +3218,34 @@ async function main() {
         await cdp.evaluate(`document.querySelector('.th-fx-chip[data-track="${chipTrack}"] .th-fx-chip-body').click()`);
         await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"]')`);
 
-        await cdp.evaluate(`document.querySelector('.mstrip-master-cell').click()`);
+        await clickMasterCell();
         // The bug: masterStripOpen is set and the cells draw as selected, but
         // renderInspector() falls through to the track branch, because the
         // stale `<track>::<fx>` focus still satisfies it — so the sheet goes
         // on showing the track's chain under a master-selected bottom bar.
-        const marked = await cdp.evaluate(`document.querySelector('#master-track').classList.contains('master-selected')`);
-        const showsTrack = await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"]')`);
-        if (marked && showsTrack) {
+        if (!await isMasterSelected()) {
+          throw new Error('clicking the Master cell should mark the bus selected on the narrow layout too');
+        }
+        if (await cdp.evaluate(`!!document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"]')`)) {
           throw new Error("the master cells read as selected while the inspector still showed the previous track's strip");
         }
-        if (!marked) throw new Error('clicking the Master cell should mark the bus selected on the narrow layout too');
       } finally {
         await cdp.send('Emulation.clearDeviceMetricsOverride', {});
         // Put the track back the way this step found it — later steps and
-        // songs share this page load.
+        // songs share this page load. One round trip: the chip click puts the
+        // section on screen synchronously, so the remove is reachable in the
+        // same evaluate.
         await cdp.evaluate(`(() => {
-          const c = document.querySelector('.th-fx-chip[data-track="${chipTrack}"] .th-fx-chip-body');
-          if (c) c.click();
-        })()`);
-        await cdp.evaluate(`(() => {
-          const rm = document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"] .th-fx-chip-remove');
-          if (rm) rm.click();
+          document.querySelector('.th-fx-chip[data-track="${chipTrack}"] .th-fx-chip-body')?.click();
+          document.querySelector('.inspector .th-strip-section[data-track="${chipTrack}"] .th-fx-chip-remove')?.click();
         })()`);
       }
     });
 
     step('Master FX: EQ knob updates state and un-dims its chip', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
-      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`);
-      const secSel = `document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="eq"]')`;
+      await waitFor(`!!${masterSec('eq')}`);
+      const secSel = masterSec('eq');
       const dialSel = `[...${secSel}.querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-dial')`;
       // Stash the live element on window (not just re-derived by dialSel each
@@ -3273,8 +3278,8 @@ async function main() {
 
     step('Master FX: Sidechain has a real On/Off toggle, not a bypass button', async () => {
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
-      await waitFor(`!!document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="sidechain"]')`);
-      const toggleSel = `document.querySelector('.inspector .th-strip-section[data-track="master"][data-key="sidechain"] .th-strip-section-head .icon-btn')`;
+      await waitFor(`!!${masterSec('sidechain')}`);
+      const toggleSel = `${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn')`;
       const before = await cdp.evaluate(`${toggleSel}.textContent`);
       if (before !== 'Off') throw new Error(`expected Sidechain to start Off, got ${before}`);
       await cdp.evaluate(`${toggleSel}.click()`);
