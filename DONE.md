@@ -1614,3 +1614,42 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   vid steg 37 bär ett tiotal prototyp-patchar, men det är en gissning, inte
   en mätning, och den här posten fixar symptomet med flit: en tyst hängning
   går inte att felsöka, ett namngivet fel gör det.
+
+- [x] **Tre efterspel till masterstrippen — och ett test som passerade trots
+  buggen.** Kodgranskningen av #116 hittade tre saker, alla riktiga:
+  1. **Mastervolymen stal markeringen.** Klick-lyssnaren låg på hela cellen,
+     och reglaget ligger inuti den, så ett drag i masterfadern körde
+     `selectMaster()` och kastade bort notmarkeringen. Kommentaren jag skrev
+     påstod att det var vad ett spårs volymreglage redan gjorde — fel:
+     `buildHeader()` stoppar uttryckligen `mousedown` på sitt reglage, så
+     ett spår aktiveras *inte* av att man drar i dess fader. Nu matchas
+     vilken nästlad `input`/`button`/`select` som helst, så en kontroll som
+     läggs till i cellerna senare ärver regeln.
+  2. **`stripFocus` överlevde ägarbytet.** På ≤760px öppnas strippen bara
+     för den `stripFocus` pekar ut, så ett kvarglömt `lead::eq` gjorde att
+     mastercellerna ritades som markerade medan inspektorn fortsatte visa
+     Leads kedja. `dropStripFocusUnless()` städar nu i bägge riktningarna.
+  3. **Cellerna gick inte att nå från tangentbordet.** De är `<div>`:ar runt
+     ett reglage och en mätare; att göra dem `role="button"` hade nästlat en
+     fokuserbar kontroll inuti en knapp, vilket är ogiltigt. I stället är de
+     en pekdonsgenväg, och Master FX-knappen — en riktig `<button>` i
+     tab-ordningen — markerar bussen i bägge riktningar av sin växling.
+     `selectMaster()` annonserar dessutom i `#a11y-status`, eftersom
+     kolumnen som byter ägare ligger långt från kontrollen man använde och
+     fokus inte flyttar sig alls på tangentbordsvägen.
+
+  **Det dyra i den här omgången var testet, inte fixen.** Regressionssteget
+  för (2) skrevs om tre gånger:
+  - Första versionen dog på `null` (inget spår hade något chip att klicka
+    på) — den "föll" mot trasig kod, men av fel skäl.
+  - Andra versionen nådde sin assertion men **passerade mot den obuggade
+    koden**: på bred vy renderas bägge ägarna oavsett, så buggen lämnar inga
+    spår i DOM:en. Ett test som inte kan misslyckas är inte ett test.
+  - Tredje versionen sätter fokus på bred vy (det är enda sättet — på smal
+    finns strippen inte förrän ett chip finns, och chip finns bara när en
+    effekt är i bruk), emulerar sedan 700px via
+    `Emulation.setDeviceMetricsOverride` och gör sin assertion där. Först då
+    föll den på sin egen felutskrift.
+  Lärdomen är den vanliga, men den kostade tre körningar den här gången:
+  **injicera buggen och kontrollera att testet faller på rätt rad** — inte
+  bara att sviten blir röd.

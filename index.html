@@ -5020,6 +5020,7 @@ function activateTrack(id) {
   // the early return: re-activating the track that was already active is
   // still the click that takes the column back from master.
   masterStripOpen = false;
+  dropStripFocusUnless(id); // the mirror of selectMaster()'s own call
   if (state.activeTrack === id) return;
   state.activeTrack = id;
   state.multiSelected.clear();
@@ -5530,7 +5531,23 @@ function selectMaster() {
   masterStripOpen = true;
   state.selected = null;      // the note panel would otherwise win in renderInspector()
   state.multiSelected.clear();
+  // A track-scoped focus has to go with it. On the narrow layout the strip
+  // only opens for whoever stripFocus names, so leaving `lead::eq` behind
+  // meant the master cells drew as selected while the inspector went on
+  // showing Lead's chain. A chip click sets its own `master::…` first, so
+  // that path keeps its target.
+  dropStripFocusUnless('master');
   render();
+  // The inspector column is nowhere near the control that was just used, and
+  // on the keyboard path (the Master FX button) focus doesn't move at all —
+  // so without this the column silently changes owner. Same reason the grid
+  // cursor announces what it lands on.
+  announce('Master bus selected — its effects are in the inspector');
+}
+// stripFocus belongs to whoever owns the inspector; clear it when the other
+// one takes over. `owner` is a track id or 'master'.
+function dropStripFocusUnless(owner) {
+  if (stripFocus && !stripFocus.startsWith(owner + '::')) stripFocus = null;
 }
 function buildStripSection(track, effect, letter) {
   const bypassed = isFxBypassed(track, effect.key);
@@ -6226,19 +6243,29 @@ document.getElementById('master-fx-toggle').addEventListener('click', () => {
   const showing = panel.style.display !== 'none';
   panel.style.display = showing ? 'none' : 'flex';
   btn.setAttribute('aria-pressed', String(!showing));
-  // Opening the chip row also hands the inspector to the master bus, so the
-  // knobs those chips point at are already on screen. Closing it doesn't take
-  // the column back — nothing else asked for it, and the strip is where the
-  // editing happens.
-  if (!showing) selectMaster();
+  // This button is also the keyboard path to the master strip: the Master and
+  // Output cells are a pointer convenience (plain cells wrapping a slider and
+  // a meter — making them a role="button" would nest a focusable control
+  // inside a button, which is invalid), so a real <button> has to be able to
+  // reach the same state. Hence selecting on both edges of the toggle rather
+  // than only on open — Tab to it, press Enter, and the bus is selected
+  // whichever way the panel happened to be sitting.
+  selectMaster();
 });
 
 // Clicking the master channel's own cells selects the bus, the same gesture
-// that selects a track by clicking its header. The volume slider inside one
-// of them keeps working: a drag there selects the master too, which is what
-// clicking a track's volume slider already does.
+// that selects a track by clicking its header — with the same exemption for
+// the controls inside it. A track's volume slider stops the header's own
+// mousedown (see buildHeader), so dragging it does NOT activate the track;
+// without the guard below, dragging the master volume would select the bus
+// and throw away whatever note the user had selected. Matched on any nested
+// control rather than on #master-vol specifically, so a control added to
+// these cells later inherits the same rule.
 for (const cell of document.querySelectorAll('.mstrip-master-cell')) {
-  cell.addEventListener('click', () => selectMaster());
+  cell.addEventListener('click', (e) => {
+    if (e.target.closest('input, button, select')) return;
+    selectMaster();
+  });
 }
 
 // Collapse the whole bottom bar (Tempo/Length/Master) to a slim strip; remembered.
