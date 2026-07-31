@@ -3425,6 +3425,93 @@ async function main() {
 
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
+    step('MIDI input: a played note lands on the armed track with its velocity', async () => {
+      // No hardware needed and none wanted: Web MIDI is an interface, so a
+      // stub that answers requestMIDIAccess() with one fake input exercises
+      // every line the real thing would — the message parsing, the velocity
+      // mapping, the routing to the armed track — while staying deterministic.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            const input = { name: 'Fake Keys', onmidimessage: null };
+            const access = {
+              inputs: new Map([['fake', input]]),
+              onstatechange: null,
+            };
+            navigator.requestMIDIAccess = () => Promise.resolve(access);
+            // The app attaches its handler to input.onmidimessage; this is how
+            // the test plays a key.
+            window.__midi = (bytes) => input.onmidimessage({ data: bytes });
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+
+      await cdp.evaluate(`document.getElementById('midi-input-btn').click()`);
+      await waitFor(`document.getElementById('midi-input-btn').getAttribute('aria-pressed') === 'true'`);
+      const label = await cdp.evaluate(`document.querySelector('#midi-input-btn .file-menu-label').textContent`);
+      if (!label.includes('Fake Keys')) throw new Error(`the menu item should name the connected device, got "${label}"`);
+
+      // Nothing armed yet: a played note must do nothing, exactly as the
+      // letter keys do. Without this the next assertion could pass for the
+      // wrong reason.
+      await cdp.evaluate(`window.__midi([0x90, 60, 100]); window.__midi([0x80, 60, 0]);`);
+      if (await cdp.evaluate(`document.querySelectorAll('.lane .note').length`) !== 0) {
+        throw new Error('a MIDI note with no track armed should not place anything');
+      }
+
+      // Arm the first tonal track and step-enter a note at two velocities.
+      await cdp.evaluate(`document.querySelector('.track-header .th-btns button.r').click()`);
+      await waitFor(`!!document.querySelector('.track-header .th-btns button.r.on')`);
+      await cdp.evaluate(`window.__midi([0x90, 60, 127]); window.__midi([0x80, 60, 0]);`);
+      await cdp.evaluate(`window.__midi([0x90, 64, 51]); window.__midi([0x90, 64, 0]);`); // note-on vel 0 = note off
+      await waitFor(`document.querySelectorAll('.lane .note').length === 2`);
+
+      // Read the autosaved draft rather than the app's own `state`: it lives in
+      // module scope and is not on window, and going through the saved file
+      // proves the velocity survives serialisation too.
+      const armed = () => cdp.evaluate(`document.querySelector('.track-header .th-btns button.r.on').closest('.track').dataset.track`);
+      // autosave() is debounced, so the draft lags the DOM by a moment — wait
+      // for it to carry the expected count rather than reading it straight
+      // after the last message and finding yesterday's copy.
+      const savedItems = async (expected) => {
+        const id = await armed();
+        const read = `((JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).tracks || {})[${JSON.stringify(id)}] || []`;
+        await waitFor(`(${read}).length === ${expected}`);
+        return cdp.evaluate(read);
+      };
+      const notes = (await savedItems(2)).map(n => ({ freq: Math.round(n.freq), vel: n.vel })).sort((a, b) => a.freq - b.freq);
+      // 127 -> 1, and 51/127 = 0.401… -> 0.40 on the sliders' own 0.05 step.
+      if (notes.length !== 2) throw new Error(`expected two recorded notes, got ${JSON.stringify(notes)}`);
+      if (notes[0].vel !== 1) throw new Error(`velocity 127 should land at full level, got ${JSON.stringify(notes[0])}`);
+      if (Math.abs(notes[1].vel - 0.4) > 1e-9) {
+        throw new Error(`velocity 51 should map to 0.40 (the Velocity slider's own step), got ${JSON.stringify(notes[1])}`);
+      }
+      if (notes[0].freq !== 262 || notes[1].freq !== 330) {
+        throw new Error(`expected middle C and E above it, got ${JSON.stringify(notes)}`);
+      }
+
+      // A rhythm track takes the same messages through the General MIDI map,
+      // and a note that maps to no kit piece is dropped rather than folded
+      // onto the nearest one.
+      // The kit is the last track in the list, and the only one whose lane has
+      // drum rows — picked from the DOM rather than from `state`.
+      // Picked from the DOM rather than from `state`: a rhythm track is the one
+      // whose gutter carries the kit's own row labels (.glabel.rhy).
+      await cdp.evaluate(`document.querySelector('.track:has(.glabel.rhy) .th-btns button.r').click()`);
+      await waitFor(`document.querySelectorAll('.track-header .th-btns button.r.on').length === 1`);
+      await cdp.evaluate(`window.__midi([0x99, 38, 64]); window.__midi([0x89, 38, 0]);`);  // GM snare
+      await cdp.evaluate(`window.__midi([0x99, 21, 100]); window.__midi([0x89, 21, 0]);`); // maps to nothing
+      const hits = (await savedItems(1)).map(h => ({ type: h.type, vel: h.vel === undefined ? 'absent' : h.vel }));
+      if (hits.length !== 1 || hits[0].type !== 'snare') {
+        throw new Error(`GM note 38 should place exactly one snare and note 21 nothing, got ${JSON.stringify(hits)}`);
+      }
+      if (Math.abs(hits[0].vel - 0.5) > 1e-9) {
+        throw new Error(`velocity 64 should map to 0.50, got ${JSON.stringify(hits[0])}`);
+      }
+    });
+
     step('Rhythm: a hit carries a velocity that reaches the audio graph and the saved file', async () => {
       // A quiet hit looks identical in the DOM to a loud one apart from an
       // opacity, so the DOM alone cannot show that velocity is actually

@@ -36,6 +36,12 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   Everything lands on the grid at the current snap resolution. A **metronome**
   clicks on every beat, accented on the downbeat, and never reaches an
   exported WAV
+- **MIDI keyboard** — **Connect MIDI keyboard** in the menu and play a real
+  keyboard into the armed track, **with how hard you hit the keys**: velocity
+  reaches the note you hear while playing and the note that lands on the grid,
+  drawn there as brightness. Works for monitoring, recording and step entry
+  alike; drums map through General MIDI. Listens to every input on every
+  channel, so there is nothing to pick
 - **Step entry** — with a track armed and the transport *stopped*, the same
   keys write a note at the playhead and move it on one step, so you can type
   a part out at your own pace. Keys held together land as a chord on one

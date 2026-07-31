@@ -773,10 +773,10 @@ three miniature faders — the faders' knob marks turned into specks at the
   (`sw.js` precaches the app shell, song-data, bundled example songs, and
   icons).
 
-### A.16 Recording & metronome
+### A.16 Recording, MIDI input & metronome
 
-Notes can be played in from the computer keyboard rather than clicked in.
-Three controls make that up:
+Notes can be played in from the computer keyboard, or from a **MIDI
+keyboard** (A.16b), rather than clicked in. Three controls make that up:
 
 - **R** on a track header (A.4) **arms** that track. There is one keyboard,
   so there is one armed track: arming another moves the arm rather than
@@ -854,6 +854,47 @@ working the rest of the time. Arming also **activates** the track, so the
 lane the tools and inspector act on is the one being typed into.
 
 ---
+
+### A.16b MIDI keyboard input
+
+`navigator.requestMIDIAccess()` (Web MIDI), reached from **Connect MIDI
+keyboard** in the ☰ menu. Explicit rather than automatic: the browser prompts
+for MIDI access, and a prompt nobody asked for is noise. The menu item then
+names what it found ("MIDI: Fake Keys") and reads
+`MIDI input unavailable in this browser` where Web MIDI does not exist —
+Safari, most notably.
+
+**Omni: every input, every channel.** A device picker would be one more thing
+to choose, and to re-choose whenever something is unplugged, for the common
+case of one keyboard on the desk. `onstatechange` picks up devices plugged in
+later and releases held notes when one is pulled out, so a disconnected
+keyboard cannot leave a note sounding forever.
+
+Everything downstream is the computer keyboard's own path
+(`recNoteDown`/`recDrumDown`/`recKeyUp`), so live monitoring, recording
+against the grid and step entry all behave identically and a note becomes a
+note in exactly one place. Two things differ:
+
+- **Velocity is real.** A MIDI note-on carries 1–127; `midiVelToVel()` maps
+  it onto the editor's 0.1–1, rounded to the 0.05 step the Velocity sliders
+  offer so the value lands on something a slider can represent. That is the
+  same function MIDI *file* import uses — a file and a live take have no
+  business disagreeing about how hard the same 96 is. It reaches the
+  monitoring voice too, not just the stored note: playing softly has to
+  *sound* soft, or the velocity is invisible until after the take. Hits
+  follow the usual **absent means full** rule, so a kit played at full level
+  serialises exactly as it did before velocity could reach it.
+- **Drums come through the General MIDI map** (`GM_DRUM_REVERSE`, shared with
+  file import). A note that maps to no kit piece is dropped rather than
+  folded onto the nearest one, which would put hits on the grid that were
+  never played.
+
+A note-on with **velocity 0 is a note off** — a real and common encoding
+rather than an edge case, since many keyboards never send `0x80` at all;
+treating it as a press leaves every note stuck on. Pitch bend, the modulation
+wheel and the sustain pedal are **not** read: the app's `bend` is a per-note
+flag with a fixed shape, not a continuous curve, so those need a new model
+for how a bend is stored rather than just new parsing.
 
 ## Part B — Backend / Architecture Specification
 
