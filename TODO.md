@@ -27,6 +27,22 @@ hur roligt det vore att bygga.
   URL-fragment, så en låt kan skickas vidare utan att laddas upp någonstans.
   Se även "Lagring / delning" nedan.
 
+- [ ] **MIDI-learn för trumpaddar.** Inkommande trumnoter går genom en fast
+  General MIDI-tabell (`GM_DRUM_REVERSE`), som inte går att ändra i appen —
+  träffar din klaviaturs paddar inte de noterna får du fel ljud eller inget
+  alls. Uppkom med en Akai MPK mini: dess paddar visade sig skicka rätt noter
+  i en av bankarna, så det gick att lösa på enheten, men bara av tur.
+  **Två delar, varav den andra är den viktigare:**
+  1. En mappning per webbläsare (`localStorage`, som andra editor-inställningar
+     snarare än låtdata): slå på en pad, välj kit-ljud. Slås upp före
+     `GM_DRUM_REVERSE`, som blir kvar som förval så filimporten är oförändrad.
+  2. **En omappad not är i dag helt tyst** — pad:en gör ingenting och säger
+     ingenting, så det går inte att skilja "kom inte fram" från "kändes inte
+     igen". Den bör annonseras (`announce()`) med sitt notnummer, vilket
+     dessutom är exakt det man behöver veta för att mappa den.
+  Notera också att åtta paddar inte täcker tio kit-ljud; shaker (82) ligger
+  långt från de andra och är den som oftast hamnar utanför.
+
 ## Inte planerat
 
 - [ ] **Fliksystem i inspektorn** — avfärdat: det finns gott om plats när man
