@@ -1013,6 +1013,7 @@
         <li><span class="help-ico" data-glyph="songs"></span><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with the empty <b>Lead</b>/<b>Harmony</b>/<b>Bass</b>/<b>Pad</b>/<b>Rhythm</b> starter tracks or an empty project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom (click it to rename).</li>
         <li><span class="help-ico" data-glyph="save"></span><b>Save as .json</b> / <span class="help-ico" data-glyph="load"></span><b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh project with the starter tracks though, never auto-restoring that draft; pick a song explicitly via <b>Songs…</b> in the menu instead.</li>
         <li><span class="help-ico" data-glyph="code"></span><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>; click it again to close the box.</li>
+        <li><span class="help-ico" data-glyph="midiPort"></span><b>Connect MIDI keyboard</b> lets you play a real keyboard into the armed track — including <b>how hard you press</b>, which becomes the note's velocity (you hear it while playing, and it's drawn on the grid as brightness). Monitoring, recording and step entry all work the same as from the computer keyboard; on a rhythm track the notes map to the kit through General MIDI. It listens to every connected input on every channel, so there is nothing to choose. Needs a browser with Web MIDI (Chrome, Edge — not Safari).</li>
         <li><span class="help-ico" data-glyph="midiOut"></span><b>Export MIDI</b> / <span class="help-ico" data-glyph="midiIn"></span><b>Import MIDI</b> round-trip a Standard MIDI File — handy for moving note data to/from another DAW. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><span class="help-ico" data-glyph="wav"></span><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
         <li><span class="help-ico" data-glyph="fullscreen"></span><b>Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded.</li>
@@ -1152,6 +1153,8 @@
           <button id="export-midi" class="file-menu-item" data-glyph="midiOut">Export MIDI</button>
           <button id="import-midi" class="file-menu-item" data-glyph="midiIn">Import MIDI</button>
           <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
+          <button id="midi-input-btn" class="file-menu-item" data-glyph="midiPort" aria-pressed="false"
+                  title="Play a connected MIDI keyboard into the armed track, with its velocity"><span class="file-menu-label">Connect MIDI keyboard</span></button>
           <button id="export-wav" class="file-menu-item" data-glyph="wav">Export WAV</button>
           <button id="fullscreen-btn" class="file-menu-item" data-glyph="fullscreen" aria-pressed="false">Fullscreen</button>
         </div>
@@ -1468,6 +1471,7 @@ const GLYPHS = {
   load:     { box: '0 0 24 24', paths: ['M5 20h14', 'M12 16V5', 'M7.5 9.5L12 5l4.5 4.5'] },
   code:     { box: '0 0 24 24', paths: ['M9 7l-5 5 5 5', 'M15 7l5 5-5 5'] },
   // A keyboard, plus the same out/in arrow the save/load pair uses.
+  midiPort: { box: '0 0 24 24', paths: ['M12 3a9 9 0 100 18 9 9 0 000-18z', 'M8 14.5v0.01', 'M16 14.5v0.01', 'M9 10v0.01', 'M15 10v0.01', 'M12 8.5v0.01'] },
   midiOut:  { box: '0 0 24 24', paths: ['M3 8h13v8H3z', 'M7.3 8v4.5', 'M11.7 8v4.5', 'M20 8v6', 'M17.8 11.8l2.2 2.2 2.2-2.2'] },
   midiIn:   { box: '0 0 24 24', paths: ['M3 8h13v8H3z', 'M7.3 8v4.5', 'M11.7 8v4.5', 'M20 14V8', 'M17.8 10.2L20 8l2.2 2.2'] },
   // Speaker + radiating arcs, the same arc language the reverb glyph uses.
@@ -6759,6 +6763,12 @@ function parseMidiFile(buffer) {
   }
   return { ppq, tracks };
 }
+// MIDI velocity is 1-127; map onto the 0.1-1 the editor uses and round to the
+// same 0.05 step the Velocity sliders offer, so the value lands on something a
+// slider can actually represent. One function because a file import and a note
+// played live on a MIDI keyboard have no business disagreeing about how hard
+// the same 96 is.
+const midiVelToVel = (v) => Math.max(0.1, Math.min(1, Math.round((v / 127) * 20) / 20));
 // Map a General MIDI percussion note back to the app's 10-piece kit (best-effort).
 const GM_DRUM_REVERSE = {
   35: 'kick', 36: 'kick',
@@ -6799,10 +6809,7 @@ function importMidiIntoSong(buffer) {
         const on = onNotes.get(key);
         if (on == null) continue;
         const startTick = on.tick;
-        // MIDI velocity is 1-127; map onto the 0.1-1 the editor uses and round
-        // to the same 0.05 step the Velocity sliders offer, so an imported hit
-        // lands on a value the slider can actually represent.
-        const vel = Math.max(0.1, Math.min(1, Math.round((on.velocity / 127) * 20) / 20));
+        const vel = midiVelToVel(on.velocity);
         onNotes.delete(key);
         const startCol = quant(startTick / ticksPerEighth);
         const endCol = quant(e.tick / ticksPerEighth);
@@ -6861,6 +6868,9 @@ function importMidiIntoSong(buffer) {
   autosave();
 }
 document.getElementById('import-midi').addEventListener('click', () => document.getElementById('import-midi-input').click());
+// Connecting is an explicit action, not something the page does on load: the
+// browser prompts for MIDI access, and a prompt nobody asked for is noise.
+document.getElementById('midi-input-btn').addEventListener('click', () => { connectMidiInput(); });
 document.getElementById('import-midi-input').addEventListener('change', async () => {
   const input = document.getElementById('import-midi-input');
   const file = input.files[0];
@@ -8921,73 +8931,171 @@ function recNoteFromKey(code) {
   return midi >= MIDI_MIN && midi <= MIDI_MAX ? midi : null;
 }
 // Sounds the key immediately through the armed track's own channel, so what
-// you hear while playing is the waveform and envelope the note will have.
-function monitorNote(track, midi) {
+// you hear while playing is the waveform, envelope and *level* the note will
+// have — playing softly has to sound soft, or the velocity is invisible until
+// after the take.
+function monitorNote(track, midi, vel) {
   try {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
-    const note = { start: 0, len: state.grid, freq: round2(midiToFreq(midi)), vel: 1,
+    const note = { start: 0, len: state.grid, freq: round2(midiToFreq(midi)), vel,
       bend: null, vib: false, trem: false, duty: null, arp: null,
       porta: false, crush: false, echo: false, chorus: false, reverb: false };
     const dest = chanGain[track] || previewGain;
     scheduleTone(note, ctx.currentTime + 0.005, 0.4, state.waveform[track] || 'square', dest, getTrackVoice(track));
   } catch { /* audio unavailable */ }
 }
+// ---- The press/release core, shared by the computer keyboard and MIDI in ----
+// `id` is whatever the caller pairs a release with its press by: an
+// `event.code` for the computer keyboard, `midi:<note>` for a MIDI keyboard.
+// The two must not collide, which is why the MIDI side carries a prefix.
+// `vel` is already in the editor's 0.1-1 (see midiVelToVel); the computer
+// keyboard has no way to measure a press, so it sends 1.
+function recDrumDown(id, type, vel) {
+  const track = state.recTrack;
+  if (!track || heldKeys.has(id)) return false;
+  try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
+  scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, vel, 0);
+  // A hit has no length, so it is committed the moment it is struck.
+  if (recording) commitHit(track, type, snapToGrid(ctxTimeToCol(ctx.currentTime)), vel);
+  else if (stepEntryActive()) {
+    const col = beginStep();
+    commitHit(track, type, col, vel);
+    announce(`${RHYTHM_LABELS[type] || type}, ${colToBarBeat(col)}`);
+  }
+  heldKeys.set(id, { type });
+  return true;
+}
+function recNoteDown(id, midi, vel) {
+  const track = state.recTrack;
+  if (!track || heldKeys.has(id)) return false;
+  monitorNote(track, midi, vel);
+  // Stepped notes commit on key *down* with a fixed one-step length: with the
+  // transport stopped there is no clock to measure a held key against, so how
+  // long you lean on it can't mean anything.
+  if (stepEntryActive()) {
+    const col = beginStep();
+    commitNote(track, midi, col, state.grid, vel);
+    announce(`${midiToName(midi)}, ${colToBarBeat(col)}`);
+  }
+  heldKeys.set(id, { midi, vel, startCol: recording ? snapToGrid(ctxTimeToCol(ctx.currentTime)) : null });
+  return true;
+}
+// The computer keyboard's own layer: resolve a key code to a note or a kit
+// piece, then hand over. It plays everything at full level — there is nothing
+// on a QWERTY key to measure.
 function recKeyDown(code) {
   const track = state.recTrack;
   if (!track || heldKeys.has(code)) return false;
   if (isRhythm(track)) {
     const row = REC_KEY_DRUMS.indexOf(code);
     if (row < 0) return false;
-    const type = RHYTHM_ROWS[row];
-    try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
-    scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, 1, 0);
-    // A hit has no length, so it is committed the moment it is struck.
-    if (recording) commitHit(track, type, snapToGrid(ctxTimeToCol(ctx.currentTime)));
-    else if (stepEntryActive()) {
-      const col = beginStep();
-      commitHit(track, type, col);
-      announce(`${RHYTHM_LABELS[type] || type}, ${colToBarBeat(col)}`);
-    }
-    heldKeys.set(code, { type });
-    return true;
+    return recDrumDown(code, RHYTHM_ROWS[row], 1);
   }
   const midi = recNoteFromKey(code);
   if (midi == null) return false;
-  monitorNote(track, midi);
-  // Stepped notes commit on key *down* with a fixed one-step length: with the
-  // transport stopped there is no clock to measure a held key against, so how
-  // long you lean on it can't mean anything.
-  if (stepEntryActive()) {
-    const col = beginStep();
-    commitNote(track, midi, col, state.grid);
-    announce(`${midiToName(midi)}, ${colToBarBeat(col)}`);
-  }
-  heldKeys.set(code, { midi, startCol: recording ? snapToGrid(ctxTimeToCol(ctx.currentTime)) : null });
-  return true;
+  return recNoteDown(code, midi, 1);
 }
-function recKeyUp(code) {
-  const held = heldKeys.get(code);
+function recKeyUp(id) {
+  const held = heldKeys.get(id);
   if (!held) return;
-  heldKeys.delete(code);
+  heldKeys.delete(id);
   const track = state.recTrack;
   if (track && held.midi != null && held.startCol != null && recording) {
     // Length from how long the key was down, floored at one grid step so a
     // stab still lands as a note rather than nothing.
     const end = snapToGrid(ctxTimeToCol(ctx.currentTime));
-    commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol));
+    commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol), held.vel);
   }
   // Not in the guard above: a stepped chord has to move the cursor on when its
   // last key comes up, and none of its keys carry a startCol.
   endStepIfDone();
 }
+// ---------- MIDI input (Web MIDI) ----------
+// A real keyboard playing into the armed track, through the same press/release
+// core the computer keyboard uses (recNoteDown/recDrumDown/recKeyUp) — so
+// monitoring, recording against the grid and step entry all work identically,
+// and there is one place where a note becomes a note.
+//
+// Deliberately omni: every input, every channel. A picker would be one more
+// thing to choose (and to re-choose whenever a device is unplugged) for the
+// common case of exactly one keyboard on the desk.
+let midiAccess = null;
+const midiInputNames = new Set();
+function midiStatusText() {
+  if (!navigator.requestMIDIAccess) return 'MIDI input unavailable in this browser';
+  if (!midiAccess) return 'Connect MIDI keyboard';
+  if (!midiInputNames.size) return 'MIDI on — no device found';
+  return 'MIDI: ' + [...midiInputNames].join(', ');
+}
+function syncMidiUI() {
+  const btn = document.getElementById('midi-input-btn');
+  if (!btn) return;
+  const label = btn.querySelector('.file-menu-label') || btn;
+  label.textContent = midiStatusText();
+  btn.setAttribute('aria-pressed', String(!!midiAccess && midiInputNames.size > 0));
+  btn.disabled = !navigator.requestMIDIAccess;
+}
+// Note on with velocity 0 is a note off — a real and common encoding, not an
+// edge case: many keyboards never send 0x80 at all, so treating it as a press
+// leaves every note stuck on.
+function handleMidiMessage(e) {
+  const [status, a, b] = e.data;
+  const kind = status & 0xf0;
+  if (kind !== 0x90 && kind !== 0x80) return; // notes only this round
+  const note = a, raw = b || 0;
+  const id = 'midi:' + note;
+  if (kind === 0x80 || raw === 0) { recKeyUp(id); return; }
+  const track = state.recTrack;
+  if (!track) return; // nothing armed: the same silence the letter keys give
+  const vel = midiVelToVel(raw);
+  if (isRhythm(track)) {
+    const type = GM_DRUM_REVERSE[note];
+    // A kit has ten pieces and a keyboard has 128 notes; one that maps to
+    // nothing is dropped rather than folded onto some nearest piece, which
+    // would put hits on the grid that were never played.
+    if (type) recDrumDown(id, type, vel);
+    return;
+  }
+  if (note < MIDI_MIN || note > MIDI_MAX) return;
+  recNoteDown(id, note, vel);
+}
+function attachMidiInputs() {
+  midiInputNames.clear();
+  for (const input of midiAccess.inputs.values()) {
+    input.onmidimessage = handleMidiMessage;
+    midiInputNames.add(input.name || 'MIDI device');
+  }
+  syncMidiUI();
+}
+async function connectMidiInput() {
+  if (!navigator.requestMIDIAccess) { announce('This browser has no MIDI input support'); return; }
+  try {
+    // From a click, so the permission prompt has a gesture behind it.
+    midiAccess = await navigator.requestMIDIAccess();
+  } catch {
+    announce('MIDI access was denied');
+    return;
+  }
+  // Devices plugged in later have to be picked up too, and a device pulled out
+  // mid-session must not leave its held notes sounding forever.
+  midiAccess.onstatechange = () => { releaseAllKeys(); attachMidiInputs(); announce(midiStatusText()); };
+  attachMidiInputs();
+  announce(midiStatusText());
+}
+// Paint the menu item's initial state. Must come after the declarations above
+// — syncMidiUI() reads `midiAccess`, and calling it from earlier in the module
+// hits that `let`'s temporal dead zone, which is a ReferenceError that takes
+// the rest of the script down with it (it did, once).
+syncMidiUI();
+
 function releaseAllKeys() {
   for (const code of [...heldKeys.keys()]) recKeyUp(code);
   heldKeys.clear();
 }
-function commitNote(track, midi, start, len) {
+function commitNote(track, midi, start, len, vel = 1) {
   if (start < 0 || start >= COLS) return;
-  const note = { start: quant(start), len: Math.min(len, COLS - start), freq: round2(midiToFreq(midi)), vel: 1,
+  const note = { start: quant(start), len: Math.min(len, COLS - start), freq: round2(midiToFreq(midi)), vel,
     bend: null, vib: false, trem: false, duty: null, arp: null,
     porta: false, crush: false, echo: false, chorus: false, reverb: false };
   // The same predicate every other placement path uses, so a recorded note
@@ -8995,9 +9103,13 @@ function commitNote(track, midi, start, len) {
   state.tracks[track] = clearOverlaps(state.tracks[track], note).concat([note]);
   render(); autosave();
 }
-function commitHit(track, type, start) {
+function commitHit(track, type, start, vel = 1) {
   if (start < 0 || start >= COLS) return;
+  // Absent means full, the same rule every other hit-placing path follows — so
+  // a kit played at full level serialises exactly as it did before velocity
+  // could reach it at all.
   const hit = { start: quant(start), type };
+  if (vel < 1) hit.vel = vel;
   state.tracks[track] = state.tracks[track].filter(h => !hitsConflict(h, hit)).concat([hit]);
   render(); autosave();
 }

@@ -81,10 +81,6 @@ hur roligt det vore att bygga.
 - [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en
   `<textarea id="exportBox">` och markerar texten, men det finns varken en
   Kopiera-knapp (`navigator.clipboard`) eller nedladdning av filen direkt.
-- [ ] **Inget MIDI-/USB-tangentbordsstöd.** Noter spelas in från
-  datortangentbordet (se `DONE.md`); det finns ingen
-  `navigator.requestMIDIAccess`-kod, så ett riktigt klaviatur går inte att
-  koppla in.
 - [ ] **Endast engelskt UI** (`<html lang="en">`) — ingen lokalisering.
 
 ## I ett annat repo

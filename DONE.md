@@ -1687,3 +1687,36 @@ med pan per not på plats är asymmetrierna i den här listan slut.
     rename it"*.
   Den andra är poängen: att namn-spannet behövde stå med i listan var något
   jag hade resonerat mig fram till, inte mätt. Nu är det mätt.
+
+- [x] **MIDI-klaviatur in, med anslagsstyrka.** `navigator.requestMIDIAccess()`
+  bakom en menypost — uttryckligt, för webbläsaren frågar om lov och en fråga
+  ingen bett om är brus. Omni över alla ingångar och kanaler: en enhetsväljare
+  vore ett val till att göra, och att göra om varje gång något kopplas ur, för
+  det vanliga fallet med precis en klaviatur på bordet. `onstatechange` fångar
+  upp enheter som kopplas in senare och släpper hållna toner när en dras ur.
+  **Allt nedströms är datortangentbordets egen väg**
+  (`recNoteDown`/`recDrumDown`/`recKeyUp`), så monitorering, inspelning mot
+  rutnätet och steginmatning inte kan gå isär mellan de två. Två saker skiljer:
+  anslagsstyrkan är verklig, och trummor går via General MIDI.
+  **Två mappningar delas med MIDI-filimporten i stället för att skrivas en
+  gång till:** `midiVelToVel()` (1–127 → 0.1–1, avrundat till samma 0.05-steg
+  som Velocity-reglagen erbjuder) och `GM_DRUM_REVERSE`. En fil och ett live-tagning
+  har ingen anledning att vara oense om hur hårt samma 96 är. Anslagsstyrkan
+  når **också monitorrösten**, inte bara den lagrade noten: spelar man svagt
+  måste det *låta* svagt, annars är anslaget osynligt tills tagningen är klar.
+  En not-on med velocity 0 är en not-*off* — en verklig och vanlig kodning,
+  inte ett kantfall, eftersom många klaviaturer aldrig skickar `0x80`;
+  behandlar man den som ett anslag fastnar varenda ton.
+  **Vad som kostade tid:** `syncMidiUI()` anropades från en rad som låg
+  *före* `let midiAccess`, alltså i dess temporala dödzon. Det är ett
+  ReferenceError som tar hela modulen med sig — sviten svarade med 81 fel och
+  en tom spårlista, inte med något som pekade mot MIDI. Lärdomen är att ett
+  startanrop hör hemma under sina egna deklarationer, inte intill den knapp
+  det målar.
+  Verifierat utan hårdvara: `verify.js` stubbar `requestMIDIAccess` med en
+  påhittad ingång och spelar riktiga meddelanden genom den. Injektionsprov
+  (anslagsstyrkan ignorerad) gav *"velocity 51 should map to 0.40"*, så steget
+  fångar sin egen regression. Pitch bend, modulationshjul och sustainpedal är
+  medvetet utelämnade: appens `bend` är en per-not-flagga med fast form, inte
+  en kontinuerlig kurva, så de kräver en ny modell för hur en böjning lagras —
+  inte bara ny inläsning.
