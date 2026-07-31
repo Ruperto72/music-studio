@@ -3289,6 +3289,58 @@ async function main() {
       await cdp.evaluate(`${toggleSel}.click()`); // leave it Off for later steps/songs
     });
 
+    step('Track header: a real click on Mute still lands, and on the name still renames', async () => {
+      // The header used to stop `mousedown` on each of its fifteen controls,
+      // one line at a time, so that its own mousedown -> setActive -> render
+      // could not rebuild a control out from under a click in progress. That
+      // is now a single guard on the container, and only a TRUSTED click can
+      // tell the two apart: element.click() dispatches no mousedown at all,
+      // so every other step in this file would pass with the guard deleted
+      // entirely. Hence Input.dispatchMouseEvent, as in the step below.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+
+      const at = async (sel) => {
+        const box = await cdp.evaluate(`(() => {
+          const el = document.querySelector(${JSON.stringify(sel)});
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        })()`);
+        if (!box) throw new Error(`no element for ${sel}`);
+        return box;
+      };
+      const realClick = async ({ x, y }, clickCount = 1) => {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        for (let i = 1; i <= clickCount; i++) {
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: i });
+          await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: i });
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      };
+
+      // A button inside the header: the click must survive the header's own
+      // mousedown, which activates the track and re-renders.
+      const muteSel = '.track-header .th-btns button.m';
+      const before = await cdp.evaluate(`document.querySelector('${muteSel}').getAttribute('aria-pressed')`);
+      await realClick(await at(muteSel));
+      const after = await cdp.evaluate(`document.querySelector('${muteSel}').getAttribute('aria-pressed')`);
+      if (after === before) {
+        throw new Error(`a real click on Mute was swallowed — the header re-rendered under it (aria-pressed stayed ${before})`);
+      }
+      await realClick(await at(muteSel)); // leave it unmuted for later steps
+
+      // The track name is interactive without being a form element: it renames
+      // on double-click, which needs the span to survive the first mousedown.
+      await cdp.evaluate(`window.__renamePrompt = window.prompt; window.prompt = () => 'Renamed';`);
+      await realClick(await at('.track-header .th-name'), 2);
+      const named = await cdp.evaluate(`document.querySelector('.track-header .th-name').textContent`);
+      await cdp.evaluate(`window.prompt = window.__renamePrompt;`);
+      if (named !== 'Renamed') {
+        throw new Error(`double-clicking the track name should rename it; the header rebuilt under the gesture instead (name is "${named}")`);
+      }
+    });
+
     step('FX: a real trusted click through the grid still lands after light-dismiss closes a popover', async () => {
       // Fix 1 regression test. The bug (light-dismiss rebuilding the DOM on
       // 'pointerdown', detaching the click's real target before 'click'

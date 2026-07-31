@@ -481,13 +481,17 @@ track gets:
 Meter, Length, Grid, Swing), so it is not selectable as a whole — only the
 two cells that are the master *channel*, **Master** (volume) and **Output**
 (VU), plus the Master FX button and its chips. Those carry the same
-selected outline `.track.active` draws on a track header. Selection is
-exclusive in both directions: `selectMaster()` clears the note selection,
-and `activateTrack()` clears the master's — one column, one owner. Each
-also drops a `stripFocus` belonging to the other (`dropStripFocusUnless()`),
-since on the narrow layout the strip opens only for whoever that names — a
-leftover `lead::eq` left the master cells drawn as selected while the
-inspector went on showing Lead's chain.
+selected outline `.track.active` draws on a track header.
+
+**One column, one owner**, and the code says so in one value:
+`inspectorOwner` is a track id or the literal `'master'`, and
+`stripFocusKey` is a bare effect key belonging to whoever that names.
+Changing the owner clears the focus in the same function
+(`setInspectorOwner()`), so there is no state where the master cells draw as
+selected while the inspector still shows Lead's chain — which is exactly what
+the pair this replaced could reach, since it spelled the owner out twice (a
+`masterStripOpen` flag *and* an `owner::effectKey` prefix) and needed
+mirrored calls at both ends plus a regression test to keep them agreeing.
 
 The **volume slider inside the Master cell is exempt**, matching a track:
 `buildHeader()`'s slider stops the header's own mousedown, so dragging a
@@ -505,10 +509,12 @@ toggle, so Tab-and-Enter reaches the same state whichever way the panel was
 sitting. `selectMaster()` announces itself into `#a11y-status`, since the
 column that changed owner is nowhere near the control that was used and, on
 the keyboard path, focus doesn't move at all. It is a
-separate `masterStripOpen` flag rather than `state.activeTrack = 'master'`,
-because every nudge, paste, step-entry and pattern path reads
-`state.activeTrack` as a real track id and a sentinel there would be an id
-that indexes nothing.
+separate value rather than `state.activeTrack = 'master'`, because every
+nudge, paste, step-entry and pattern path reads `state.activeTrack` as a real
+track id and a sentinel there would be an id that indexes nothing. The two
+travel together for tracks — every path that moves `activeTrack` calls
+`setInspectorOwner()` with it — and diverge only when the bus takes the
+column.
 
 Three deliberate differences from a track's chips and sections, because
 master's effect set isn't the same kind of thing. They are **fixed**: master
