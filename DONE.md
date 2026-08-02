@@ -1720,3 +1720,33 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   medvetet utelämnade: appens `bend` är en per-not-flagga med fast form, inte
   en kontinuerlig kurva, så de kräver en ny modell för hur en böjning lagras —
   inte bara ny inläsning.
+
+- [x] **Mobilen är en spelare, inte en hopkrympt editor.** Ingen komponerar på
+  telefon med den här appen; att lyssna är däremot rimligt, och PWA:n går att
+  installera på Android — så det är den skärmen en spelare hör hemma på.
+  Under samma 760px-brytpunkt editorn redan använde döljer `body.player-mode`
+  verktygsraden, hela editorlayouten och scrollisten **som grupp**, så en
+  kontroll som läggs till i verktygsraden senare inte kan läcka in i spelaren
+  genom att glömmas bort.
+  **Editorn är dold, inte obyggd.** `render()` körs fortfarande och spelaren
+  läser `visualPlayhead`, `COLS` och mastermätaren i stället för att hålla en
+  andra kopia av transportens tillstånd; dess knappar *klickar editorns egna*.
+  Att dölja kostar en klass, en andra uppspelningsväg hade kostat korrekthet.
+  **Uppdateringen per bildruta hänger på `onPlayheadMove`** — en hook i
+  `updatePlayheadPositions()` i stället för ett namngivet anrop. Spelarens
+  bindningar ligger sist i modulen och den funktionen körs under boot-renderingen,
+  så ett direktanrop hade läst dem i deras temporala dödzon. Det är exakt samma
+  fälla som MIDI-omgången gick i dagen innan; den här gången undveks den i
+  förväg i stället för att felsökas efteråt.
+  **Vad skärmbilden visade som koden inte gjorde:** VU-mätaren ärvde
+  masterlistens mått och blev en stump i fel bredd, och låtbeskrivningarna
+  gjorde varje kort tre gånger för högt. Bägge syntes först när sidan
+  renderades på 420px — inget i koden såg fel ut. Rendera och titta, läs inte
+  bara.
+  Verkat: `state.timeSig` är `{num, den}`, inte en array — mitt `.join('/')`
+  kastade och tog med sig hela `renderPlayerHead()`, vilket i sin tur gjorde
+  att låtlistan aldrig byggdes. Använder nu `tsId()` som redan fanns.
+  Vägen tillbaka ("Open the editor anyway", en `localStorage`-flagga) finns
+  för att en telefon i liggande läge och en mindre surfplatta hamnar under
+  samma brytpunkt — en hård spärr hade strandsatt den som verkligen ville
+  rätta en not.
