@@ -3425,6 +3425,67 @@ async function main() {
 
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
+    step('Mobile: the page becomes a player, with a way back to the editor', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      if (await cdp.evaluate(`!document.getElementById('player').hidden`)) {
+        throw new Error('the player must stay hidden on a desktop-width viewport');
+      }
+
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 420, height: 820, deviceScaleFactor: 1, mobile: true,
+      });
+      try {
+        await waitFor(`document.body.classList.contains('player-mode')`);
+        // The editor is hidden as a whole rather than control by control, so
+        // this checks the pieces a user could otherwise still poke at.
+        const visible = await cdp.evaluate(`(() => {
+          const shown = (sel) => { const el = document.querySelector(sel); return !!el && el.getClientRects().length > 0; };
+          return { toolbar: shown('.toolbar'), grid: shown('.editor-layout'), hscroll: shown('#hscroll'), player: shown('#player') };
+        })()`);
+        if (!visible.player) throw new Error('the player should be on screen at 420px');
+        if (visible.toolbar || visible.grid || visible.hscroll) {
+          throw new Error(`the editor should be hidden in player mode, got ${JSON.stringify(visible)}`);
+        }
+
+        await waitFor(`document.querySelectorAll('#player-list button').length > 0`);
+        const head = await cdp.evaluate(`({
+          song: document.getElementById('player-song').textContent,
+          total: document.getElementById('player-total').textContent,
+        })`);
+        if (!head.song) throw new Error('the player should name the current song');
+        if (!/^\d+:\d\d$/.test(head.total)) throw new Error(`expected a mm:ss total, got "${head.total}"`);
+
+        // Tapping the middle of the position bar seeks to about halfway.
+        await cdp.evaluate(`(() => {
+          const bar = document.getElementById('player-progress');
+          const r = bar.getBoundingClientRect();
+          bar.dispatchEvent(new PointerEvent('pointerdown', {
+            clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, pointerId: 1,
+          }));
+        })()`);
+        const seeked = await cdp.evaluate(`parseFloat(document.getElementById('player-fill').style.width)`);
+        if (!(seeked > 30 && seeked < 70)) {
+          throw new Error(`tapping the middle of the position bar should seek to about halfway, fill is ${seeked}%`);
+        }
+
+        // The way back out, and that it is remembered.
+        await cdp.evaluate(`document.getElementById('player-editor-link').click()`);
+        await waitFor(`!document.body.classList.contains('player-mode')`);
+        if (!await cdp.evaluate(`document.querySelector('.toolbar').getClientRects().length > 0`)) {
+          throw new Error('opting into the editor should bring the toolbar back');
+        }
+        await goto(APP_URL);
+        await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+        if (await cdp.evaluate(`document.body.classList.contains('player-mode')`)) {
+          throw new Error('the editor opt-in should be remembered across a reload');
+        }
+        await cdp.evaluate(`localStorage.removeItem('music-studio-mobile-editor')`);
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
+    });
+
     step('MIDI input: a played note lands on the armed track with its velocity', async () => {
       // No hardware needed and none wanted: Web MIDI is an interface, so a
       // stub that answers requestMIDIAccess() with one fake input exercises

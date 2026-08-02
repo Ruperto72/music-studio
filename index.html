@@ -891,6 +891,64 @@
   @media (max-width: 760px) and (orientation: landscape) {
     #rotate-hint { display: none; }
   }
+  /* ---- Mobile player ---- */
+  /* Everything the editor is made of goes away together, so a control added
+     to the toolbar later cannot leak into the player by being forgotten. */
+  body.player-mode .toolbar,
+  body.player-mode .editor-layout,
+  body.player-mode #hscroll,
+  body.player-mode #rotate-hint,
+  body.player-mode #floating-layer { display: none !important; }
+  body.player-mode { padding: 0; }
+  #player { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 28px; }
+  #player[hidden] { display: none; }
+  #player-card {
+    background: var(--strip); border: 1px solid #26262e; border-radius: 12px;
+    padding: 16px 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  #player-song { font-size: 20px; font-weight: 700; color: var(--ink); }
+  #player-meta { font-size: 11px; color: var(--muted); }
+  /* 20px tall with a 6px line drawn inside it: the bar is what you see, the
+     rest is what a fingertip actually needs to land on. touch-action: none so
+     a drag along it scrubs instead of scrolling the page away under it. */
+  #player-progress {
+    position: relative; height: 20px; display: flex; align-items: center;
+    cursor: pointer; touch-action: none;
+  }
+  #player-progress::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 6px;
+    border-radius: 3px; background: #26262e;
+  }
+  #player-fill {
+    position: relative; z-index: 1; height: 6px; width: 0;
+    border-radius: 3px; background: #3a6bd6;
+  }
+  #player-progress:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 3px; }
+  #player-times { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #player-controls { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 2px; }
+  #player-controls .tp-btn { width: 52px; height: 52px; font-size: 20px; border-radius: 50%; }
+  #player-controls #player-play { width: 64px; height: 64px; font-size: 24px; }
+  /* The meter carries .vu.vu-master for its colours, but that class is sized
+     for a cell in the bottom bar — here it has a whole card's width to use. */
+  #player .vu { width: 100%; height: 6px; margin-top: 4px; }
+  #player-list-cap { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; padding: 0 2px; }
+  #player-list { display: flex; flex-direction: column; gap: 6px; }
+  #player-list button {
+    text-align: left; background: var(--strip); border: 1px solid #26262e; border-radius: 10px;
+    padding: 12px 14px; color: var(--ink); font-size: 14px; display: flex; flex-direction: column; gap: 3px;
+  }
+  #player-list button.current { border-color: #3a6bd6; }
+  /* Two lines is enough to tell songs apart; the full description belongs in
+     the Songs dialog, not in a list you thumb through. */
+  #player-list button span {
+    font-size: 11px; color: var(--muted); line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #player-list .song-empty { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+  #player-editor-link {
+    align-self: center; background: none; border: none; color: #8f8f9c;
+    font-size: 12px; text-decoration: underline; padding: 10px;
+  }
 
   /* Bigger hit areas on touch devices (independent of width — tablets too). */
   @media (pointer: coarse) {
@@ -1318,6 +1376,32 @@
   <button id="insp-close" title="Close editor panel">✕ Done</button>
 
   <textarea id="exportBox" style="display:none" readonly></textarea>
+
+  <!-- Mobile player. Composing on a phone is not a thing anyone does with
+       this app; listening is. So below the same 760px breakpoint the editor
+       already used, the page becomes a player and the editor is hidden
+       rather than shrunk — with a way back, since a small tablet and a phone
+       in landscape land here too. Plain markup, filled by renderPlayer(). -->
+  <div id="player" hidden>
+    <div id="player-card">
+      <div id="player-song">Untitled Song</div>
+      <div id="player-meta"></div>
+      <div id="player-progress" role="slider" tabindex="0" aria-label="Playback position"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="player-fill"></div>
+      </div>
+      <div id="player-times"><span id="player-elapsed">0:00</span><span id="player-total">0:00</span></div>
+      <div id="player-controls">
+        <button id="player-rtz" class="tp-btn" aria-label="Back to start">⏮</button>
+        <button id="player-play" class="tp-btn play" aria-label="Play">▶</button>
+        <button id="player-stop" class="tp-btn stop" aria-label="Stop">■</button>
+      </div>
+      <div class="vu vu-master" title="Output level"><div class="vu-mask" id="player-vu"></div></div>
+    </div>
+    <div id="player-list-cap">Songs</div>
+    <div id="player-list"></div>
+    <button id="player-editor-link">Open the editor anyway</button>
+  </div>
 
   <!-- Portal target for the "+ Add effect" menu and the waveform picker's
        listbox — see renderFloatingLayer(). A plain top-level body child (not
@@ -4881,11 +4965,18 @@ hscrollTrack.addEventListener('pointerdown', (e) => {
   const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   daw.scrollLeft = maxScroll * frac;
 });
+// The mobile player hangs off this, rather than being called by name from
+// here: its own bindings live at the end of the module, and this function runs
+// during the boot render — a direct call would read them inside their temporal
+// dead zone and take the whole script down. A null hook until the player
+// registers itself costs one branch per frame and cannot do that.
+let onPlayheadMove = null;
 function updatePlayheadPositions() {
   const left = (LANE_ORIGIN + visualPlayhead * colPx) + 'px';
   if (playheadEl) playheadEl.style.left = left;
   if (playheadGrip) playheadGrip.style.left = left;
   updateCounter();
+  if (onPlayheadMove) onPlayheadMove();
   updateOverlayClipping();
 }
 
@@ -9327,6 +9418,135 @@ if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
   zoomIndex = Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(24) >= 0 ? ZOOM_LEVELS.indexOf(24) : zoomIndex + 1);
 }
 applyZoom();
+
+// ---------- Mobile player ----------
+// Nobody composes on a phone with this app; people do listen on one. So below
+// the same 760px breakpoint the editor already used, the page becomes a
+// player: song list, transport, a draggable position bar and a level meter.
+//
+// The editor is hidden, not unbuilt. render() still runs — it is what keeps
+// the playhead, the counter and the meters honest, and the player reads those
+// same values rather than keeping a second copy of the transport's state.
+// Hiding costs one class; a second playback path would cost correctness.
+const MOBILE_EDITOR_KEY = 'music-studio-mobile-editor';
+let mobileEditorOptIn = false;
+try { mobileEditorOptIn = localStorage.getItem(MOBILE_EDITOR_KEY) === '1'; } catch { /* ignore */ }
+const playerEl = document.getElementById('player');
+const playerFill = document.getElementById('player-fill');
+const playerProgress = document.getElementById('player-progress');
+const playerElapsed = document.getElementById('player-elapsed');
+const playerTotal = document.getElementById('player-total');
+const playerVu = document.getElementById('player-vu');
+const playerListEl = document.getElementById('player-list');
+const playerModeActive = () => isMobileLayout() && !mobileEditorOptIn;
+const fmtClock = (sec) => Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+const songSeconds = (cols) => cols * (60 / state.tempo / 2);
+
+// Called from updatePlayheadPositions(), i.e. every animation frame while the
+// transport rolls — the same pass that moves the editor's own playhead, so the
+// two cannot drift apart.
+function updatePlayerProgress() {
+  if (!playerModeActive()) return;
+  const frac = COLS ? Math.max(0, Math.min(1, visualPlayhead / COLS)) : 0;
+  playerFill.style.width = (frac * 100).toFixed(2) + '%';
+  playerElapsed.textContent = fmtClock(songSeconds(visualPlayhead));
+  playerProgress.setAttribute('aria-valuenow', Math.round(frac * 100));
+  playerProgress.setAttribute('aria-valuetext', fmtClock(songSeconds(visualPlayhead)));
+  if (playerVu) playerVu.style.width = masterVuEl ? masterVuEl.style.width : '100%';
+}
+function renderPlayerHead() {
+  document.getElementById('player-song').textContent = state.songName || 'Untitled Song';
+  const bars = Math.round(COLS / eighthsPerBar());
+  document.getElementById('player-meta').textContent =
+    `${state.tempo} BPM · ${tsId(state.timeSig)} · ${bars} bar${bars === 1 ? '' : 's'}`;
+  playerTotal.textContent = fmtClock(songSeconds(COLS));
+  updatePlayerProgress();
+}
+// Examples plus this browser's own saved songs, in one list — the same two
+// sources the Songs dialog offers, since "which songs are there" should not
+// have two answers.
+async function renderPlayerList() {
+  playerListEl.innerHTML = '<div class="song-empty">Loading…</div>';
+  const rows = [];
+  try {
+    const list = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
+    for (const entry of list) {
+      rows.push({ name: entry.name, desc: entry.desc, load: async () => {
+        const data = await (await fetch('songs/' + entry.file, { cache: 'no-cache' })).json();
+        applySongData(data, entry.name);
+      } });
+    }
+  } catch { /* offline: the saved songs below still work */ }
+  const local = readLocalSongs();
+  for (const name of Object.keys(local).sort()) {
+    rows.push({ name, desc: 'Saved in this browser', load: async () => applySongData(local[name].data, name) });
+  }
+  playerListEl.innerHTML = '';
+  if (!rows.length) { playerListEl.innerHTML = '<div class="song-empty">No songs found (offline?).</div>'; return; }
+  for (const row of rows) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = row.name === state.songName ? 'current' : '';
+    btn.appendChild(document.createTextNode(row.name));
+    if (row.desc) { const d = document.createElement('span'); d.textContent = row.desc; btn.appendChild(d); }
+    btn.addEventListener('click', async () => {
+      stopPlayback();
+      try { await row.load(); } catch { announce('Could not load that song'); return; }
+      renderPlayerHead();
+      for (const b of playerListEl.querySelectorAll('button')) b.classList.toggle('current', b.firstChild.textContent === state.songName);
+      document.getElementById('player-play').click();
+    });
+    playerListEl.appendChild(btn);
+  }
+}
+function syncPlayerMode() {
+  const on = playerModeActive();
+  document.body.classList.toggle('player-mode', on);
+  playerEl.hidden = !on;
+  if (on) { renderPlayerHead(); renderPlayerList(); }
+}
+// The transport buttons are the editor's own, clicked rather than
+// reimplemented: one definition of what Play means, whichever face is showing.
+document.getElementById('player-play').addEventListener('click', () => document.getElementById('play').click());
+document.getElementById('player-stop').addEventListener('click', () => document.getElementById('stop').click());
+document.getElementById('player-rtz').addEventListener('click', () => document.getElementById('rtz').click());
+document.getElementById('player-editor-link').addEventListener('click', () => {
+  mobileEditorOptIn = true;
+  try { localStorage.setItem(MOBILE_EDITOR_KEY, '1'); } catch { /* ignore */ }
+  syncPlayerMode();
+  render();
+});
+{
+  // Scrub: pointer events so one path covers touch and mouse, and the bar
+  // keeps the pointer for the whole drag rather than losing it the moment a
+  // finger slides off the 20px strip.
+  const seekFromEvent = (e) => {
+    const r = playerProgress.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    seekTo(frac * COLS);
+    updatePlayerProgress();
+  };
+  playerProgress.addEventListener('pointerdown', (e) => {
+    playerProgress.setPointerCapture(e.pointerId);
+    seekFromEvent(e);
+  });
+  playerProgress.addEventListener('pointermove', (e) => {
+    if (playerProgress.hasPointerCapture(e.pointerId)) seekFromEvent(e);
+  });
+  playerProgress.addEventListener('keydown', (e) => {
+    const step = eighthsPerBar();
+    if (e.key === 'ArrowRight') seekTo(Math.min(COLS, state.playhead + step));
+    else if (e.key === 'ArrowLeft') seekTo(Math.max(0, state.playhead - step));
+    else if (e.key === 'Home') seekTo(0);
+    else if (e.key === 'End') seekTo(COLS);
+    else return;
+    e.preventDefault();
+    updatePlayerProgress();
+  });
+}
+window.addEventListener('resize', syncPlayerMode);
+onPlayheadMove = updatePlayerProgress; // see the hook's own comment above
+syncPlayerMode();
 </script>
 </body>
 </html>

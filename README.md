@@ -104,6 +104,10 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   with each selection announced as pitch and bar/beat — and step entry (above)
   adds a cursor you can move around the grid in both directions, announcing
   what's at each step, so a song can be written and read back without a mouse
+- **On a phone it's a player, not an editor** — below 760px the page becomes
+  a song list with a transport, a draggable position bar and a level meter,
+  since listening is what a phone is actually for here. "Open the editor
+  anyway" is there if you disagree, and is remembered
 - **Installable PWA** — works offline once loaded, and can be added to the
   home screen as a standalone/fullscreen app; a **Fullscreen** menu item also
   toggles plain browser fullscreen

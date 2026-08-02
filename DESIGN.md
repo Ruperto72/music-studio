@@ -764,9 +764,35 @@ three miniature faders — the faders' knob marks turned into specks at the
 
 ### A.15 Responsive / mobile / PWA UI
 
-- Below ~760px, `.editor-layout` stacks vertically, the inspector becomes a
-  bottom sheet, toolbar "extra" panels collapse behind "⋯ More", and a
-  rotate-hint banner suggests landscape orientation.
+**Below 760px the page is a player, not a small editor.** Nobody composes on
+a phone with this app; people do listen on one, and the PWA is installable on
+Android, so that is the screen the player belongs on. `body.player-mode`
+hides the toolbar, the whole editor layout and the scrollbar **as a group**,
+so a control added to the toolbar later cannot leak into the player by being
+forgotten. `#player` carries the song's name, tempo/meter/length, a draggable
+position bar with elapsed/total times, a transport, a level meter, and a list
+of songs — the bundled examples plus this browser's saved ones, the same two
+sources the Songs dialog offers, because "which songs are there" should not
+have two answers.
+
+The editor is **hidden, not unbuilt**: `render()` still runs, and the player
+reads `visualPlayhead`, `COLS` and the master meter rather than keeping a
+second copy of the transport's state. Hiding costs a class; a second playback
+path would cost correctness. Its transport buttons *click the editor's own*
+for the same reason. The per-frame update hangs off `onPlayheadMove`, a hook
+in `updatePlayheadPositions()` rather than a direct call, because the player's
+bindings live at the end of the module and that function runs during the boot
+render — a named call there would read them inside their temporal dead zone
+and take the whole script down.
+
+There is a **way back**: "Open the editor anyway" sets a `localStorage` flag
+and gives today's mobile editor layout, remembered per browser. A phone in
+landscape and a small tablet land under the same breakpoint, so a hard block
+would strand anyone who genuinely wanted to fix one note.
+
+- With the editor opted into below ~760px, `.editor-layout` stacks vertically,
+  the inspector becomes a bottom sheet, toolbar "extra" panels collapse behind
+  "⋯ More", and a rotate-hint banner suggests landscape orientation.
 - Touch targets grow under `(pointer: coarse)`.
 - The app is installable (`manifest.webmanifest`, `display_override:
   ["fullscreen","standalone"]`) and works offline once loaded
