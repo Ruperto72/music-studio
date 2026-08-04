@@ -775,6 +775,21 @@ of songs — the bundled examples plus this browser's saved ones, the same two
 sources the Songs dialog offers, because "which songs are there" should not
 have two answers.
 
+It is laid out as an **app shell rather than a page**: `#player` is one
+viewport tall with `overflow: hidden`, the card, the "Songs" caption and the
+editor link are fixed-size flex items, and the song list is the only thing
+that scrolls (`flex: 1 1 auto; min-height: 0; overflow-y: auto`). Thumbing
+down a long list otherwise carried Play and the position bar off the top —
+the two controls you reach for *while* something is playing and you are
+looking for the next thing. Two details are load-bearing rather than
+decorative: **`min-height: 0`**, because a flex item's default
+`min-height: auto` lets the list grow to fit every song and push the card
+away instead of scrolling inside its own box; and **`100dvh` over `100vh`**,
+because `vh` resolves against the *largest* viewport, so a phone's
+collapsing address bar would crop the bottom off exactly when it is
+expanded. `overscroll-behavior: contain` keeps a fling that reaches the end
+of the list from continuing into the page behind it.
+
 The editor is **hidden, not unbuilt**: `render()` still runs, and the player
 reads `visualPlayhead`, `COLS` and the master meter rather than keeping a
 second copy of the transport's state. Hiding costs a class; a second playback

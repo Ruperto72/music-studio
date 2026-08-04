@@ -1796,3 +1796,28 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   för att en telefon i liggande läge och en mindre surfplatta hamnar under
   samma brytpunkt — en hård spärr hade strandsatt den som verkligen ville
   rätta en not.
+
+- [x] **Spelaren är ett app-skal, inte en lång sida.** På telefon låg
+  kontrollerna och låtlistan i samma flöde, så att tumma sig ner genom listan
+  bar med sig Play och positionsraden ut ur bild — de två kontrollerna man
+  sträcker sig efter *medan* något spelar och man letar efter nästa. Nu är
+  `#player` en skärmhöjd med `overflow: hidden`, kortet/rubriken/redigerar-
+  länken är fasta flexobjekt, och `#player-list` är det enda som rullar.
+  Två detaljer är bärande, inte kosmetiska:
+  - **`min-height: 0`** på listan. Ett flexobjekts `min-height` är `auto` som
+    default, vilket låter listan växa till att rymma varje låt och trycka
+    undan kortet i stället för att rulla inuti sin egen box. Utan den raden
+    ser CSS:en rätt ut och gör ingenting.
+  - **`100dvh` framför `100vh`.** `vh` räknas mot den *största* vyporten, så
+    en telefons hopfällbara adressfält hade kapat botten precis när det är
+    utfällt. `vh`-raden står kvar först som fallback.
+  `overscroll-behavior: contain` hindrar en sving som når listans slut från
+  att fortsätta ner i sidan bakom.
+  **Testet mäter det i stället för att beskriva det:** det rullar listan på
+  riktigt och kontrollerar att kortets `getBoundingClientRect().top` inte
+  rör sig, att listan verkligen är sin egen rullbox (`scrollHeight >
+  clientHeight`) och att sidan bakom inte också rullar. Vyporten tvingas till
+  420x520 för just den mätningen — annars hade utfallet hängt på hur många
+  `.json`-filer som råkar ligga i `songs/`, vilket inte är det som prövas.
+  Injektion: med `flex`/`min-height`/`overflow-y` borttaget faller steget på
+  *"the song list should be its own scrolling box"*.

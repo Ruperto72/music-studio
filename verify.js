@@ -3469,6 +3469,39 @@ async function main() {
           throw new Error(`tapping the middle of the position bar should seek to about halfway, fill is ${seeked}%`);
         }
 
+        // The transport stays put while the list scrolls. Measured as a real
+        // scroll, because the failure mode this replaced looked fine in a
+        // screenshot: the list simply grew and pushed the card off the top,
+        // taking Play and the position bar with it exactly when a song is
+        // playing and you are looking for the next one.
+        // Force a viewport short enough that the list definitely overflows,
+        // rather than relying on the bundled song count to fill 820px — that
+        // would make the assertion pass or fail on how many .json files
+        // happen to be in songs/, which is not what is under test here.
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: 420, height: 520, deviceScaleFactor: 1, mobile: true,
+        });
+        const scrolled = await cdp.evaluate(`(() => {
+          const list = document.getElementById('player-list');
+          const cardTop = () => Math.round(document.getElementById('player-card').getBoundingClientRect().top);
+          const before = cardTop();
+          list.scrollTop = 400; // past the end is fine — it clamps
+          return { before, after: cardTop(), listScrolled: list.scrollTop, canScroll: list.scrollHeight > list.clientHeight };
+        })()`);
+        if (!scrolled.canScroll) {
+          throw new Error('the song list should be its own scrolling box (scrollHeight > clientHeight), so the page does not grow instead');
+        }
+        if (!(scrolled.listScrolled > 0)) throw new Error('the song list did not scroll at all');
+        if (scrolled.before !== scrolled.after) {
+          throw new Error(`the player card must not move when the list scrolls (top ${scrolled.before} -> ${scrolled.after})`);
+        }
+        // ...and the page behind it isn't a second scrolling surface.
+        const pageScrolls = await cdp.evaluate(`document.documentElement.scrollHeight > window.innerHeight + 1`);
+        if (pageScrolls) throw new Error('player mode should fit the viewport exactly — the page itself must not scroll too');
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: 420, height: 820, deviceScaleFactor: 1, mobile: true,
+        });
+
         // The way back out, and that it is remembered.
         await cdp.evaluate(`document.getElementById('player-editor-link').click()`);
         await waitFor(`!document.body.classList.contains('player-mode')`);

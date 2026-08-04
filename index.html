@@ -899,9 +899,21 @@
   body.player-mode #hscroll,
   body.player-mode #rotate-hint,
   body.player-mode #floating-layer { display: none !important; }
-  body.player-mode { padding: 0; }
-  #player { display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 28px; }
+  body.player-mode { padding: 0; overflow: hidden; } /* #player is the viewport now — see below */
+  /* An app shell, not a long page: the card and the transport stay put at the
+     top and only the song list scrolls. Thumbing down the list on a phone
+     otherwise carried Play and the position bar off the screen — the two
+     controls you reach for *while* a song is playing and you are looking for
+     the next one. 100dvh rather than 100vh so the browser's own collapsing
+     address bar doesn't crop the bottom off (100vh is the *largest* viewport,
+     which is exactly the wrong end here); the vh line is the fallback for
+     engines without dvh. */
+  #player {
+    display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 12px;
+    height: 100vh; height: 100dvh; overflow: hidden;
+  }
   #player[hidden] { display: none; }
+  #player-card, #player-list-cap, #player-editor-link { flex: 0 0 auto; }
   #player-card {
     background: var(--strip); border: 1px solid #26262e; border-radius: 12px;
     padding: 16px 14px; display: flex; flex-direction: column; gap: 10px;
@@ -932,7 +944,16 @@
      for a cell in the bottom bar — here it has a whole card's width to use. */
   #player .vu { width: 100%; height: 6px; margin-top: 4px; }
   #player-list-cap { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; padding: 0 2px; }
-  #player-list { display: flex; flex-direction: column; gap: 6px; }
+  /* The one scrolling region. min-height: 0 because a flex item's default
+     min-height is auto — without it the list grows to fit every song and
+     pushes the card off the top instead of scrolling inside its own box.
+     overscroll-behavior stops a fling that hits the end of the list from
+     continuing into the page behind it. */
+  #player-list {
+    display: flex; flex-direction: column; gap: 6px;
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
   #player-list button {
     text-align: left; background: var(--strip); border: 1px solid #26262e; border-radius: 10px;
     padding: 12px 14px; color: var(--ink); font-size: 14px; display: flex; flex-direction: column; gap: 3px;
