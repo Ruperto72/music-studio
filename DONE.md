@@ -271,6 +271,52 @@ ett facit.
   Kontrollerat separat att den *spelar* också, inte bara renderar: 12 sekunders
   uppspelning i headless, 3278 noter och 1150 slag över sju spår, inga
   konsolfel.
+- [x] **Två spelslingor till Space Miner: `Orbital Standby` (lobby) och
+  `The Fitting Bay` (butik).** Sedan tidigare fanns `space-miner.json`
+  ("Deep Vacuum") för samma spel; det här är musik till två skärmar som
+  behöver olika saker av sin musik, inte ännu ett exempel på vad appen kan.
+  Lobbyn är 96 BPM, d-moll, 48 takter (2:00): i–bVI–bIII–bVII, stämförd med
+  liggande gemensamma toner så paddet rör sig stegvis i stället för att hoppa
+  mellan grundlägen. Butiken är 118 BPM med `swing: 55`, F-dur, 40 takter
+  (1:21) — dur och ljus där lobbyn är vid och moll, så att *gå in i butiken*
+  blir en hörbar händelse i stället för ett byte av bakgrund.
+  **Det som skiljer spelslinga från låt är slutet.** Lobbyn svävar upp till en
+  bred mittdel och drar sig sedan tillbaka till exakt den pad-och-bas-textur
+  den öppnade med, så takt 48 lämnar över till takt 1 utan skarv; butikens
+  sista fyra takter tunnas ut i stället för att upprepa temat, så återhoppet
+  läses som en återkomst. Arpeggiot i lobbyn är medvetet *brutet* (åtta av
+  sexton lägen per ackord) — en rak åttondelsström i tjugofyra takter är
+  precis det som gör väntmusik tröttsam vid tjugonde genomlyssningen.
+  Stämman i butiken är en **diatonisk** ters under melodin, hämtad ur en
+  stege av F-durs toner i stället för ett fast intervall: en ters under Bb är
+  liten och under C stor, så en transponering i halvtoner hade fått den ena
+  fel oavsett vilket tal man väljer. Båda låtarna är skrivna med en generator,
+  och generatorns egna `note()`/`hit()` bär samma kollisionsregler som appens
+  `notesConflict()`/`hitsConflict()` — en generator är exakt där dubletter
+  uppstår, och appen släpper dem tyst vid inläsning.
+  **Nivån är mätt, som på Rust Foundry.** Vid `masterVol: 0.48`, renderat
+  genom appens egen offline-export:
+
+  | låt | topp | RMS | över fullskala |
+  |---|---|---|---|
+  | The Fitting Bay | −1.09 dBFS | −18.35 dBFS | 0 |
+  | Orbital Standby | −3.82 dBFS | −18.29 dBFS | 0 |
+
+  Butiken ligger mitt i bibliotekets band (−0.89 till −1.35). Lobbyn gör det
+  *inte*, och det är ett val: de två ligger 0,06 dB från varandra i RMS,
+  alltså lika starkt upplevt, och lobbyns lägre topp är dess crest-faktor
+  (liggande pad, inga trumtransienter) och inte ett nivåfel. **Att
+  toppnormalisera lobbyn till samma −1.1 hade varit det uppenbara greppet och
+  fel**: det hade lyft den ~2,7 dB, och lugn väntmusik hade mätt sig starkare
+  än industrimetallen i samma meny. Mellan två skärmar i *samma spel* är det
+  inbördes förhållandet det som hörs, inte toppvärdet.
+  **Spelet självt gick inte att titta på** — proxyn nekade
+  `spaceminer.mirpa.se` (403 på CONNECT), så tonläget är valt utifrån vad en
+  lobby och en butik gör, inte utifrån spelets grafik.
+  `verify.js` behövde inget nytt steg: `auditBundledSongs()` läser hela
+  `songs/`-katalogen, så de två filerna kom med i granskningen av sig själva.
+  Alla 40 steg gröna. `sw.js` precachar låtarna via `songs/index.json`, så
+  bara `CACHE_NAME` behövde bumpas.
 - [x] **Tre nya vågformer: brus, ringmodulering och half-sine.** Nio totalt nu,
   över två rader i väljaren (nio på en rad hade gett ~19px per knapp, för litet
   för att formen ska gå att läsa; ett femkolumnsrutnät ger ~35px, bredare än de
