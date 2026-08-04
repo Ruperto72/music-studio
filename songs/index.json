@@ -25,6 +25,16 @@
     "desc": "A 132 BPM techno track for the Space Miner game — sparse vacuum-drone intros/outros build into hard-hitting drops via riser arps and crash transitions, with bitcrushed lead stabs, chorused pads and a tightened master EQ/compressor for a deeper, punchier sound."
   },
   {
+    "file": "space-miner-lobby.json",
+    "name": "Orbital Standby",
+    "desc": "Lobby music for the Space Miner game — 96 BPM, D minor, two minutes of wide sine pad, a halfsine bell hook and a broken pulse arp over rim and shaker. Written to loop: it swells to a wide middle section and recedes to exactly the pad-and-bass texture it opened with, so bar 48 hands back to bar 1 without a seam."
+  },
+  {
+    "file": "space-miner-shop.json",
+    "name": "The Fitting Bay",
+    "desc": "Shop music for the Space Miner game — a 118 BPM shuffle in F major, bright and major where the lobby is wide and minor, so walking in is an audible event. Plucky pulse lead with a diatonic third under it, bouncing root-fifth-octave bass, till-drawer chimes, and a light rim-and-shaker kit that thins out over the last four bars."
+  },
+  {
     "file": "neon-cathedral.json",
     "name": "Neon Cathedral",
     "desc": "A 2-minute symphonic/techno hybrid at 128 BPM — intro, build, drop, breakdown and a key-change climax before the outro. Six tracks (sine pad, square arp lead, FM brass stabs, triangle sub-bass, and two rhythm kits) showcase nearly every feature: per-note bend/vibrato/arpeggio/portamento/bitcrush/duty-cycle, ADSR + filter envelopes, FM synthesis, volume/pan/delay/reverb automation curves, per-track Delay/Chorus/Reverb sends, Compressor, Bitcrush and Tremolo inserts, plus master EQ, compressor, parallel compression, kick-triggered sidechain ducking and a touch of master bitcrush."

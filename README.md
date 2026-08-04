@@ -179,8 +179,9 @@ as crash recovery — it's never restored automatically.
 4. Bump `CACHE_NAME` in `sw.js` so installed clients pick up the change.
 
 The bundled examples are `froggy-hop.json` (the game demo), `cinematic.json`,
-`techno.json`, `neon-drive.json`, `space-miner.json`, `neon-cathedral.json`
-and `rust-foundry.json`.
+`techno.json`, `neon-drive.json`, `space-miner.json`, `neon-cathedral.json`,
+`rust-foundry.json`, and the two Space Miner game loops
+`space-miner-lobby.json` and `space-miner-shop.json`.
 
 ## Deploy to GitHub Pages
 
