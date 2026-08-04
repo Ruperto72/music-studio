@@ -899,7 +899,10 @@
   body.player-mode #hscroll,
   body.player-mode #rotate-hint,
   body.player-mode #floating-layer { display: none !important; }
-  body.player-mode { padding: 0; overflow: hidden; } /* #player is the viewport now — see below */
+  /* The percentage chain #player hangs off. Scoped to player mode: the editor
+     wants the page to grow and scroll normally. */
+  html.player-shell, html.player-shell body { height: 100%; }
+  body.player-mode { padding: 0; overflow: hidden; }
   /* An app shell, not a long page: the card and the transport stay put at the
      top and only the song list scrolls. Thumbing down the list on a phone
      otherwise carried Play and the position bar off the screen — the two
@@ -908,9 +911,16 @@
      address bar doesn't crop the bottom off (100vh is the *largest* viewport,
      which is exactly the wrong end here); the vh line is the fallback for
      engines without dvh. */
+  /* height: 100% off <html>, not a viewport unit. Installed as a PWA the page
+     runs in standalone/fullscreen (see manifest display_override), where the
+     viewport units do not mean what they mean in a tab with an address bar —
+     and that is exactly where the list came out squeezed while the same build
+     looked right in Chrome itself. A percentage chain asks the actual
+     containing block how tall it is, in every display mode, with none of the
+     largest/smallest-viewport ambiguity dvh and vh carry. */
   #player {
     display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 12px;
-    height: 100vh; height: 100dvh; overflow: hidden;
+    height: 100%; overflow: hidden;
   }
   #player[hidden] { display: none; }
   #player-card, #player-list-cap, #player-editor-link { flex: 0 0 auto; }
@@ -954,6 +964,15 @@
     flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
   }
+  /* Not reproducible in the headless harness — measured there, buttons stay
+     73px whether flex-shrink is 0 or 1, because a flex item's automatic
+     minimum floors them at their content. Installed as a PWA the same buttons
+     render ~64px with the description cut through the middle of the glyphs,
+     which is a squeeze the span absorbed: overflow:hidden gives a flex item a
+     zero automatic minimum, so it is the one thing here that can silently
+     lose half a line. Both are pinned rather than only the one I can argue
+     for. */
+  #player-list button, #player-list button span { flex: 0 0 auto; }
   #player-list button {
     text-align: left; background: var(--strip); border: 1px solid #26262e; border-radius: 10px;
     padding: 12px 14px; color: var(--ink); font-size: 14px; display: flex; flex-direction: column; gap: 3px;
@@ -9522,6 +9541,11 @@ async function renderPlayerList() {
 }
 function syncPlayerMode() {
   const on = playerModeActive();
+  // Both, because #player's height chain runs through <html>: a percentage
+  // height resolves against the containing block, so <body> and <html> have to
+  // carry one too or the shell collapses to its content and stops bounding the
+  // list. Only in player mode — the editor wants the page to grow and scroll.
+  document.documentElement.classList.toggle('player-shell', on);
   document.body.classList.toggle('player-mode', on);
   playerEl.hidden = !on;
   if (on) { renderPlayerHead(); renderPlayerList(); }
