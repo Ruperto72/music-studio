@@ -784,10 +784,17 @@ the two controls you reach for *while* something is playing and you are
 looking for the next thing. Two details are load-bearing rather than
 decorative: **`min-height: 0`**, because a flex item's default
 `min-height: auto` lets the list grow to fit every song and push the card
-away instead of scrolling inside its own box; and **`100dvh` over `100vh`**,
-because `vh` resolves against the *largest* viewport, so a phone's
-collapsing address bar would crop the bottom off exactly when it is
-expanded. `overscroll-behavior: contain` keeps a fling that reaches the end
+away instead of scrolling inside its own box; and **`height: 100%` rather than any viewport unit**,
+chained from `<html>` via a `player-shell` class set alongside
+`player-mode`. Installed as a PWA the page runs in standalone/fullscreen
+(`display_override`), and there the viewport units do not mean what they mean
+in a tab with an address bar — the same build that looked right in Chrome
+came out with the song list squeezed and each description cut through the
+middle of its glyphs. A percentage asks the actual containing block how tall
+it is, in every display mode. The song buttons and their description spans
+are both `flex: 0 0 auto` for the same reason: a flex item with
+`overflow: hidden` has a *zero* automatic minimum, so the span is the one
+thing here that can silently lose half a line. `overscroll-behavior: contain` keeps a fling that reaches the end
 of the list from continuing into the page behind it.
 
 The editor is **hidden, not unbuilt**: `render()` still runs, and the player
