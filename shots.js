@@ -79,6 +79,19 @@ function findBrowser() {
       if (out) candidates.push(out);
     } catch { /* not found, try next */ }
   }
+  // Chrome's installer registers an App Paths key rather than adding itself to
+  // PATH, so `where chrome.exe` misses a perfectly ordinary install. Same list
+  // verify.js carries, for the same reason.
+  const staticPaths = process.platform === 'darwin' ? [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  ] : process.platform === 'win32' ? [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  ] : [];
+  candidates.push(...staticPaths);
   try {
     const pwRoot = '/opt/pw-browsers';
     if (fs.existsSync(pwRoot)) {
@@ -160,13 +173,16 @@ async function main() {
   }
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  const server = spawn(process.execPath, [path.join(__dirname, 'dev-server.js')], {
-    env: { ...process.env, PORT: String(SERVER_PORT) },
-    stdio: ['ignore', 'ignore', 'inherit'],
-  });
+  // The profile directory is made before anything is spawned, and every spawn
+  // happens inside the try: whatever fails, the finally below is reached with
+  // the processes it has to kill already in variables it can see.
   const profile = fs.mkdtempSync(path.join(require('os').tmpdir(), 'shots-'));
-  let chrome;
+  let server, chrome;
   try {
+    server = spawn(process.execPath, [path.join(__dirname, 'dev-server.js')], {
+      env: { ...process.env, PORT: String(SERVER_PORT) },
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
     await waitForHttp(APP_URL, 10000);
     chrome = spawn(browser, [
       '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
@@ -275,9 +291,16 @@ async function main() {
     }
     console.log(`\nWrote ${SHOTS.length} screenshots to docs/img/.`);
   } finally {
-    if (chrome) chrome.kill();
-    server.kill();
-    try { fs.rmSync(profile, { recursive: true, force: true }); } catch { /* ignore */ }
+    // Wait for the browser to actually exit before deleting its profile: on
+    // Windows kill() returns while the renderer processes still hold file
+    // locks, and the delete then fails with EBUSY. Retry anyway, since the
+    // exit event itself is not a promise that every handle is closed.
+    if (chrome) await new Promise((resolve) => { chrome.once('exit', resolve); chrome.kill(); setTimeout(resolve, 3000); });
+    for (let i = 0; i < 5; i++) {
+      try { fs.rmSync(profile, { recursive: true, force: true }); break; }
+      catch { await new Promise((r) => setTimeout(r, 200)); }
+    }
+    if (server) server.kill();
   }
 }
 
