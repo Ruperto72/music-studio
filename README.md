@@ -182,6 +182,12 @@ expectation is wrong *or* if the page logs a console error at any point. It
 needs a Chromium-family browser on the machine (`CHROME_PATH=…` to point at a
 specific one).
 
+The app icon is drawn by a command too, from one path in one file:
+
+```bash
+node icons.js             # rewrites icons/*.png and icons/*.svg
+```
+
 ## Songs: examples vs. your own
 
 - **Examples** live in `songs/` and are listed in `songs/index.json`. They load
@@ -242,12 +248,14 @@ js/downsample-processor.js  AudioWorklet behind the master and per-track bitcrus
 songs/                      example songs + index.json
 manifest.webmanifest        PWA manifest (name, icons, display mode)
 sw.js                       service worker: offline cache for the app shell
-icons/                      generated app icons (see manifest.webmanifest)
+icons/                      generated app icons (see icons.js)
 dev-server.js               tiny static server for local use
 dev.js                      starts dev-server.js and opens a browser
 start.cmd                   Windows double-click entry point
 verify.js                   headless-browser smoke test
 shots.js                    regenerates the screenshots in docs/img/
+icons.js                    regenerates the app icon in icons/
+cdp.js                      shared browser-driving plumbing for the three above
 docs/img/                   the screenshots this README links to
 TODO.md / DONE.md           what's left, and the journal behind what's built
 docs/                       design notes and implementation plans

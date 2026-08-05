@@ -58,6 +58,14 @@ which is greppable when the published version is inconvenient to search.
   all-emoji UI** — full-colour system pictures pasted into a monochrome
   stroked interface — and `verify.js` audits every control against an
   explicit keep-list so the split stays a decision rather than a drift.
+- **App mark**: the icon is not part of `GLYPHS` — it is a filled restatement
+  of the `pwm` glyph at icon scale, drawn once in `icons.js`. Three pulses of
+  growing width (8, 17 and 22 units in a 100-unit square) on a floor, filled
+  with a horizontal gradient from `#2ff3ff` to `#ff2fb0` — `TRACK_PALETTE[0]`
+  and `[1]`. What grows across the mark is the share of each cycle that is
+  high, which is duty; a plain square wave was rejected in design as being on
+  every third synth app, whereas duty modulation is specific to what this
+  editor does.
 - **Density**: the whole UI targets information density over whitespace —
   compact toolbar panels, an 11px-per-semitone piano roll, and 17px rhythm
   rows, so a full song's structure is visible without excessive scrolling.
