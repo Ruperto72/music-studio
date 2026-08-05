@@ -29,8 +29,9 @@ const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
 // ---------------------------------------------------------------------------
-// Bundled-song audit. The only check here that never opens a browser: it reads
-// songs/*.json and asks whether index.html would accept every field in them.
+// Bundled-song audit. The first of two checks in this file that never open a
+// browser: it reads songs/*.json and asks whether index.html would accept
+// every field in them.
 //
 // Every constant it validates against is pulled out of index.html rather than
 // retyped, so the audit cannot drift from the app — which is the same failure
@@ -225,6 +226,14 @@ function auditBundledSongs(repoRoot) {
 // retyped, and a read that finds nothing throws rather than passing
 // vacuously.
 // ---------------------------------------------------------------------------
+// A file that exists on disk but is never referenced is exactly as broken as
+// a reference that points at nothing — it's how favicon-32.png sat unused
+// for months before this audit existed. `icon-maskable.svg` is the one
+// deliberate exception: it's a readable source for the PNGs icons.js
+// generates from it, not a runtime asset any of the three files above needs
+// to name.
+const ICON_ORPHAN_ALLOWLIST = ['icons/icon-maskable.svg'];
+
 function auditIcons(repoRoot) {
   const problems = [];
   const checked = [];
@@ -238,12 +247,21 @@ function auditIcons(repoRoot) {
   // The same codepoint ranges the interface-icon step uses on controls.
   const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
 
+  // Referenced by the app (manifest + index.html) vs. actually precached by
+  // sw.js are tracked separately from `checked` so they can be compared
+  // against each other below — checking declared-icon-exists-on-disk alone
+  // (the loop bodies pushing into `checked`) never notices an icon that one
+  // of the three files forgot to mention at all.
+  const referenced = [];
+  const precached = [];
+
   const manifest = JSON.parse(read('manifest.webmanifest'));
   if (!manifest.icons || !manifest.icons.length) {
     throw new Error('manifest.webmanifest declares no icons — the audit would pass vacuously');
   }
   for (const ic of manifest.icons) {
     checked.push(ic.src);
+    referenced.push(ic.src);
     if (!exists(ic.src)) { problems.push(`manifest icon missing on disk: ${ic.src}`); continue; }
     const [w, h] = pngSize(ic.src);
     if (`${w}x${h}` !== ic.sizes) {
@@ -264,10 +282,20 @@ function auditIcons(repoRoot) {
       // The app removed emoji from its controls deliberately and audits them
       // above — the <head> was simply never in scope.
       const decoded = decodeURIComponent(href);
-      if (EMOJI.test(decoded)) problems.push(`icon link is an emoji data URL: ${decoded.slice(0, 70)}…`);
+      const em = EMOJI.exec(decoded);
+      if (em) {
+        // Slice a window *around* the match — the codepoint that actually
+        // trips this can sit well past character 70 (the 🎵 this audit was
+        // written to catch is at roughly 100), so a flat slice(0, 70) names
+        // an emoji in the message without showing one.
+        const start = Math.max(0, em.index - 40);
+        const window = decoded.slice(start, em.index + 40);
+        problems.push(`icon link is an emoji data URL: ${start > 0 ? '…' : ''}${window}…`);
+      }
       continue;
     }
     checked.push(href);
+    referenced.push(href);
     if (!exists(href)) problems.push(`icon link points at a missing file: ${href}`);
   }
 
@@ -282,7 +310,32 @@ function auditIcons(repoRoot) {
   for (const m of shell[1].matchAll(/'\.\/([^']+)'/g)) {
     if (!/^icons\//.test(m[1])) continue;
     checked.push(m[1]);
+    precached.push(m[1]);
     if (!exists(m[1])) problems.push(`sw.js precaches a missing file: ${m[1]}`);
+  }
+
+  // Referenced → precached: an icon the manifest or index.html points at but
+  // sw.js never lists leaves an installed PWA with no offline copy of it —
+  // gutting SHELL_URLS entirely used to still pass, since nothing compared
+  // it against what the app actually needs.
+  for (const href of referenced) {
+    if (!precached.includes(href)) {
+      problems.push(`${href} is referenced by manifest.webmanifest/index.html but sw.js's SHELL_URLS never precaches it`);
+    }
+  }
+
+  // Exists → declared: a file nobody points at is the mirror image of a
+  // dangling reference, and it's the exact shape of bug this audit exists
+  // for (favicon-32.png sat orphaned this way for months). Checked against
+  // `referenced` rather than `checked` — sw.js is meant to *mirror* the
+  // manifest/index.html references (that's what the check above verifies),
+  // not stand in as its own source of "this icon is used"; a file that
+  // dropped out of index.html but still happens to linger in SHELL_URLS is
+  // exactly as orphaned as one absent from all three.
+  const onDisk = fs.readdirSync(path.join(repoRoot, 'icons')).map((f) => `icons/${f}`);
+  for (const f of onDisk) {
+    if (ICON_ORPHAN_ALLOWLIST.includes(f)) continue;
+    if (!referenced.includes(f)) problems.push(`${f} exists in icons/ but nothing declares it`);
   }
 
   return { checked, problems };
@@ -370,7 +423,7 @@ async function main() {
     // else — now picks the Lead track's piano roll.
     const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-osc-trigger')).map(t => t.querySelector('.lane'))[0]`;
 
-    // First, and the only step that needs no browser: a song file the app
+    // First, and not the last step that needs no browser: a song file the app
     // would silently mangle is worth hearing about before thirteen minutes of
     // rendering, and a bad example ships to everyone who opens the Songs menu.
     step('Bundled songs: every field is one the app will actually load', async () => {
@@ -386,7 +439,7 @@ async function main() {
     // browser has started.
     step('Icons: every declared icon exists, is the size it claims, and no emoji is left in the head', async () => {
       const { checked, problems } = auditIcons(repoRoot);
-      if (checked.length < 6) throw new Error(`only found ${checked.length} icon references — expected the declared set`);
+      if (checked.length < 14) throw new Error(`only found ${checked.length} icon references — expected the declared set`);
       if (problems.length) {
         throw new Error(`${problems.length} problem(s):\n        ` + problems.join('\n        '));
       }
