@@ -239,18 +239,17 @@ async function main() {
   });
   await waitForHttp(APP_URL, 10000).catch((e) => { server.kill(); throw e; });
 
-  const launched = await launchChrome(browserPath, {
-    profilePrefix: 'music-studio-verify-',
-    // Without this an AudioContext stays suspended — a synthetic click
-    // through the DevTools Protocol is not a trusted user gesture, so
-    // resume() never takes and ctx.currentTime sits at 0 forever. Anything
-    // that measures *when* something happened (the recording step) would then
-    // see every event at time zero.
-    args: ['--autoplay-policy=no-user-gesture-required'],
-  });
-
-  let cdp;
+  let launched, cdp;
   try {
+    launched = await launchChrome(browserPath, {
+      profilePrefix: 'music-studio-verify-',
+      // Without this an AudioContext stays suspended — a synthetic click
+      // through the DevTools Protocol is not a trusted user gesture, so
+      // resume() never takes and ctx.currentTime sits at 0 forever. Anything
+      // that measures *when* something happened (the recording step) would then
+      // see every event at time zero.
+      args: ['--autoplay-policy=no-user-gesture-required'],
+    });
     cdp = await openPage(launched.httpBase);
     cdp.on('Runtime.consoleAPICalled', (p) => {
       if (p.type === 'error') errors.push('[console] ' + p.args.map((a) => a.value ?? a.description ?? '').join(' '));
@@ -3647,7 +3646,7 @@ async function main() {
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
-    await launched.cleanup();
+    if (launched) await launched.cleanup();
     server.kill();
   }
 
