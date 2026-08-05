@@ -20,145 +20,13 @@
 //   CHROME_PATH=/path/to/chrome   override browser auto-discovery
 //   VERIFY_PORT=8099              port for the throwaway dev-server instance
 'use strict';
-const { spawn, execFileSync } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const http = require('http');
+const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
 
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
-
-function findBrowser() {
-  const candidates = [];
-  if (process.env.CHROME_PATH) candidates.push(process.env.CHROME_PATH);
-  const names = process.platform === 'win32'
-    ? ['chrome.exe', 'msedge.exe']
-    : ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium', 'chrome', 'microsoft-edge'];
-  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-  for (const name of names) {
-    try {
-      const out = execFileSync(whichCmd, [name], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n')[0];
-      if (out) candidates.push(out);
-    } catch { /* not found, try next */ }
-  }
-  const staticPaths = process.platform === 'darwin' ? [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  ] : process.platform === 'win32' ? [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ] : [];
-  candidates.push(...staticPaths);
-  try {
-    const pwRoot = '/opt/pw-browsers';
-    if (fs.existsSync(pwRoot)) {
-      for (const dir of fs.readdirSync(pwRoot)) {
-        const p = path.join(pwRoot, dir, 'chrome-linux', 'chrome');
-        if (fs.existsSync(p)) candidates.push(p);
-      }
-    }
-  } catch { /* ignore */ }
-  for (const c of candidates) { if (c && fs.existsSync(c)) return c; }
-  return null;
-}
-
-function httpJson(url, method = 'GET') {
-  return new Promise((resolve, reject) => {
-    const req = http.request(url, { method }, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { reject(new Error(`Non-JSON response from ${url}: ${body}`)); } });
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function waitForHttp(url, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { await new Promise((resolve, reject) => { http.get(url, (res) => { res.resume(); resolve(); }).on('error', reject); }); return; }
-    catch { await new Promise((r) => setTimeout(r, 100)); }
-  }
-  throw new Error(`${url} never responded within ${timeoutMs}ms`);
-}
-
-// Minimal CDP client: one WebSocket, JSON-RPC request/response by id, plus a
-// pub/sub for events (Runtime.consoleAPICalled etc). No dependencies beyond
-// Node's own built-in WebSocket (stable since Node 21) — see the file header
-// comment for why this exists instead of a browser-automation library.
-// A CDP request that gets no reply used to hang the whole run — see send().
-// Two minutes is far past any legitimate call (the slowest is an offline WAV
-// render inside Runtime.evaluate) and far short of noticing by hand.
-const CDP_REQUEST_TIMEOUT_MS = 120000;
-class CDP {
-  constructor(wsUrl) {
-    this.ws = new WebSocket(wsUrl);
-    this.nextId = 1;
-    this.pending = new Map();
-    this.listeners = new Map();
-    this.ready = new Promise((resolve, reject) => {
-      this.ws.addEventListener('open', () => resolve());
-      this.ws.addEventListener('error', (e) => reject(new Error('CDP WebSocket error: ' + (e.message || e))));
-    });
-    this.ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        if (msg.error) reject(new Error(msg.error.message)); else resolve(msg.result);
-      } else if (msg.method) {
-        for (const fn of this.listeners.get(msg.method) || []) fn(msg.params);
-      }
-    });
-  }
-  on(method, fn) {
-    if (!this.listeners.has(method)) this.listeners.set(method, []);
-    this.listeners.get(method).push(fn);
-  }
-  // Every request gets a deadline. Without one a reply that never arrives
-  // parks its promise in `pending` forever, and because waitFor() reaches the
-  // browser through here, *its* 5s timeout never gets to count down — it is
-  // blocked inside its very first cdp.evaluate(). That is how a run once sat
-  // silent for 25 minutes with a five-second timeout in the call stack.
-  //
-  // Generous on purpose: an offline WAV render inside Runtime.evaluate is a
-  // legitimate slow call, so this is a hang detector, not a performance
-  // budget. Individual calls can raise it.
-  send(method, params = {}, timeoutMs = CDP_REQUEST_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId++;
-      const timer = setTimeout(() => {
-        // Drop it first: a late reply must not resolve an already-rejected
-        // promise, and leaving it in `pending` would leak one entry per hang.
-        this.pending.delete(id);
-        reject(new Error(`CDP ${method} did not reply within ${timeoutMs}ms`));
-      }, timeoutMs);
-      this.pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-  // Runs `expr` as a plain script in the page's top-level scope (NOT the
-  // app's own module scope, which JS modules keep private — but DOM
-  // mutations/queries and dispatching real events on elements work exactly
-  // like a user interacting with the page, which is all every check below
-  // needs). Throws if the page threw.
-  async evaluate(expr) {
-    const result = await this.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-    if (result.exceptionDetails) {
-      const d = result.exceptionDetails;
-      throw new Error('Page threw: ' + (d.exception?.description || d.text));
-    }
-    return result.result.value;
-  }
-  close() { try { this.ws.close(); } catch { /* already closed */ } }
-}
 
 // ---------------------------------------------------------------------------
 // Bundled-song audit. The only check here that never opens a browser: it reads
@@ -371,30 +239,19 @@ async function main() {
   });
   await waitForHttp(APP_URL, 10000).catch((e) => { server.kill(); throw e; });
 
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-studio-verify-'));
-  const debugPort = 9333 + Math.floor(Math.random() * 500); // avoid clashing with a concurrent run
-  const chrome = spawn(browserPath, [
-    '--headless=new', `--remote-debugging-port=${debugPort}`, `--user-data-dir=${userDataDir}`,
-    '--no-sandbox', '--disable-gpu', '--no-first-run',
-    // Without this an AudioContext stays suspended — a synthetic click through
-    // the DevTools Protocol is not a trusted user gesture, so resume() never
-    // takes and ctx.currentTime sits at 0 forever. Anything that measures
-    // *when* something happened (the recording step) would then see every
-    // event at time zero. A real click grants exactly this, so the flag makes
-    // the headless run behave like the browser rather than papering over
-    // anything.
-    '--autoplay-policy=no-user-gesture-required',
-    'about:blank',
-  ], { stdio: 'ignore' });
+  const launched = await launchChrome(browserPath, {
+    profilePrefix: 'music-studio-verify-',
+    // Without this an AudioContext stays suspended — a synthetic click
+    // through the DevTools Protocol is not a trusted user gesture, so
+    // resume() never takes and ctx.currentTime sits at 0 forever. Anything
+    // that measures *when* something happened (the recording step) would then
+    // see every event at time zero.
+    args: ['--autoplay-policy=no-user-gesture-required'],
+  });
 
   let cdp;
   try {
-    await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 10000);
-    const tab = await httpJson(`http://127.0.0.1:${debugPort}/json/new?about:blank`, 'PUT');
-    cdp = new CDP(tab.webSocketDebuggerUrl);
-    await cdp.ready;
-    await cdp.send('Page.enable');
-    await cdp.send('Runtime.enable');
+    cdp = await openPage(launched.httpBase);
     cdp.on('Runtime.consoleAPICalled', (p) => {
       if (p.type === 'error') errors.push('[console] ' + p.args.map((a) => a.value ?? a.description ?? '').join(' '));
     });
@@ -3790,11 +3647,7 @@ async function main() {
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
-    await new Promise((resolve) => { chrome.once('exit', resolve); chrome.kill(); setTimeout(resolve, 3000); });
-    for (let i = 0; i < 5; i++) {
-      try { fs.rmSync(userDataDir, { recursive: true, force: true }); break; }
-      catch { await new Promise((r) => setTimeout(r, 200)); }
-    }
+    await launched.cleanup();
     server.kill();
   }
 

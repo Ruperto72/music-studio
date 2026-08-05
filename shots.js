@@ -15,10 +15,10 @@
 //   CHROME_PATH=/path/to/chrome   override browser auto-discovery
 //   SHOTS_PORT=8097               port for the throwaway dev-server instance
 'use strict';
-const { spawn, execFileSync } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
+const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
 
 const SERVER_PORT = process.env.SHOTS_PORT || 8097;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
@@ -66,105 +66,6 @@ const SHOTS = [
   },
 ];
 
-function findBrowser() {
-  const candidates = [];
-  if (process.env.CHROME_PATH) candidates.push(process.env.CHROME_PATH);
-  const names = process.platform === 'win32'
-    ? ['chrome.exe', 'msedge.exe']
-    : ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium', 'chrome', 'microsoft-edge'];
-  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-  for (const name of names) {
-    try {
-      const out = execFileSync(whichCmd, [name], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n')[0];
-      if (out) candidates.push(out);
-    } catch { /* not found, try next */ }
-  }
-  // Chrome's installer registers an App Paths key rather than adding itself to
-  // PATH, so `where chrome.exe` misses a perfectly ordinary install. Same list
-  // verify.js carries, for the same reason.
-  const staticPaths = process.platform === 'darwin' ? [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  ] : process.platform === 'win32' ? [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ] : [];
-  candidates.push(...staticPaths);
-  try {
-    const pwRoot = '/opt/pw-browsers';
-    if (fs.existsSync(pwRoot)) {
-      for (const dir of fs.readdirSync(pwRoot)) {
-        const p = path.join(pwRoot, dir, 'chrome-linux', 'chrome');
-        if (fs.existsSync(p)) candidates.push(p);
-      }
-    }
-  } catch { /* ignore */ }
-  for (const c of candidates) { if (c && fs.existsSync(c)) return c; }
-  return null;
-}
-
-function httpJson(url) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(url, { method: 'GET' }, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { reject(new Error(`Non-JSON response from ${url}: ${body}`)); } });
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function waitForHttp(url, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { await new Promise((resolve, reject) => { http.get(url, (res) => { res.resume(); resolve(); }).on('error', reject); }); return; }
-    catch { await new Promise((r) => setTimeout(r, 100)); }
-  }
-  throw new Error(`${url} never responded within ${timeoutMs}ms`);
-}
-
-const CDP_REQUEST_TIMEOUT_MS = 60000;
-class CDP {
-  constructor(ws) { this.ws = ws; this.nextId = 1; this.pending = new Map(); }
-  static async attach(wsUrl) {
-    const ws = new WebSocket(wsUrl);
-    await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-    const cdp = new CDP(ws);
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.id && cdp.pending.has(msg.id)) {
-        const { resolve, reject } = cdp.pending.get(msg.id);
-        cdp.pending.delete(msg.id);
-        if (msg.error) reject(new Error(`${msg.error.message} (${JSON.stringify(msg.error.data || {})})`));
-        else resolve(msg.result);
-      }
-    };
-    return cdp;
-  }
-  send(method, params = {}) {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`CDP ${method} did not reply within ${CDP_REQUEST_TIMEOUT_MS}ms`));
-      }, CDP_REQUEST_TIMEOUT_MS);
-      this.pending.set(id, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
-      });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-  async evaluate(expression) {
-    const res = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (res.exceptionDetails) throw new Error(res.exceptionDetails.exception?.description || 'evaluate threw');
-    return res.result.value;
-  }
-}
-
 async function main() {
   const browser = findBrowser();
   if (!browser) {
@@ -173,48 +74,21 @@ async function main() {
   }
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  // The profile directory is made before anything is spawned, and every spawn
-  // happens inside the try: whatever fails, the finally below is reached with
-  // the processes it has to kill already in variables it can see.
-  const profile = fs.mkdtempSync(path.join(require('os').tmpdir(), 'shots-'));
-  let server, chrome;
+  let server, launched, cdp;
   try {
     server = spawn(process.execPath, [path.join(__dirname, 'dev-server.js')], {
       env: { ...process.env, PORT: String(SERVER_PORT) },
       stdio: ['ignore', 'ignore', 'inherit'],
     });
     await waitForHttp(APP_URL, 10000);
-    chrome = spawn(browser, [
-      '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-      '--no-sandbox', '--disable-gpu', '--hide-scrollbars',
+    launched = await launchChrome(browser, {
+      profilePrefix: 'shots-',
       // Deterministic text: without this the same page can shoot with
       // different subpixel rendering between runs, so every image would show
       // as changed in a diff even when nothing did.
-      '--force-device-scale-factor=2', '--font-render-hinting=none',
-      'about:blank',
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
-
-    const wsUrl = await new Promise((resolve, reject) => {
-      let buf = '';
-      const t = setTimeout(() => reject(new Error('browser never printed its DevTools URL')), 15000);
-      chrome.stderr.on('data', (c) => {
-        buf += c.toString();
-        const m = buf.match(/ws:\/\/[^\s]+/);
-        if (m) { clearTimeout(t); resolve(m[0]); }
-      });
+      args: ['--hide-scrollbars', '--force-device-scale-factor=2', '--font-render-hinting=none'],
     });
-    // Attach straight to the page target's own socket rather than the
-    // browser's. Flat mode would work too, but its sessionId belongs in the
-    // message envelope rather than in params — a distinction that is easy to
-    // get wrong and reports itself as "'Page.enable' wasn't found", which
-    // sounds like a missing domain rather than a misrouted call.
-    const httpBase = wsUrl.replace(/^ws:/, 'http:').replace(/\/devtools\/browser\/.*$/, '');
-    const targets = await httpJson(`${httpBase}/json/list`);
-    const pageTarget = targets.find((t) => t.type === 'page');
-    if (!pageTarget) throw new Error('the browser exposed no page target to attach to');
-    const cdp = await CDP.attach(pageTarget.webSocketDebuggerUrl);
-    await cdp.send('Page.enable');
-    await cdp.send('Runtime.enable');
+    cdp = await openPage(launched.httpBase);
 
     const page = {
       evaluate: (e) => cdp.evaluate(e),
@@ -291,15 +165,8 @@ async function main() {
     }
     console.log(`\nWrote ${SHOTS.length} screenshots to docs/img/.`);
   } finally {
-    // Wait for the browser to actually exit before deleting its profile: on
-    // Windows kill() returns while the renderer processes still hold file
-    // locks, and the delete then fails with EBUSY. Retry anyway, since the
-    // exit event itself is not a promise that every handle is closed.
-    if (chrome) await new Promise((resolve) => { chrome.once('exit', resolve); chrome.kill(); setTimeout(resolve, 3000); });
-    for (let i = 0; i < 5; i++) {
-      try { fs.rmSync(profile, { recursive: true, force: true }); break; }
-      catch { await new Promise((r) => setTimeout(r, 200)); }
-    }
+    if (cdp) cdp.close();
+    if (launched) await launched.cleanup();
     if (server) server.kill();
   }
 }
