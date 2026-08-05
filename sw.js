@@ -1,9 +1,11 @@
 // Minimal offline cache for the PWA shell. No dependencies, no build step —
 // bump CACHE_NAME whenever a precached shell file changes so clients pick up the update.
-const CACHE_NAME = 'music-studio-v45';
+const CACHE_NAME = 'music-studio-v46';
 const SHELL_URLS = [
   './index.html',
   './manifest.webmanifest',
+  './icons/icon.svg',
+  './icons/favicon-32.png',
   './js/song-data.js',
   './js/downsample-processor.js',
   './songs/index.json',
