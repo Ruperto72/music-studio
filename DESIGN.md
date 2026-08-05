@@ -728,6 +728,15 @@ Static markup carries `data-glyph="name"` and one boot pass fills them in;
 buttons built in JS use `setGlyphLabel(btn, name, label)`. Either way the label
 stays a real text node, so the accessible name is what it always was.
 
+The record dot is the one **filled** glyph, opted into by the `GLYPHS` entry
+itself (`fill: true`) rather than by a caller. Everywhere else a stroke is
+right; there, its neighbours are ▶ and ■ — solid shapes — and a lone ring
+among them read as a different kind of control rather than the third member
+of a transport. The transport buttons are a flex box for the same reason the
+glyph is: a plain character is centred by the button's own text centring,
+while an inline SVG sits on the text baseline instead, which left Record and
+the metronome measurably 10.5px left of centre.
+
 **Emoji were removed from controls on purpose.** They rendered in the system's
 own colour and style — full-colour pictures pasted into a monochrome stroked
 UI — and looked nothing like the rest of the app. What stayed is the plain

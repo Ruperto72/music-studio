@@ -3425,6 +3425,54 @@ async function main() {
 
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
+    step('Transport: every button centres its symbol, and Record is filled like Play/Stop', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+
+      // Centring is the kind of thing you otherwise only have an opinion
+      // about. The glyph-carrying buttons are the ones at risk: a plain
+      // character is centred by the button's own text centring, while an
+      // inline SVG sits on the text baseline instead.
+      const off = await cdp.evaluate(`(() => {
+        const out = [];
+        document.querySelectorAll('#transport-panel .tp-btn').forEach((b) => {
+          const g = b.querySelector('.glyph');
+          if (!g) return;
+          const br = b.getBoundingClientRect(), gr = g.getBoundingClientRect();
+          const dx = (gr.left + gr.width / 2) - (br.left + br.width / 2);
+          const dy = (gr.top + gr.height / 2) - (br.top + br.height / 2);
+          if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+            out.push({ id: b.id, dx: Math.round(dx * 10) / 10, dy: Math.round(dy * 10) / 10 });
+          }
+        });
+        return out;
+      })()`);
+      if (off.length) {
+        throw new Error(`transport glyphs are off-centre in their buttons: ${JSON.stringify(off)}`);
+      }
+
+      // Record sits between ▶ and ■, which are solid shapes; a stroked ring
+      // among them reads as a different kind of control.
+      const rec = await cdp.evaluate(`(() => {
+        const p = document.querySelector('#record-btn .glyph path');
+        if (!p) return null;
+        const cs = getComputedStyle(p);
+        return { fill: cs.fill, stroke: cs.stroke };
+      })()`);
+      if (!rec) throw new Error('the Record button should carry a glyph');
+      if (rec.fill === 'none') throw new Error(`the Record dot should be filled to match Play and Stop, got fill: ${rec.fill}`);
+
+      // ...and the rest of the icon set stays stroked, so "filled" is a
+      // property of that one glyph rather than a change to all of them.
+      const strokedStillStroked = await cdp.evaluate(`(() => {
+        const p = document.querySelector('#metronome-btn .glyph path');
+        return p ? getComputedStyle(p).fill : null;
+      })()`);
+      if (strokedStillStroked !== 'none') {
+        throw new Error(`only Record opts into a fill; the metronome should still be stroked, got fill: ${strokedStillStroked}`);
+      }
+    });
+
     step('Mobile: the page becomes a player, with a way back to the editor', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);

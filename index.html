@@ -155,7 +155,12 @@
   input[type=checkbox] { cursor: pointer; }
 
   /* Transport */
+  /* A flex box so the SVG glyphs land in the middle. The plain characters
+     (▶ ■ ↺ ⏮) were centred by the button's own text centring, but an inline
+     glyph sits on the text baseline instead — which is why Record and the
+     metronome hung low and left of their neighbours. */
   .tp-btn {
+    display: inline-flex; align-items: center; justify-content: center;
     width: 38px; height: 30px; padding: 0; font-size: 15px; line-height: 1;
     border-radius: 5px; background: #24242c; border: 1px solid #101014;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); color: #d8d8e2;
@@ -413,6 +418,8 @@
     fill: none; stroke: currentColor; stroke-width: 1.4;
     stroke-linecap: round; stroke-linejoin: round;
   }
+  /* Opted into per glyph (GLYPHS entries with `fill: true`), not per caller. */
+  .glyph-filled path { fill: currentColor; stroke: none; }
   /* Square interface icons: twice the viewBox height of the waveform strip, so
      the stroke needs to be twice as thick to render at the same visual weight. */
   .glyph-sq { width: 15px; height: 15px; }
@@ -1631,9 +1638,12 @@ const GLYPHS = {
   // weight that sets the tempo. Stroked like everything else, so it reads at
   // the 18px the toolbar renders it at.
   metronome: { box: '0 0 24 24', paths: ['M12 3 L19 21 H5 Z', 'M7.6 15h8.8', 'M12 19 L16 7', 'M14.2 12.5h3'] },
-  // A ring rather than a filled disc: every other glyph is a stroke, and the
-  // armed/recording states are carried by colour instead.
-  record:   { box: '0 0 24 24', paths: ['M12 5.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13z'] },
+  // The one filled glyph in the set. Everywhere else a stroke is right, but
+  // this one's neighbours are ▶ and ■ — solid shapes — and a lone ring among
+  // them read as a different kind of control rather than the third member of
+  // a transport. Context beats consistency-with-the-table here; `fill` is a
+  // property of the glyph so nothing at the call sites has to know.
+  record:   { box: '0 0 24 24', fill: true, paths: ['M12 6a6 6 0 1 1 0 12 6 6 0 0 1 0-12z'] },
   drums:    { box: '0 0 24 24', paths: ['M3 18h18', 'M6 18a5 5 0 0 1 10 0', 'M17.5 18a2.5 2.5 0 0 1 4.5 0', 'M11 13V5', 'M11 5l6-2'] },
   trash:    { box: '0 0 24 24', paths: ['M4 7h16', 'M9.5 7V4.5h5V7', 'M6.5 7l1 13h9l1-13', 'M10 10.5v6.5', 'M14 10.5v6.5'] },
 };
@@ -1657,7 +1667,9 @@ function glyph(name, cls) {
   const box = Array.isArray(entry) ? '0 0 24 12' : (entry?.box || '0 0 24 12');
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', box);
-  svg.setAttribute('class', 'glyph' + (box === '0 0 24 24' ? ' glyph-sq' : '') + (cls ? ' ' + cls : ''));
+  const filled = !Array.isArray(entry) && entry?.fill;
+  svg.setAttribute('class', 'glyph' + (box === '0 0 24 24' ? ' glyph-sq' : '')
+    + (filled ? ' glyph-filled' : '') + (cls ? ' ' + cls : ''));
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('focusable', 'false');
   for (const d of paths) {
