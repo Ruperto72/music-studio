@@ -86,12 +86,23 @@ async function waitForHttp(url, timeoutMs) {
 // EBUSY.
 async function launchChrome(browserPath, { args = [], profilePrefix = 'music-studio-' } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), profilePrefix));
-  const chrome = spawn(browserPath, [
-    '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-    '--no-sandbox', '--disable-gpu', '--no-first-run',
-    ...args,
-    'about:blank',
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+  let chrome;
+  try {
+    chrome = spawn(browserPath, [
+      '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+      '--no-sandbox', '--disable-gpu', '--no-first-run',
+      ...args,
+      'about:blank',
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  } catch (e) {
+    // spawn() doesn't only fail asynchronously: an executable-format error
+    // (e.g. CHROME_PATH pointing at a non-executable file) throws here,
+    // synchronously, before there is a child process for cleanup() below to
+    // wait on — so there is nothing to do but remove the profile dir directly.
+    fs.rmSync(profile, { recursive: true, force: true });
+    throw e;
+  }
 
   const cleanup = async () => {
     await new Promise((resolve) => { chrome.once('exit', resolve); chrome.kill(); setTimeout(resolve, 3000); });
@@ -105,6 +116,11 @@ async function launchChrome(browserPath, { args = [], profilePrefix = 'music-stu
     const wsUrl = await new Promise((resolve, reject) => {
       let buf = '';
       const t = setTimeout(() => reject(new Error('browser never printed its DevTools URL')), 15000);
+      // spawn()'s 'error' event is not a promise rejection — an unlistened
+      // one crashes the process with a raw Node stack and skips cleanup()
+      // entirely, leaking this function's own profile dir. Racing it in here
+      // is what lets the catch below run.
+      chrome.once('error', (e) => { clearTimeout(t); reject(e); });
       chrome.stderr.on('data', (c) => {
         buf += c.toString();
         const m = buf.match(/ws:\/\/[^\s]+/);
