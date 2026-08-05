@@ -11,6 +11,14 @@ module.
 It was extracted from the [Frog vs Toad](https://github.com/Ruperto72/frogger-multiplayer)
 game, whose soundtrack ships here as the **Froggy Hop** example song.
 
+<img src="docs/img/editor.png" alt="The editor with the Rust Foundry example
+loaded: two riff tracks in the piano roll, their insert chain lettered A–G in
+the track headers, and the whole chain's knobs in the inspector column on the
+right." width="900">
+
+<sub>The editor, with `Rust Foundry` loaded. Each track's inserts are lettered
+chips in its header; the knobs live in the inspector column on the right.</sub>
+
 ## Features
 
 ### Composing
@@ -91,6 +99,13 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   **Master** cell in the bottom bar (or one of its chips) and the whole
   master chain opens in the same inspector column a track's effects use
 
+<img src="docs/img/master.png" alt="The master bus selected: its five effect
+chips in the bottom bar and all five groups — EQ, Comp, Par Comp, Sidechain,
+Downsample — open together in the inspector column." width="900">
+
+<sub>The master bus takes the same strip a track does, so its five groups are
+visible at once. A chip is dimmed while its effect is doing nothing.</sub>
+
 ### Saving & exporting
 
 - **Song library** — bundled examples or your own songs saved in this browser
@@ -106,8 +121,14 @@ game, whose soundtrack ships here as the **Froggy Hop** example song.
   what's at each step, so a song can be written and read back without a mouse
 - **On a phone it's a player, not an editor** — below 760px the page becomes
   a song list with a transport, a draggable position bar and a level meter,
-  since listening is what a phone is actually for here. "Open the editor
-  anyway" is there if you disagree, and is remembered
+  since listening is what a phone is actually for here. The controls stay
+  pinned at the top and only the list scrolls, so you don't lose Play while
+  thumbing for the next song. "Open the editor anyway" is there if you
+  disagree, and is remembered
+
+<img src="docs/img/player.png" alt="The phone player: song name, position bar,
+transport and level meter pinned at the top, with a scrolling list of songs
+below." width="300">
 - **Installable PWA** — works offline once loaded, and can be added to the
   home screen as a standalone/fullscreen app; a **Fullscreen** menu item also
   toggles plain browser fullscreen
@@ -146,6 +167,13 @@ test command is:
 
 ```bash
 node verify.js            # headless-browser smoke test
+```
+
+The screenshots above are generated the same way, so they can be refreshed
+rather than re-staged by hand when the interface moves:
+
+```bash
+node shots.js             # rewrites docs/img/*.png
 ```
 
 It starts its own server, drives the app through a set of core interactions in
@@ -219,6 +247,8 @@ dev-server.js               tiny static server for local use
 dev.js                      starts dev-server.js and opens a browser
 start.cmd                   Windows double-click entry point
 verify.js                   headless-browser smoke test
+shots.js                    regenerates the screenshots in docs/img/
+docs/img/                   the screenshots this README links to
 TODO.md / DONE.md           what's left, and the journal behind what's built
 docs/                       design notes and implementation plans
 ```
