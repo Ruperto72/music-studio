@@ -215,6 +215,79 @@ function auditBundledSongs(repoRoot) {
   return { files, problems };
 }
 
+// ---------------------------------------------------------------------------
+// Icon audit. The second check that never opens a browser. Three files
+// declare icons — manifest.webmanifest, index.html's <link>s and sw.js's
+// SHELL_URLS — and nothing ties them to what is on disk, which is how
+// icons/favicon-32.png sat referenced by nothing at all for months and how
+// the tab icon stayed a 🎵 emoji in an app that audits every other control
+// for exactly that. Values are read out of the real files rather than
+// retyped, and a read that finds nothing throws rather than passing
+// vacuously.
+// ---------------------------------------------------------------------------
+function auditIcons(repoRoot) {
+  const problems = [];
+  const checked = [];
+  const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+  const exists = (rel) => fs.existsSync(path.join(repoRoot, rel));
+  const pngSize = (rel) => {
+    const b = fs.readFileSync(path.join(repoRoot, rel));
+    if (b.length < 24 || b.readUInt32BE(12) !== 0x49484452) throw new Error(`${rel} is not a PNG`);
+    return [b.readUInt32BE(16), b.readUInt32BE(20)];
+  };
+  // The same codepoint ranges the interface-icon step uses on controls.
+  const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
+
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  if (!manifest.icons || !manifest.icons.length) {
+    throw new Error('manifest.webmanifest declares no icons — the audit would pass vacuously');
+  }
+  for (const ic of manifest.icons) {
+    checked.push(ic.src);
+    if (!exists(ic.src)) { problems.push(`manifest icon missing on disk: ${ic.src}`); continue; }
+    const [w, h] = pngSize(ic.src);
+    if (`${w}x${h}` !== ic.sizes) {
+      problems.push(`${ic.src} is ${w}x${h} but the manifest declares ${ic.sizes}`);
+    }
+  }
+
+  const html = read('index.html');
+  const links = [...html.matchAll(/<link\b[^>]*\brel="(?:shortcut )?(?:apple-touch-)?icon"[^>]*>/g)].map((m) => m[0]);
+  if (!links.length) {
+    throw new Error('index.html declares no icon links — the audit would pass vacuously');
+  }
+  for (const tag of links) {
+    const href = (tag.match(/href="([^"]+)"/) || [])[1];
+    if (!href) { problems.push(`icon link with no href: ${tag}`); continue; }
+    if (href.startsWith('data:')) {
+      // An inline SVG favicon is allowed; an emoji pasted into one is not.
+      // The app removed emoji from its controls deliberately and audits them
+      // above — the <head> was simply never in scope.
+      const decoded = decodeURIComponent(href);
+      if (EMOJI.test(decoded)) problems.push(`icon link is an emoji data URL: ${decoded.slice(0, 70)}…`);
+      continue;
+    }
+    checked.push(href);
+    if (!exists(href)) problems.push(`icon link points at a missing file: ${href}`);
+  }
+
+  if (exists('icons/apple-touch-icon.png')) {
+    const [w, h] = pngSize('icons/apple-touch-icon.png');
+    if (w !== 180 || h !== 180) problems.push(`apple-touch-icon.png is ${w}x${h}, expected 180x180`);
+  }
+
+  const swSrc = read('sw.js');
+  const shell = swSrc.match(/const SHELL_URLS = \[([\s\S]*?)\];/);
+  if (!shell) throw new Error('could not read SHELL_URLS out of sw.js — the audit would pass vacuously');
+  for (const m of shell[1].matchAll(/'\.\/([^']+)'/g)) {
+    if (!/^icons\//.test(m[1])) continue;
+    checked.push(m[1]);
+    if (!exists(m[1])) problems.push(`sw.js precaches a missing file: ${m[1]}`);
+  }
+
+  return { checked, problems };
+}
+
 async function main() {
   const errors = [];
   const steps = [];
@@ -303,6 +376,17 @@ async function main() {
     step('Bundled songs: every field is one the app will actually load', async () => {
       const { files, problems } = auditBundledSongs(repoRoot);
       if (files.length < 5) throw new Error(`only found ${files.length} example songs — expected the bundled set`);
+      if (problems.length) {
+        throw new Error(`${problems.length} problem(s):\n        ` + problems.join('\n        '));
+      }
+    });
+
+    // Second, and the last check that needs no browser: a missing or
+    // mis-sized icon should be reported in a second rather than after a
+    // browser has started.
+    step('Icons: every declared icon exists, is the size it claims, and no emoji is left in the head', async () => {
+      const { checked, problems } = auditIcons(repoRoot);
+      if (checked.length < 6) throw new Error(`only found ${checked.length} icon references — expected the declared set`);
       if (problems.length) {
         throw new Error(`${problems.length} problem(s):\n        ` + problems.join('\n        '));
       }
