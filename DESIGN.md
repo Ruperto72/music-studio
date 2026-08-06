@@ -1149,6 +1149,52 @@ never flicker mid-drag (playhead, marker layer, loop region/handles) is
 created once by `createOverlays()` and only *repositioned*, never rebuilt,
 by `positionOverlays()`.
 
+**What that rebuild costs, measured.** A `render()` is what a drag waits for,
+so the ceiling on a session's size is render time rather than any limit in
+the data — nothing caps the track count, and `MAX_COLS` (576 eighths, 72 bars
+in 4/4) caps only length. Timed in a headless container with no GPU, so read
+the ratios rather than the absolute numbers:
+
+| tracks, expanded, no notes | render |
+|---|---|
+| 5 | 61 ms |
+| 12 | 122 ms |
+| 24 | 247 ms |
+| 48 | 471 ms |
+
+Linear, about **9.5 ms per expanded track**. Two things that measurement
+settled, both against the intuition that effects or note counts are what
+hurts:
+
+- **Effects are free per frame.** With every effect in `TRACK_FX_REGISTRY`
+  switched on for every track, render time stayed within noise of the same
+  song with none — sometimes lower. An effect is audio-graph nodes plus a
+  chip, and a repaint does not touch the audio graph. Sends, EQ, compressor,
+  bitcrush, tremolo and vibrato on thirty tracks cost nothing a drag can feel.
+- **The expanded track header is the cost, not the grid.** Forty-eight empty
+  expanded tracks render in 471 ms; the *same* forty-eight collapsed render in
+  **12.5 ms** — a 38× difference with no note removed. Each header rebuilds a
+  waveform picker, a chip row, two sliders and a VU meter on every frame, and
+  that dwarfs the note blocks beside it (Rust Foundry's 4428 blocks at 7
+  tracks: 776 ms).
+
+So the practical lever is per-track collapse (A.4), not fewer effects — and
+the open optimisation is to stop rebuilding headers that did not change, which
+is the one place in this app where the no-diffing rule actually bites.
+
+Re-measure on any machine by timing what a real click costs, which is the
+same path a drag takes:
+
+```js
+(() => { const hs = [...document.querySelectorAll('.track-header:not(.automation-header)')], t = [];
+  for (let i = 0; i < 15; i++) { const a = performance.now();
+    hs[i % 2].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); t.push(performance.now() - a); }
+  t.sort((x, y) => x - y); return t[7].toFixed(1) + ' ms per render'; })()
+```
+
+Past 16.7 ms a render drops a frame at 60fps, which is when a drag starts to
+feel notchy.
+
 Unlike Automation and Envelope, the FX chips (`buildFxPanel()`) need no
 timeline-column width — they are status, not a curve — so they're built
 straight into `buildHeader()`'s own left-column header instead of being
