@@ -1178,9 +1178,31 @@ hurts:
   that dwarfs the note blocks beside it (Rust Foundry's 4428 blocks at 7
   tracks: 776 ms).
 
-So the practical lever is per-track collapse (A.4), not fewer effects — and
-the open optimisation is to stop rebuilding headers that did not change, which
-is the one place in this app where the no-diffing rule actually bites.
+So the practical lever is per-track collapse (A.4), not fewer effects.
+
+**It is the layout, not the rebuild** — which took two failed attempts to
+establish, and is worth recording because both look obviously right:
+
+- **Caching headers across renders buys nothing.** A cache keyed on
+  everything `buildHeader()` reads, reusing the node when nothing changed,
+  measured a **100% hit rate and no change in render time** (375 hits, 0
+  misses, 251 ms at 25 tracks against 247 ms without it). `renderTracks()`
+  clears `#tracks`, so re-appending a recycled node forces the same layout a
+  fresh one does. Constructing the DOM was never the cost.
+- **`content-visibility: auto` on `.track` is a 3–4× speed-up that breaks the
+  overlays.** 471 → 155 ms at 48 tracks, 247 → 56 at 24. But the playhead,
+  markers and loop region are all sized from `daw.scrollHeight`, and a skipped
+  row reports its `contain-intrinsic-size` instead of its real height:
+  **3660 px against 4130 over 17 rows**, so the playhead stopped 470 px short
+  of the last track and the scrollbar lied. The placeholder cannot simply be
+  set correctly either — a row is as tall as the taller of its lane (known at
+  build time) and its header (content-driven, varying with the chip count).
+
+A real fix therefore has to stop *detaching* rows rather than stop building
+them: update the stack in place so an untouched row keeps its layout. That is
+diffing, which this file otherwise does not do, so it needs to earn its
+complexity — and `verify.js`'s "off-screen rows keep their real height" step
+exists to keep whatever does it honest.
 
 Re-measure on any machine by timing what a real click costs, which is the
 same path a drag takes:

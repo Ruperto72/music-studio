@@ -88,21 +88,27 @@ hur roligt det vore att bygga.
 
 ## Prestanda
 
-- [ ] **Spårhuvuden byggs om varje bildruta, och det är hela kostnaden.**
-  Mätt (siffrorna i `DONE.md`, tabellen och enraderen som gör om mätningen i
-  `DESIGN.md` B.4): ≈9,5 ms per utfällt spår i en headless-behållare utan GPU,
-  medan *samma* spår hopfällda kostar 1/38 så mycket — och effekter syns inte
-  i mätningen alls, hur många som än slås på. `renderTracks()` river och
-  bygger varje `.track-header` — vågformsväljare, chip-rad, reglage, VU — även
-  när ingenting i det spåret har ändrats.
-  Fixen är inte en virtuell DOM, utan att låta ett huvud överleva en omritning
-  som inte rör det: bygg om lanen och låt huvudet stå, eller jämför en liten
-  nyckel (namn, vågform, synliga effekter, mute/solo) innan det rivs.
-  Undersök samtidigt `positionOverlays()` geometriläsningar: mätningen
-  inkluderar den tvingade layouten, och vid *samma* notantal växte 7 → 48 spår
-  från 776 till 3812 ms — snabbare än spårantalet, så något där skalar värre
-  än linjärt.
-  Tills vidare är hopfällning svaret, och det står dokumenterat.
+- [ ] **Spårraderna byggs om helt vid varje omritning, och det är layouten
+  som kostar.** Mätt: ≈9,5 ms per utfällt spår, samma spår hopfällda 1/38 så
+  mycket, effekter syns inte alls (siffror i `DONE.md`, tabell och enradare i
+  `DESIGN.md` B.4).
+  **Två uppenbara lösningar är provade och uteslutna med mätning:**
+  - *Cacha spårhuvuden mellan omritningar.* Byggd, med nyckel på allt
+    `buildHeader()` läser. **100 % träff, noll vinst** (375 träffar, 0 missar;
+    251 ms mot 247 utan). `renderTracks()` tömmer `#tracks`, så en
+    återanvänd nod tvingar fram samma layout som en ny. Att bygga DOM:en var
+    aldrig kostnaden.
+  - *`content-visibility: auto` på `.track`.* **3–4× snabbare** (471 → 155 ms
+    vid 48 spår) — och trasig: överhoppade rader rapporterar
+    `contain-intrinsic-size` i stället för sin höjd (3660 mot 4130 px över 17
+    rader), så speluppspelningslinjen slutade 470 px för tidigt och
+    rullningslisten ljög. Platshållaren går inte att sätta rätt heller: en rad
+    är så hög som den högsta av lanen (känd) och huvudet (innehållsdrivet).
+  **Vad som återstår:** sluta *plocka loss* raderna i stället för att sluta
+  bygga dem — uppdatera stapeln på plats så att en orörd rad behåller sin
+  layout. Det är diffning, vilket filen annars inte gör, så det får förtjäna
+  sin komplexitet. Steget "off-screen rows keep their real height" i
+  `verify.js` finns för att hålla nästa försök ärligt.
 
 ## Lagring / delning
 

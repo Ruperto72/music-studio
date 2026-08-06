@@ -3447,6 +3447,124 @@ async function main() {
 
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
+    step('Track header: it follows every change to its track', async () => {
+      // A header is rebuilt from scratch on every render, so today this is
+      // simply true. It is pinned because the obvious optimisation is to stop
+      // rebuilding unchanged headers, and the hazard that buys is a value left
+      // out of whatever key decides "unchanged": the header then silently
+      // stops updating, which reads as the app ignoring a click. (Tried and
+      // measured — a cache with a 100% hit rate changed render time by
+      // nothing, because the cost is laying the header out, not building it.
+      // See DESIGN.md B.4.) One assertion per thing such a key would need.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      const head = `document.querySelector('.track-header:not(.automation-header)')`;
+      // Force a render between each mutation and its check, so a stale header
+      // has every chance to show itself: penning a note re-renders everything.
+      const churn = async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          const lane = document.querySelector('.lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + 30, clientY: r.top + 30, bubbles: true, pointerId: 1 }));
+        })()`);
+      };
+
+      const cases = [
+        { what: 'mute', act: `${head}.querySelector('.th-btns button.m').click()`,
+          read: `${head}.querySelector('.th-btns button.m').getAttribute('aria-pressed')`, want: 'true' },
+        { what: 'record-arm', act: `${head}.querySelector('.th-btns button.r').click()`,
+          read: `${head}.querySelector('.th-btns button.r').getAttribute('aria-pressed')`, want: 'true' },
+        { what: 'collapse', act: `${head}.querySelector('.th-collapse').click()`,
+          read: `${head}.querySelector('.th-collapse').getAttribute('aria-expanded')`, want: 'false' },
+      ];
+      for (const c of cases) {
+        await cdp.evaluate(c.act);
+        await churn();
+        const got = await cdp.evaluate(c.read);
+        if (got !== c.want) {
+          throw new Error(`the header did not follow a ${c.what} change — headerKey() is missing that value (read ${got}, wanted ${c.want})`);
+        }
+        await cdp.evaluate(c.act); // put it back
+      }
+
+      // The waveform picker's label, and the Inserts chip row: both live in
+      // sections the key covers separately from the identity row above.
+      await cdp.evaluate(`${head}.querySelector('.th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('.th-osc-menu button[data-value="sawtooth"]')`);
+      await cdp.evaluate(`document.querySelector('.th-osc-menu button[data-value="sawtooth"]').click()`);
+      await churn();
+      const wave = await cdp.evaluate(`${head}.querySelector('.th-osc-trigger span').textContent`);
+      if (wave !== 'Saw') throw new Error(`the header's waveform label went stale after a change (reads "${wave}")`);
+
+      const chipsBefore = await cdp.evaluate(`${head}.querySelectorAll('.th-fx-chip').length`);
+      await cdp.evaluate(`${head}.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`!!document.querySelector('.inspector .th-strip-add button')`);
+      await cdp.evaluate(`document.querySelector('.inspector .th-strip-add button').click()`);
+      await churn();
+      const chipsAfter = await cdp.evaluate(`${head}.querySelectorAll('.th-fx-chip').length`);
+      if (chipsAfter !== chipsBefore + 1) {
+        throw new Error(`adding an effect should add a chip to the header; got ${chipsBefore} -> ${chipsAfter}`);
+      }
+
+      // And a rename, which is the identity row's own text.
+      await cdp.evaluate(`window.__p = window.prompt; window.prompt = () => 'Renamed';`);
+      await cdp.evaluate(`${head}.querySelector('.th-name').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+      await cdp.evaluate(`window.prompt = window.__p;`);
+      await churn();
+      const named = await cdp.evaluate(`${head}.querySelector('.th-name').textContent`);
+      if (named !== 'Renamed') throw new Error(`the header kept the old name after a rename (reads "${named}")`);
+    });
+
+    step('Many tracks: off-screen rows still report their real height', async () => {
+      // Nothing skips layout here today, so this passes trivially — and that
+      // is the point of pinning it. `content-visibility: auto` on `.track` was
+      // tried and measured as a 3-4x speed-up (471 -> 155 ms at 48 tracks) and
+      // then dropped, because the overlays (playhead, markers, loop region)
+      // are sized from `daw.scrollHeight` and a skipped row reports
+      // `contain-intrinsic-size` rather than its real height: 3660 vs 4130 px
+      // over 17 rows, so the playhead stopped 470px short of the last track
+      // and the scrollbar lied. A row's height is max(lane, header) and the
+      // header's is content-driven, so the placeholder cannot be set exactly.
+      // Any future attempt at that optimisation has to keep this green.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      for (let i = 0; i < 12; i++) {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add track')).click()`);
+      }
+      // Measured by turning the optimisation off in place and comparing: if a
+      // skipped row were reporting contain-intrinsic-size instead of its real
+      // height, the scrollable height would move when the skipping stops.
+      // (Summing the rows and comparing to scrollHeight was the first attempt
+      // and is the wrong test — it fails on the container's own padding,
+      // which has nothing to do with what is being asked.)
+      const geom = await cdp.evaluate(`(() => {
+        const daw = document.getElementById('daw');
+        const rows = [...document.querySelectorAll('#tracks .track')];
+        const skipped = daw.scrollHeight;
+        rows.forEach((r) => { r.style.contentVisibility = 'visible'; });
+        void daw.offsetHeight; // force the layout we just asked for
+        const forced = daw.scrollHeight;
+        rows.forEach((r) => { r.style.contentVisibility = ''; });
+        return { rows: rows.length, skipped, forced, clientH: daw.clientHeight,
+                 playhead: Math.round(parseFloat(document.querySelector('.playhead').style.height) || 0) };
+      })()`);
+      if (!(geom.skipped > geom.clientH)) throw new Error('needed enough tracks for .daw to scroll; it does not');
+      if (Math.abs(geom.skipped - geom.forced) > 2) {
+        throw new Error(`off-screen rows are reporting a placeholder height, not their real one: `
+          + `${geom.skipped} skipped vs ${geom.forced} laid out, over ${geom.rows} rows`);
+      }
+      if (Math.abs(geom.playhead - geom.skipped) > 2) {
+        throw new Error(`the playhead should span the whole track stack: ${geom.playhead} vs ${geom.skipped}`);
+      }
+
+      // This step leaves a dozen extra tracks behind, and later steps share
+      // the page. Reload so it cannot colour anything that runs after it.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+    });
+
     step('Transport: every button centres its symbol, and Record is filled like Play/Stop', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
