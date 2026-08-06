@@ -24,6 +24,11 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
+// The icon generator, imported for its mark rather than run: auditIcons()
+// compares the committed SVGs against what icons.js actually draws, so the
+// drawing is never retyped here. Requiring it is side-effect free — it only
+// draws under `require.main === module`.
+const ICONS_GENERATOR = require('./icons.js');
 
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
@@ -336,6 +341,30 @@ function auditIcons(repoRoot) {
   for (const f of onDisk) {
     if (ICON_ORPHAN_ALLOWLIST.includes(f)) continue;
     if (!referenced.includes(f)) problems.push(`${f} exists in icons/ but nothing declares it`);
+  }
+
+  // Everything above asks whether the *declarations* and the *files* agree.
+  // None of it looks at the drawing, so an icons/ full of plausible-looking
+  // files that no longer come from the mark passes: rewriting icon.svg by
+  // hand to a completely different shape used to be green. icons.js is the
+  // single source of the path, the gradient and the three framings, so ask
+  // it directly rather than retyping any of that here — the same rule
+  // auditBundledSongs follows when it reads its constants out of index.html.
+  //
+  // Line endings are normalised because the repo has core.autocrlf on and no
+  // .gitattributes: a fresh Windows clone gets CRLF in these files while the
+  // generator writes LF, and that difference is not the mark drifting.
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  for (const out of ICONS_GENERATOR.OUTPUTS) {
+    const rel = `icons/${out.file}`;
+    if (!exists(rel)) {
+      problems.push(`${rel} is missing — icons.js declares it, so run \`node icons.js\``);
+      continue;
+    }
+    if (out.size) continue; // PNGs can only be compared by re-rendering them
+    if (norm(read(rel)) !== norm(ICONS_GENERATOR.markup(out.framing))) {
+      problems.push(`${rel} is not what icons.js draws for the '${out.framing}' framing — re-run \`node icons.js\``);
+    }
   }
 
   return { checked, problems };

@@ -131,4 +131,12 @@ async function main() {
   }
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+// Only draw when run as a command. Requiring this file has to stay free of
+// side effects, because verify.js's icon audit imports the mark to compare
+// the committed SVGs against it — the one check that can tell "these files
+// were generated from this drawing" from "these files look plausible".
+if (require.main === module) {
+  main().catch((err) => { console.error(err); process.exit(1); });
+}
+
+module.exports = { MARK, GRADIENT, BG, FRAMINGS, markup, OUTPUTS };
