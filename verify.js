@@ -2575,16 +2575,16 @@ async function main() {
         const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
-      await waitFor(`!!document.querySelector('.adsr-select')`);
+      await waitFor(`!!document.querySelector('.adsr-select:not(.th-kit-select)')`);
       const opts = await cdp.evaluate(
-        `[...document.querySelector('.adsr-select').options].map(o => o.textContent)`);
+        `[...document.querySelector('.adsr-select:not(.th-kit-select)').options].map(o => o.textContent)`);
       if (opts.join('|') !== 'Square (50%)|12.5%|25%|50%|75%') {
         throw new Error(`unexpected track Duty options: ${JSON.stringify(opts)}`);
       }
 
       // Set the track to 12.5% and place a note that doesn't override it.
       await cdp.evaluate(`(() => {
-        const sel = document.querySelector('.adsr-select');
+        const sel = document.querySelector('.adsr-select:not(.th-kit-select)');
         sel.value = '0.125'; sel.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 400));
@@ -2684,7 +2684,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-menu')`);
       await cdp.evaluate(`document.querySelector('.th-osc-menu button[data-value="sine"]').click()`);
       await new Promise((r) => setTimeout(r, 400));
-      const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select').length`);
+      const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select:not(.th-kit-select)').length`);
       if (afterSine !== 0) throw new Error('Duty should only show on a square track');
     });
 
@@ -3859,6 +3859,35 @@ async function main() {
         source: `
           (() => {
           window.__velGains = [];
+          // No drum scheduler makes a lowpass — they use bandpass and highpass
+          // only — so a lowpass created while a hit plays is unambiguously the
+          // velocity tone filter scheduleDrum inserts.
+          window.__velTone = [];
+          const origBq = AudioContext.prototype.createBiquadFilter;
+          AudioContext.prototype.createBiquadFilter = function () {
+            const f = origBq.call(this);
+            const td = Object.getOwnPropertyDescriptor(BiquadFilterNode.prototype, 'type');
+            const fd = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            let isLow = false;
+            try {
+              Object.defineProperty(f, 'type', {
+                get() { return td.get.call(this); },
+                set(v) { isLow = v === 'lowpass'; td.set.call(this, v); },
+                configurable: true,
+              });
+              Object.defineProperty(f.frequency, 'value', {
+                get() { return fd.get.call(this); },
+                set(v) {
+                  if (isLow) window.__velTone.push(Math.round(v));
+                  // Kits are told apart by their filter frequencies, so record them all.
+                  (window.__bqFreqs = window.__bqFreqs || []).push(Math.round(v));
+                  fd.set.call(this, v);
+                },
+                configurable: true,
+              });
+            } catch {}
+            return f;
+          };
           const origCreate = AudioContext.prototype.createGain;
           AudioContext.prototype.createGain = function () {
             const g = origCreate.call(this);
@@ -3916,12 +3945,19 @@ async function main() {
       }
 
       // Preview path (previewHit -> scheduleDrum).
-      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`window.__velGains = []; window.__velTone = []`);
       await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
       await new Promise((r) => setTimeout(r, 400));
       const previewed = await cdp.evaluate(`window.__velGains.slice()`);
       if (!previewed.some((v) => Math.abs(v - 0.3) < 1e-6)) {
         throw new Error(`previewing a 30% hit should build a 0.3 gain stage, saw ${JSON.stringify(previewed)}`);
+      }
+      // Velocity is tone as well as level: a soft hit is duller, not just
+      // quieter, which is the difference between a player and a machine.
+      const softTone = await cdp.evaluate(`window.__velTone.slice()`);
+      if (!softTone.length) throw new Error('a soft hit should be filtered as well as attenuated, but no lowpass was built');
+      if (!softTone.every((hz) => hz > 900 && hz < 18000)) {
+        throw new Error(`a 30% hit should land well inside the tone range, saw ${JSON.stringify(softTone)}`);
       }
 
       // Playback path (playOnce -> scheduleDrum) — a different call site, so
@@ -3942,11 +3978,13 @@ async function main() {
         s.value = 1; s.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 300));
-      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`window.__velGains = []; window.__velTone = []`);
       await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
       await new Promise((r) => setTimeout(r, 400));
       const full = await cdp.evaluate(`window.__velGains.slice()`);
       if (full.length !== 0) throw new Error(`a full-velocity hit should add no gain stage, saw ${JSON.stringify(full)}`);
+      const fullTone = await cdp.evaluate(`window.__velTone.slice()`);
+      if (fullTone.length !== 0) throw new Error(`a full-velocity hit should add no tone filter either, saw ${JSON.stringify(fullTone)}`);
 
       // ...and it must not leave `vel: 1` behind in the song data either.
       const serialized = await cdp.evaluate(`(() => {
@@ -3979,6 +4017,75 @@ async function main() {
       if (!nudged.before || nudged.before === nudged.after) {
         throw new Error(`a selected hit should nudge with the arrow keys: ${JSON.stringify(nudged)}`);
       }
+    });
+
+    step('Drum kits: the rhythm track picks one, and it changes the sound', async () => {
+      // A kit is parameters the ten schedulers read, so the check is that
+      // choosing one moves numbers that actually reach the audio graph — and
+      // that the song remembers it. Reuses the biquad recorder the velocity
+      // step installs: kits differ in filter frequencies, which is what it
+      // already records — so this step has to run *after* that one, which is
+      // why it sits here rather than beside the other rhythm checks.
+      await goto(APP_URL);
+      await waitFor(`!!(${RHYTHM_LANE})`);
+      const kitSel = `document.querySelector('select[aria-label^="Drum kit"]')`;
+      await waitFor(`!!${kitSel}`);
+      const options = await cdp.evaluate(`[...${kitSel}.options].map(o => o.value)`);
+      if (!(options.includes('retro') && options.includes('eighties') && options.includes('acoustic'))) {
+        throw new Error(`expected retro/eighties/acoustic kits, got ${JSON.stringify(options)}`);
+      }
+      if (await cdp.evaluate(`${kitSel}.value`) !== 'retro') {
+        throw new Error('a fresh rhythm track should start on the default kit');
+      }
+
+      // Pen *one* hit and then audition that same hit under each kit. The
+      // first version of this penned a fresh hit per kit, which passed against
+      // deliberately broken code: the second click landed on the cell the
+      // first one filled and removed the hit instead of placing one, so the
+      // two recordings differed because one of them was silence — nothing to
+      // do with kits at all.
+      await cdp.evaluate(`(() => {
+        const lane = ${RHYTHM_LANE};
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 60, clientY: r.top + 26 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.hit').length === 1`);
+
+      const auditionAndRecord = async () => {
+        await cdp.evaluate(`window.__bqFreqs = []`);
+        await cdp.evaluate(`document.querySelector('.hit').click()`);
+        await new Promise((r) => setTimeout(r, 350));
+        const hits = await cdp.evaluate(`document.querySelectorAll('.hit').length`);
+        if (hits !== 1) throw new Error(`auditioning should leave the hit alone, saw ${hits}`);
+        return cdp.evaluate(`window.__bqFreqs.slice()`);
+      };
+      const before = await auditionAndRecord();
+      if (!before.length) throw new Error('auditioning a hit should build filters to record');
+      await cdp.evaluate(`(() => { const s = ${kitSel}; s.value = 'eighties'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const after = await auditionAndRecord();
+      // Same drum, so the same number of filters — what must move is the
+      // values. Requiring equal length is what stops "one run made no sound"
+      // from reading as "the kit changed".
+      if (before.length !== after.length) {
+        throw new Error(`the same drum should build the same filters either way: ${JSON.stringify(before)} vs ${JSON.stringify(after)}`);
+      }
+      if (JSON.stringify(before) === JSON.stringify(after)) {
+        throw new Error(`switching kit should change the filters reaching the graph, both runs saw ${JSON.stringify(before)}`);
+      }
+
+      // ...and the choice belongs to the song, not to the browser. Waited for
+      // rather than read once: autosave is debounced 400ms, so a plain read
+      // after the 350ms this step already waits sees the *previous* draft and
+      // fails on a kit map that is about to be written correctly.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        try {
+          const kit = JSON.parse(localStorage.getItem(k)).kit;
+          return !!kit && Object.values(kit).includes('eighties');
+        } catch { return false; }
+      })()`, 4000);
     });
 
     for (const s of steps) await s();

@@ -1037,6 +1037,7 @@
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>kit</b> picker where a tonal track has its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one <b>chip</b> per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are not there: click a chip and the <b>inspector column</b> on the right shows that track's whole chain, every effect at once. (With nothing selected it shows it anyway — that column is the mixing surface.) <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects are continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a 3-band <b>EQ</b>, a <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Bitcrush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -1052,7 +1053,7 @@
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
-        <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
+        <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level: a soft hit is darker, the way a real drum struck gently gives you less of the sharp top end, so a ghost note sits behind the beat instead of just being a quiet copy of the accent. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
 
       <h3>Selecting several notes</h3>
@@ -1271,7 +1272,7 @@
         </div>
         <div class="file-menu-section">
           <button id="add-track-btn" class="file-menu-item" data-glyph="addTrack" title="Add a new tonal track">Add track</button>
-          <button id="add-rhythm-track-btn" class="file-menu-item" data-glyph="addDrums" title="Add a new rhythm track (same kit as the others)">Add rhythm track</button>
+          <button id="add-rhythm-track-btn" class="file-menu-item" data-glyph="addDrums" title="Add a new rhythm track (same ten pieces; it picks its own kit sound)">Add rhythm track</button>
         </div>
         <div class="file-menu-section">
           <button id="help-btn" class="file-menu-item" data-glyph="help">Help</button>
@@ -1492,13 +1493,14 @@ const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 // kind }); the per-track data/mix maps (state.tracks/gains/waveform/pan/mute/
 // solo) are keyed by id. PITCH_TRACKS/RHYTHM_TRACK_IDS/ALL_TRACKS are id lists
 // rebuilt from trackList so the many `for (const t of ALL_TRACKS)` loops keep
-// working unchanged. All rhythm-kind tracks share the same fixed 10-piece kit
-// (RHYTHM_ROWS) and always stay grouped after every tonal track — at least one
-// always exists and can't be removed.
+// working unchanged. All rhythm-kind tracks share the same fixed 10-piece
+// palette (RHYTHM_ROWS) and always stay grouped after every tonal track — at
+// least one always exists and can't be removed. Which *kit* those ten pieces
+// are synthesised as is per track (state.kit / DRUM_KITS).
 let PITCH_TRACKS = ['lead', 'harmony', 'bass'];
 let ALL_TRACKS = ['lead', 'harmony', 'bass', 'rhythm'];
 // Ids of all rhythm-kind tracks (there can be more than one, all sharing the
-// same fixed kit — see RHYTHM_PALETTE/addRhythmTrack()). Named *_IDS rather
+// same fixed ten rows — see RHYTHM_PALETTE/addRhythmTrack()). Named *_IDS rather
 // than RHYTHM_TRACKS to avoid colliding with the RHYTHM_TRACKS data array
 // imported from song-data.js.
 let RHYTHM_TRACK_IDS = ['rhythm'];
@@ -2438,6 +2440,7 @@ const state = {
   songName: 'Untitled Song', // current project's display name — not song "content", so it's
                              // not part of undo history (see snapshotSong())
   masterVol: 0.45,           // editor preview master level (not part of the game)
+  kit: {},                   // rhythm track id -> drum kit id; absent = DEFAULT_KIT (see DRUM_KITS)
   activeTrack: BOOT.trackList[0].id, // the Lead track — the first thing you'd write
   // Which track the computer keyboard plays into, and whether the metronome
   // clicks. Both are *editor* state, not song content: they are never
@@ -2500,7 +2503,7 @@ const state = {
 // The seeded maps (tracks/gains/waveform/pan/mute/solo) are deliberately not
 // in the list: those get one entry per track with a real default, so they are
 // rebuilt from the track list rather than cleared.
-const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx'];
+const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'kit'];
 const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k] = {}; };
 
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
@@ -2509,6 +2512,12 @@ const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k]
 function applySavedMix(data) {
   if (data.gains && typeof data.gains === 'object') {
     for (const ch of ALL_TRACKS) if (typeof data.gains[ch] === 'number') state.gains[ch] = data.gains[ch];
+  }
+  // Absent, unknown or a kit on a tonal track are all "use the default" —
+  // same shape as every other sparse per-track map, so a song from before
+  // kits existed loads unchanged.
+  if (data.kit && typeof data.kit === 'object') {
+    for (const ch of RHYTHM_TRACK_IDS) if (DRUM_KITS[data.kit[ch]]) state.kit[ch] = data.kit[ch];
   }
   if (data.waveform && typeof data.waveform === 'object') {
     for (const ch of PITCH_TRACKS) if (WAVEFORMS.includes(data.waveform[ch])) state.waveform[ch] = data.waveform[ch];
@@ -3492,8 +3501,8 @@ function addTrack() {
   activateTrack(id);
   render(); autosave();
 }
-// Mirrors addTrack() for a new rhythm-kind track (same fixed 10-piece kit as
-// every other rhythm track). Pushed to the very end so all rhythm tracks stay
+// Mirrors addTrack() for a new rhythm-kind track (same fixed ten pieces as
+// every other rhythm track; its kit sound is its own, defaulting to DEFAULT_KIT). Pushed to the very end so all rhythm tracks stay
 // grouped after every tonal one.
 function addRhythmTrack() {
   const id = nextTrackId();
@@ -4505,10 +4514,38 @@ function buildHeader(track) {
   oscLabel.textContent = 'Osc';
   oscSection.appendChild(oscLabel);
   if (isRhythm(track)) {
-    const kit = el('span', 'th-osc');
-    kit.append(glyph('kit'), document.createTextNode(' ' + WAVE_LABEL.kit));
-    kit.style.display = 'flex'; kit.style.alignItems = 'center'; kit.style.gap = '4px';
-    oscSection.appendChild(kit);
+    // The rhythm track's counterpart to the waveform picker: which of the ten
+    // pieces sound like what. A plain <select> rather than the tonal track's
+    // floating listbox, because a kit has no shape to draw — the options are
+    // names, which is exactly what a native option can carry.
+    const kitRow = el('div', 'th-osc');
+    kitRow.style.display = 'flex'; kitRow.style.alignItems = 'center'; kitRow.style.gap = '4px';
+    kitRow.appendChild(glyph('kit'));
+    const sel = document.createElement('select');
+    // Borrows the ADSR row's select styling but keeps its own class: the two
+    // are different controls in different places, and a bare `.adsr-select`
+    // selector that meant "the Duty picker" would otherwise start matching
+    // this one too (it already did — the Duty check counts them).
+    sel.className = 'adsr-select th-kit-select';
+    sel.setAttribute('aria-label', 'Drum kit for ' + trackName(track));
+    sel.title = 'Which kit this track\'s ten pieces are synthesised as';
+    for (const id of KIT_IDS) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = DRUM_KITS[id].name;
+      opt.title = DRUM_KITS[id].desc;
+      if (getTrackKitId(track) === id) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', (e) => {
+      e.stopPropagation();
+      setTrackKit(track, sel.value);
+      // Audition the change on the piece most people judge a kit by.
+      previewHit('snare', 1, 0);
+      render(); autosave();
+    });
+    kitRow.appendChild(sel);
+    oscSection.appendChild(kitRow);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
     // via the exported VOICES config. A trigger button that opens a
@@ -5243,7 +5280,7 @@ function previewPattern(pattern, which = 'hits') {
       // patternPan(), not hitPan(): the preview has to be what Insert will
       // give you, and an authored hit carries no pan of its own until the kit
       // table has been applied to it.
-      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), patternPan(h));
+      scheduleDrum(h.type, startAt + h.start * scale * eighthSec, previewGain, hitVel(h), patternPan(h), getTrackKitId(state.activeTrack));
     }
   } catch { /* audio unavailable */ }
 }
@@ -7899,12 +7936,15 @@ function previewNote(track, note) {
     scheduleTone(note, ctx.currentTime + 0.005, 0.3, oscType, previewGain, getTrackVoice(track));
   } catch { /* audio unavailable */ }
 }
+// The click-to-hear preview. It auditions through previewGain rather than the
+// channel, so it takes the kit from the active track — which is the rhythm
+// track whose hit was clicked in every path that reaches here.
 function previewHit(type, vel, pan) {
   try {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const at = ctx.currentTime + 0.005;
-    scheduleDrum(type, at, previewGain, vel, pan);
+    scheduleDrum(type, at, previewGain, vel, pan, getTrackKitId(state.activeTrack));
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
@@ -8654,16 +8694,92 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   src.start(startAt);
   src.stop(startAt + totalDur);
 }
-function scheduleKick(startAt, destGain) {
+// ---------- Drum kits ----------
+// One row per kit; every one of the ten schedulers below reads its numbers
+// from here rather than from literals in its own body. That is what makes a
+// new kit a table row instead of ten more functions — the same rule
+// RHYTHM_PATTERNS, TRACK_FX_REGISTRY and BUILTIN_PRESETS already follow.
+//
+// `retro` carries exactly the numbers the schedulers used to hardcode, so the
+// default sound is unchanged by construction rather than by ear.
+//
+// What a kit can and cannot be: drums are mostly noise plus resonance plus a
+// transient, which synthesis is good at — so "eighties" is genuinely reachable
+// (it was largely a matter of longer decays, deeper pitch drops and a bigger
+// clap). `acoustic` is named for what it is: the closest this engine gets, not
+// a sampled kit. A real one needs samples, and the cost of that is in TODO.md.
+const DRUM_KITS = {
+  retro: {
+    name: 'Retro', desc: 'The chip kit: short, dry and pitched — what the app has always sounded like.',
+    kick:    { from: 150, to: 50, drop: 0.09, attack: 0.008, decay: 0.12, level: 0.7 },
+    tom:     { from: 220, to: 90, drop: 0.18, decay: 0.28, level: 1 },
+    snare:   { noiseHz: 1800, noiseQ: 0.7, noiseDecay: 0.09, noiseLevel: 1,
+               toneFrom: 190, toneTo: 120, toneDrop: 0.07, toneDecay: 0.08, toneLevel: 0.5 },
+    hihat:   { hz: 6000, decay: 0.035, level: 0.6 },
+    openhat: { hz: 7000, decay: 0.3, level: 0.5 },
+    clap:    { hz: 1200, q: 1.2, spread: 0.012, decay: 0.05, level: 0.8 },
+    rim:     { noiseHz: 2800, noiseQ: 3, noiseDecay: 0.03, pingHz: 900, pingDecay: 0.035, level: 0.8 },
+    shaker:  { hz: 7000, q: 0.9, decay: 0.06, level: 0.35 },
+    crash:   { hz: 5000, decay: 0.9, level: 0.5 },
+    ride:    { hz: 6500, q: 2.5, decay: 0.5, pingHz: 950, pingDecay: 0.1, level: 0.35 },
+  },
+  eighties: {
+    name: 'Eighties', desc: 'Big and gated: tuned-down kick, long snare tail, wide clap, splashy cymbals.',
+    kick:    { from: 180, to: 42, drop: 0.13, attack: 0.006, decay: 0.3, level: 0.85 },
+    tom:     { from: 260, to: 70, drop: 0.26, decay: 0.5, level: 1 },
+    // The long noise tail is the whole signature — a gated reverb on a snare,
+    // approximated by simply letting the noise ring far longer than the body.
+    snare:   { noiseHz: 2200, noiseQ: 0.5, noiseDecay: 0.34, noiseLevel: 1,
+               toneFrom: 230, toneTo: 150, toneDrop: 0.06, toneDecay: 0.14, toneLevel: 0.6 },
+    hihat:   { hz: 8000, decay: 0.05, level: 0.55 },
+    openhat: { hz: 7500, decay: 0.55, level: 0.5 },
+    clap:    { hz: 1500, q: 0.9, spread: 0.02, decay: 0.13, level: 0.85 },
+    rim:     { noiseHz: 3200, noiseQ: 2.2, noiseDecay: 0.05, pingHz: 1150, pingDecay: 0.06, level: 0.85 },
+    shaker:  { hz: 8000, q: 0.7, decay: 0.09, level: 0.4 },
+    crash:   { hz: 4200, decay: 1.6, level: 0.55 },
+    ride:    { hz: 5800, q: 1.8, decay: 0.9, pingHz: 1050, pingDecay: 0.18, level: 0.4 },
+  },
+  acoustic: {
+    name: 'Acoustic-ish', desc: 'As close to a played kit as synthesis gets here — softer attacks, more body, longer cymbals. Not a sampled kit.',
+    // Less pitch drop and a slower attack: a real drum head does not swoop an
+    // octave, and the stick contact is not instantaneous.
+    kick:    { from: 110, to: 48, drop: 0.05, attack: 0.012, decay: 0.24, level: 0.8 },
+    tom:     { from: 180, to: 110, drop: 0.09, decay: 0.42, level: 0.95 },
+    // Wider, lower noise band and a stronger body — a snare is a drum with
+    // wires on it, not mostly hiss.
+    snare:   { noiseHz: 1400, noiseQ: 0.4, noiseDecay: 0.15, noiseLevel: 0.85,
+               toneFrom: 205, toneTo: 165, toneDrop: 0.03, toneDecay: 0.16, toneLevel: 0.8 },
+    hihat:   { hz: 4800, decay: 0.05, level: 0.5 },
+    openhat: { hz: 5200, decay: 0.42, level: 0.45 },
+    clap:    { hz: 1000, q: 0.8, spread: 0.016, decay: 0.09, level: 0.7 },
+    rim:     { noiseHz: 2400, noiseQ: 2, noiseDecay: 0.035, pingHz: 780, pingDecay: 0.05, level: 0.75 },
+    shaker:  { hz: 6000, q: 0.7, decay: 0.08, level: 0.32 },
+    crash:   { hz: 3600, decay: 2.2, level: 0.45 },
+    ride:    { hz: 5200, q: 1.6, decay: 1.4, pingHz: 820, pingDecay: 0.22, level: 0.32 },
+  },
+};
+const DEFAULT_KIT = 'retro';
+const KIT_IDS = Object.keys(DRUM_KITS);
+// Absent means the default, the same rule every other sparse per-track map
+// follows — so a song written before kits existed serialises unchanged.
+const getTrackKit = (track) => DRUM_KITS[state.kit[track]] || DRUM_KITS[DEFAULT_KIT];
+const getTrackKitId = (track) => (DRUM_KITS[state.kit[track]] ? state.kit[track] : DEFAULT_KIT);
+function setTrackKit(track, id) {
+  if (!DRUM_KITS[id]) return;
+  if (id === DEFAULT_KIT) delete state.kit[track]; else state.kit[track] = id;
+}
+
+function scheduleKick(startAt, destGain, kit) {
+  const k = kit.kick;
   const osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(150, startAt);
-  osc.frequency.exponentialRampToValueAtTime(50, startAt + 0.09);
+  osc.frequency.setValueAtTime(k.from, startAt);
+  osc.frequency.exponentialRampToValueAtTime(k.to, startAt + k.drop);
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.7, startAt + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.12);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + k.attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   osc.connect(gain).connect(destGain);
-  osc.start(startAt); osc.stop(startAt + 0.13);
+  osc.start(startAt); osc.stop(startAt + k.decay + 0.01);
 }
 let noiseBuffer = null;
 function ensureNoiseBuffer() {
@@ -8676,60 +8792,68 @@ function ensureNoiseBuffer() {
   }
   return noiseBuffer;
 }
-function scheduleHihat(startAt, destGain) {
+function scheduleHihat(startAt, destGain, kit) {
+  const k = kit.hihat;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
-  filter.type = 'highpass'; filter.frequency.value = 6000;
+  filter.type = 'highpass'; filter.frequency.value = k.hz;
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.6, startAt + 0.004);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   src.connect(filter).connect(gain).connect(destGain);
-  src.start(startAt); src.stop(startAt + 0.04);
+  src.start(startAt); src.stop(startAt + k.decay + 0.005);
 }
-function schedulePuka(startAt, destGain) {
+function schedulePuka(startAt, destGain, kit) {
+  const k = kit.tom;
   const osc = ctx.createOscillator(), gain = ctx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(220, startAt);
-  osc.frequency.exponentialRampToValueAtTime(90, startAt + 0.18);
+  osc.frequency.setValueAtTime(k.from, startAt);
+  osc.frequency.exponentialRampToValueAtTime(k.to, startAt + k.drop);
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(1, startAt + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.28);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   osc.connect(gain).connect(destGain);
-  osc.start(startAt); osc.stop(startAt + 0.3);
+  osc.start(startAt); osc.stop(startAt + k.decay + 0.02);
 }
-function scheduleSnare(startAt, destGain) {
+function scheduleSnare(startAt, destGain, kit) {
+  const k = kit.snare;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
-  filter.type = 'bandpass'; filter.frequency.value = 1800; filter.Q.value = 0.7;
+  filter.type = 'bandpass'; filter.frequency.value = k.noiseHz; filter.Q.value = k.noiseQ;
   noiseGain.gain.setValueAtTime(0.0001, startAt);
-  noiseGain.gain.exponentialRampToValueAtTime(1, startAt + 0.004);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.09);
+  noiseGain.gain.exponentialRampToValueAtTime(k.noiseLevel, startAt + 0.004);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.noiseDecay);
   src.connect(filter).connect(noiseGain).connect(destGain);
-  src.start(startAt); src.stop(startAt + 0.1);
+  // The noise buffer is 0.1s long and loops, so a kit whose tail outlasts it
+  // (the eighties snare does, deliberately) keeps ringing rather than cutting.
+  src.loop = k.noiseDecay > 0.09;
+  src.start(startAt); src.stop(startAt + k.noiseDecay + 0.01);
 
   const osc = ctx.createOscillator(), oscGain = ctx.createGain();
   osc.type = 'triangle';
-  osc.frequency.setValueAtTime(190, startAt);
-  osc.frequency.exponentialRampToValueAtTime(120, startAt + 0.07);
+  osc.frequency.setValueAtTime(k.toneFrom, startAt);
+  osc.frequency.exponentialRampToValueAtTime(k.toneTo, startAt + k.toneDrop);
   oscGain.gain.setValueAtTime(0.0001, startAt);
-  oscGain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
-  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.08);
+  oscGain.gain.exponentialRampToValueAtTime(k.toneLevel, startAt + 0.004);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.toneDecay);
   osc.connect(oscGain).connect(destGain);
-  osc.start(startAt); osc.stop(startAt + 0.09);
+  osc.start(startAt); osc.stop(startAt + k.toneDecay + 0.01);
 }
 // Three quick filtered-noise bursts (a "flam") through a shared bandpass filter.
-function scheduleClap(startAt, destGain) {
+function scheduleClap(startAt, destGain, kit) {
+  const k = kit.clap;
   const filter = ctx.createBiquadFilter();
-  filter.type = 'bandpass'; filter.frequency.value = 1200; filter.Q.value = 1.2;
+  filter.type = 'bandpass'; filter.frequency.value = k.hz; filter.Q.value = k.q;
   filter.connect(destGain);
-  for (const t of [0, 0.012, 0.024]) {
+  for (const t of [0, k.spread, k.spread * 2]) {
     const src = ctx.createBufferSource(), g = ctx.createGain();
     src.buffer = ensureNoiseBuffer();
     g.gain.setValueAtTime(0.0001, startAt + t);
-    g.gain.exponentialRampToValueAtTime(0.8, startAt + t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, startAt + t + 0.05);
+    g.gain.exponentialRampToValueAtTime(k.level, startAt + t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, startAt + t + k.decay);
     src.connect(g).connect(filter);
-    src.start(startAt + t); src.stop(startAt + t + 0.06);
+    src.loop = k.decay > 0.09;
+    src.start(startAt + t); src.stop(startAt + t + k.decay + 0.01);
   }
 }
 let crashNoiseBuffer = null;
@@ -8743,78 +8867,83 @@ function ensureCrashNoiseBuffer() {
   }
   return crashNoiseBuffer;
 }
-function scheduleCrash(startAt, destGain) {
-  const dur = 0.9;
+function scheduleCrash(startAt, destGain, kit) {
+  const k = kit.crash;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
-  filter.type = 'highpass'; filter.frequency.value = 5000;
+  filter.type = 'highpass'; filter.frequency.value = k.hz;
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   src.connect(filter).connect(gain).connect(destGain);
-  src.start(startAt); src.stop(startAt + dur);
+  // The crash buffer is 0.9s; a kit that rings longer has to loop it.
+  src.loop = k.decay > 0.89;
+  src.start(startAt); src.stop(startAt + k.decay);
 }
-function scheduleOpenHat(startAt, destGain) {
-  const dur = 0.3;
+function scheduleOpenHat(startAt, destGain, kit) {
+  const k = kit.openhat;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
-  filter.type = 'highpass'; filter.frequency.value = 7000;
+  filter.type = 'highpass'; filter.frequency.value = k.hz;
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.004);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   src.connect(filter).connect(gain).connect(destGain);
-  src.start(startAt); src.stop(startAt + dur);
+  src.start(startAt); src.stop(startAt + k.decay);
 }
 // A short bandpassed noise tick plus a high triangle ping, distinct from the snare's boom.
-function scheduleRim(startAt, destGain) {
+function scheduleRim(startAt, destGain, kit) {
+  const k = kit.rim;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), noiseGain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
-  filter.type = 'bandpass'; filter.frequency.value = 2800; filter.Q.value = 3;
+  filter.type = 'bandpass'; filter.frequency.value = k.noiseHz; filter.Q.value = k.noiseQ;
   noiseGain.gain.setValueAtTime(0.0001, startAt);
-  noiseGain.gain.exponentialRampToValueAtTime(0.8, startAt + 0.002);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.03);
+  noiseGain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.002);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.noiseDecay);
   src.connect(filter).connect(noiseGain).connect(destGain);
-  src.start(startAt); src.stop(startAt + 0.04);
+  src.start(startAt); src.stop(startAt + k.noiseDecay + 0.01);
 
   const osc = ctx.createOscillator(), oscGain = ctx.createGain();
   osc.type = 'triangle';
-  osc.frequency.setValueAtTime(900, startAt);
+  osc.frequency.setValueAtTime(k.pingHz, startAt);
   oscGain.gain.setValueAtTime(0.0001, startAt);
-  oscGain.gain.exponentialRampToValueAtTime(0.4, startAt + 0.002);
-  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.035);
+  oscGain.gain.exponentialRampToValueAtTime(k.level * 0.5, startAt + 0.002);
+  oscGain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.pingDecay);
   osc.connect(oscGain).connect(destGain);
-  osc.start(startAt); osc.stop(startAt + 0.04);
+  osc.start(startAt); osc.stop(startAt + k.pingDecay + 0.005);
 }
-function scheduleShaker(startAt, destGain) {
+function scheduleShaker(startAt, destGain, kit) {
+  const k = kit.shaker;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureNoiseBuffer();
-  filter.type = 'bandpass'; filter.frequency.value = 7000; filter.Q.value = 0.9;
+  filter.type = 'bandpass'; filter.frequency.value = k.hz; filter.Q.value = k.q;
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.06);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   src.connect(filter).connect(gain).connect(destGain);
-  src.start(startAt); src.stop(startAt + 0.07);
+  src.start(startAt); src.stop(startAt + k.decay + 0.01);
 }
 // Narrower bandpass than the crash (so it "pings" instead of washing out) plus a short sine bell tone.
-function scheduleRide(startAt, destGain) {
-  const dur = 0.5;
+function scheduleRide(startAt, destGain, kit) {
+  const k = kit.ride;
   const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), gain = ctx.createGain();
   src.buffer = ensureCrashNoiseBuffer();
-  filter.type = 'bandpass'; filter.frequency.value = 6500; filter.Q.value = 2.5;
+  filter.type = 'bandpass'; filter.frequency.value = k.hz; filter.Q.value = k.q;
   gain.gain.setValueAtTime(0.0001, startAt);
-  gain.gain.exponentialRampToValueAtTime(0.35, startAt + 0.006);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+  gain.gain.exponentialRampToValueAtTime(k.level, startAt + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.decay);
   src.connect(filter).connect(gain).connect(destGain);
-  src.start(startAt); src.stop(startAt + dur);
+  src.loop = k.decay > 0.89;
+  src.start(startAt); src.stop(startAt + k.decay);
 
   const ping = ctx.createOscillator(), pingGain = ctx.createGain();
   ping.type = 'sine';
-  ping.frequency.setValueAtTime(950, startAt);
+  ping.frequency.setValueAtTime(k.pingHz, startAt);
   pingGain.gain.setValueAtTime(0.0001, startAt);
-  pingGain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.004);
-  pingGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.1);
+  pingGain.gain.exponentialRampToValueAtTime(k.level * 0.7, startAt + 0.004);
+  pingGain.gain.exponentialRampToValueAtTime(0.0001, startAt + k.pingDecay);
   ping.connect(pingGain).connect(destGain);
-  ping.start(startAt); ping.stop(startAt + 0.12);
+  ping.start(startAt); ping.stop(startAt + k.pingDecay + 0.02);
 }
 // Shared dispatch table for all 10 kit sounds — used by playback (playOnce),
 // the click-to-place preview (previewHit) and pattern preview/insert.
@@ -8836,8 +8965,25 @@ const DRUM_SCHEDULERS = {
 // threading either through them would be ten chances for the same value to
 // drift. Both are no-ops when neutral — a full-velocity centred hit builds the
 // identical graph it did before either existed.
-function scheduleDrum(type, startAt, destGain, vel, pan) {
+// How far a soft hit is dulled. Hitting a drum harder does not just make it
+// louder, it makes it brighter — the stick excites the high modes that a light
+// tap leaves alone — so velocity that only scales gain sounds like the same
+// sample turned down, which is exactly what a machine sounds like and a player
+// does not. One lowpass at the dispatch point does this for all ten pieces at
+// once; the alternative was editing ten hand-written envelopes, which is ten
+// chances for the same idea to drift.
+const VEL_TONE_MIN_HZ = 900;    // where a hit at the softest velocity lands
+const VEL_TONE_MAX_HZ = 18000;  // effectively open, reached just under full
+function velocityCutoff(v) {
+  // Perceived brightness is logarithmic, so interpolate in log space — a
+  // linear sweep spends most of its travel in a range the ear barely
+  // separates, and the bottom half of the velocity range would do nothing.
+  const t = Math.max(0, Math.min(1, (v - 0.1) / 0.9)); // vel is 0.1..1
+  return VEL_TONE_MIN_HZ * Math.pow(VEL_TONE_MAX_HZ / VEL_TONE_MIN_HZ, t);
+}
+function scheduleDrum(type, startAt, destGain, vel, pan, kitId) {
   const fn = DRUM_SCHEDULERS[type] || scheduleHihat;
+  const kit = DRUM_KITS[kitId] || DRUM_KITS[DEFAULT_KIT];
   const v = vel == null ? 1 : vel;
   const p = pan == null ? 0 : pan;
   // Built backwards from the destination, so pan ends up *last* in the signal
@@ -8854,8 +9000,17 @@ function scheduleDrum(type, startAt, destGain, vel, pan) {
     g.gain.value = v;
     g.connect(dest);
     dest = g;
+    // Tone follows the same "absent means neutral" rule as the gain above: at
+    // full velocity neither node exists, so an untouched song builds the graph
+    // it always did.
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = velocityCutoff(v);
+    tone.Q.value = 0.707;
+    tone.connect(dest);
+    dest = tone;
   }
-  fn(startAt, dest);
+  fn(startAt, dest, kit);
 }
 // Classic 8th-note swing: delays the off-beat 8th (the "and") within each beat,
 // sliding it toward the triplet position as the amount rises to 100%. Only
@@ -8962,7 +9117,7 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;
     for (const h of state.tracks[id].filter(n => n.start >= fromCol && n.start < toCol)) {
-      scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id], hitVel(h), hitPan(h));
+      scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id], hitVel(h), hitPan(h), getTrackKitId(id));
     }
   }
 }
@@ -9205,7 +9360,7 @@ function recDrumDown(id, type, vel) {
   const track = state.recTrack;
   if (!track || heldKeys.has(id)) return false;
   try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
-  scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, vel, 0);
+  scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, vel, 0, getTrackKitId(track));
   // A hit has no length, so it is committed the moment it is struck.
   if (recording) commitHit(track, type, snapToGrid(ctxTimeToCol(ctx.currentTime)), vel);
   else if (stepEntryActive()) {
