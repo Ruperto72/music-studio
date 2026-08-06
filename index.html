@@ -1201,8 +1201,13 @@
       <button id="preset-close">Close ✕</button>
     </div>
     <div class="songs-body">
-      <p class="songs-note">Saves this track's waveform + envelope (attack/decay/sustain/release) as a named preset you can apply to any tonal track, in any song. Saved in this browser (nothing is uploaded).</p>
+      <p class="songs-note">Starting points for a tonal track's waveform + envelope. Load one, then tune it in the track's <b>Env</b> panel — and save the result as your own preset, which applies to any tonal track in any song (stored in this browser, nothing is uploaded).</p>
       <section>
+        <h3>Built in</h3>
+        <div id="builtin-preset-list" class="song-list"></div>
+      </section>
+      <section>
+        <h3>Yours <span class="songs-sub">(this browser)</span></h3>
         <div class="song-save-row">
           <input id="preset-new-name" type="text" placeholder="Name this preset…" maxlength="60">
           <button id="preset-save" data-glyph="save">Save current as preset</button>
@@ -7211,9 +7216,96 @@ document.getElementById('song-save-local').addEventListener('click', () => {
 });
 
 // ---------- Instrument presets (waveform + envelope, shared across tracks/songs) ----------
+// The built-in starting points, in the same shape a saved preset has — so
+// loading one is the same code path, and saving over it afterwards is just an
+// ordinary user preset.
+//
+// **Every one of these is settings, not code.** The engine already has FM,
+// a resonant filter with its own envelope, and a per-note ADSR; what was
+// missing was anyone having dialled them anywhere but the chip-lead corner of
+// the range. An electric piano is the clearest case — a Rhodes is famously an
+// FM patch, so it is a table row here rather than a feature.
+//
+// Honest about what synthesis reaches: these are recognisable *kinds* of
+// instrument, not impersonations of particular ones. An acoustic grand is not
+// on the list because it is not reachable this way — that needs samples, and
+// the cost there is that a song's .json stops being self-contained (TODO.md).
+//
+// Ranges, so a new row stays inside what the Env panel can show: attack/decay
+// 0–0.5 and release 0.02–0.6 as a fraction of each note's own length, sustain
+// 0–1, cutoff 60–20000Hz, q 0.1–20, envAmount −1..1, FM ratio 0.5–12 step 0.5,
+// depth 0–1.
+const BUILTIN_PRESETS = [
+  {
+    name: 'Electric piano',
+    // High modulator ratio at low depth is the classic tine sound: the bell-ish
+    // attack decays away fast and leaves a much simpler tone humming under it.
+    waveform: 'fm', duty: null,
+    adsr: { attack: 0, decay: 0.32, sustain: 0.28, release: 0.3 },
+    filter: { cutoff: 6000, q: 0.707, envAmount: 0 },
+    fm: { ratio: 7, depth: 0.22 },
+  },
+  {
+    name: 'Bell',
+    // Inharmonic ratio — the partials do not line up with the fundamental,
+    // which is what makes metal sound like metal rather than like a flute.
+    waveform: 'fm', duty: null,
+    adsr: { attack: 0, decay: 0.5, sustain: 0, release: 0.6 },
+    filter: { cutoff: 20000, q: 0.707, envAmount: 0 },
+    fm: { ratio: 3.5, depth: 0.6 },
+  },
+  {
+    name: 'Marimba',
+    waveform: 'sine', duty: null,
+    adsr: { attack: 0, decay: 0.18, sustain: 0, release: 0.12 },
+    filter: { cutoff: 20000, q: 0.707, envAmount: 0 },
+    fm: { ratio: 4, depth: 0.12 },
+  },
+  {
+    name: 'Plucked string',
+    // The filter envelope is doing the work: a struck or plucked string is
+    // bright for an instant and then dull, which is a cutoff sweep, not a
+    // volume one.
+    waveform: 'sawtooth', duty: null,
+    adsr: { attack: 0, decay: 0.28, sustain: 0.12, release: 0.2 },
+    filter: { cutoff: 2200, q: 3, envAmount: 0.75 },
+    fm: { ratio: 2, depth: 0 },
+  },
+  {
+    name: 'Brass',
+    waveform: 'sawtooth', duty: null,
+    adsr: { attack: 0.12, decay: 0.14, sustain: 0.75, release: 0.2 },
+    filter: { cutoff: 1400, q: 1.4, envAmount: 0.6 },
+    fm: { ratio: 2, depth: 0 },
+  },
+  {
+    name: 'Warm pad',
+    waveform: 'halfsine', duty: null,
+    adsr: { attack: 0.4, decay: 0.2, sustain: 0.9, release: 0.6 },
+    filter: { cutoff: 3000, q: 0.707, envAmount: 0.25 },
+    fm: { ratio: 2, depth: 0 },
+  },
+  {
+    name: 'Round bass',
+    waveform: 'square', duty: 0.25,
+    adsr: { attack: 0, decay: 0.2, sustain: 0.55, release: 0.1 },
+    filter: { cutoff: 700, q: 2.5, envAmount: 0.45 },
+    fm: { ratio: 2, depth: 0 },
+  },
+  {
+    name: 'Chip lead',
+    // The house sound, as a row like the rest — so "back to what it was" is a
+    // click rather than a hunt through the panels.
+    waveform: 'square', duty: 0.5,
+    adsr: { ...DEFAULT_ADSR },
+    filter: { ...DEFAULT_FILTER },
+    fm: { ...DEFAULT_FM },
+  },
+];
 const PRESETS_KEY = 'music-studio-instrument-presets';
 const presetDialog = document.getElementById('preset-dialog');
 const presetListEl = document.getElementById('preset-list');
+const builtinPresetListEl = document.getElementById('builtin-preset-list');
 const presetNewNameInput = document.getElementById('preset-new-name');
 let presetDialogTrack = null; // which track the currently-open dialog applies to
 const readPresets = () => { try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || {}; } catch { return {}; } };
@@ -7245,6 +7337,19 @@ function presetDesc(preset) {
   const dutyPart = preset.duty ? ` · duty ${dutyLabel(preset.duty)}` : '';
   return `${WAVE_LABEL[preset.waveform] || preset.waveform} · A${a.attack.toFixed(2)} D${a.decay.toFixed(2)} S${Math.round(a.sustain * 100)}% R${a.release.toFixed(2)}${filterPart}${fmPart}${dutyPart}`;
 }
+// The built-ins render above the user's own, in their own list — same rows,
+// but no Delete: they are not stored anywhere to delete from. Saving your own
+// preset under a built-in's name shadows nothing; the two lists are separate.
+function renderBuiltinPresets() {
+  builtinPresetListEl.innerHTML = '';
+  for (const preset of BUILTIN_PRESETS) {
+    builtinPresetListEl.appendChild(songRow({
+      title: preset.name,
+      desc: presetDesc(preset),
+      onLoad: () => { applyPresetToTrack(presetDialogTrack, preset); presetDialog.close(); },
+    }));
+  }
+}
 function renderPresetList() {
   const presets = readPresets();
   const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
@@ -7262,6 +7367,7 @@ function renderPresetList() {
 function openPresetDialog(track) {
   presetDialogTrack = track;
   presetNewNameInput.value = '';
+  renderBuiltinPresets();
   renderPresetList();
   presetDialog.showModal();
 }

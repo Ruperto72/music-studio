@@ -3565,6 +3565,60 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
     });
 
+    step('Instrument presets: a built-in one reaches the track, not just the list', async () => {
+      // The built-ins are settings the engine already understands, so the
+      // check is that loading one moves the track's real synth state —
+      // waveform, envelope, FM — not merely that a row rendered.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await cdp.evaluate(`document.querySelector('.track-header:not(.automation-header) .th-tool-btn.icon').click()`);
+      await waitFor(`document.querySelectorAll('#builtin-preset-list .song-item').length > 0`);
+
+      const names = await cdp.evaluate(`[...document.querySelectorAll('#builtin-preset-list .song-title')].map(t => t.textContent)`);
+      if (!names.includes('Electric piano')) {
+        throw new Error(`expected the built-in list to offer an electric piano, got ${JSON.stringify(names)}`);
+      }
+      // Each row describes itself — the summary is what tells you what a
+      // preset does before you load it.
+      const desc = await cdp.evaluate(`[...document.querySelectorAll('#builtin-preset-list .song-item')]
+        .find(r => r.querySelector('.song-title').textContent === 'Electric piano').querySelector('.song-desc').textContent`);
+      if (!/FM/.test(desc)) throw new Error(`the electric piano row should say it is an FM patch, reads "${desc}"`);
+      if (await cdp.evaluate(`!!document.querySelector('#builtin-preset-list .song-del')`)) {
+        throw new Error('a built-in preset must not offer Delete — it is not stored anywhere to delete from');
+      }
+
+      await cdp.evaluate(`[...document.querySelectorAll('#builtin-preset-list .song-item')]
+        .find(r => r.querySelector('.song-title').textContent === 'Electric piano')
+        .querySelector('button').click()`);
+      await waitFor(`document.getElementById('preset-dialog').open === false`);
+
+      const wave = await cdp.evaluate(`document.querySelector('.th-osc-trigger span').textContent`);
+      if (wave !== 'FM') throw new Error(`loading the electric piano should switch the track to FM, header reads "${wave}"`);
+
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header:not(.automation-header) .th-tool-btn')]
+        .find(b => b.textContent.includes('Env')).click()`);
+      await waitFor(`!!document.querySelector('.adsr-lane-el')`);
+      const env = await cdp.evaluate(`(() => {
+        const vals = {};
+        document.querySelectorAll('.adsr-lane-el .adsr-field').forEach((f) => {
+          const cap = f.querySelector('.adsr-label'), val = f.querySelector('.adsr-val');
+          if (cap && val) vals[cap.textContent.trim()] = val.textContent;
+        });
+        return vals;
+      })()`);
+      // Instant attack and real FM depth are what separate this patch from
+      // the square-wave default it replaced.
+      if (env.Attack !== '0%') throw new Error(`the electric piano should strike instantly, Attack reads ${env.Attack}`);
+      if (!env.Depth || env.Depth === '0%') throw new Error(`the electric piano needs FM depth to sound like one, Depth reads ${env.Depth}`);
+
+      // Leave the page as this step found it. Steps share a browser, and the
+      // mobile-player step further down measures a viewport it assumes is
+      // untouched — it failed here until this reload was added, the same way
+      // it failed after the many-tracks step above.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+    });
+
     step('Transport: every button centres its symbol, and Record is filled like Play/Stop', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
