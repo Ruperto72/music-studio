@@ -86,6 +86,24 @@ hur roligt det vore att bygga.
   renderar en låt två gånger och jämför dels FNV-hashar per kanal och per
   sekund, dels sampel för sampel.
 
+## Prestanda
+
+- [ ] **Spårhuvuden byggs om varje bildruta, och det är hela kostnaden.**
+  Mätt (siffrorna i `DONE.md`, tabellen och enraderen som gör om mätningen i
+  `DESIGN.md` B.4): ≈9,5 ms per utfällt spår i en headless-behållare utan GPU,
+  medan *samma* spår hopfällda kostar 1/38 så mycket — och effekter syns inte
+  i mätningen alls, hur många som än slås på. `renderTracks()` river och
+  bygger varje `.track-header` — vågformsväljare, chip-rad, reglage, VU — även
+  när ingenting i det spåret har ändrats.
+  Fixen är inte en virtuell DOM, utan att låta ett huvud överleva en omritning
+  som inte rör det: bygg om lanen och låt huvudet stå, eller jämför en liten
+  nyckel (namn, vågform, synliga effekter, mute/solo) innan det rivs.
+  Undersök samtidigt `positionOverlays()` geometriläsningar: mätningen
+  inkluderar den tvingade layouten, och vid *samma* notantal växte 7 → 48 spår
+  från 776 till 3812 ms — snabbare än spårantalet, så något där skalar värre
+  än linjärt.
+  Tills vidare är hopfällning svaret, och det står dokumenterat.
+
 ## Lagring / delning
 
 - [ ] **Bara lokalt.** Sparade låtar ligger i `localStorage` i webbläsaren;

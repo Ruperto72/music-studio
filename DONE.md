@@ -1821,3 +1821,30 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   `.json`-filer som råkar ligga i `songs/`, vilket inte är det som prövas.
   Injektion: med `flex`/`min-height`/`overflow-y` borttaget faller steget på
   *"the song list should be its own scrolling box"*.
+
+- [x] **Var börjar det hacka? Mätt, och svaret låg inte där frågan pekade.**
+  Frågan var hur många spår och samtidiga effekter appen tål. Det finns inget
+  tak i koden — `addTrack()` lägger bara till, och `MAX_COLS` (576 åttondelar,
+  72 takter i 4/4) begränsar bara längd — så gränsen är rendertid. En
+  `render()` är vad en dragning väntar på.
+  Mätt i headless-behållare utan GPU, så förhållandena gäller och inte
+  absolutsiffrorna: 5 utfällda tomma spår 61 ms, 12 → 122, 24 → 247, 48 → 471.
+  Linjärt, **≈9,5 ms per utfällt spår**.
+  Två resultat som gick emot förväntan:
+  - **Effekter är gratis per bildruta.** Med varje effekt i
+    `TRACK_FX_REGISTRY` påslagen på varje spår låg rendertiden inom brus från
+    samma låt utan någon — ibland lägre. Det är logiskt i efterhand: en
+    effekt är noder i ljudgrafen plus ett chip, och en omritning rör inte
+    ljudgrafen. Men frågan ställdes som om effekter var det dyra, och jag
+    hade svarat likadant utan att mäta.
+  - **Kostnaden är det utfällda spårhuvudet, inte rutnätet.** 48 tomma
+    utfällda spår: 471 ms. *Samma* 48 hopfällda: **12,5 ms**. Trettioåtta
+    gånger, utan att en enda not togs bort. Varje huvud bygger om
+    vågformsväljare, chip-rad, två reglage och en VU-mätare varje bildruta,
+    och det överskuggar notblocken bredvid (Rust Foundrys 4428 block vid 7
+    spår: 776 ms).
+  Praktiska konsekvensen: reglaget är per-spårs-hopfällning, inte färre
+  effekter. Den öppna optimeringen är att sluta bygga om huvuden som inte
+  ändrats — det enda stället där husregeln "ingen diffning" faktiskt kostar.
+  Mätskriptet är inte incheckat; enraderen i `DESIGN.md` B.4 gör om mätningen
+  på vilken maskin som helst, vilket är den varaktiga formen.
