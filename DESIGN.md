@@ -1591,7 +1591,12 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   rings 1.6 s, and a wider clap; the acoustic kit is a lower, slower kick
   (110→48 Hz over 0.05 s) and a snare with more body than sizzle. Three of the
   schedulers had to start setting `src.loop`, since a decay that outlasts the
-  shared noise buffer would otherwise fall silent mid-tail.
+  shared noise buffer would otherwise fall silent mid-tail. The picker sits
+  exactly where a tonal track's waveform trigger sits — same box, same width —
+  and the section is captioned **Kit** rather than **Osc**, since a rhythm
+  track has no oscillator. That is not cosmetic: the first version was a
+  half-width `<select>` under an "Osc" heading and was reported as the feature
+  being absent.
 - **Seeded noise**: the reverb impulse (`ensureReverbImpulse()`) and the two
   drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
   `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from

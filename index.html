@@ -398,6 +398,21 @@
   .th-osc-trigger.open { border-color: #7a4fd1; box-shadow: 0 0 6px rgba(122,79,209,0.35); }
   .th-osc-trigger .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
   .th-osc-trigger span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The rhythm track's counterpart to that picker. A kit has no shape to draw,
+     so it is a native <select> rather than the floating listbox — but it sits
+     in the same box at the same width, because it is the same control in the
+     same place and a half-width dropdown under an "Osc" caption is the reason
+     nobody found it. It deliberately does *not* borrow .adsr-select: sharing
+     that class is what made a bare `.adsr-select` selector meaning "the Duty
+     picker" start matching this one. */
+  .th-kit-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+  .th-kit-row .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
+  .th-kit-select {
+    flex: 1 1 auto; min-width: 0;
+    background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
+    font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+  }
+  .th-kit-select:hover { border-color: #55555f; }
   .th-osc-trigger .th-osc-caret { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
   .th-osc-menu {
     position: fixed; min-width: 140px; max-height: 60vh; overflow-y: auto;
@@ -1037,7 +1052,7 @@
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>kit</b> picker where a tonal track has its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
+        <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>Kit</b> picker in its header, in the spot where a tonal track has its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one <b>chip</b> per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are not there: click a chip and the <b>inspector column</b> on the right shows that track's whole chain, every effect at once. (With nothing selected it shows it anyway — that column is the mixing surface.) <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects are continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a 3-band <b>EQ</b>, a <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Bitcrush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -4506,27 +4521,26 @@ function buildHeader(track) {
     top.append(collapseBtn, reorder, name, btns);
   }
 
-  // Osc section: waveform dropdown (or the "Kit" label for rhythm) plus the
+  // Osc section: waveform dropdown (or the kit picker for rhythm) plus the
   // Auto/Env/Preset (or Auto/Patterns) tool-toggle row, both hidden while
-  // collapsed via .th-osc-section's own class.
+  // collapsed via .th-osc-section's own class. A rhythm track captions it
+  // "Kit", not "Osc" — it has no oscillator, and a drum kit hidden under an
+  // oscillator heading is a control nobody goes looking for.
   const oscSection = el('div', 'th-section th-osc-section');
   const oscLabel = el('div', 'th-section-label');
-  oscLabel.textContent = 'Osc';
+  oscLabel.textContent = isRhythm(track) ? 'Kit' : 'Osc';
   oscSection.appendChild(oscLabel);
   if (isRhythm(track)) {
     // The rhythm track's counterpart to the waveform picker: which of the ten
     // pieces sound like what. A plain <select> rather than the tonal track's
     // floating listbox, because a kit has no shape to draw — the options are
-    // names, which is exactly what a native option can carry.
-    const kitRow = el('div', 'th-osc');
-    kitRow.style.display = 'flex'; kitRow.style.alignItems = 'center'; kitRow.style.gap = '4px';
+    // names, which is exactly what a native option can carry. It is styled to
+    // the same box and width as that trigger, so the two read as one control
+    // in one place rather than as a main picker and an afterthought.
+    const kitRow = el('div', 'th-kit-row');
     kitRow.appendChild(glyph('kit'));
     const sel = document.createElement('select');
-    // Borrows the ADSR row's select styling but keeps its own class: the two
-    // are different controls in different places, and a bare `.adsr-select`
-    // selector that meant "the Duty picker" would otherwise start matching
-    // this one too (it already did — the Duty check counts them).
-    sel.className = 'adsr-select th-kit-select';
+    sel.className = 'th-kit-select';
     sel.setAttribute('aria-label', 'Drum kit for ' + trackName(track));
     sel.title = 'Which kit this track\'s ten pieces are synthesised as';
     for (const id of KIT_IDS) {

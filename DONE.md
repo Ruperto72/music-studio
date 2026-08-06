@@ -1109,10 +1109,11 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   2. **Väljaren ärvde `.adsr-select` och stal Duty-stegets selektor.**
      `verify.js` räknar `.adsr-select` för att slå fast att Duty *bara* visas
      på ett square-spår — och rytmspåret finns alltid, så räkningen blev 1
-     istället för 0 och steget föll. Väljaren har en egen `th-kit-select`
-     bredvid, och de fyra selektorerna i steget scopar bort den. Precis den
-     fällan `CLAUDE.md` varnar för: en global selektor i en app där ett laddat
-     projekt har flera spår.
+     istället för 0 och steget föll. Precis den fällan `CLAUDE.md` varnar för:
+     en global selektor i en app där ett laddat projekt har flera spår.
+     Först scopades stegets fyra selektorer med `:not(.th-kit-select)`; när
+     väljaren sedan fick egen styling togs `adsr-select` bort helt och
+     scopningen kunde tas bort igen. Att dela klassen *var* felet.
   3. **Verify-steget gick igenom mot medvetet trasig kod.** Med felet inlagt
      (`scheduleDrum` ignorerar kit-id:t och kör alltid default) rapporterade
      körningen ändå "All checks passed". Orsaken: steget ritade en *ny* träff
@@ -1124,6 +1125,21 @@ med pan per not på plats är asymmetrierna i den här listan slut.
      olika värden — det är den likhetskravet som stänger dörren för "den ena
      lät inte alls". Mot samma injicerade fel faller det nu på
      `both runs saw [1800]`, retro-virvelns brusfrekvens.
+  4. **Kontrollen gick inte att hitta.** Den fungerade, sparades och lät
+     rätt — men rapporterades som saknad. Den låg som en halvbred `<select>`
+     under rubriken **OSC** på ett spår som inte har någon oscillator, medan
+     ett tonalt spårs vågformsväljare fyller hela kolumnen i samma läge.
+     Rubriken säger **Kit** på rytmspår nu, och väljaren sitter i samma ruta
+     med samma bredd. Steget mäter båda: att rubriken är `Kit` och att
+     väljarens bredd ligger inom en glyfbredd från vågformsväljarens. Ett
+     verify-steg som bara frågar "finns kontrollen i DOM:en?" hade svarat ja
+     hela tiden — det var precis vad det gjorde.
+  5. **Mobilsteget var flakigt (två fall på fyra körningar).** Det läser
+     `scrollHeight > clientHeight` direkt efter
+     `Emulation.setDeviceMetricsOverride` — men storleksändringen utförs av
+     webbläsaren, inte av att anropet returnerar, så avläsningen kunde landa
+     före omflödet. Väntar på villkoret nu istället för att läsa en gång.
+     Beteendet under test var aldrig trasigt; steget var det.
 ## Spårhantering
 
 - [x] **Omordning av spår** — små ▲/▼-knappar i varje tonspårs header
