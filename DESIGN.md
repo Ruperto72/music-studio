@@ -1553,8 +1553,8 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   `scheduleCrash`/`scheduleRide`) — filtered noise bursts and/or short
   pitch-swept oscillators, no shared "drum" abstraction since each sound's
   shape is bespoke. They are all reached through one dispatch point,
-  `scheduleDrum(type, startAt, destGain, vel, pan)`, used by playback, the
-  click-to-place preview and the pattern auditions alike. That is also where
+  `scheduleDrum(type, startAt, destGain, vel, pan, kitId)`, used by playback,
+  the click-to-place preview and the pattern auditions alike. That is also where
   per-hit **velocity** and **pan** are applied — a plain `GainNode` and a
   `StereoPannerNode` in front of the destination, built backwards so pan ends
   up last, deliberately *not* as arguments threaded into the ten
@@ -1565,6 +1565,33 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   before hits had a velocity — which matters when an offline render schedules
   thousands of them. Each rhythm track routes to its own `chanGain[id]`, so
   multiple rhythm tracks mix, pan, and get FX-processed independently.
+- **Velocity is tone, not only level.** Below full, `scheduleDrum` inserts a
+  second node after the gain: a lowpass whose cutoff `velocityCutoff()` maps
+  the 0.1–1 velocity range onto 900 Hz–18 kHz *exponentially*, because pitch
+  and brightness are heard in ratios rather than in hertz. A real drum struck
+  gently gives you less of the sharp top end as well as less of everything, so
+  a ghost note at 0.2 now sits behind the beat instead of being a scale model
+  of the accent. It follows the same **absent means neutral** rule as the gain
+  beside it — at velocity 1 neither node is built, so the untouched-song
+  guarantee above is unchanged, and one filter per quiet hit is the same order
+  of cost as the gain stage that was already there.
+- **Three drum kits**, one table. `DRUM_KITS` holds `retro` (the default),
+  `eighties` and `acoustic`, each a plain object of the frequencies, decays
+  and levels the ten schedulers read; every scheduler now takes `(startAt,
+  destGain, kit)` and reads `kit.snare.noiseDecay` where it used to carry the
+  number inline. `retro` carries *exactly* today's numbers, so the default kit
+  is unchanged by construction rather than by ear. A kit is therefore a table
+  row, not a tenth synthesis path: the pieces, the rows, the patterns and
+  every hit already written stay identical, and switching kits re-voices a
+  part without editing it. It is per rhythm track (`state.kit`, in
+  `SPARSE_TRACK_MAPS`, so save/load/undo/remove came free), **absent means
+  `DEFAULT_KIT`** — an older song file has no `kit` key and loads as retro,
+  which is what it was written as. What the numbers actually buy: the 80s kit
+  is the gated snare (noise decay 0.34 against retro's 0.09), a crash that
+  rings 1.6 s, and a wider clap; the acoustic kit is a lower, slower kick
+  (110→48 Hz over 0.05 s) and a snare with more body than sizzle. Three of the
+  schedulers had to start setting `src.loop`, since a decay that outlasts the
+  shared noise buffer would otherwise fall silent mid-tail.
 - **Seeded noise**: the reverb impulse (`ensureReverbImpulse()`) and the two
   drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
   `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from

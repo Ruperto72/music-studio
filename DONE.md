@@ -1062,6 +1062,68 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   upptagen-läge med både svg och etikett i behåll.
   Kvar med flit: `↝`/`⌒`/`♪` på noter (märken på rutnätsobjekt, inte kontroller)
   och `🎵` i README:ns rubrik, som inte utger sig för att vara någon knapp.
+
+- [x] **Anslagsstyrkan hörs som klang, inte bara som nivå** — en träff under
+  full styrka får nu ett lågpass efter sin `GainNode` i `scheduleDrum()`,
+  med brytfrekvensen `velocityCutoff()` mappad från 0.1–1 på 900 Hz–18 kHz
+  **exponentiellt**: ljusstyrka uppfattas i förhållanden, så en linjär
+  svepning hade lagt större delen av sin resa där örat inte skiljer stegen
+  åt. En riktig trumma som slås mjukt ger mindre av det vassa toppregistret
+  också, inte bara mindre av allt — velocity som bara skalade gain lät som
+  ett sample nedskruvat, vilket är hur en maskin låter och inte hur en
+  trummis låter. Ett filter i dispatch-punkten gör det för alla tio ljuden;
+  alternativet var att redigera tio handskrivna envelopekurvor, alltså tio
+  chanser för samma faktor att glida isär (samma skäl som `vel`/`pan` redan
+  ligger där). **Vid full styrka byggs ingen nod alls** — samma
+  "frånvaro betyder neutral" som gainsteget bredvid, så en orörd låt bygger
+  exakt samma graf som förr. Att `verify.js` kan peka ut just det här filtret
+  entydigt är ingen slump: ingen av de tio funktionerna bygger ett lågpass
+  (de använder bandpass och högpass), så ett lågpass som skapas medan en
+  träff spelas *är* velocity-filtret.
+
+- [x] **Tre trumkit att välja mellan** — `DRUM_KITS` med `retro` (default),
+  `eighties` och `acoustic`. Varje rad är ett vanligt objekt med de
+  frekvenser, decays och nivåer de tio schemaläggarna läser; funktionerna
+  tar nu `(startAt, destGain, kit)` och läser `kit.snare.noiseDecay` där de
+  förr bar siffran inbakad. **`retro` bär exakt de tidigare inbakade
+  siffrorna**, så att defaultljudet är oförändrat är en konstruktion och
+  inte en bedömning på gehör. Ett nytt kit är därmed en tabellrad, inte en
+  elfte syntesväg — och eftersom det är samma tio pladdar, samma rader,
+  samma mönster och samma träffar byter man kit utan att röra en enda not.
+  Valet är per rytmspår (`state.kit`, i `SPARSE_TRACK_MAPS`, så
+  spara/ladda/ångra/ta-bort-spår följde med gratis) och följer samma
+  **frånvaro betyder default**: en låt skriven innan kiten fanns har ingen
+  `kit`-nyckel och laddas som retro, vilket är vad den skrevs som.
+  Kit-id:t trädas genom `scheduleDrum(..., kitId)` från varje anropsställe
+  istället för att läsas ur `state` inne i schemaläggarna, så offline-render
+  och mönsterdialogens förhandslyssning löser upp det likadant som
+  uppspelningen.
+  Vad siffrorna faktiskt köper: 80-talskitet är den gatade virveln
+  (brusdecay 0.34 mot retros 0.09), en crash som ringer 1.6 s och en bredare
+  clap; det akustiska är en lägre och långsammare bastrumma (110→48 Hz över
+  0.05 s) och en virvel med mer skinn än fräs.
+  Två saker som inte var uppenbara i förväg:
+  1. **Tre schemaläggare måste börja sätta `src.loop`.** Brusbuffertarna är
+     0.1 s respektive 0.9 s långa; en 80-tals-crash på 1.6 s tystnade mitt i
+     svansen tills källan loopade.
+  2. **Väljaren ärvde `.adsr-select` och stal Duty-stegets selektor.**
+     `verify.js` räknar `.adsr-select` för att slå fast att Duty *bara* visas
+     på ett square-spår — och rytmspåret finns alltid, så räkningen blev 1
+     istället för 0 och steget föll. Väljaren har en egen `th-kit-select`
+     bredvid, och de fyra selektorerna i steget scopar bort den. Precis den
+     fällan `CLAUDE.md` varnar för: en global selektor i en app där ett laddat
+     projekt har flera spår.
+  3. **Verify-steget gick igenom mot medvetet trasig kod.** Med felet inlagt
+     (`scheduleDrum` ignorerar kit-id:t och kör alltid default) rapporterade
+     körningen ändå "All checks passed". Orsaken: steget ritade en *ny* träff
+     per kit, och det andra klicket landade i rutan det första hade fyllt — så
+     det tog bort träffen istället för att lägga en. Den ena inspelningen blev
+     alltså tystnad, arrayerna skilde sig åt, och påståendet var sant av fel
+     skäl. Nu ritas en träff som sedan förhandslyssnas om under vardera kitet,
+     och steget kräver *lika många* filter i båda körningarna innan det kräver
+     olika värden — det är den likhetskravet som stänger dörren för "den ena
+     lät inte alls". Mot samma injicerade fel faller det nu på
+     `both runs saw [1800]`, retro-virvelns brusfrekvens.
 ## Spårhantering
 
 - [x] **Omordning av spår** — små ▲/▼-knappar i varje tonspårs header

@@ -25,8 +25,13 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 
 - Stacked **tracks** with a shared timeline and playhead
 - **Add / rename / remove / reorder** tonal tracks, plus one or more **rhythm**
-  tracks sharing a fixed 10-piece kit (kick, snare, rim, hi-hat, open hat,
+  tracks sharing a fixed 10-piece palette (kick, snare, rim, hi-hat, open hat,
   shaker, tom, clap, crash, ride)
+- **Three drum kits** — each rhythm track picks whether those ten pieces are
+  synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
+  snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on
+  the snare). Same rows, same patterns, same hits: switching re-voices the
+  part without touching a note of it, and the choice saves with the song
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
 - **Chords** — place several pitches in one column, or build one from a
@@ -96,7 +101,10 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - **Per-hit velocity and pan** on rhythm tracks — click a drum hit to set how
   hard it's struck, so a pattern can have accents instead of sounding
   mechanical, and where it sits in the stereo field, so the kit spreads out
-  instead of stacking in one spot; quieter notes and hits are drawn dimmer
+  instead of stacking in one spot; quieter notes and hits are drawn dimmer.
+  Velocity shapes the **tone** as well as the level — a soft hit is darker,
+  like a real drum struck gently, so a ghost note sits behind the beat rather
+  than being a quiet copy of the accent
 - **Automation curves** per track — draw Volume, Pan, or Delay/Chorus/Reverb
   send over time
 - **Master bus**: 3-band EQ, compressor with a parallel ("New York") blend,
