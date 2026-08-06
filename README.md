@@ -76,8 +76,14 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   modulator ratio/depth)
 - Per-track **ADSR envelope**, a resonant **lowpass filter** with its own
   envelope amount, and a **duty cycle** (pulse width) for square-wave tracks
-  that any single note can override; save a track's synth settings as a
-  reusable **preset**
+  that any single note can override
+- **Instrument presets** — eight built-in starting points (electric piano,
+  bell, marimba, plucked string, brass, warm pad, round bass, chip lead) that
+  are pure settings for the synth already there: the electric piano is an FM
+  patch, the plucked string is a filter envelope. Load one, tune it, and save
+  the result as your own preset for any tonal track in any song. An acoustic
+  piano is *not* among them — that needs samples, which is a separate
+  question (`TODO.md`)
 - Per-track **FX**: continuous Delay / Chorus / Reverb sends, a 3-band
   **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
   **vibrato** on tonal tracks — all neutral by default. The track header
