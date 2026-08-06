@@ -3859,6 +3859,30 @@ async function main() {
         source: `
           (() => {
           window.__velGains = [];
+          // No drum scheduler makes a lowpass — they use bandpass and highpass
+          // only — so a lowpass created while a hit plays is unambiguously the
+          // velocity tone filter scheduleDrum inserts.
+          window.__velTone = [];
+          const origBq = AudioContext.prototype.createBiquadFilter;
+          AudioContext.prototype.createBiquadFilter = function () {
+            const f = origBq.call(this);
+            const td = Object.getOwnPropertyDescriptor(BiquadFilterNode.prototype, 'type');
+            const fd = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            let isLow = false;
+            try {
+              Object.defineProperty(f, 'type', {
+                get() { return td.get.call(this); },
+                set(v) { isLow = v === 'lowpass'; td.set.call(this, v); },
+                configurable: true,
+              });
+              Object.defineProperty(f.frequency, 'value', {
+                get() { return fd.get.call(this); },
+                set(v) { if (isLow) window.__velTone.push(Math.round(v)); fd.set.call(this, v); },
+                configurable: true,
+              });
+            } catch {}
+            return f;
+          };
           const origCreate = AudioContext.prototype.createGain;
           AudioContext.prototype.createGain = function () {
             const g = origCreate.call(this);
@@ -3916,12 +3940,19 @@ async function main() {
       }
 
       // Preview path (previewHit -> scheduleDrum).
-      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`window.__velGains = []; window.__velTone = []`);
       await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
       await new Promise((r) => setTimeout(r, 400));
       const previewed = await cdp.evaluate(`window.__velGains.slice()`);
       if (!previewed.some((v) => Math.abs(v - 0.3) < 1e-6)) {
         throw new Error(`previewing a 30% hit should build a 0.3 gain stage, saw ${JSON.stringify(previewed)}`);
+      }
+      // Velocity is tone as well as level: a soft hit is duller, not just
+      // quieter, which is the difference between a player and a machine.
+      const softTone = await cdp.evaluate(`window.__velTone.slice()`);
+      if (!softTone.length) throw new Error('a soft hit should be filtered as well as attenuated, but no lowpass was built');
+      if (!softTone.every((hz) => hz > 900 && hz < 18000)) {
+        throw new Error(`a 30% hit should land well inside the tone range, saw ${JSON.stringify(softTone)}`);
       }
 
       // Playback path (playOnce -> scheduleDrum) — a different call site, so
@@ -3942,11 +3973,13 @@ async function main() {
         s.value = 1; s.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 300));
-      await cdp.evaluate(`window.__velGains = []`);
+      await cdp.evaluate(`window.__velGains = []; window.__velTone = []`);
       await cdp.evaluate(`document.querySelector('.hit.selected').click()`);
       await new Promise((r) => setTimeout(r, 400));
       const full = await cdp.evaluate(`window.__velGains.slice()`);
       if (full.length !== 0) throw new Error(`a full-velocity hit should add no gain stage, saw ${JSON.stringify(full)}`);
+      const fullTone = await cdp.evaluate(`window.__velTone.slice()`);
+      if (fullTone.length !== 0) throw new Error(`a full-velocity hit should add no tone filter either, saw ${JSON.stringify(fullTone)}`);
 
       // ...and it must not leave `vel: 1` behind in the song data either.
       const serialized = await cdp.evaluate(`(() => {

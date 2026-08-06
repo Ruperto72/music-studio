@@ -8836,6 +8836,22 @@ const DRUM_SCHEDULERS = {
 // threading either through them would be ten chances for the same value to
 // drift. Both are no-ops when neutral — a full-velocity centred hit builds the
 // identical graph it did before either existed.
+// How far a soft hit is dulled. Hitting a drum harder does not just make it
+// louder, it makes it brighter — the stick excites the high modes that a light
+// tap leaves alone — so velocity that only scales gain sounds like the same
+// sample turned down, which is exactly what a machine sounds like and a player
+// does not. One lowpass at the dispatch point does this for all ten pieces at
+// once; the alternative was editing ten hand-written envelopes, which is ten
+// chances for the same idea to drift.
+const VEL_TONE_MIN_HZ = 900;    // where a hit at the softest velocity lands
+const VEL_TONE_MAX_HZ = 18000;  // effectively open, reached just under full
+function velocityCutoff(v) {
+  // Perceived brightness is logarithmic, so interpolate in log space — a
+  // linear sweep spends most of its travel in a range the ear barely
+  // separates, and the bottom half of the velocity range would do nothing.
+  const t = Math.max(0, Math.min(1, (v - 0.1) / 0.9)); // vel is 0.1..1
+  return VEL_TONE_MIN_HZ * Math.pow(VEL_TONE_MAX_HZ / VEL_TONE_MIN_HZ, t);
+}
 function scheduleDrum(type, startAt, destGain, vel, pan) {
   const fn = DRUM_SCHEDULERS[type] || scheduleHihat;
   const v = vel == null ? 1 : vel;
@@ -8854,6 +8870,15 @@ function scheduleDrum(type, startAt, destGain, vel, pan) {
     g.gain.value = v;
     g.connect(dest);
     dest = g;
+    // Tone follows the same "absent means neutral" rule as the gain above: at
+    // full velocity neither node exists, so an untouched song builds the graph
+    // it always did.
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = velocityCutoff(v);
+    tone.Q.value = 0.707;
+    tone.connect(dest);
+    dest = tone;
   }
   fn(startAt, dest);
 }
