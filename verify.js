@@ -2575,16 +2575,16 @@ async function main() {
         const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
-      await waitFor(`!!document.querySelector('.adsr-select:not(.th-kit-select)')`);
+      await waitFor(`!!document.querySelector('.adsr-select')`);
       const opts = await cdp.evaluate(
-        `[...document.querySelector('.adsr-select:not(.th-kit-select)').options].map(o => o.textContent)`);
+        `[...document.querySelector('.adsr-select').options].map(o => o.textContent)`);
       if (opts.join('|') !== 'Square (50%)|12.5%|25%|50%|75%') {
         throw new Error(`unexpected track Duty options: ${JSON.stringify(opts)}`);
       }
 
       // Set the track to 12.5% and place a note that doesn't override it.
       await cdp.evaluate(`(() => {
-        const sel = document.querySelector('.adsr-select:not(.th-kit-select)');
+        const sel = document.querySelector('.adsr-select');
         sel.value = '0.125'; sel.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await new Promise((r) => setTimeout(r, 400));
@@ -2684,7 +2684,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-menu')`);
       await cdp.evaluate(`document.querySelector('.th-osc-menu button[data-value="sine"]').click()`);
       await new Promise((r) => setTimeout(r, 400));
-      const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select:not(.th-kit-select)').length`);
+      const afterSine = await cdp.evaluate(`document.querySelectorAll('.adsr-select').length`);
       if (afterSine !== 0) throw new Error('Duty should only show on a square track');
     });
 
@@ -3723,16 +3723,25 @@ async function main() {
         await cdp.send('Emulation.setDeviceMetricsOverride', {
           width: 420, height: 520, deviceScaleFactor: 1, mobile: true,
         });
+        // Wait for the overflow rather than reading it once. The resize is
+        // applied by the browser, not by this call returning, so a single
+        // read right after it can land before the relayout — which is exactly
+        // how this step failed intermittently (twice in four runs) while the
+        // behaviour under test was fine. Waiting also covers the list still
+        // being filled in from songs/index.json.
+        await waitFor(`(() => {
+          const list = document.getElementById('player-list');
+          return !!list && list.scrollHeight > list.clientHeight;
+        })()`, 4000).catch(() => {
+          throw new Error('the song list should be its own scrolling box (scrollHeight > clientHeight), so the page does not grow instead');
+        });
         const scrolled = await cdp.evaluate(`(() => {
           const list = document.getElementById('player-list');
           const cardTop = () => Math.round(document.getElementById('player-card').getBoundingClientRect().top);
           const before = cardTop();
           list.scrollTop = 400; // past the end is fine — it clamps
-          return { before, after: cardTop(), listScrolled: list.scrollTop, canScroll: list.scrollHeight > list.clientHeight };
+          return { before, after: cardTop(), listScrolled: list.scrollTop };
         })()`);
-        if (!scrolled.canScroll) {
-          throw new Error('the song list should be its own scrolling box (scrollHeight > clientHeight), so the page does not grow instead');
-        }
         if (!(scrolled.listScrolled > 0)) throw new Error('the song list did not scroll at all');
         if (scrolled.before !== scrolled.after) {
           throw new Error(`the player card must not move when the list scrolls (top ${scrolled.before} -> ${scrolled.after})`);
@@ -4036,6 +4045,29 @@ async function main() {
       }
       if (await cdp.evaluate(`${kitSel}.value`) !== 'retro') {
         throw new Error('a fresh rhythm track should start on the default kit');
+      }
+
+      // Findability, not just presence. The first version of this shipped a
+      // half-width dropdown captioned "Osc" on a track that has no
+      // oscillator, and the control was reported as missing. It has to be
+      // captioned Kit and sit in the same box, at the same width, as the
+      // tonal track's waveform picker.
+      const placed = await cdp.evaluate(`(() => {
+        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-kit-select'));
+        const tonal = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        return {
+          caption: head.querySelector('.th-osc-section > .th-section-label').textContent.trim(),
+          kitW: Math.round(head.querySelector('.th-kit-select').getBoundingClientRect().width),
+          waveW: Math.round(tonal.querySelector('.th-osc-trigger').getBoundingClientRect().width),
+        };
+      })()`);
+      if (placed.caption !== 'Kit') {
+        throw new Error(`a rhythm track's picker should be captioned Kit, not ${JSON.stringify(placed.caption)}`);
+      }
+      // The kit row spends a glyph's width on its icon, exactly as the
+      // waveform trigger does inside its own box, so allow that much.
+      if (placed.kitW < placed.waveW - 30) {
+        throw new Error(`the kit picker should fill the column like the waveform picker: ${JSON.stringify(placed)}`);
       }
 
       // Pen *one* hit and then audition that same hit under each kit. The
