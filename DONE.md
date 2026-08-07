@@ -1157,7 +1157,19 @@ med pan per not på plats är asymmetrierna i den här listan slut.
      skilja dem åt läser det. Ett av de arton ställena var värre än en timeout:
      `const tonal = ... .querySelector('.th-osc-trigger')` hade tyst blivit
      `true` för rytmspår och vänt ett riktigt påstående utan att falla.
-  8. **Ett testartefakt som såg ut som en bugg.** Skärmbildsskriptet
+  8. **Sparfilen var bara halvtestad.** Steget kollade autosave-utkastet och
+     inte `Spara .json`. De går genom samma `currentSongData()` i dag — vilket
+     är precis skälet att nagla fast det: den gång de gled isär skrevs en
+     per-spårsinställning till varje fil och slängdes tyst vid laddning, utan
+     att något sa ifrån. Steget sparar nu genom appens egen knapp, fångar det
+     som lämnas till `Blob`, laddar om till ett tomt läge och matar tillbaka
+     exakt den filen genom den riktiga `<input type=file>`. Mot ett injicerat
+     fel där raden som läser `data.kit` är borttagen faller det på
+     "the saved kit should come back when the file is loaded".
+     Värt att notera: ett spår på retro skriver `"kit": {}` — default lagras
+     inte, samma frånvaro-betyder-default som resten, så en fil från före
+     kiten är oförändrad.
+  9. **Ett testartefakt som såg ut som en bugg.** Skärmbildsskriptet
      scrollade fram rytmspåret och klickade på triggern i samma
      `Runtime.evaluate` — menyn öppnades aldrig. Orsaken var inte appen:
      `.daw`-scroll är ljusstängning, och scroll-eventet landar asynkront,
@@ -1169,6 +1181,32 @@ med pan per not på plats är asymmetrierna i den här listan slut.
      webbläsaren, inte av att anropet returnerar, så avläsningen kunde landa
      före omflödet. Väntar på villkoret nu istället för att läsa en gång.
      Beteendet under test var aldrig trasigt; steget var det.
+- [x] **Utrullningen flyttad från Actions till grenen** — GitHub Pages serverar
+  repo-roten direkt från `main` (Source: *Deploy from a branch*, `/ (root)`),
+  och `.github/workflows/pages.yml` är borta.
+  Bakgrunden: tre merger i rad slutade nå den publika sajten. Byggstegen
+  lyckades varje gång på under en sekund vardera — det var `deploy-pages@v4`
+  som pollade `deployment_queued` i tio minuter och gav upp:
+  ```
+  Current status: deployment_queued
+  ##[error]Timeout reached, aborting!
+  ```
+  Sedan slutade Actions skapa körningar helt: en merge till `main` gav ingen
+  körning alls, där varje tidigare push fått sin inom sekunder. Utrullningen
+  stod därmed kvar på en commit som var tre merger gammal, och en efterfrågad
+  funktion såg ut att saknas i appen fastän den fanns i koden — felsökningen
+  började i UI:t och borde ha börjat i deployen.
+  Poängen med att ta bort workflowen är att den inte gjorde något: sajten är
+  statisk utan byggsteg, så workflowen packade repo-roten som en artefakt och
+  bad Pages publicera den — exakt vad en grenutrullning gör, fast med en
+  runner och en kö emellan som kan gå sönder av egen kraft. `.nojekyll` fanns
+  redan och är det som får Pages att servera filerna orörda, vilket är hela
+  anledningen till att grenläget duger här.
+  **Vad jag inte kan verifiera härifrån:** sandlådans nätverkspolicy blockerar
+  `ruperto72.github.io` (403 från egress-proxyn, för både curl och WebFetch),
+  så "utrullningen rapporterar lyckad" är allt jag kan belägga — inte att rätt
+  bytes serveras.
+
 ## Spårhantering
 
 - [x] **Omordning av spår** — små ▲/▼-knappar i varje tonspårs header

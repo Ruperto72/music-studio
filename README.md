@@ -235,14 +235,15 @@ The bundled examples are `froggy-hop.json` (the game demo), `cinematic.json`,
 
 ## Deploy to GitHub Pages
 
-The site is fully static. A ready-to-use workflow lives at
-`.github/workflows/pages.yml`; once this folder is the root of its own repo:
+The site is fully static, so it needs no build and no workflow. Once this
+folder is the root of its own repo:
 
-1. Push to `main`.
-2. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+1. **Settings → Pages → Build and deployment → Source: _Deploy from a branch_,
+   `main` / `/ (root)`.**
+2. Push to `main`.
 
-The workflow publishes the whole folder, so the examples load from the same
-origin. (`.nojekyll` is included so Pages serves the files as-is.)
+Pages serves the whole folder, so the examples load from the same origin.
+(`.nojekyll` is included so the files are served as-is.)
 
 ## Installing on Android
 
