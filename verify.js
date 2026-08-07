@@ -4162,6 +4162,45 @@ async function main() {
           return !!kit && Object.values(kit).includes('eighties');
         } catch { return false; }
       })()`, 4000);
+
+      // ...and it survives the *file* path too, not only the autosave draft.
+      // Those are the same payload today (both go through currentSongData()),
+      // which is exactly why this is worth pinning: the one time they drifted,
+      // a per-track setting was written to every file and silently dropped on
+      // load, and nothing said so. Save through the app's own button, capture
+      // what it hands to Blob, and feed that back through the real file input.
+      await cdp.evaluate(`(() => {
+        window.__savedSong = null;
+        const OrigBlob = Blob;
+        window.Blob = function (parts, opts) {
+          if (opts && opts.type === 'application/json') window.__savedSong = String(parts[0]);
+          return new OrigBlob(parts, opts);
+        };
+        URL.createObjectURL = () => 'blob:stub';
+        URL.revokeObjectURL = () => {};
+      })()`);
+      await cdp.evaluate(`document.getElementById('save-file').click()`);
+      await waitFor(`!!window.__savedSong`);
+      const savedFile = await cdp.evaluate(`window.__savedSong`);
+      const savedKit = JSON.parse(savedFile).kit;
+      if (!savedKit || !Object.values(savedKit).includes('eighties')) {
+        throw new Error(`Save file should carry the kit, wrote ${JSON.stringify(savedKit)}`);
+      }
+      // Back to a fresh page (default kit), then load that exact file.
+      await goto(APP_URL);
+      await waitFor(`!!(${KIT_TRIGGER})`);
+      if (await cdp.evaluate(`(${KIT_TRIGGER}).querySelector('span').textContent.trim()`) !== 'Retro') {
+        throw new Error('a fresh page should be back on the default kit before the load is meaningful');
+      }
+      await cdp.evaluate(`(() => {
+        const input = document.getElementById('load-file-input');
+        const f = new File([${JSON.stringify(savedFile)}], 'kit-roundtrip.json', { type: 'application/json' });
+        const dt = new DataTransfer(); dt.items.add(f);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`(${KIT_TRIGGER}) && (${KIT_TRIGGER}).querySelector('span').textContent.trim() === 'Eighties'`, 4000)
+        .catch(() => { throw new Error('the saved kit should come back when the file is loaded'); });
     });
 
     for (const s of steps) await s();
