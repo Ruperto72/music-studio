@@ -398,21 +398,6 @@
   .th-osc-trigger.open { border-color: #7a4fd1; box-shadow: 0 0 6px rgba(122,79,209,0.35); }
   .th-osc-trigger .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
   .th-osc-trigger span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The rhythm track's counterpart to that picker. A kit has no shape to draw,
-     so it is a native <select> rather than the floating listbox — but it sits
-     in the same box at the same width, because it is the same control in the
-     same place and a half-width dropdown under an "Osc" caption is the reason
-     nobody found it. It deliberately does *not* borrow .adsr-select: sharing
-     that class is what made a bare `.adsr-select` selector meaning "the Duty
-     picker" start matching this one. */
-  .th-kit-row { display: flex; align-items: center; gap: 6px; width: 100%; }
-  .th-kit-row .glyph { width: 18px; height: 9px; flex: 0 0 auto; }
-  .th-kit-select {
-    flex: 1 1 auto; min-width: 0;
-    background: #1c1c22; border: 1px solid #3a3a44; color: var(--ink);
-    font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
-  }
-  .th-kit-select:hover { border-color: #55555f; }
   .th-osc-trigger .th-osc-caret { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
   .th-osc-menu {
     position: fixed; min-width: 140px; max-height: 60vh; overflow-y: auto;
@@ -1052,7 +1037,7 @@
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>Kit</b> picker in its header, in the spot where a tonal track has its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
+        <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>Kit</b> picker in its header — the same picker a tonal track uses for its waveform, in the same spot, each kit drawing the shape of its own decay: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one <b>chip</b> per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are not there: click a chip and the <b>inspector column</b> on the right shows that track's whole chain, every effect at once. (With nothing selected it shows it anyway — that column is the mixing surface.) <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects are continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a 3-band <b>EQ</b>, a <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Bitcrush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
@@ -1578,6 +1563,14 @@ const GLYPHS = {
   // the outline pinches to nothing where the modulator crosses zero.
   ringmod:  ['M1 6 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0 t3 0', 'M1 6 q5.5 -5 11 0 t11 0', 'M1 6 q5.5 5 11 0 t11 0'],
   kit:      ['M2 9 h20', 'M5 9 a3.5 3.5 0 0 1 7 0', 'M14 9 a2.5 2.5 0 0 1 5 0'],
+  // The three drum kits. A waveform glyph draws the wave; a kit has no single
+  // wave, so these draw what actually separates them — the shape of a hit's
+  // decay, which is exactly what a DRUM_KITS row is a table of. Same baseline
+  // and same strike line in all three, so only the tail differs and they read
+  // as three settings of one thing rather than three unrelated pictures.
+  kitRetro:    ['M2 10 h20', 'M6 10 V2', 'M6 2 q1 8 2.4 8'],              // short and dry: the tail is over at once
+  kitEighties: ['M2 10 h20', 'M6 10 V2', 'M6 2 q5 5 8 6.4', 'M14 8.4 V10'], // gated: a long tail cut off by a wall
+  kitAcoustic: ['M2 10 h20', 'M6 10 V2', 'M6 2 q9 8 16 8'],               // natural: a long, smooth taper
 
   // Effects.
   vibrato:  ['M1 6 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0 t3 0'],          // pitch wobble: a tight, even wave
@@ -3371,7 +3364,10 @@ function renderFloatingLayer() {
   }
   if (oscPickerOpen != null) {
     const trigger = document.querySelector(`.th-osc-trigger[data-track="${oscPickerOpen}"]`);
-    if (trigger && trigger.getClientRects().length) place(trigger, buildFloatingOscMenu(oscPickerOpen));
+    // One open-state for both pickers: the track decides which list it is,
+    // since a track has a waveform or a kit and never both.
+    const build = isRhythm(oscPickerOpen) ? buildFloatingKitMenu : buildFloatingOscMenu;
+    if (trigger && trigger.getClientRects().length) place(trigger, build(oscPickerOpen));
   }
 }
 
@@ -4448,6 +4444,39 @@ function buildFloatingOscMenu(track) {
   }
   return menu;
 }
+// The kit picker's listbox — the same widget as the waveform one above, over a
+// different table. Each kit draws its own glyph, so the three are told apart by
+// the shape of a hit's decay rather than only by reading their names; that
+// shape is what a DRUM_KITS row actually is.
+function buildFloatingKitMenu(track) {
+  const menu = el('div', 'th-osc-menu');
+  menu.setAttribute('role', 'listbox');
+  menu.setAttribute('aria-label', 'Drum kit for ' + trackName(track));
+  for (const id of KIT_IDS) {
+    const selected = getTrackKitId(track) === id;
+    const item = el('button', selected ? 'selected' : '');
+    item.type = 'button';
+    item.dataset.value = id;
+    item.title = DRUM_KITS[id].desc;
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(selected));
+    item.appendChild(glyph(DRUM_KITS[id].glyph));
+    const span = document.createElement('span'); span.textContent = DRUM_KITS[id].name;
+    item.appendChild(span);
+    item.addEventListener('mousedown', (e) => e.stopPropagation());
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setTrackKit(track, id);
+      oscPickerOpen = null;
+      // Audition the change on the piece most people judge a kit by.
+      previewHit('snare', 1, 0);
+      autosave();
+      render();
+    });
+    menu.appendChild(item);
+  }
+  return menu;
+}
 
 function buildHeader(track) {
   const header = el('div', 'track-header');
@@ -4530,36 +4559,25 @@ function buildHeader(track) {
   const oscLabel = el('div', 'th-section-label');
   oscLabel.textContent = isRhythm(track) ? 'Kit' : 'Osc';
   oscSection.appendChild(oscLabel);
+  // Kit picker (rhythm) and waveform picker (tonal) are the same control in
+  // the same slot — a track has one or the other, never both — so they share
+  // the trigger, the styling and `oscPickerOpen` rather than growing a second
+  // set of each. The first version was a native <select>, which made the
+  // rhythm track look like it had a lesser control than every other track,
+  // and left the three kits distinguishable only by their names.
+  const pickerOpen = oscPickerOpen === track;
+  const trigger = el('button', 'th-osc-trigger' + (pickerOpen ? ' open' : ''));
+  trigger.type = 'button';
+  trigger.dataset.track = track;
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', String(pickerOpen));
   if (isRhythm(track)) {
-    // The rhythm track's counterpart to the waveform picker: which of the ten
-    // pieces sound like what. A plain <select> rather than the tonal track's
-    // floating listbox, because a kit has no shape to draw — the options are
-    // names, which is exactly what a native option can carry. It is styled to
-    // the same box and width as that trigger, so the two read as one control
-    // in one place rather than as a main picker and an afterthought.
-    const kitRow = el('div', 'th-kit-row');
-    kitRow.appendChild(glyph('kit'));
-    const sel = document.createElement('select');
-    sel.className = 'th-kit-select';
-    sel.setAttribute('aria-label', 'Drum kit for ' + trackName(track));
-    sel.title = 'Which kit this track\'s ten pieces are synthesised as';
-    for (const id of KIT_IDS) {
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = DRUM_KITS[id].name;
-      opt.title = DRUM_KITS[id].desc;
-      if (getTrackKitId(track) === id) opt.selected = true;
-      sel.appendChild(opt);
-    }
-    sel.addEventListener('change', (e) => {
-      e.stopPropagation();
-      setTrackKit(track, sel.value);
-      // Audition the change on the piece most people judge a kit by.
-      previewHit('snare', 1, 0);
-      render(); autosave();
-    });
-    kitRow.appendChild(sel);
-    oscSection.appendChild(kitRow);
+    trigger.setAttribute('aria-label', 'Drum kit for ' + trackName(track));
+    trigger.title = 'Which kit this track\'s ten pieces are synthesised as';
+    trigger.appendChild(glyph(kitGlyphOf(track)));
+    const lbl = document.createElement('span');
+    lbl.textContent = DRUM_KITS[getTrackKitId(track)].name;
+    trigger.appendChild(lbl);
   } else {
     // Waveform (oscillator) picker — affects the editor preview AND the game
     // via the exported VOICES config. A trigger button that opens a
@@ -4570,25 +4588,20 @@ function buildHeader(track) {
     // picker (seeing each waveform's own glyph, not just its name) was
     // worth keeping; a native <option> still can't carry an SVG, so this
     // reuses the app's own floating-menu pattern instead of a select.
-    const trigger = el('button', 'th-osc-trigger' + (oscPickerOpen === track ? ' open' : ''));
-    trigger.type = 'button';
-    trigger.dataset.track = track;
-    trigger.setAttribute('aria-haspopup', 'listbox');
-    trigger.setAttribute('aria-expanded', String(oscPickerOpen === track));
     trigger.setAttribute('aria-label', 'Waveform for ' + trackName(track));
     trigger.appendChild(glyph(state.waveform[track]));
     const triggerLabel = document.createElement('span');
     triggerLabel.textContent = WAVE_LABEL[state.waveform[track]] || state.waveform[track];
     trigger.appendChild(triggerLabel);
-    const caret = document.createElement('span'); caret.className = 'th-osc-caret'; caret.textContent = '▾';
-    trigger.appendChild(caret);
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      oscPickerOpen = oscPickerOpen === track ? null : track;
-      render();
-    });
-    oscSection.appendChild(trigger);
   }
+  const caret = document.createElement('span'); caret.className = 'th-osc-caret'; caret.textContent = '▾';
+  trigger.appendChild(caret);
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    oscPickerOpen = pickerOpen ? null : track;
+    render();
+  });
+  oscSection.appendChild(trigger);
   const tools = el('div', 'th-tools');
   const autoBtn = el('button', 'th-tool-btn' + (automationOpen.has(track) ? ' on' : ''));
   setGlyphLabel(autoBtn, 'automation', 'Auto');
@@ -4764,6 +4777,11 @@ function renderPitchTrack(track) {
   const active = state.activeTrack === track;
   const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent') + (collapsedTracks.has(track) ? ' collapsed' : ''));
   row.dataset.track = track;
+  // What kind of track this row is, said outright. Anything that needs to
+  // tell them apart used to infer it from a control that happened to be on
+  // one and not the other — which broke the moment the kit picker started
+  // using the waveform picker's own trigger.
+  row.dataset.kind = 'pitch';
   row.appendChild(buildHeader(track));
   if (collapsedTracks.has(track)) {
     // Skip the (expensive) grid entirely while collapsed, but keep the row as
@@ -4887,6 +4905,7 @@ function renderRhythmTrack(track) {
   const active = state.activeTrack === track;
   const row = el('div', 'track' + (active ? ' active' : '') + (audible(track) ? '' : ' silent') + (collapsedTracks.has(track) ? ' collapsed' : ''));
   row.dataset.track = track;
+  row.dataset.kind = 'rhythm'; // see renderPitchTrack()
   row.appendChild(buildHeader(track));
   if (collapsedTracks.has(track)) {
     // Skip the (expensive) grid entirely while collapsed, but keep the row as
@@ -8724,7 +8743,8 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
 // a sampled kit. A real one needs samples, and the cost of that is in TODO.md.
 const DRUM_KITS = {
   retro: {
-    name: 'Retro', desc: 'The chip kit: short, dry and pitched — what the app has always sounded like.',
+    name: 'Retro', glyph: 'kitRetro',
+    desc: 'The chip kit: short, dry and pitched — what the app has always sounded like.',
     kick:    { from: 150, to: 50, drop: 0.09, attack: 0.008, decay: 0.12, level: 0.7 },
     tom:     { from: 220, to: 90, drop: 0.18, decay: 0.28, level: 1 },
     snare:   { noiseHz: 1800, noiseQ: 0.7, noiseDecay: 0.09, noiseLevel: 1,
@@ -8738,7 +8758,8 @@ const DRUM_KITS = {
     ride:    { hz: 6500, q: 2.5, decay: 0.5, pingHz: 950, pingDecay: 0.1, level: 0.35 },
   },
   eighties: {
-    name: 'Eighties', desc: 'Big and gated: tuned-down kick, long snare tail, wide clap, splashy cymbals.',
+    name: 'Eighties', glyph: 'kitEighties',
+    desc: 'Big and gated: tuned-down kick, long snare tail, wide clap, splashy cymbals.',
     kick:    { from: 180, to: 42, drop: 0.13, attack: 0.006, decay: 0.3, level: 0.85 },
     tom:     { from: 260, to: 70, drop: 0.26, decay: 0.5, level: 1 },
     // The long noise tail is the whole signature — a gated reverb on a snare,
@@ -8754,7 +8775,8 @@ const DRUM_KITS = {
     ride:    { hz: 5800, q: 1.8, decay: 0.9, pingHz: 1050, pingDecay: 0.18, level: 0.4 },
   },
   acoustic: {
-    name: 'Acoustic-ish', desc: 'As close to a played kit as synthesis gets here — softer attacks, more body, longer cymbals. Not a sampled kit.',
+    name: 'Acoustic-ish', glyph: 'kitAcoustic',
+    desc: 'As close to a played kit as synthesis gets here — softer attacks, more body, longer cymbals. Not a sampled kit.',
     // Less pitch drop and a slower attack: a real drum head does not swoop an
     // octave, and the stick contact is not instantaneous.
     kick:    { from: 110, to: 48, drop: 0.05, attack: 0.012, decay: 0.24, level: 0.8 },
@@ -8782,6 +8804,10 @@ function setTrackKit(track, id) {
   if (!DRUM_KITS[id]) return;
   if (id === DEFAULT_KIT) delete state.kit[track]; else state.kit[track] = id;
 }
+// Which glyph the header's trigger draws for this track's kit. Resolved from
+// the table rather than from a second mapping beside it, so adding a kit stays
+// one row.
+const kitGlyphOf = (track) => DRUM_KITS[getTrackKitId(track)].glyph;
 
 function scheduleKick(startAt, destGain, kit) {
   const k = kit.kick;

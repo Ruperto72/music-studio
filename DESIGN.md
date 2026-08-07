@@ -1591,12 +1591,29 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   rings 1.6 s, and a wider clap; the acoustic kit is a lower, slower kick
   (110→48 Hz over 0.05 s) and a snare with more body than sizzle. Three of the
   schedulers had to start setting `src.loop`, since a decay that outlasts the
-  shared noise buffer would otherwise fall silent mid-tail. The picker sits
-  exactly where a tonal track's waveform trigger sits — same box, same width —
-  and the section is captioned **Kit** rather than **Osc**, since a rhythm
-  track has no oscillator. That is not cosmetic: the first version was a
-  half-width `<select>` under an "Osc" heading and was reported as the feature
-  being absent.
+  shared noise buffer would otherwise fall silent mid-tail. The picker *is* the waveform
+  trigger: a track has a waveform or a kit and never both, so the two share
+  `.th-osc-trigger`, `oscPickerOpen` and the floating-listbox machinery, with
+  `renderFloatingLayer()` choosing the list from the track's kind. The section
+  is captioned **Kit** rather than **Osc**, since a rhythm track has no
+  oscillator. None of that is cosmetic — two earlier versions were worse in
+  ways that only showed up in use. A half-width `<select>` under an "Osc"
+  heading was reported as the feature being *absent*. Widening it fixed that
+  and left a second problem: a native `<option>` cannot carry an SVG, so the
+  three kits were distinguishable only by reading their names, on a track
+  whose tonal neighbours all show their waveform's own shape. Each kit now
+  names a glyph in its own `DRUM_KITS` row, so a kit is still one row picture
+  included, and the three draw the shape of a hit's decay — a narrow spike, a
+  tail chopped by a vertical wall, a long smooth taper — over a shared
+  baseline and strike line, which is the one thing that actually separates
+  them.
+- **A track row says what kind it is.** `data-kind="pitch"`/`"rhythm"` on the
+  `.track` element. It exists because the alternative was in use and failed:
+  everything that needed to tell the two apart inferred it from a control the
+  header happened to carry ("no waveform trigger, therefore rhythm"), and the
+  moment the kit picker adopted that trigger, five verify steps timed out at
+  once against working code. Inference from an incidental UI detail is a
+  coupling nothing warns you about until it breaks.
 - **Seeded noise**: the reverb impulse (`ensureReverbImpulse()`) and the two
   drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
   `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from
