@@ -30,8 +30,10 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - **Three drum kits** — each rhythm track picks whether those ten pieces are
   synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
   snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on
-  the snare). Same rows, same patterns, same hits: switching re-voices the
-  part without touching a note of it, and the choice saves with the song
+  the snare), from the same picker a tonal track uses for its waveform, each
+  kit drawing the shape of its own decay. Same rows, same patterns, same hits:
+  switching re-voices the part without touching a note of it, and the choice
+  saves with the song
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
 - **Chords** — place several pitches in one column, or build one from a

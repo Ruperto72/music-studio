@@ -1134,6 +1134,35 @@ med pan per not på plats är asymmetrierna i den här listan slut.
      väljarens bredd ligger inom en glyfbredd från vågformsväljarens. Ett
      verify-steg som bara frågar "finns kontrollen i DOM:en?" hade svarat ja
      hela tiden — det var precis vad det gjorde.
+  6. **Full bredd räckte inte heller.** Kontrollen gick att hitta, men var
+     fortfarande en `<select>` bland fyra spår som alla visar sin vågforms
+     egen form — rytmspåret såg ut att ha en sämre kontroll än de andra, och
+     de tre kiten gick bara att skilja åt genom att läsa deras namn. Ett
+     `<option>` kan inte bära en SVG, vilket är exakt samma skäl som
+     vågformsväljaren en gång slutade vara en `<select>`. Nu *är* det samma
+     väljare: ett spår har en vågform eller ett kit och aldrig båda, så de
+     delar trigger, styling, `oscPickerOpen` och ljusstängningen, och
+     `renderFloatingLayer()` väljer lista utifrån spårets typ. Varje kit
+     namnger sin glyf i sin egen `DRUM_KITS`-rad, så ett nytt kit är fortsatt
+     *en* rad, bild inkluderad. Glyferna ritar avklingningens form — smal
+     spik, svans kapad av en lodrät vägg, lång mjuk uttoning — över samma
+     baslinje och samma anslagsstreck, eftersom det är det som faktiskt
+     skiljer raderna åt.
+  7. **Fem steg dog av en ändring som inte rörde dem.** `verify.js` letade upp
+     rytmspåret som "spåret utan vågformsknapp" — arton ställen som slöt sig
+     till spårtypen ur en kontroll som råkade sitta på det ena och inte det
+     andra. I samma sekund som kit-väljaren tog över den knappen matchade
+     uttrycket ingenting, och fem steg timade ut mot kod som fungerade.
+     `.track` bär `data-kind="pitch"`/`"rhythm"` nu, och allt som behöver
+     skilja dem åt läser det. Ett av de arton ställena var värre än en timeout:
+     `const tonal = ... .querySelector('.th-osc-trigger')` hade tyst blivit
+     `true` för rytmspår och vänt ett riktigt påstående utan att falla.
+  8. **Ett testartefakt som såg ut som en bugg.** Skärmbildsskriptet
+     scrollade fram rytmspåret och klickade på triggern i samma
+     `Runtime.evaluate` — menyn öppnades aldrig. Orsaken var inte appen:
+     `.daw`-scroll är ljusstängning, och scroll-eventet landar asynkront,
+     alltså efter klicket. Med scrollen och klicket åtskilda öppnas den. Värt
+     att minnas nästa gång något "inte går att öppna" i ett drivet test.
   5. **Mobilsteget var flakigt (två fall på fyra körningar).** Det läser
      `scrollHeight > clientHeight` direkt efter
      `Emulation.setDeviceMetricsOverride` — men storleksändringen utförs av

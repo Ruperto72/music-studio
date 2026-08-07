@@ -450,7 +450,11 @@ async function main() {
     // layout puts four tonal tracks ahead of it, so `.track .lane` — which
     // used to mean "the drum grid" only because a new project had nothing
     // else — now picks the Lead track's piano roll.
-    const RHYTHM_LANE = `[...document.querySelectorAll('.track')].filter(t => !t.querySelector('.th-osc-trigger')).map(t => t.querySelector('.lane'))[0]`;
+    // Read the kind off the row rather than inferring it from which controls
+    // the header happens to carry. The old form — "the track with no waveform
+    // trigger" — silently stopped matching anything when the kit picker moved
+    // onto that same trigger, and five steps timed out at once.
+    const RHYTHM_LANE = `document.querySelector('.track[data-kind="rhythm"] .lane')`;
 
     // First, and not the last step that needs no browser: a song file the app
     // would silently mangle is worth hearing about before thirteen minutes of
@@ -1309,7 +1313,7 @@ async function main() {
       // panel, in which case clicking the button would close it.
       await waitFor(`!!document.querySelector('.th-fx-panel')`);
       const panelSel = `document.querySelector('.th-fx-panel')`;
-      const tonal = await cdp.evaluate(`!!(${panelSel}).closest('.track-header').querySelector('.th-osc-trigger')`);
+      const tonal = await cdp.evaluate(`(${panelSel}).closest('.track').dataset.kind === 'pitch'`);
       for (let i = 0; i < 8; i++) {
         const added = await cdp.evaluate(`(() => {
           const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
@@ -1666,7 +1670,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       // The starter layout's first tonal track (Lead) — no need to add one.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       // The Env panel's Duty picker: the only select offering pulse widths.
@@ -1704,7 +1708,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.track')`);
       await loadExample('DutyRoundTrip');
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!(${dutySel})`);
@@ -1738,7 +1742,7 @@ async function main() {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'))`;
+      const tonalLane = `document.querySelector('.track[data-kind="pitch"] .lane')`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -1814,7 +1818,7 @@ async function main() {
       // A drum hit gets the same control, through scheduleDrum()'s one dispatch
       // point rather than the ten individual schedulers — which is why it can
       // be the same two assertions.
-      const rhythmLane = `[...document.querySelectorAll('.track')].filter((t) => !t.querySelector('.th-osc-trigger')).map((t) => t.querySelector('.lane'))[0]`;
+      const rhythmLane = RHYTHM_LANE;
       await cdp.evaluate(`(() => {
         const lane = ${rhythmLane};
         const r = lane.getBoundingClientRect();
@@ -2324,7 +2328,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + 60 }));
       })()`);
@@ -2510,7 +2514,7 @@ async function main() {
       // covers most of a cycle, short enough that each note is well inside it.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       const placed = await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         const r = lane.getBoundingClientRect();
         for (let i = 1; i < 8; i++) {
           lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 60 }));
@@ -2572,7 +2576,7 @@ async function main() {
       // offer Duty — this step used to add a track first, from when a new
       // project had no tonal one to work with.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!document.querySelector('.adsr-select')`);
@@ -2591,7 +2595,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await cdp.evaluate(`window.__duty = []`);
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         const r = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 200, clientY: r.top + 120 }));
       })()`);
@@ -2637,7 +2641,7 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         const n = lane.querySelector('.note').getBoundingClientRect();
         // 1.2 columns along, not 1.5: the grid snap rounds, so aiming at the
         // middle of the next cell lands two columns away and leaves a gap —
@@ -2655,7 +2659,7 @@ async function main() {
         throw new Error(`the two notes must be contiguous and on one row for a glide: ${JSON.stringify(pair)}`);
       }
       await cdp.evaluate(`(() => {
-        const lane = [...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         lane.querySelector('.note').click();
       })()`);
       await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
@@ -2678,7 +2682,7 @@ async function main() {
 
       // A non-square track must not offer the control at all.
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
         head.querySelector('.th-osc-trigger').click();
       })()`);
       await waitFor(`!!document.querySelector('.th-osc-menu')`);
@@ -2739,7 +2743,7 @@ async function main() {
       // The rhythm track's "+ Add effect" menu must not offer Vibrato.
       // Reached by its own header rather than "the first track" — the
       // starter layout puts four tonal tracks ahead of it.
-      const rhythmHead = `[...document.querySelectorAll('.track-header')].find(h => !h.querySelector('.th-osc-trigger'))`;
+      const rhythmHead = `document.querySelector('.track[data-kind="rhythm"] .track-header')`;
       await waitFor(`!!(${rhythmHead}).querySelector('.th-fx-panel')`);
       await cdp.evaluate(`(${rhythmHead}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
@@ -2850,7 +2854,7 @@ async function main() {
       // place a note (the same trigger the pan test above uses: previewNote()
       // calls ensureCtx()) before looking at any node it builds.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const tonalLane = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'))`;
+      const tonalLane = `document.querySelector('.track[data-kind="pitch"] .lane')`;
       await cdp.evaluate(`(() => {
         const lane = ${tonalLane};
         const r = lane.getBoundingClientRect();
@@ -2858,7 +2862,7 @@ async function main() {
       })()`);
       await waitFor(`!!document.querySelector('.lane .note')`);
 
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'))`;
+      const headSel = `document.querySelector('.track[data-kind="pitch"] .track-header')`;
       await cdp.evaluate(`(${headSel}).querySelector('.th-fx-panel').querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
       await cdp.evaluate(`[...document.querySelectorAll('.th-fx-add-menu button')].find(b => b.textContent.trim() === 'EQ').click()`);
@@ -3101,7 +3105,7 @@ async function main() {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.track')`);
       await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
@@ -3380,7 +3384,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
 
-      const headSel = `[...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'))`;
+      const headSel = `document.querySelector('.track[data-kind="pitch"] .track-header')`;
       await waitFor(`!!(${headSel}).querySelector('.th-fx-panel')`);
       const panelSel = `(${headSel}).querySelector('.th-fx-panel')`;
       // The floating layer to dismiss is now the "+ Add effect" menu: per-track
@@ -3389,7 +3393,7 @@ async function main() {
       await cdp.evaluate(`${panelSel}.querySelector('.th-fx-add-btn').click()`);
       await waitFor(`!!document.querySelector('.th-fx-add-menu')`);
 
-      const tonalLaneSel = `[...document.querySelectorAll('.lane')].find(l => l.closest('.track').querySelector('.th-osc-trigger'))`;
+      const tonalLaneSel = `document.querySelector('.track[data-kind="pitch"] .lane')`;
       const before = await cdp.evaluate(`document.querySelectorAll('.lane .note').length`);
       // Pick the point from the lane's *visible* intersection with the
       // viewport, not from a fixed offset. The lane is far wider than the
@@ -4037,15 +4041,48 @@ async function main() {
       // why it sits here rather than beside the other rhythm checks.
       await goto(APP_URL);
       await waitFor(`!!(${RHYTHM_LANE})`);
-      const kitSel = `document.querySelector('select[aria-label^="Drum kit"]')`;
-      await waitFor(`!!${kitSel}`);
-      const options = await cdp.evaluate(`[...${kitSel}.options].map(o => o.value)`);
+      // The rhythm track's trigger is the *last* .th-osc-trigger — rhythm
+      // tracks always sort after every tonal one — and both pickers now share
+      // that class, so scope by the header rather than by the class alone.
+      const KIT_TRIGGER = `[...document.querySelectorAll('.track-header')]
+        .filter(h => /^Kit$/.test(h.querySelector('.th-osc-section > .th-section-label')?.textContent.trim() || ''))[0]
+        .querySelector('.th-osc-trigger')`;
+      await waitFor(`!!(${KIT_TRIGGER})`);
+      const openKitMenu = async () => {
+        await cdp.evaluate(`(${KIT_TRIGGER}).click()`);
+        await waitFor(`!!document.querySelector('#floating-layer .th-osc-menu')`);
+      };
+      await openKitMenu();
+      const options = await cdp.evaluate(
+        `[...document.querySelectorAll('#floating-layer .th-osc-menu button')].map(b => b.dataset.value)`);
       if (!(options.includes('retro') && options.includes('eighties') && options.includes('acoustic'))) {
         throw new Error(`expected retro/eighties/acoustic kits, got ${JSON.stringify(options)}`);
       }
-      if (await cdp.evaluate(`${kitSel}.value`) !== 'retro') {
-        throw new Error('a fresh rhythm track should start on the default kit');
+      // Each kit draws its own glyph — the whole reason this is a listbox and
+      // not a <select>. Three options must mean three *different* pictures,
+      // and asserting the count first is what stops `every` passing on an
+      // empty list.
+      const kitGlyphs = await cdp.evaluate(`(() => {
+        const gs = [...document.querySelectorAll('#floating-layer .th-osc-menu button svg')]
+          .map(g => [...g.querySelectorAll('path')].map(p => p.getAttribute('d')).join('|'));
+        return { count: gs.length, distinct: new Set(gs).size, empty: gs.filter(g => !g).length };
+      })()`);
+      if (kitGlyphs.count !== 3 || kitGlyphs.distinct !== 3 || kitGlyphs.empty) {
+        throw new Error(`each kit needs its own glyph: ${JSON.stringify(kitGlyphs)}`);
       }
+      // ...and every option still spells its name out beside the glyph.
+      const named = await cdp.evaluate(
+        `[...document.querySelectorAll('#floating-layer .th-osc-menu button span')].map(s => s.textContent.trim())`);
+      if (named.length !== 3 || named.some((n) => !n)) {
+        throw new Error(`a glyph is decoration, never the only name: ${JSON.stringify(named)}`);
+      }
+      const selectedKit = await cdp.evaluate(
+        `document.querySelector('#floating-layer .th-osc-menu button.selected')?.dataset.value`);
+      if (selectedKit !== 'retro') {
+        throw new Error(`a fresh rhythm track should start on the default kit, got ${JSON.stringify(selectedKit)}`);
+      }
+      await cdp.evaluate(`(${KIT_TRIGGER}).click()`); // close again
+      await new Promise((r) => setTimeout(r, 200));
 
       // Findability, not just presence. The first version of this shipped a
       // half-width dropdown captioned "Osc" on a track that has no
@@ -4053,21 +4090,23 @@ async function main() {
       // captioned Kit and sit in the same box, at the same width, as the
       // tonal track's waveform picker.
       const placed = await cdp.evaluate(`(() => {
-        const head = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-kit-select'));
-        const tonal = [...document.querySelectorAll('.track-header')].find(h => h.querySelector('.th-osc-trigger'));
+        const cap = (h) => h.querySelector('.th-osc-section > .th-section-label')?.textContent.trim();
+        const heads = [...document.querySelectorAll('.track-header')];
+        const kitHead = heads.find(h => cap(h) === 'Kit');
+        const tonal = heads.find(h => cap(h) === 'Osc');
         return {
-          caption: head.querySelector('.th-osc-section > .th-section-label').textContent.trim(),
-          kitW: Math.round(head.querySelector('.th-kit-select').getBoundingClientRect().width),
+          captions: heads.map(cap),
+          kitW: Math.round(kitHead.querySelector('.th-osc-trigger').getBoundingClientRect().width),
           waveW: Math.round(tonal.querySelector('.th-osc-trigger').getBoundingClientRect().width),
         };
       })()`);
-      if (placed.caption !== 'Kit') {
-        throw new Error(`a rhythm track's picker should be captioned Kit, not ${JSON.stringify(placed.caption)}`);
+      if (!placed.captions.includes('Kit')) {
+        throw new Error(`a rhythm track's picker should be captioned Kit: ${JSON.stringify(placed.captions)}`);
       }
-      // The kit row spends a glyph's width on its icon, exactly as the
-      // waveform trigger does inside its own box, so allow that much.
-      if (placed.kitW < placed.waveW - 30) {
-        throw new Error(`the kit picker should fill the column like the waveform picker: ${JSON.stringify(placed)}`);
+      // Same control, same slot, same box — so now it is the same width to
+      // the pixel, not merely close.
+      if (placed.kitW !== placed.waveW) {
+        throw new Error(`the kit picker should be the same box as the waveform picker: ${JSON.stringify(placed)}`);
       }
 
       // Pen *one* hit and then audition that same hit under each kit. The
@@ -4093,8 +4132,13 @@ async function main() {
       };
       const before = await auditionAndRecord();
       if (!before.length) throw new Error('auditioning a hit should build filters to record');
-      await cdp.evaluate(`(() => { const s = ${kitSel}; s.value = 'eighties'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await openKitMenu();
+      await cdp.evaluate(`document.querySelector('#floating-layer .th-osc-menu button[data-value="eighties"]').click()`);
       await new Promise((r) => setTimeout(r, 300));
+      // The trigger has to follow the choice, or the header is lying about
+      // what the track sounds like.
+      const shown = await cdp.evaluate(`(${KIT_TRIGGER}).querySelector('span').textContent.trim()`);
+      if (shown !== 'Eighties') throw new Error(`the trigger should show the chosen kit, shows ${JSON.stringify(shown)}`);
       const after = await auditionAndRecord();
       // Same drum, so the same number of filters — what must move is the
       // values. Requiring equal length is what stops "one run made no sound"
