@@ -642,6 +642,9 @@
   }
   .vel-head:hover { filter: brightness(1.3); }
   .vel-head.selected { border-color: var(--sel-edge); box-shadow: 0 0 0 2px rgba(255,255,255,0.25); }
+  /* Centre line for the signed values (pan, bend), so a stem reads as an
+     offset from neutral rather than as a quantity. */
+  .vel-zero { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.18); }
   /* The velocity header has one button where the others have two, so without
      this it stretches across the whole 260px column. */
   .automation-header .vel-close { flex: 0 0 auto; align-self: center; margin-left: auto; }
@@ -1080,7 +1083,7 @@
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>A tonal track's left edge is a <b>piano keyboard</b> rather than a column of note names — white and black keys, with only C labelled, by its octave. <b>Press a key to hear it</b>, and drag down the keys to glissando; it sounds through the track's own instrument, so what you hear is what writing a note there would give you. A rhythm track keeps its ten piece names, since a drum has no pitch to show.</li>
-        <li>The <span class="help-ico" data-glyph="velocity"></span><b>Vel</b> button opens a <b>velocity lane</b> under the track: one stem per note or hit, as tall as it is loud, with a diamond head you can drag. The grid already dims a quiet item, but <i>which of these is loudest</i> is a comparison, and heights compare far better than shades of one colour. Works on rhythm tracks too — that is where accents matter most. Dragging a head to the top removes the velocity again rather than storing 100%, so a part you never touched saves exactly as it did before.</li>
+        <li>The <span class="help-ico" data-glyph="velocity"></span><b>Vel</b> button opens a <b>note lane</b> under the track: one stem per note or hit, with a diamond head you can drag. The dropdown in its header picks which value it shows — <b>Velocity</b>, <b>Pan</b>, or <b>Bend</b> on a tonal track. Pan and bend are signed, so they grow from a centre line rather than from the floor: a stem reads as an offset from neutral, not as a quantity. The grid already dims a quiet item, but <i>which of these is loudest</i> is a comparison, and heights compare far better than shades of one colour. Works on rhythm tracks too — that is where accents matter most. Dragging a head to the top removes the velocity again rather than storing 100%, so a part you never touched saves exactly as it did before.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
@@ -1097,6 +1100,7 @@
         <li><span class="help-ico" data-glyph="eraser"></span><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
         <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse, for a part that came out too stiff. This is why <b>recording no longer snaps as you play</b> — a take keeps the timing you gave it, and correcting it is a separate decision you can make with a strength rather than one the recorder makes for you.</li>
+        <li>The <b>Grid</b> menu also has <b>Free</b> — placing, dragging and resizing stop snapping and land wherever you put them (on the app's finest lattice, a sixth of an eighth). The grid still sets how long a new note is, so Free changes where things go, not what size they are. It is remembered per browser rather than saved with the song: the same file opened by someone else should not silently stop snapping.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
@@ -1466,12 +1470,13 @@
           </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Grid</span>
-            <select id="grid-select" title="Snap resolution for placing/moving notes">
+            <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
               <option value="1/4">1/4</option>
               <option value="1/8" selected>1/8</option>
               <option value="1/16">1/16</option>
               <option value="1/8T">1/8 T</option>
               <option value="1/16T">1/16 T</option>
+              <option value="free">Free</option>
             </select>
           </div>
           <div class="mstrip-cell">
@@ -2281,7 +2286,15 @@ const GRID_STEPS = [
 const DEFAULT_GRID = 1;
 const MICRO = 1 / 6;                                   // finest common lattice unit (eighths)
 const quant = (x) => Math.round(x / MICRO) * MICRO;    // re-lattice to kill float drift
-const snapToGrid = (x) => quant(Math.round(x / state.grid) * state.grid);
+// Slip: placing and dragging without snapping, landing on the MICRO lattice
+// instead of the grid. It is a property of *snapping*, not a sixth grid value —
+// `state.grid` is still the length a new note takes and the spacing the guide
+// lines are drawn at, so making "free" a grid step would have had to mean
+// something for both of those too. Editor state rather than song content, so
+// it is remembered per browser like the metronome and never serialised: the
+// same song opened by someone else should not silently stop snapping.
+let snapOn = localStorage.getItem('frogger-music-editor-snap') !== 'off';
+const snapToGrid = (x) => (snapOn ? quant(Math.round(x / state.grid) * state.grid) : quant(x));
 const gridPx = () => state.grid * colPx;               // px per grid step at the current zoom
 
 const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -3566,7 +3579,7 @@ function renderTracks() {
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
     if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
-    if (velOpen.has(t.id)) tracksEl.appendChild(renderVelocityRow(t.id));
+    if (velOpen.has(t.id)) tracksEl.appendChild(renderVelocityRow(t.id, velOpen.get(t.id)));
   }
 }
 
@@ -3985,52 +3998,113 @@ const previewItem = (track, item) => {
   else previewNote(track, item);
 };
 const VEL_H = 76;
-const velOpen = new Set();
+// Which per-item value the lane is showing, per track. A Map, not a Set, for
+// the same reason automationOpen is one: the row has a parameter as well as an
+// open/closed state.
+const velOpen = new Map();
 const VEL_MIN = 0.1;
-function renderVelocityRow(track) {
+// The lane is generic over the per-item values that already exist on a note or
+// a hit — the same move AUTOMATION_PARAMS made for the automation row. A new
+// one is a row here, not another lane.
+//
+// `get`/`set` take the item so bend can work at all: it is stored as an
+// absolute target frequency, so semitones only mean anything next to the
+// note's own pitch. `zero` marks the value the axis should draw a line at,
+// for the two that are signed.
+const NOTE_LANE_PARAMS = {
+  vel: {
+    label: 'Velocity', min: VEL_MIN, max: 1,
+    format: (v) => Math.round(v * 100) + '%',
+    get: (it) => (it.vel != null ? it.vel : 1),
+    // Absent means full everywhere else, so storing 1 here would make a part
+    // nobody touched start serialising differently.
+    set: (it, v) => { if (v >= 1) delete it.vel; else it.vel = v; },
+  },
+  pan: {
+    label: 'Pan', min: -1, max: 1, zero: 0,
+    format: (v) => panLabel(v),
+    get: (it) => notePan(it),
+    set: (it, v) => { if (Math.abs(v) < 0.02) delete it.pan; else it.pan = round2(v); },
+  },
+  bend: {
+    label: 'Bend', min: -12, max: 12, zero: 0, tonalOnly: true,
+    format: (v) => (v > 0 ? '+' : '') + v.toFixed(0) + ' st',
+    get: (it) => (it.bend ? 12 * Math.log2(it.bend / it.freq) : 0),
+    set: (it, v) => {
+      const semis = Math.round(v);
+      if (!semis) it.bend = null; else it.bend = round2(it.freq * Math.pow(2, semis / 12));
+    },
+  },
+};
+const noteLaneParamsFor = (track) =>
+  Object.keys(NOTE_LANE_PARAMS).filter((k) => !(NOTE_LANE_PARAMS[k].tonalOnly && isRhythm(track)));
+function renderVelocityRow(track, param) {
+  const spec = NOTE_LANE_PARAMS[param] || NOTE_LANE_PARAMS.vel;
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
   row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
 
   const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = 'Velocity';
-  const closeBtn = el('button', 'vel-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close velocity lane';
+  const title = el('span', 'automation-title'); title.textContent = 'Note';
+  // Same shape as the automation row's parameter picker, over a different
+  // table: one lane, several values, rather than a lane per value.
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', 'Which per-note value this lane shows');
+  for (const key of noteLaneParamsFor(track)) {
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = NOTE_LANE_PARAMS[key].label;
+    if (key === param) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener('mousedown', (e) => e.stopPropagation());
+  select.addEventListener('change', (e) => { e.stopPropagation(); velOpen.set(track, select.value); render(); });
+  const closeBtn = el('button', 'vel-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close this lane';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); velOpen.delete(track); render(); });
-  header.append(title, closeBtn);
+  header.append(title, select, closeBtn);
 
   const gutter = el('div', 'gutter automation-gutter');
-  const hi = el('div', 'glabel'); hi.textContent = '100%';
-  const lo = el('div', 'glabel'); lo.textContent = '10%';
+  const hi = el('div', 'glabel'); hi.textContent = spec.format(spec.max);
+  const lo = el('div', 'glabel'); lo.textContent = spec.format(spec.min);
   gutter.append(hi, lo);
 
   const lane = el('div', 'lane vel-lane-el');
   lane.setAttribute('role', 'group');
-  lane.setAttribute('aria-label', `${trackName(track)} — velocity`);
+  lane.setAttribute('aria-label', `${trackName(track)} — ${spec.label.toLowerCase()}`);
   lane.style.height = VEL_H + 'px';
   lane.style.width = (COLS * colPx) + 'px';
   const epb = eighthsPerBar();
   lane.style.backgroundImage = `repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent ${epb * colPx}px)`;
 
   const colour = trackOf(track)?.color || '#8ab4ff';
-  const velOf = (item) => (item.vel != null ? item.vel : 1);
   // Same span the stems live in at both ends: a diamond is drawn centred on
   // its value, so the usable height has to leave room for half of one.
   const topPad = 7, botPad = 5;
-  const valueToY = (v) => topPad + (1 - (v - VEL_MIN) / (1 - VEL_MIN)) * (VEL_H - topPad - botPad);
+  const span = VEL_H - topPad - botPad;
+  const valueToY = (v) => topPad + (1 - (v - spec.min) / (spec.max - spec.min)) * span;
   const yToValue = (y) => {
-    const t = 1 - (y - topPad) / (VEL_H - topPad - botPad);
-    return Math.max(VEL_MIN, Math.min(1, Math.round((VEL_MIN + t * (1 - VEL_MIN)) * 100) / 100));
+    const t = 1 - (y - topPad) / span;
+    const raw = spec.min + t * (spec.max - spec.min);
+    return Math.max(spec.min, Math.min(spec.max, Math.round(raw * 100) / 100));
   };
+  // A signed value grows from its own zero, not from the floor — a stem for
+  // pan L40 that started at the bottom would read as "a lot of something"
+  // rather than "left of centre".
+  const baseY = spec.zero != null ? valueToY(spec.zero) : VEL_H - botPad;
+  if (spec.zero != null) {
+    const line = el('div', 'vel-zero');
+    line.style.top = baseY + 'px';
+    lane.appendChild(line);
+  }
 
   for (const item of state.tracks[track]) {
-    const v = velOf(item);
+    const v = spec.get(item);
     const x = item.start * colPx;
     const y = valueToY(v);
     const stem = el('div', 'vel-stem');
     stem.style.left = x + 'px';
-    stem.style.top = y + 'px';
-    stem.style.height = (VEL_H - botPad - y) + 'px';
+    stem.style.top = Math.min(y, baseY) + 'px';
+    stem.style.height = Math.abs(baseY - y) + 'px';
     stem.style.background = colour;
     lane.appendChild(stem);
 
@@ -4038,13 +4112,14 @@ function renderVelocityRow(track) {
     head.style.left = x + 'px';
     head.style.top = y + 'px';
     head.style.background = colour;
-    head.title = Math.round(v * 100) + '%';
+    head.title = spec.format(v);
     head.setAttribute('role', 'slider');
-    head.setAttribute('aria-label', itemAriaLabel(track, item) + ' velocity');
-    head.setAttribute('aria-valuemin', '10');
-    head.setAttribute('aria-valuemax', '100');
-    head.setAttribute('aria-valuenow', String(Math.round(v * 100)));
-    head.addEventListener('pointerdown', (e) => startVelocityDrag(e, track, item, lane, yToValue));
+    head.setAttribute('aria-label', itemAriaLabel(track, item) + ' ' + spec.label.toLowerCase());
+    head.setAttribute('aria-valuemin', String(spec.min));
+    head.setAttribute('aria-valuemax', String(spec.max));
+    head.setAttribute('aria-valuenow', String(round2(v)));
+    head.setAttribute('aria-valuetext', spec.format(v));
+    head.addEventListener('pointerdown', (e) => startVelocityDrag(e, track, item, lane, yToValue, spec));
     lane.appendChild(head);
   }
 
@@ -4054,17 +4129,17 @@ function renderVelocityRow(track) {
 // Dragging a head sets that one item's velocity. Commits on release rather
 // than per move, so a drag is one undo step — the same contract the note and
 // automation drags already keep.
-function startVelocityDrag(e, track, item, lane, yToValue) {
+function startVelocityDrag(e, track, item, lane, yToValue, spec) {
   e.preventDefault();
   e.stopPropagation();
   setActive(track);
   state.selected = { track, item };
   const rect = lane.getBoundingClientRect();
   const apply = (ev) => {
-    const v = yToValue(ev.clientY - rect.top);
-    // Absent means full, so full deletes the property rather than storing 1 —
-    // otherwise a song that never touched velocity stops serialising as it did.
-    if (v >= 1) delete item.vel; else item.vel = v;
+    // The table decides what storing a value means — including that a neutral
+    // one is stored as *absent*, which is the contract every per-item default
+    // in this app keeps.
+    spec.set(item, yToValue(ev.clientY - rect.top));
     scheduleRender();
   };
   apply(e);
@@ -4812,7 +4887,7 @@ function buildHeader(track) {
   velBtn.title = 'Velocity lane — how hard each note or hit is played';
   velBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (velOpen.has(track)) velOpen.delete(track); else velOpen.add(track);
+    if (velOpen.has(track)) velOpen.delete(track); else velOpen.set(track, 'vel');
     render();
   });
   tools.append(velBtn);
@@ -5898,11 +5973,16 @@ function startResize(e, track, idx) {
   const startLen = note.len;
   function onMove(ev) {
     if (ev.pointerId !== pointerId) return;
-    const deltaGrid = Math.round((ev.clientX - startX) / gridPx()) * state.grid;
-    const newLen = Math.max(state.grid, startLen + deltaGrid);
+    // Resizing rounds the *delta* rather than the resulting position, so it
+    // cannot go through snapToGrid() — but it still has to honour Slip, or
+    // lengths would keep snapping while starts stopped.
+    const dCols = (ev.clientX - startX) / colPx;
+    const deltaGrid = snapOn ? Math.round(dCols / state.grid) * state.grid : quant(dCols);
+    const minLen = snapOn ? state.grid : MICRO;
+    const newLen = Math.max(minLen, startLen + deltaGrid);
     const others = notes.filter((n, i) => i !== idx && n.freq === note.freq);
     const maxLen = nextNoteStart(others, note.start) - note.start;
-    note.len = quant(Math.min(newLen, Math.max(state.grid, maxLen)));
+    note.len = quant(Math.min(newLen, Math.max(minLen, maxLen)));
     scheduleRender();
   }
   function onUp(ev) {
@@ -5936,7 +6016,10 @@ function startMoveNote(e, track, idx) {
     const dx = ev.clientX - startX, dy = ev.clientY - startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
     if (!moved) return;
-    const deltaCols = Math.max(-minStart, Math.min(COLS - maxEnd, Math.round(dx / gridPx()) * state.grid));
+    // Third of the delta-based drags — see startResize() for why these cannot
+    // route through snapToGrid() and have to honour Slip themselves.
+    const stepped = snapOn ? Math.round(dx / gridPx()) * state.grid : quant(dx / colPx);
+    const deltaCols = Math.max(-minStart, Math.min(COLS - maxEnd, stepped));
     const pitchRowDelta = Math.max(maxMidi - MIDI_MAX, Math.min(minMidi - MIDI_MIN, Math.round(dy / ROW_H)));
     for (const { n, start, midi } of startPositions) {
       n.start = quant(start + deltaCols);
@@ -5979,7 +6062,11 @@ function startMoveHit(e, track, hit) {
   const startX = e.clientX, startY = e.clientY;
   function onMove(ev) {
     if (ev.pointerId !== pointerId) return;
-    const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, Math.round((ev.clientX - startX) / gridPx()) * state.grid));
+    // A delta, like the resize above, so it honours Slip explicitly rather
+    // than via snapToGrid().
+    const dCols = (ev.clientX - startX) / colPx;
+    const step = snapOn ? Math.round(dCols / state.grid) * state.grid : quant(dCols);
+    const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, step));
     const deltaRows = Math.max(-minRow, Math.min(RHYTHM_ROWS.length - 1 - maxRow, Math.round((ev.clientY - startY) / RHY_H)));
     for (const { h, start, row } of startPositions) { h.start = quant(start + deltaCols); h.type = RHYTHM_ROWS[row + deltaRows]; }
     scheduleRender();
@@ -6809,12 +6896,23 @@ document.getElementById('zoom-in').addEventListener('click', () => { zoomIndex =
 // ---------- Grid resolution (note snap) ----------
 const gridSelect = document.getElementById('grid-select');
 function syncGridUI() {
+  if (!snapOn) { gridSelect.value = 'free'; return; }
   const match = GRID_STEPS.find(g => Math.abs(g.eighths - state.grid) < EPS);
   if (match) gridSelect.value = match.id;
 }
 gridSelect.addEventListener('change', () => {
+  if (gridSelect.value === 'free') {
+    snapOn = false;
+    localStorage.setItem('frogger-music-editor-snap', 'off');
+    render();
+    return; // state.grid keeps its last value — it is still the note length
+  }
   const opt = GRID_STEPS.find(g => g.id === gridSelect.value);
-  if (opt) { state.grid = opt.eighths; render(); autosave(); }
+  if (!opt) return;
+  snapOn = true;
+  localStorage.setItem('frogger-music-editor-snap', 'on');
+  state.grid = opt.eighths;
+  render(); autosave();
 });
 syncGridUI();
 
