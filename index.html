@@ -1096,6 +1096,7 @@
         <li><span class="help-ico" data-glyph="pen"></span><b>Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
         <li><span class="help-ico" data-glyph="eraser"></span><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
         <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
+        <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse, for a part that came out too stiff. This is why <b>recording no longer snaps as you play</b> — a take keeps the timing you gave it, and correcting it is a separate decision you can make with a strength rather than one the recorder makes for you.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
@@ -1285,6 +1286,30 @@
     </div>
   </dialog>
 
+  <dialog id="timing-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="quantize"></span> Timing</h2>
+      <button id="timing-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note" id="timing-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
+      <label class="pattern-opt" for="timing-strength">Strength
+        <input type="range" id="timing-strength" min="0" max="1" step="0.05" value="1">
+        <output id="timing-strength-val">100%</output>
+        <span class="pattern-opt-note">— how far of the way to the grid each note moves. 100% lands it dead on the grid; 50% halves the error, which tightens a take without flattening it.</span>
+      </label>
+      <label class="pattern-opt" for="timing-amount">Humanize amount
+        <input type="range" id="timing-amount" min="0.17" max="1" step="0.17" value="0.33">
+        <output id="timing-amount-val">1/3 of an eighth</output>
+        <span class="pattern-opt-note">— how far a note may drift either way. The opposite operation, for a part that came out too stiff.</span>
+      </label>
+      <div class="pattern-opt">
+        <button id="timing-quantize">Quantize to the grid</button>
+        <button id="timing-humanize">Humanize</button>
+      </div>
+    </div>
+  </dialog>
+
   <h1 class="sr-only">Web Audio Studio — 8-bit chiptune editor</h1>
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
@@ -1308,6 +1333,7 @@
           <button id="save-file" class="file-menu-item" data-glyph="save">Save as .json</button>
           <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
+          <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="export" class="file-menu-item" data-glyph="code">Export code</button>
           <button id="export-midi" class="file-menu-item" data-glyph="midiOut">Export MIDI</button>
           <button id="import-midi" class="file-menu-item" data-glyph="midiIn">Import MIDI</button>
@@ -1691,6 +1717,9 @@ const GLYPHS = {
   automation: { box: '0 0 24 24', paths: ['M3 17c4 0 5-9 9-9s5 7 9 7'], },
   // The velocity lane draws stems of differing height with a diamond head, so
   // the icon is that: three stems, tallest in the middle, on a baseline.
+  // Quantize: two marks off the line being pulled onto it.
+  quantize: { box: '0 0 24 24', paths: ['M12 3v18', 'M6 7h4', 'M6 7l-2 0', 'M14 15h4', 'M18 15h2',
+                                        'M8.5 5.5L10.5 7L8.5 8.5z', 'M15.5 13.5L13.5 15L15.5 16.5z'], },
   velocity: { box: '0 0 24 24', paths: ['M3 20h18', 'M7 20V13', 'M12 20V6', 'M17 20V16',
                                         'M7 13l1.6 1.6L7 16.2 5.4 14.6z', 'M12 6l1.6 1.6L12 9.2 10.4 7.6z',
                                         'M17 16l1.6 1.6L17 19.2 15.4 17.6z'], },
@@ -7722,6 +7751,45 @@ function renderPatternList() {
 }
 document.getElementById('pattern-close').addEventListener('click', () => patternDialog.close());
 
+// ---------- Timing dialog (quantize / humanize) ----------
+const timingDialog = document.getElementById('timing-dialog');
+const timingStrength = document.getElementById('timing-strength');
+const timingStrengthVal = document.getElementById('timing-strength-val');
+const timingAmount = document.getElementById('timing-amount');
+const timingAmountVal = document.getElementById('timing-amount-val');
+// Says what the buttons will act on before they are pressed — "the selection
+// or the whole track" is a rule you should not have to remember mid-edit.
+function refreshTimingScope() {
+  const { track, items } = timingTargets();
+  const kind = isRhythm(track) ? 'hit' : 'note';
+  const what = state.multiSelected.size || (state.selected && state.selected.track === track)
+    ? `the ${items.length} selected ${kind}${items.length === 1 ? '' : 's'}`
+    : `all ${items.length} ${kind}${items.length === 1 ? '' : 's'} on ${trackName(track)}`;
+  document.getElementById('timing-scope').textContent =
+    `Acts on ${what}, snapping to the current grid (${gridSelect.selectedOptions[0]?.textContent.trim() || ''}).`;
+}
+timingStrength.addEventListener('input', () => {
+  timingStrengthVal.textContent = Math.round(parseFloat(timingStrength.value) * 100) + '%';
+});
+timingAmount.addEventListener('input', () => {
+  const sixths = Math.round(parseFloat(timingAmount.value) / MICRO);
+  timingAmountVal.textContent = sixths === 6 ? 'a whole eighth' : `${sixths}/6 of an eighth`;
+});
+document.getElementById('timing-btn').addEventListener('click', () => {
+  closeFileMenu();
+  refreshTimingScope();
+  timingDialog.showModal();
+});
+document.getElementById('timing-close').addEventListener('click', () => timingDialog.close());
+document.getElementById('timing-quantize').addEventListener('click', () => {
+  runQuantize(parseFloat(timingStrength.value));
+  refreshTimingScope();
+});
+document.getElementById('timing-humanize').addEventListener('click', () => {
+  runHumanize(parseFloat(timingAmount.value));
+  refreshTimingScope();
+});
+
 // ---------- Playback ----------
 let ctx = null, loopTimer = null, playing = false;
 let masterGain = null;
@@ -9491,6 +9559,12 @@ function setRecTrack(id) {
 // Audio time -> the column it lands on, using the anchor the playhead animation
 // already keeps. Quantised to the current grid, which is what makes a part
 // played by hand line up with one placed by mouse.
+// Where an audio timestamp falls, in columns. Recording keeps what this
+// returns, re-latticed to MICRO (1/6 of an eighth) but **not snapped to the
+// edit grid** — snapping on the way in threw the performance away at the
+// moment it was played, and no later operation could get it back. Capture and
+// correction are separate now: quantizeItems() does the correcting, with a
+// strength, so a take can be tidied without being flattened.
 function ctxTimeToCol(t) {
   const eighthSec = 60 / state.tempo / 2;
   return playStartCol + (t - playStartCtxTime) / eighthSec;
@@ -9621,7 +9695,7 @@ function recDrumDown(id, type, vel) {
   try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
   scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, vel, 0, getTrackKitId(track));
   // A hit has no length, so it is committed the moment it is struck.
-  if (recording) commitHit(track, type, snapToGrid(ctxTimeToCol(ctx.currentTime)), vel);
+  if (recording) commitHit(track, type, quant(ctxTimeToCol(ctx.currentTime)), vel);
   else if (stepEntryActive()) {
     const col = beginStep();
     commitHit(track, type, col, vel);
@@ -9642,7 +9716,7 @@ function recNoteDown(id, midi, vel) {
     commitNote(track, midi, col, state.grid, vel);
     announce(`${midiToName(midi)}, ${colToBarBeat(col)}`);
   }
-  heldKeys.set(id, { midi, vel, startCol: recording ? snapToGrid(ctxTimeToCol(ctx.currentTime)) : null });
+  heldKeys.set(id, { midi, vel, startCol: recording ? quant(ctxTimeToCol(ctx.currentTime)) : null });
   return true;
 }
 // The computer keyboard's own layer: resolve a key code to a note or a kit
@@ -9668,7 +9742,7 @@ function recKeyUp(id) {
   if (track && held.midi != null && held.startCol != null && recording) {
     // Length from how long the key was down, floored at one grid step so a
     // stab still lands as a note rather than nothing.
-    const end = snapToGrid(ctxTimeToCol(ctx.currentTime));
+    const end = quant(ctxTimeToCol(ctx.currentTime));
     commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol), held.vel);
   }
   // Not in the guard above: a stepped chord has to move the cursor on when its
@@ -9756,6 +9830,83 @@ syncMidiUI();
 function releaseAllKeys() {
   for (const code of [...heldKeys.keys()]) recKeyUp(code);
   heldKeys.clear();
+}
+// ---------- Quantize / humanize ----------
+// Correcting a take, kept separate from capturing it. `strength` is how far of
+// the way to the grid each item moves: 1 lands it dead on, 0.5 halves the
+// error, which is what keeps the feel while losing the slop. Anything that
+// only ever snapped fully would be the same lossy thing recording used to do,
+// one step later.
+//
+// Everything lands back on the MICRO lattice and goes through the shared
+// conflict predicates, so a moved item replaces an overlapping one of the same
+// pitch/drum rather than stacking on it — the same rule every other placement
+// path follows.
+function quantizeStart(start, strength) {
+  const target = Math.round(start / state.grid) * state.grid;
+  return Math.max(0, Math.min(COLS - MICRO, quant(start + (target - start) * strength)));
+}
+function humanizeStart(start, amount) {
+  const drift = (Math.random() * 2 - 1) * amount;
+  return Math.max(0, Math.min(COLS - MICRO, quant(start + drift)));
+}
+// Applies `move` to each item, then rebuilds the track so collisions are
+// resolved once at the end. Returns how many items actually moved.
+function applyTiming(track, items, move) {
+  const targets = new Set(items);
+  const rest = state.tracks[track].filter((it) => !targets.has(it));
+  let moved = 0;
+  for (const it of items) {
+    const before = it.start;
+    it.start = move(before);
+    if (it.start !== before) moved++;
+  }
+  const conflict = isRhythm(track) ? hitsConflict : notesConflict;
+  // Two moved items can land on each other — quantizing a fast run at one
+  // pitch collapses it onto a single column — so they are resolved against
+  // one another as well as against the items that did not move. Earliest
+  // wins, which is what a listener would have heard first.
+  const survivors = [];
+  for (const it of [...items].sort((a, b) => a.start - b.start)) {
+    if (!survivors.some((o) => conflict(o, it))) survivors.push(it);
+  }
+  let kept = rest;
+  for (const it of survivors) kept = kept.filter((o) => !conflict(o, it));
+  state.tracks[track] = [...kept, ...survivors].sort((a, b) => a.start - b.start);
+  return moved;
+}
+// What the operation acts on: the current multi-selection, or the single
+// selected item, or — with nothing selected — the whole active track. Same
+// widening every other selection-aware action in the app uses.
+function timingTargets() {
+  const track = state.activeTrack;
+  if (state.multiSelected.size) return { track, items: [...state.multiSelected] };
+  if (state.selected && state.selected.track === track) return { track, items: [state.selected.item] };
+  return { track, items: [...state.tracks[track]] };
+}
+// Anything applyTiming() merged away is gone from the track, so the selection
+// must let go of it — a selected note that no longer exists would be nudged
+// and drawn as if it did.
+function dropVanishedSelection(track) {
+  const live = new Set(state.tracks[track]);
+  for (const it of [...state.multiSelected]) if (!live.has(it)) state.multiSelected.delete(it);
+  if (state.selected && !live.has(state.selected.item)) state.selected = null;
+}
+function runQuantize(strength) {
+  const { track, items } = timingTargets();
+  if (!items.length) { announce('Nothing to quantize'); return; }
+  const moved = applyTiming(track, items, (st) => quantizeStart(st, strength));
+  dropVanishedSelection(track);
+  commitHistory(); render(); autosave();
+  announce(`Quantized ${items.length} ${isRhythm(track) ? 'hits' : 'notes'} at ${Math.round(strength * 100)}% — ${moved} moved`);
+}
+function runHumanize(amount) {
+  const { track, items } = timingTargets();
+  if (!items.length) { announce('Nothing to humanize'); return; }
+  applyTiming(track, items, (st) => humanizeStart(st, amount));
+  dropVanishedSelection(track);
+  commitHistory(); render(); autosave();
+  announce(`Humanized ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
 }
 function commitNote(track, midi, start, len, vel = 1) {
   if (start < 0 || start >= COLS) return;

@@ -3775,6 +3775,112 @@ async function main() {
       await goto(APP_URL);
     });
 
+    step('Timing: quantize moves by its strength, and 0% moves nothing', async () => {
+      // Capture and correction are separate now — recording keeps the timing
+      // it was played with, and this is what tidies it afterwards. The
+      // assertions are the two ends plus proportionality, because those are
+      // deterministic: humanize is random, so anything asserting "it landed
+      // off the grid" would pass or fail on a dice roll.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track[data-kind="pitch"] .lane')`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (let i = 0; i < 4; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 70, clientY: r.top + 25 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .note').length === 4`);
+
+      const starts = async () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind !== 'rhythm').id;
+        return d.tracks[id].map(n => n.start).sort((a, b) => a - b);
+      })()`);
+      // Total distance from the grid. `grid` is 1 (an eighth) on a fresh page.
+      const err = (list) => list.reduce((sum, st) => sum + Math.abs(st - Math.round(st)), 0);
+
+      const openTiming = async () => {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('timing-btn').click()`);
+        await waitFor(`document.getElementById('timing-dialog').open === true`);
+      };
+      const run = async (id, value, slider) => {
+        await cdp.evaluate(`(() => {
+          const s = document.getElementById('${slider}');
+          s.value = '${value}'; s.dispatchEvent(new Event('input', { bubbles: true }));
+          document.getElementById('${id}').click();
+        })()`);
+        await new Promise((r) => setTimeout(r, 500));
+      };
+
+      await openTiming();
+      // Scatter them first, so there is an error to correct at all.
+      await run('timing-humanize', '1', 'timing-amount');
+      const scattered = await starts();
+      if (scattered.length !== 4) throw new Error(`humanize should not lose notes, got ${JSON.stringify(scattered)}`);
+
+      // Strength 0 is the sharp end: a quantize that ignores its strength
+      // would snap everything here, and nothing else in this step would notice.
+      await run('timing-quantize', '0', 'timing-strength');
+      const atZero = await starts();
+      if (JSON.stringify(atZero) !== JSON.stringify(scattered)) {
+        throw new Error(`quantize at 0% must move nothing: ${JSON.stringify(scattered)} -> ${JSON.stringify(atZero)}`);
+      }
+
+      // Half strength halves the error rather than removing it.
+      const before = err(scattered);
+      await run('timing-quantize', '0.5', 'timing-strength');
+      const half = await starts();
+      const midErr = err(half);
+      if (midErr > before + 1e-9) {
+        throw new Error(`quantize at 50% should move notes toward the grid, error ${before} -> ${midErr}`);
+      }
+      if (before > 0.2 && !(midErr > 0)) {
+        throw new Error(`quantize at 50% should not land dead on the grid: ${JSON.stringify(half)}`);
+      }
+
+      // Full strength puts every note on a grid line.
+      await run('timing-quantize', '1', 'timing-strength');
+      const full = await starts();
+      if (full.length !== 4) throw new Error(`quantize should not lose notes, got ${JSON.stringify(full)}`);
+      if (err(full) > 1e-6) {
+        throw new Error(`quantize at 100% should land every note on the grid: ${JSON.stringify(full)}`);
+      }
+
+      // Quantizing a run at one pitch collapses it onto a single column, and
+      // two notes at the same pitch and column is a duplicate the app never
+      // allows anywhere else. Four notes were placed at four pitches above, so
+      // stack a same-pitch run and check it merges instead.
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        // Same row, three adjacent grid steps.
+        for (let i = 0; i < 3; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 420 + i * 24, clientY: r.top + 60 }));
+        }
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+      await run('timing-quantize', '1', 'timing-strength');
+      const merged = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind !== 'rhythm').id;
+        const seen = new Set(); let dupes = 0;
+        for (const n of d.tracks[id]) {
+          const key = n.start + '@' + n.freq;
+          if (seen.has(key)) dupes++;
+          seen.add(key);
+        }
+        return dupes;
+      })()`);
+      if (merged) throw new Error(`quantize left ${merged} notes stacked at the same pitch and column`);
+
+      await cdp.evaluate(`document.getElementById('timing-close').click()`);
+      await goto(APP_URL);
+    });
+
     step('Transport: every button centres its symbol, and Record is filled like Play/Stop', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
