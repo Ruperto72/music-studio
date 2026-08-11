@@ -749,10 +749,27 @@ async function main() {
     });
 
     step('adds a track via the menu and undoes it', async () => {
-      const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+      // This step used to stop after adding — it never undid anything, so the
+      // half its own name promised was untested. Found by counting assertions
+      // per step rather than by reading: it had none at all.
+      const ids = () => cdp.evaluate(`[...document.querySelectorAll('.track')].map(t => t.dataset.track)`);
+      const before = await ids();
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add track')).click()`);
-      await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
+      await waitFor(`document.querySelectorAll('.track').length === ${before.length} + 1`);
+      const added = (await ids()).find((id) => !before.includes(id));
+      if (!added) throw new Error('the new track has no id of its own');
+
+      await cdp.evaluate(`document.querySelector('#undo-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track').length === ${before.length}`, 4000)
+        .catch(() => { throw new Error('undo did not remove the added track'); });
+      // The count coming back is not enough — undo has to restore the same
+      // tracks, not merely the same number of them.
+      const after = await ids();
+      if (JSON.stringify(after) !== JSON.stringify(before)) {
+        throw new Error(`undo should restore the same track list: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+      }
+      if (after.includes(added)) throw new Error('the undone track is still there');
     });
 
     step('Pen: clicking a different pitch at the same time in a tonal track adds a chord tone, not a replacement', async () => {
