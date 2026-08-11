@@ -1651,6 +1651,32 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   moment the kit picker adopted that trigger, five verify steps timed out at
   once against working code. Inference from an incidental UI detail is a
   coupling nothing warns you about until it breaks.
+- **Capture and correction pulled apart.** Recording used to snap on the way
+  in — `snapToGrid(ctxTimeToCol(...))` for hits, `quant(start)` inside
+  `commitNote()` — so the performance was discarded at the moment it was
+  played and no later operation could recover it. A take was either right or
+  had to be done again. It now keeps what was played, re-latticed to `MICRO`
+  (1/6 of an eighth) but **not** to the edit grid.
+  The correcting is a separate operation: `runQuantize()`/`runHumanize()`,
+  behind the menu's Timing dialog. The whole point is `strength` —
+  `quantizeStart()` moves an item that fraction of the way to the grid, so
+  100% lands it dead on and 50% halves the error, which tightens a take
+  without flattening the feel. A quantize with no strength would be the same
+  lossy thing recording used to do, one step later, which is why the verify
+  step's sharp assertion is that **0% moves nothing**: a build that ignored
+  strength would snap everything there and nothing else in that step would
+  notice. Humanize is the same shape with a random offset, for a part that
+  came out too stiff.
+  `timingTargets()` widens from the multi-selection to the single selection to
+  the whole active track — the same widening every other selection-aware
+  action uses — and `applyTiming()` rebuilds the track through
+  `notesConflict`/`hitsConflict` so a moved item replaces an overlapping one
+  rather than stacking on it.
+  **The resolution ceiling is worth knowing**: MICRO is about 42 ms at 120 BPM,
+  so a take is now captured six times finer than the old whole-eighth snap but
+  not sample-accurately. Feel below that is still lost, and lowering it is a
+  change to the grid model, the pattern tables and MIDI export — not to this
+  code.
 - **The gutter is a keyboard, and there is a velocity lane.** Both came from
   one request, and both are about reading rather than storing: the data was
   already there.

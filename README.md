@@ -42,6 +42,10 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   as tall as it is loud, with a diamond head to drag. The grid dims a quiet
   item, but *which of these is loudest* is a comparison, and heights compare
   better than shades of one colour
+- **Quantize and humanize** (menu → Timing), with a **strength**: 100% lands
+  every note on the grid, 50% halves the error and keeps the feel. Recording
+  no longer snaps as you play — a take keeps your timing, and correcting it is
+  a separate decision
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
 - **Chords** — place several pitches in one column, or build one from a
