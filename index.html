@@ -583,6 +583,36 @@
   .gutter .glabel.c { color: #b7b7c4; }
   .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+  /* A tonal track's gutter is a keyboard rather than a column of note names.
+     Every semitone gets an equal row here (that is what a piano roll is), so
+     a key is that row drawn as a key: white keys fill the width, black keys
+     are darker and shorter, which is the shape the eye reads as a keyboard
+     even without the real overlapping geometry. Only C is labelled — with the
+     octave alone — because naming all twelve is what the old gutter did and it
+     turned the column into a wall of text. */
+  .gutter .pkey {
+    /* Overrides the global button rule wholesale — a key is a shape in a
+       column, not a chip with padding and rounded corners. */
+    display: flex; align-items: center; justify-content: flex-start;
+    font-size: 8px; padding: 0; margin: 0; border: 0; border-radius: 0;
+    width: 100%; height: 100%; min-width: 0; cursor: pointer;
+    font-family: inherit; text-align: left; position: relative;
+  }
+  .gutter .pkey.white { background: #d9d9de; color: #5a5a64; border-bottom: 1px solid #a9a9b2; }
+  /* Black keys are the darkest thing in the column, so they need an edge to
+     read as keys rather than as gaps between the white ones — the gutter's own
+     background is nearly the same colour. Short, like the real thing. */
+  .gutter .pkey.black {
+    background: #1b1b21; color: #8d8d99; width: 64%;
+    border-bottom: 1px solid #000; border-right: 1px solid #3a3a44;
+  }
+  .gutter .pkey.white:hover { background: #ecedf2; }
+  .gutter .pkey.black:hover { background: #2b2b34; }
+  /* Held: the track's own colour, set inline — the same colour its notes are
+     drawn in, so a sounding key and the notes it writes read as one thing. */
+  .gutter .pkey.down { filter: brightness(1.35); }
+  .gutter .pkey .koct { padding-left: 4px; opacity: 0.75; font-weight: 700; }
+
   /* Automation lane — an extra full-width row under a track, shown while its
      AUTO panel is toggled open (see renderAutomationRow()). Reuses .track/
      .track-header/.gutter/.lane so it inherits the same sticky positioning. */
@@ -600,6 +630,21 @@
   .automation-header button:hover { border-color: #55555f; }
   .automation-gutter { display: flex; flex-direction: column; justify-content: space-between; padding: 4px 0; }
   .automation-lane-el { position: relative; cursor: crosshair; }
+  /* Velocity lane: a stem per item with a diamond head. The head is a rotated
+     square rather than a circle so it stays readable at 8px and doesn't get
+     confused with the automation curve's round points, which are a different
+     kind of thing (a curve over time, not one item's value). */
+  .vel-lane-el { position: relative; }
+  .vel-stem { position: absolute; width: 2px; margin-left: -1px; opacity: 0.85; pointer-events: none; }
+  .vel-head {
+    position: absolute; width: 9px; height: 9px; margin-left: -4.5px; margin-top: -4.5px;
+    transform: rotate(45deg); cursor: ns-resize; border: 1px solid rgba(0,0,0,0.5);
+  }
+  .vel-head:hover { filter: brightness(1.3); }
+  .vel-head.selected { border-color: var(--sel-edge); box-shadow: 0 0 0 2px rgba(255,255,255,0.25); }
+  /* The velocity header has one button where the others have two, so without
+     this it stretches across the whole 260px column. */
+  .automation-header .vel-close { flex: 0 0 auto; align-self: center; margin-left: auto; }
   .automation-svg { position: absolute; left: 0; top: 0; pointer-events: none; }
   .automation-zero-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.15); pointer-events: none; }
   .automation-point {
@@ -1034,6 +1079,8 @@
         <li>Each track's <b>channel strip</b> (left) starts with its name, <b>M</b>ute / <b>S</b>olo, record-arm and remove, then three labelled sections: <b>Osc</b> (the waveform — or "Kit" for rhythm — plus the Auto/Env/Preset buttons), <b>Inserts</b> (the effect chips, see below) and <b>Output</b> (volume, pan and a level meter).</li>
         <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
+        <li>A tonal track's left edge is a <b>piano keyboard</b> rather than a column of note names — white and black keys, with only C labelled, by its octave. <b>Press a key to hear it</b>, and drag down the keys to glissando; it sounds through the track's own instrument, so what you hear is what writing a note there would give you. A rhythm track keeps its ten piece names, since a drum has no pitch to show.</li>
+        <li>The <span class="help-ico" data-glyph="velocity"></span><b>Vel</b> button opens a <b>velocity lane</b> under the track: one stem per note or hit, as tall as it is loud, with a diamond head you can drag. The grid already dims a quiet item, but <i>which of these is loudest</i> is a comparison, and heights compare far better than shades of one colour. Works on rhythm tracks too — that is where accents matter most. Dragging a head to the top removes the velocity again rather than storing 100%, so a part you never touched saves exactly as it did before.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
@@ -1642,6 +1689,11 @@ const GLYPHS = {
   zoomOut:  { box: '0 0 24 24', paths: ['M17.5 17.5L21 21', 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z', 'M7.5 11h7'] },
   // Track-header buttons.
   automation: { box: '0 0 24 24', paths: ['M3 17c4 0 5-9 9-9s5 7 9 7'], },
+  // The velocity lane draws stems of differing height with a diamond head, so
+  // the icon is that: three stems, tallest in the middle, on a baseline.
+  velocity: { box: '0 0 24 24', paths: ['M3 20h18', 'M7 20V13', 'M12 20V6', 'M17 20V16',
+                                        'M7 13l1.6 1.6L7 16.2 5.4 14.6z', 'M12 6l1.6 1.6L12 9.2 10.4 7.6z',
+                                        'M17 16l1.6 1.6L17 19.2 15.4 17.6z'], },
   envelope: { box: '0 0 24 24', paths: ['M3 19l4-13 4 9 3-4 3 5 4-2'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
@@ -3485,6 +3537,7 @@ function renderTracks() {
     else renderPitchTrack(t.id);
     if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
     if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
+    if (velOpen.has(t.id)) tracksEl.appendChild(renderVelocityRow(t.id));
   }
 }
 
@@ -3581,6 +3634,7 @@ function removeTrack(id) {
   delete vuLevel[id]; delete vuMeters[id]; automationOpen.delete(id); adsrOpen.delete(id);
   if (fxAddMenuOpen === id) fxAddMenuOpen = null;
   if (oscPickerOpen === id) oscPickerOpen = null;
+  velOpen.delete(id);
   delete winCache[id]; delete manualPitchWindow[id]; delete pitchWheelAccum[id];
   refreshTrackArrays();
   if (state.activeTrack === id) activateTrack((state.trackList[0] || { id: 'rhythm' }).id);
@@ -3885,6 +3939,118 @@ function setAdsr(track, patch) {
 // sliders (not a column-indexed curve), so the "lane" is a plain flex row
 // rather than something sized off COLS/colPx. Shares one row/toggle with the
 // filter controls since the filter envelope reuses this same ADSR shape.
+// The velocity lane: one stem per note or hit, at its own start column, as
+// tall as its velocity, with a diamond head you can drag. It answers a
+// question the grid cannot — the grid dims a quiet item, but "which of these
+// is loudest" is a comparison, and eyes compare heights far better than
+// shades of the same colour.
+//
+// It works on rhythm tracks too. Velocity is `item.vel` under the same
+// **absent means full** rule everywhere else uses (hitVel()), and both kinds
+// of item carry `start`, so nothing here needs to know which it is drawing.
+// A note and a hit are the same thing to the velocity lane, so the two places
+// it has to tell them apart are named once here rather than branched inline.
+const itemAriaLabel = (track, item) => (isRhythm(track) ? hitAriaLabel(item) : noteAriaLabel(item));
+const previewItem = (track, item) => {
+  if (isRhythm(track)) previewHit(item.type, hitVel(item), hitPan(item));
+  else previewNote(track, item);
+};
+const VEL_H = 76;
+const velOpen = new Set();
+const VEL_MIN = 0.1;
+function renderVelocityRow(track) {
+  const row = el('div', 'track automation-row');
+  row.dataset.track = track;
+  row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
+
+  const header = el('div', 'track-header automation-header');
+  const title = el('span', 'automation-title'); title.textContent = 'Velocity';
+  const closeBtn = el('button', 'vel-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close velocity lane';
+  closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); velOpen.delete(track); render(); });
+  header.append(title, closeBtn);
+
+  const gutter = el('div', 'gutter automation-gutter');
+  const hi = el('div', 'glabel'); hi.textContent = '100%';
+  const lo = el('div', 'glabel'); lo.textContent = '10%';
+  gutter.append(hi, lo);
+
+  const lane = el('div', 'lane vel-lane-el');
+  lane.setAttribute('role', 'group');
+  lane.setAttribute('aria-label', `${trackName(track)} — velocity`);
+  lane.style.height = VEL_H + 'px';
+  lane.style.width = (COLS * colPx) + 'px';
+  const epb = eighthsPerBar();
+  lane.style.backgroundImage = `repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent ${epb * colPx}px)`;
+
+  const colour = trackOf(track)?.color || '#8ab4ff';
+  const velOf = (item) => (item.vel != null ? item.vel : 1);
+  // Same span the stems live in at both ends: a diamond is drawn centred on
+  // its value, so the usable height has to leave room for half of one.
+  const topPad = 7, botPad = 5;
+  const valueToY = (v) => topPad + (1 - (v - VEL_MIN) / (1 - VEL_MIN)) * (VEL_H - topPad - botPad);
+  const yToValue = (y) => {
+    const t = 1 - (y - topPad) / (VEL_H - topPad - botPad);
+    return Math.max(VEL_MIN, Math.min(1, Math.round((VEL_MIN + t * (1 - VEL_MIN)) * 100) / 100));
+  };
+
+  for (const item of state.tracks[track]) {
+    const v = velOf(item);
+    const x = item.start * colPx;
+    const y = valueToY(v);
+    const stem = el('div', 'vel-stem');
+    stem.style.left = x + 'px';
+    stem.style.top = y + 'px';
+    stem.style.height = (VEL_H - botPad - y) + 'px';
+    stem.style.background = colour;
+    lane.appendChild(stem);
+
+    const head = el('div', 'vel-head' + (state.selected && state.selected.item === item ? ' selected' : ''));
+    head.style.left = x + 'px';
+    head.style.top = y + 'px';
+    head.style.background = colour;
+    head.title = Math.round(v * 100) + '%';
+    head.setAttribute('role', 'slider');
+    head.setAttribute('aria-label', itemAriaLabel(track, item) + ' velocity');
+    head.setAttribute('aria-valuemin', '10');
+    head.setAttribute('aria-valuemax', '100');
+    head.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+    head.addEventListener('pointerdown', (e) => startVelocityDrag(e, track, item, lane, yToValue));
+    lane.appendChild(head);
+  }
+
+  row.append(header, gutter, lane);
+  return row;
+}
+// Dragging a head sets that one item's velocity. Commits on release rather
+// than per move, so a drag is one undo step — the same contract the note and
+// automation drags already keep.
+function startVelocityDrag(e, track, item, lane, yToValue) {
+  e.preventDefault();
+  e.stopPropagation();
+  setActive(track);
+  state.selected = { track, item };
+  const rect = lane.getBoundingClientRect();
+  const apply = (ev) => {
+    const v = yToValue(ev.clientY - rect.top);
+    // Absent means full, so full deletes the property rather than storing 1 —
+    // otherwise a song that never touched velocity stops serialising as it did.
+    if (v >= 1) delete item.vel; else item.vel = v;
+    scheduleRender();
+  };
+  apply(e);
+  const move = (ev) => apply(ev);
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    previewItem(track, item);
+    commitHistory();
+    render();
+    autosave();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
 function renderAdsrRow(track) {
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
@@ -4612,6 +4778,15 @@ function buildHeader(track) {
     render();
   });
   tools.append(autoBtn);
+  const velBtn = el('button', 'th-tool-btn' + (velOpen.has(track) ? ' on' : ''));
+  setGlyphLabel(velBtn, 'velocity', 'Vel');
+  velBtn.title = 'Velocity lane — how hard each note or hit is played';
+  velBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (velOpen.has(track)) velOpen.delete(track); else velOpen.add(track);
+    render();
+  });
+  tools.append(velBtn);
   if (!isRhythm(track)) { // drum hits use fixed per-type envelopes, not a shared ADSR
     const adsrBtn = el('button', 'th-tool-btn' + (adsrOpen.has(track) ? ' on' : ''));
     setGlyphLabel(adsrBtn, 'envelope', 'Env');
@@ -4705,6 +4880,48 @@ function buildHeader(track) {
   return header;
 }
 
+// One row of a tonal track's gutter, drawn as a piano key and playable.
+// Pressing it auditions that pitch on this track — the same previewNote() path
+// clicking a note takes, so a key cannot sound different from what it writes.
+// It is pointerdown, not click: a keyboard answers when you press it, and this
+// way a drag down the keys glissandos.
+//
+// The keys are `tabindex="-1"` on purpose. Making each one tabbable would add
+// thirty-odd Tab stops per track, on top of the note roving-tabindex, and Tab
+// would stop being a way to move around the page. Auditioning a pitch from the
+// keyboard already exists and is better: arm the track and the letter keys
+// play it (see stepEntryActive()).
+function buildKeyCell(track, midi, isBlack, isC) {
+  const k = el('button', 'pkey ' + (isBlack ? 'black' : 'white'));
+  k.type = 'button';
+  k.tabIndex = -1;
+  k.dataset.midi = String(midi); // the pitch itself, rather than something that has to be parsed back out of the label
+  k.setAttribute('aria-label', midiToName(midi) + ' — play on ' + trackName(track));
+  k.title = midiToName(midi);
+  if (isC) {
+    const oct = el('span', 'koct');
+    oct.textContent = String(Math.floor(midi / 12) - 1);
+    k.appendChild(oct);
+  }
+  const colour = trackOf(track)?.color;
+  const press = (e) => {
+    e.preventDefault(); // don't start a text selection while dragging the keys
+    e.stopPropagation();
+    if (colour) k.style.background = colour;
+    k.classList.add('down');
+    previewNote(track, { freq: round2(midiToFreq(midi)), len: state.grid, vel: 1 });
+  };
+  const release = () => {
+    k.classList.remove('down');
+    k.style.background = '';
+  };
+  k.addEventListener('pointerdown', press);
+  k.addEventListener('pointerenter', (e) => { if (e.buttons & 1) press(e); });
+  k.addEventListener('pointerup', release);
+  k.addEventListener('pointerleave', release);
+  k.addEventListener('pointercancel', release);
+  return k;
+}
 function buildGutterCell(text, cls, title) {
   const g = el('div', 'glabel' + (cls ? ' ' + cls : ''));
   g.textContent = text;
@@ -4797,12 +5014,14 @@ function renderPitchTrack(track) {
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
-  if (active) gutter.title = 'Scroll to change octave';
+  gutter.setAttribute('role', 'group');
+  gutter.setAttribute('aria-label', trackName(track) + ' — keyboard');
+  if (active) gutter.title = 'Click a key to hear it. Scroll to change octave.';
   for (let p = 0; p < pitchCount; p++) {
     const midi = win.max - p;
     const isC = midi % 12 === 0;
     const isBlack = NOTE_NAMES[((midi % 12) + 12) % 12].includes('#');
-    gutter.appendChild(buildGutterCell(isBlack ? '' : midiToName(midi), isC ? 'c' : ''));
+    gutter.appendChild(buildKeyCell(track, midi, isBlack, isC));
   }
   attachPitchWheel(gutter, track);
   row.appendChild(gutter);

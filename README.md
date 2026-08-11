@@ -34,6 +34,14 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   kit drawing the shape of its own decay. Same rows, same patterns, same hits:
   switching re-voices the part without touching a note of it, and the choice
   saves with the song
+- A **playable piano keyboard** down the left of every tonal track instead of a
+  column of note names — press a key to hear it through that track's own
+  instrument, drag down the keys to glissando. Rhythm tracks keep their ten
+  piece names
+- A **velocity lane** per track (the **Vel** button): one stem per note or hit,
+  as tall as it is loud, with a diamond head to drag. The grid dims a quiet
+  item, but *which of these is loudest* is a comparison, and heights compare
+  better than shades of one colour
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
 - **Chords** — place several pitches in one column, or build one from a
