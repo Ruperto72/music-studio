@@ -770,6 +770,12 @@ async function main() {
         throw new Error(`undo should restore the same track list: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
       }
       if (after.includes(added)) throw new Error('the undone track is still there');
+      // Undo rolls the *song* back, not just the track list, so this step now
+      // hands the next one a different starting state than it used to — which
+      // is exactly what broke the two steps after it on the first run. Reload
+      // so what follows starts from a defined state rather than from whatever
+      // this step happened to leave.
+      await goto(APP_URL);
     });
 
     step('Pen: clicking a different pitch at the same time in a tonal track adds a chord tone, not a replacement', async () => {
