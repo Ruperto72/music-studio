@@ -1651,6 +1651,40 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   moment the kit picker adopted that trigger, five verify steps timed out at
   once against working code. Inference from an incidental UI detail is a
   coupling nothing warns you about until it breaks.
+- **The gutter is a keyboard, and there is a velocity lane.** Both came from
+  one request, and both are about reading rather than storing: the data was
+  already there.
+  A tonal track's gutter used to be a column of note names. Every semitone gets
+  an equal row in a piano roll, so a key is that row drawn as a key — white
+  keys full width, black keys darker and 64% wide. That is not the real
+  overlapping geometry, but it is the shape the eye reads as a keyboard, and
+  only C is labelled, by its octave alone: naming all twelve is what the old
+  gutter did and it made the column a wall of text. Pressing a key auditions
+  the pitch through `previewNote()`, **the same path clicking a note takes**,
+  so a key cannot sound different from what writing there would give you. It
+  fires on `pointerdown` rather than click — a keyboard answers when you press
+  it — which also makes a drag down the keys glissando. The keys are
+  `tabindex="-1"` deliberately: one Tab stop per semitone per track would
+  swamp the notes' roving tabindex, and playing from the computer keyboard
+  already exists and is better (arm the track; see step entry). Each key
+  carries `data-midi`, so anything needing the pitch reads it instead of
+  parsing it back out of a label written for a human.
+  The **velocity lane** is one stem per item at its start column, as tall as
+  its velocity, with a draggable diamond head. The grid already dims a quiet
+  item, so this is not new information — it is a *comparison*, and "which of
+  these is loudest" is something eyes read from heights far better than from
+  shades of one colour. It works on rhythm tracks unchanged: notes and hits
+  both carry `start` and the same absent-means-full `vel`, and the two places
+  that must tell them apart are named once (`itemAriaLabel()`/`previewItem()`).
+  Dragging a head to the top **deletes** `vel` rather than storing 1, keeping
+  the serialisation contract every other absent-means-default value keeps.
+  Both verify steps had to be written twice. The first pair passed against
+  deliberately broken code: counting oscillators after a key press is
+  satisfied by the channel's own PWM sweep LFO, and asserting only that stem
+  heights *differ* is satisfied by three identical stems when the notes differ.
+  They now assert the pressed key's own frequency reaches the graph, and pair
+  each stem with the velocity beside it so the quietest note must draw the
+  shortest stem.
 - **Seeded noise**: the reverb impulse (`ensureReverbImpulse()`) and the two
   drum noise buffers (`ensureNoiseBuffer()` for hi-hat/snare/rim/shaker,
   `ensureCrashNoiseBuffer()` for crash/open-hat/ride) are filled from

@@ -3623,6 +3623,158 @@ async function main() {
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
     });
 
+    step('Keyboard gutter: keys instead of note names, and pressing one is audible', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track[data-kind="pitch"] .gutter .pkey')`);
+      const keys = await cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        const all = [...g.querySelectorAll('.pkey')];
+        return {
+          total: all.length,
+          white: g.querySelectorAll('.pkey.white').length,
+          black: g.querySelectorAll('.pkey.black').length,
+          // A key carries no text, so its name has to be somewhere or the
+          // gutter is a wall of unlabelled boxes to a screen reader.
+          unlabelled: all.filter(k => !k.getAttribute('aria-label')).length,
+          // Black keys are shorter — that shape is what reads as a keyboard.
+          blackNarrower: (() => {
+            const w = g.querySelector('.pkey.white').getBoundingClientRect().width;
+            const b = g.querySelector('.pkey.black').getBoundingClientRect().width;
+            return b < w;
+          })(),
+          // Only C is labelled, with its octave.
+          octaves: [...g.querySelectorAll('.koct')].map(o => o.textContent),
+        };
+      })()`);
+      if (keys.total < 12 || keys.white === 0 || keys.black === 0) {
+        throw new Error(`expected a keyboard of white and black keys, got ${JSON.stringify(keys)}`);
+      }
+      if (keys.unlabelled) throw new Error(`${keys.unlabelled} keys carry no accessible name`);
+      if (!keys.blackNarrower) throw new Error('black keys must be shorter than white ones');
+      if (!keys.octaves.length) throw new Error('C should be labelled with its octave');
+      // Note names are gone from a tonal gutter — that was the ask.
+      const stillNamed = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="pitch"] .gutter .glabel').length`);
+      if (stillNamed) throw new Error(`the note-name labels should be gone, found ${stillNamed}`);
+      // ...but the rhythm gutter still names its ten pieces.
+      const drumNames = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .gutter .glabel').length`);
+      if (drumNames < 10) throw new Error(`the rhythm gutter still needs its labels, found ${drumNames}`);
+
+      // Pressing a key must reach the audio graph at *that pitch* — a count of
+      // oscillators is not enough, since building a channel makes some of its
+      // own (the PWM sweep LFO), so "something was created" can be true while
+      // the key is silent. Record the frequencies and look for the key's own.
+      await cdp.evaluate(`(() => {
+        window.__freqs = [];
+        const orig = AudioContext.prototype.createOscillator;
+        AudioContext.prototype.createOscillator = function () {
+          const o = orig.call(this);
+          const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+          try {
+            Object.defineProperty(o.frequency, 'value', {
+              get() { return d.get.call(this); },
+              set(v) { window.__freqs.push(Math.round(v)); d.set.call(this, v); },
+              configurable: true,
+            });
+          } catch {}
+          const os = o.frequency.setValueAtTime.bind(o.frequency);
+          o.frequency.setValueAtTime = (v, t) => { window.__freqs.push(Math.round(v)); return os(v, t); };
+          return o;
+        };
+      })()`);
+      const pressed = await cdp.evaluate(`(() => {
+        const k = document.querySelector('.track[data-kind="pitch"] .gutter .pkey');
+        k.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        // The key carries its own pitch. Parsing it back out of the label was
+        // the first attempt and it threw — the label is for a human, and
+        // deriving a number from prose is a second place for the two to drift.
+        return Math.round(440 * Math.pow(2, (Number(k.dataset.midi) - 69) / 12));
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const heard = await cdp.evaluate(`window.__freqs.slice()`);
+      if (!heard.some((f) => Math.abs(f - pressed) <= 1)) {
+        throw new Error(`pressing the key should sound ${pressed} Hz, the graph saw ${JSON.stringify(heard)}`);
+      }
+      await goto(APP_URL);
+    });
+
+    step('Velocity lane: a stem per item, and dragging its head sets the value', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track[data-kind="pitch"] .lane')`);
+      // Three notes, so "which is loudest" is a real comparison.
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (let i = 0; i < 3; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 70, clientY: r.top + 25 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .note').length === 3`);
+      await cdp.evaluate(`(() => {
+        const h = document.querySelector('.track[data-kind="pitch"] .track-header');
+        [...h.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.vel-lane-el')`);
+      const drawn = await cdp.evaluate(`({
+        stems: document.querySelectorAll('.vel-stem').length,
+        heads: document.querySelectorAll('.vel-head').length,
+      })`);
+      if (drawn.stems !== 3 || drawn.heads !== 3) {
+        throw new Error(`three notes should draw three stems and three heads, got ${JSON.stringify(drawn)}`);
+      }
+
+      // Drag one head down and read the value back off the note, not off the
+      // element: the lane redrawing is not evidence that anything was stored.
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.vel-lane-el');
+        const lr = lane.getBoundingClientRect();
+        const h = document.querySelectorAll('.vel-head')[1];
+        h.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1,
+          clientX: h.getBoundingClientRect().left + 4, clientY: lr.top + lr.height - 8 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const saved = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind !== 'rhythm').id;
+        return d.tracks[id].map(n => n.vel ?? 1).sort();
+      })()`);
+      if (!saved || !saved.some((v) => v < 0.5)) {
+        throw new Error(`dragging a head should store a quieter velocity, song has ${JSON.stringify(saved)}`);
+      }
+      // Full velocity must still serialise as absent, or every song written
+      // before this lane existed starts saving differently.
+      if (!saved.filter((v) => v === 1).length) {
+        throw new Error(`untouched notes should stay at full velocity, got ${JSON.stringify(saved)}`);
+      }
+      // The drawing has to follow the value, not merely exist. Pair each stem
+      // with the velocity beside it and require the order to match: the
+      // quietest note must have the shortest stem. Asserting only "the heights
+      // differ" passed against a build where every stem was drawn at full
+      // height, because the *notes* still differed.
+      const paired = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.vel-lane-el');
+        const stems = [...lane.querySelectorAll('.vel-stem')].map(s => Math.round(s.getBoundingClientRect().height));
+        const vels = [...lane.querySelectorAll('.vel-head')].map(h => Number(h.getAttribute('aria-valuenow')));
+        return { stems, vels };
+      })()`);
+      if (paired.stems.length !== 3 || paired.vels.length !== 3) {
+        throw new Error(`expected three stems and three heads, got ${JSON.stringify(paired)}`);
+      }
+      const quietest = paired.vels.indexOf(Math.min(...paired.vels));
+      const loudest = paired.vels.indexOf(Math.max(...paired.vels));
+      if (paired.vels[quietest] === paired.vels[loudest]) {
+        throw new Error(`the drag should have made one note quieter: ${JSON.stringify(paired)}`);
+      }
+      if (!(paired.stems[quietest] < paired.stems[loudest])) {
+        throw new Error(`the quieter note must draw the shorter stem: ${JSON.stringify(paired)}`);
+      }
+      await goto(APP_URL);
+    });
+
     step('Transport: every button centres its symbol, and Record is filled like Play/Stop', async () => {
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
