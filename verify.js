@@ -3727,25 +3727,32 @@ async function main() {
         await cdp.send('Emulation.setDeviceMetricsOverride', {
           width: 420, height: 520, deviceScaleFactor: 1, mobile: true,
         });
-        // Wait for the overflow rather than reading it once. The resize is
-        // applied by the browser, not by this call returning, so a single
-        // read right after it can land before the relayout — which is exactly
-        // how this step failed intermittently (twice in four runs) while the
-        // behaviour under test was fine. Waiting also covers the list still
-        // being filled in from songs/index.json.
-        await waitFor(`(() => {
-          const list = document.getElementById('player-list');
-          return !!list && list.scrollHeight > list.clientHeight;
-        })()`, 4000).catch(() => {
+        // Retry the whole measurement rather than any single read. The resize
+        // is applied by the browser, not by this call returning, so anything
+        // read straight after it can land before the relayout — and patching
+        // one assertion at a time just moved the flake: first `canScroll` was
+        // false, then `scrollTop` clamped to 0 on a list that was not
+        // scrollable *yet*. Setting scrollTop is idempotent, so re-running the
+        // whole probe until it takes is both simpler and actually stable. It
+        // also covers the list still being filled in from songs/index.json.
+        let scrolled = null;
+        const scrollDeadline = Date.now() + 5000;
+        while (Date.now() < scrollDeadline) {
+          scrolled = await cdp.evaluate(`(() => {
+            const list = document.getElementById('player-list');
+            if (!list) return null;
+            const cardTop = () => Math.round(document.getElementById('player-card').getBoundingClientRect().top);
+            const before = cardTop();
+            list.scrollTop = 400; // past the end is fine — it clamps
+            return { before, after: cardTop(), listScrolled: list.scrollTop,
+                     canScroll: list.scrollHeight > list.clientHeight };
+          })()`);
+          if (scrolled && scrolled.listScrolled > 0) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (!scrolled || !scrolled.canScroll) {
           throw new Error('the song list should be its own scrolling box (scrollHeight > clientHeight), so the page does not grow instead');
-        });
-        const scrolled = await cdp.evaluate(`(() => {
-          const list = document.getElementById('player-list');
-          const cardTop = () => Math.round(document.getElementById('player-card').getBoundingClientRect().top);
-          const before = cardTop();
-          list.scrollTop = 400; // past the end is fine — it clamps
-          return { before, after: cardTop(), listScrolled: list.scrollTop };
-        })()`);
+        }
         if (!(scrolled.listScrolled > 0)) throw new Error('the song list did not scroll at all');
         if (scrolled.before !== scrolled.after) {
           throw new Error(`the player card must not move when the list scrolls (top ${scrolled.before} -> ${scrolled.after})`);

@@ -91,7 +91,11 @@ hur roligt det vore att bygga.
 - [ ] **Spårraderna byggs om helt vid varje omritning, och det är layouten
   som kostar.** Mätt: ≈9,5 ms per utfällt spår, samma spår hopfällda 1/38 så
   mycket, effekter syns inte alls (siffror i `DONE.md`, tabell och enradare i
-  `DESIGN.md` B.4).
+  `DESIGN.md` B.4). **Det är inte spårhuvudet** — den attributionen stod här
+  och i B.4 och var fel. Instrumenterat, per render vid 24 spår: bygga allt
+  81 ms, varav `buildHeader()` för alla 24 är **7 ms**; sammanfogning och
+  påtvingad layout **191 ms**. Hopfällt är billigt för att `renderPitchTrack()`
+  returnerar innan gutter och lane byggs, inte för att huvudet hoppas över.
   **Två uppenbara lösningar är provade och uteslutna med mätning:**
   - *Cacha spårhuvuden mellan omritningar.* Byggd, med nyckel på allt
     `buildHeader()` läser. **100 % träff, noll vinst** (375 träffar, 0 missar;
@@ -104,11 +108,30 @@ hur roligt det vore att bygga.
     rader), så speluppspelningslinjen slutade 470 px för tidigt och
     rullningslisten ljög. Platshållaren går inte att sätta rätt heller: en rad
     är så hög som den högsta av lanen (känd) och huvudet (innehållsdrivet).
-  **Vad som återstår:** sluta *plocka loss* raderna i stället för att sluta
-  bygga dem — uppdatera stapeln på plats så att en orörd rad behåller sin
-  layout. Det är diffning, vilket filen annars inte gör, så det får förtjäna
-  sin komplexitet. Steget "off-screen rows keep their real height" i
-  `verify.js` finns för att hålla nästa försök ärligt.
+  - *Låta raden sitta kvar och fylla om den.* Byggd. **Noll vinst** — raderna
+    överlevde renderingen 24/24 och tiden stod stilla (250 ms mot 250). Proben
+    som pekade dit mätte återinkoppling av noder vars layout redan var
+    uträknad, vilket inte är vad en render gör.
+  **Vad som återstår, nu med prislapp:** låta raden sitta kvar **och** hoppa
+  över rader vars innehåll är oförändrat. Byggd och mätt: **272 ms → 21 ms**
+  vid 24 spår, mot ett uppmätt tak på 15 ms. Ändå återställd. Skälet är inte
+  vinsten utan säkerheten: signaturen måste namnge varje indata en rad ritar,
+  och en glömd betyder en rad som tyst slutar uppdateras. Tre missades först
+  och fångades av sviten (`oscPickerOpen`, markeringsrektangeln, radens egen
+  plats i listan). Därefter började tre *andra* steg falla oregelbundet —
+  master-EQ:ns ratt tappade fokus, step entry-Backspace, mobilens låtlista —
+  där samma bygge gick igenom vid omkörning. Om ombyggnaden orsakade dem eller
+  bara ändrade tajmingen så att de syntes blev aldrig fastställt, och att
+  släppa en ändring i renderkärnan på den grunden går inte att försvara.
+  Nästa försök behöver: signaturen härledd ur listor som redan finns
+  (`SPARSE_TRACK_MAPS` täcker per-spårskartorna), ett verify-steg som påstår
+  *båda* halvorna — att orörda rader återanvänds och att varje sak en rad
+  ritar fortfarande tvingar fram en ombyggnad — och en svit som är stabil över
+  upprepade körningar *före* ändringen, så att ett nytt oregelbundet fel går
+  att härleda. Notera att märka radelementet för att upptäcka en ombyggnad
+  inte fungerar: en återanvänd rad *är* samma element, vilket är hela poängen.
+  Steget "off-screen rows keep their real height" i `verify.js` finns för att
+  hålla nästa försök ärligt.
 
 ## Lagring / delning
 
