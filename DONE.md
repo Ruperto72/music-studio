@@ -1207,6 +1207,48 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   så "utrullningen rapporterar lyckad" är allt jag kan belägga — inte att rätt
   bytes serveras.
 
+- [x] **Granskning av verify.js egna påståenden — och varför den fick avbrytas
+  som planerad.** Utgångspunkten: fem steg hade under dagen visat sig påstå
+  mindre än de såg ut att göra, varje gång upptäckt genom injektion och aldrig
+  genom läsning. Alltså en systematisk genomgång av de 61 äldre stegen.
+  **Två fynd utan att köra något.** Två av 67 steg hade noll `throw`. Det ena,
+  `adds a track via the menu and undoes it`, ångrade aldrig något — halva det
+  steget hade aldrig testats och namnet ljög. Det andra visade sig vara i sin
+  ordning, eftersom dess `waitFor`-satser *är* påståenden (en timeout fäller
+  steget). Att sortera på antal påståenden per rad är billigt och pekar rätt.
+  **Ett fynd med injektion.** `Rhythm: placing a hit keeps the other rows in
+  that column` fångade inte buggen den finns till för — `hitsConflict` som
+  slutar bry sig om trumtyp, alltså exakt det fel som en gång inträffade.
+  Beviskedjan var lärorik: stegets *egen sekvens* körd från en ren sida föll
+  som den skulle, medan samma steg inne i sviten gick igenom. Skillnaden är
+  ärvt tillstånd — påståendena var **antal**, och aritmetiken kan gå ihop av
+  fel skäl beroende på vad tidigare steg lämnat i lanen. Steget påstår identitet
+  nu ("den här takten och det här slaget håller en Kick *och* en Snare"),
+  grupperat ur etiketterna; pixelgeometri provades först och dög inte.
+  **Och så det som stoppade metoden.** Batchning av injektioner är inte
+  giltigt i den här sviten. Samma trasiga `hitsConflict`:
+  - med **fem** injektioner i samma körning: `Rhythm: pasting`,
+    `Adding a track does not carry...` och `Rhythm patterns` — **gröna**.
+  - med **en** injektion: samma tre steg — **röda**.
+  Samma bugg, samma kod, motsatt utfall, beroende bara på vad *annat* som var
+  injicerat. Batchning kan alltså **dölja** fel, vilket är den farliga
+  riktningen. Orsaken är att stegen är kopplade genom appens tillstånd: bara
+  **16 av 67** börjar med en omladdning, 51 ärver vad föregående steg lämnade.
+  Samma koppling förklarar tre andra saker från samma dag: att fixen av
+  undo-steget fällde sina två grannar, att en omladdning i rytmsteget fällde
+  två *andra* steg, och sannolikt en del av den "oförklarade" flakigheten
+  under renderarbetet.
+  **Vad som gäller härnäst:** att gå igenom 61 steg en injektion i taget är
+  giltigt men kostar omkring tio timmars maskintid, och svaren gäller ändå bara
+  den stegordning som råkar finnas. Billigare och mer värt: göra stegen
+  oberoende först — varje steg etablerar sina egna förutsättningar — varefter
+  batchning blir giltig, sviten slutar vara ordningsberoende, och granskningen
+  kan göras på en handfull körningar.
+  Selen (`audit-harness.js`, i scratch) hade själv två fel som måste lagas
+  innan den gick att lita på: den matchade `FAIL`-rader fram till första kolon,
+  och stegnamn innehåller kolon, så varje tillskrivning blev fel; och en körning
+  som ströps rapporterade de 30 steg den aldrig nådde som svaga.
+
 ## Spårhantering
 
 - [x] **Omordning av spår** — små ▲/▼-knappar i varje tonspårs header
