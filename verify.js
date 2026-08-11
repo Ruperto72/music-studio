@@ -1053,8 +1053,16 @@ async function main() {
       // The rhythm counterpart of the same-pitch rule for notes: only a hit of
       // the same *type* in a column is a duplicate. Filtering on start alone
       // wiped the whole column, making kick+hi-hat on one beat unplaceable.
+      // Assert *what is in the column*, not how many hits the lane has. The
+      // count-only version could come out right for the wrong reason: against a
+      // build where hitsConflict ignores the drum type — the exact bug this
+      // step exists to catch — it passed inside the suite, while running the
+      // same sequence from a clean page failed as it should. Which of those
+      // you get depends on the state the previous steps happened to leave, and
+      // a reload here is not the answer either: it strips the state the steps
+      // *after* this one inherit, and two of them then failed instead.
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
-      const rhythmLane = `document.querySelector('.track[data-track="rhythm"] .lane')`;
+      const rhythmLane = `document.querySelector('.track[data-kind="rhythm"] .lane')`;
       const hasLane = await cdp.evaluate(`!!${rhythmLane}`);
       if (!hasLane) throw new Error('expected a rhythm track lane');
       await cdp.evaluate(`${rhythmLane}.click()`); // make the rhythm track active
@@ -1064,17 +1072,33 @@ async function main() {
         const rect = lane.getBoundingClientRect();
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 200, clientY: rect.top + ${yOffset} }));
       }`);
-      const countHits = `document.querySelectorAll('.track[data-track="rhythm"] .lane .hit').length`;
+      // Name the hits rather than count them: "two hits exist" is satisfied by
+      // the wrong two, which is how a count-only assertion can pass against a
+      // build that wipes the column.
+      const hitNames = `[...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')].map(h => (h.getAttribute('aria-label') || '?').split(',')[0]).sort().join('+')`;
+      const countHits = `document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`;
+      // Every hit names its own drum, bar and beat ("Kick, bar 2 beat 1"), so
+      // group by the position part rather than by pixels — a hit block's rect
+      // is not a reliable way to ask "which column is this in".
+      const labels = `[...${rhythmLane}.querySelectorAll('.hit')].map(h => h.getAttribute('aria-label') || '?')`;
+      const drumsAt = (all, where) => all
+        .filter((l) => l.split(',').slice(1).join(',').trim() === where)
+        .map((l) => l.split(',')[0].trim()).sort().join('+');
       const start = await cdp.evaluate(countHits);
+      const before = await cdp.evaluate(labels);
       await clickRow(8);   // row 0 — kick
       await new Promise((r) => setTimeout(r, 200));
       const afterFirst = await cdp.evaluate(countHits);
       if (afterFirst !== start + 1) throw new Error(`expected one hit to be added, got ${start} -> ${afterFirst}`);
+      const afterKick = await cdp.evaluate(labels);
+      const kick = afterKick.find((l) => /^Kick/.test(l) && !before.includes(l));
+      if (!kick) throw new Error(`the click should have added a kick, lane holds ${JSON.stringify(afterKick)}`);
+      const where = kick.split(',').slice(1).join(',').trim();
       await clickRow(25);  // row 1 — snare, same column
       await new Promise((r) => setTimeout(r, 200));
-      const afterSecond = await cdp.evaluate(countHits);
-      if (afterSecond !== start + 2) {
-        throw new Error(`placing a second hit in the same column wiped the first (${afterFirst} -> ${afterSecond}, expected ${start + 2})`);
+      const both = drumsAt(await cdp.evaluate(labels), where);
+      if (!/Kick/.test(both) || !/Snare/.test(both)) {
+        throw new Error(`${where} must hold both the kick and the snare, holds ${JSON.stringify(both)}`);
       }
       // Re-clicking the same row+column must still replace, not stack.
       await clickRow(8);
@@ -1089,7 +1113,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
       await new Promise((r) => setTimeout(r, 150));
       const dragged = await cdp.evaluate(`(() => {
-        const hits = Array.from(document.querySelectorAll('.track[data-track="rhythm"] .lane .hit'));
+        const hits = Array.from(document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit'));
         const snare = hits.find((h) => h.className.includes('snare'));
         if (!snare) return false;
         const r = snare.getBoundingClientRect();
