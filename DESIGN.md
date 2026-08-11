@@ -1171,12 +1171,17 @@ hurts:
   song with none — sometimes lower. An effect is audio-graph nodes plus a
   chip, and a repaint does not touch the audio graph. Sends, EQ, compressor,
   bitcrush, tremolo and vibrato on thirty tracks cost nothing a drag can feel.
-- **The expanded track header is the cost, not the grid.** Forty-eight empty
-  expanded tracks render in 471 ms; the *same* forty-eight collapsed render in
-  **12.5 ms** — a 38× difference with no note removed. Each header rebuilds a
-  waveform picker, a chip row, two sliders and a VU meter on every frame, and
-  that dwarfs the note blocks beside it (Rust Foundry's 4428 blocks at 7
-  tracks: 776 ms).
+- **The expanded track *row* is the cost, not the grid contents — but it is
+  not the header.** Forty-eight empty expanded tracks render in 471 ms; the
+  *same* forty-eight collapsed render in **12.5 ms** — a 38× difference with no
+  note removed. That measurement is right; the attribution first written here
+  ("each header rebuilds a picker, a chip row, two sliders and a VU meter")
+  was **wrong**, and instrumenting the phases settled it. Per render at 24
+  tracks: building everything is 81 ms, of which `buildHeader()` for all
+  twenty-four is **7 ms**; the reconcile and forced layout are **191 ms**.
+  Collapsing is cheap because `renderPitchTrack()` returns before building the
+  gutter and the lane, not because it skips the header. This also explains the
+  header cache below: it cached the one part that was never expensive.
 
 So the practical lever is per-track collapse (A.4), not fewer effects.
 
@@ -1198,11 +1203,43 @@ establish, and is worth recording because both look obviously right:
   set correctly either — a row is as tall as the taller of its lane (known at
   build time) and its header (content-driven, varying with the chip count).
 
-A real fix therefore has to stop *detaching* rows rather than stop building
-them: update the stack in place so an untouched row keeps its layout. That is
-diffing, which this file otherwise does not do, so it needs to earn its
-complexity — and `verify.js`'s "off-screen rows keep their real height" step
-exists to keep whatever does it honest.
+**Built, measured at 13×, and reverted — twice over.** Two things had to be
+true together, and only the pair works:
+
+- *Keeping the row attached and refilling it* buys **nothing**. Measured: rows
+  survived a render 24/24, and the time did not move (250 ms before, 250 ms
+  after). The probe that suggested it would — "detach and re-attach the same
+  nodes costs 194 ms of the 265" — measured re-attaching nodes whose layout was
+  already computed, which is not what a render does. A second probe was
+  misleading the same way: "replace every lane in place: 30 ms" used an
+  `innerHTML` round-trip, nothing like 24 591 `createElement` calls.
+- *Also skipping rows whose contents are unchanged* is where the win is.
+  With a per-row signature deciding that, **272 ms → 21 ms** at 24 tracks,
+  against a measured ceiling of 15 ms for touching only the one row that
+  changed.
+
+So the design is settled and the prize is real. What sent it back was the
+cost of being *sure*: the signature must name every input a row draws, and a
+forgotten one is a row that silently stops updating. Three were missed on the
+first attempt and caught by the suite (`oscPickerOpen`, the marquee, and the
+row's own index — the reorder arrows disable at the ends of the list). Then
+three *different* steps began failing intermittently — the master EQ knob
+losing focus, step-entry Backspace, the mobile song list — where the same
+build passed on a re-run. Whether the render rework caused those or merely
+changed the timing enough to expose them was not established, and shipping a
+change to the render core on that footing is not defensible. The measurements
+are kept here; the code is not.
+
+Anything that tries again needs: the signature derived from lists that already
+exist (`SPARSE_TRACK_MAPS` covers the per-track maps), a verify step asserting
+both halves — that unchanged rows really are reused *and* that each thing a row
+draws still forces a rebuild — and a suite that is stable across repeated runs
+*before* the change, so a new intermittent failure is attributable. Note that
+tagging the row element to detect a rebuild does not work: a reused row is the
+same element, which is the entire point.
+
+`verify.js`'s "off-screen rows keep their real height" step exists to keep
+whatever does it honest.
 
 Re-measure on any machine by timing what a real click costs, which is the
 same path a drag takes:
