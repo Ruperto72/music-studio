@@ -38,10 +38,12 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   column of note names — press a key to hear it through that track's own
   instrument, drag down the keys to glissando. Rhythm tracks keep their ten
   piece names
-- A **velocity lane** per track (the **Vel** button): one stem per note or hit,
-  as tall as it is loud, with a diamond head to drag. The grid dims a quiet
-  item, but *which of these is loudest* is a comparison, and heights compare
-  better than shades of one colour
+- A **note lane** per track (the **Vel** button): one stem per note or hit with
+  a diamond head to drag, showing **velocity**, **pan** or **bend** — pick which
+  from its header. The grid dims a quiet item, but *which of these is loudest*
+  is a comparison, and heights compare better than shades of one colour
+- **Free** placement in the Grid menu (Pro Tools' Slip): place, drag and resize
+  without snapping. The grid still sets how long a new note is
 - **Quantize and humanize** (menu → Timing), with a **strength**: 100% lands
   every note on the grid, 50% halves the error and keeps the feel. Recording
   no longer snaps as you play — a take keeps your timing, and correcting it is

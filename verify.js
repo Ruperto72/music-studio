@@ -3772,6 +3772,109 @@ async function main() {
       if (!(paired.stems[quietest] < paired.stems[loudest])) {
         throw new Error(`the quieter note must draw the shorter stem: ${JSON.stringify(paired)}`);
       }
+
+      // The lane is generic over the per-item values that already exist, so a
+      // picker switches it rather than a second lane being built. Pan is
+      // signed, which is a different axis, not just a different label.
+      const params = await cdp.evaluate(
+        `[...document.querySelector('.vel-lane-el').closest('.track').querySelectorAll('select')][0]
+          .options.length`);
+      if (params < 2) throw new Error(`the lane should offer more than one value, got ${params}`);
+      await cdp.evaluate(`(() => {
+        const sel = document.querySelector('.vel-lane-el').closest('.track').querySelector('select');
+        sel.value = 'pan'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`!!document.querySelector('.vel-zero')`);
+      const panAxis = await cdp.evaluate(`(() => {
+        const row = document.querySelector('.vel-lane-el').closest('.track');
+        return {
+          labels: [...row.querySelectorAll('.gutter .glabel')].map(g => g.textContent.trim()),
+          heads: row.querySelectorAll('.vel-head').length,
+        };
+      })()`);
+      if (panAxis.heads !== 3) throw new Error(`switching value should keep one head per note: ${JSON.stringify(panAxis)}`);
+      if (!panAxis.labels.join(' ').match(/[LR]|C/)) {
+        throw new Error(`the pan axis should be labelled in pan terms, got ${JSON.stringify(panAxis.labels)}`);
+      }
+      // ...and dragging now writes pan, not velocity.
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.vel-lane-el');
+        const lr = lane.getBoundingClientRect();
+        const h = document.querySelectorAll('.vel-head')[0];
+        h.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1,
+          clientX: h.getBoundingClientRect().left + 4, clientY: lr.top + lr.height - 8 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const wrote = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind !== 'rhythm').id;
+        return d.tracks[id].filter(n => n.pan != null).length;
+      })()`);
+      if (!wrote) throw new Error('dragging on the Pan lane should store a pan, not a velocity');
+      await goto(APP_URL);
+    });
+
+    step('Slip: Free places without snapping, and the grid still sets the length', async () => {
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track[data-kind="pitch"] .lane')`);
+      // Read the note out of the DOM, not the autosave draft: autosave is
+      // debounced 400ms, so a read straight after the click returns the
+      // *previous* step's song — which is exactly how the first version of
+      // this failed, reporting a start of 31 for a click 1.4 columns in.
+      const penAt = async (offset) => {
+        const before = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="pitch"] .note').length`);
+        await cdp.evaluate(`(() => {
+          const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${offset}, clientY: r.top + 25 }));
+        })()`);
+        await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .note').length === ${before + 1}`);
+        return cdp.evaluate(`(() => {
+          const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+          const cells = lane.querySelectorAll('.cell');
+          const px = cells[1].getBoundingClientRect().left - cells[0].getBoundingClientRect().left;
+          const notes = [...lane.querySelectorAll('.note')];
+          const n = notes[notes.length - 1].getBoundingClientRect();
+          const lr = lane.getBoundingClientRect();
+          return { start: Math.round((n.left - lr.left) / px * 100) / 100, len: Math.round(n.width / px * 100) / 100 };
+        })()`);
+      };
+      // A column is one eighth wide; 1.4 columns in is deliberately off-grid.
+      const colPx = await cdp.evaluate(`(() => {
+        const cells = document.querySelectorAll('.track[data-kind="pitch"] .lane .cell');
+        return Math.round(cells[1].getBoundingClientRect().left - cells[0].getBoundingClientRect().left);
+      })()`);
+      const snapped = await penAt(Math.round(colPx * 1.4));
+      if (!snapped || Math.abs(snapped.start - 1) > 0.01) {
+        throw new Error(`with the grid on, a click 1.4 columns in should snap to 1, got ${JSON.stringify(snapped)}`);
+      }
+      await cdp.evaluate(`(() => {
+        const g = document.getElementById('grid-select');
+        g.value = 'free'; g.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const free = await penAt(Math.round(colPx * 3.4));
+      if (!free) throw new Error('nothing was placed with Free on');
+      // Off-grid by a real margin, not by float noise: MICRO is 1/6 of a
+      // column, so a genuine unsnapped landing is at least ~0.16 off.
+      if (Math.abs(free.start - Math.round(free.start)) < 0.1) {
+        throw new Error(`with Free on, a click 3.4 columns in should land off the grid, got ${JSON.stringify(free)}`);
+      }
+      // The grid is still the note length — Free is about snapping, not about
+      // how long a new note is, and conflating the two is the obvious mistake.
+      if (Math.abs(free.len - snapped.len) > 1e-6) {
+        throw new Error(`Free should not change the length a new note takes: ${JSON.stringify({ snapped, free })}`);
+      }
+      // Editor state, not song content: it must not ride along in the file.
+      const inSong = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        return 'snap' in d || 'snapOn' in d;
+      })()`);
+      if (inSong) throw new Error('the snap setting belongs to the browser, not to the song');
+      await cdp.evaluate(`localStorage.removeItem('frogger-music-editor-snap')`);
       await goto(APP_URL);
     });
 

@@ -1651,6 +1651,29 @@ previewGain taps in separately (click-to-hear), bypassing mute/solo.
   moment the kit picker adopted that trigger, five verify steps timed out at
   once against working code. Inference from an incidental UI detail is a
   coupling nothing warns you about until it breaks.
+- **Slip, and one lane over several values.** Two more things Pro Tools keeps
+  separate that this app had fused.
+  *Slip* is `snapOn` plus a `Free` entry in the grid picker, decided in the one
+  place that already decided **where** to snap. It is deliberately not a sixth
+  `GRID_STEPS` row: `state.grid` is also the length a new note takes and the
+  spacing the guide lines are drawn at, so a "free" grid value would have had
+  to mean something for both of those. Three drags round a *delta* rather than
+  a resulting position — `startResize()` and the two multi-move paths — so they
+  cannot route through `snapToGrid()` and each honours `snapOn` itself; a
+  fourth would need the same, which is the one thing about this that does not
+  live in a single place. It is editor state, remembered per browser like the
+  metronome and never serialised: the same file opened by someone else should
+  not silently stop snapping.
+  The *note lane* stopped being a velocity lane. `NOTE_LANE_PARAMS` names what
+  it can show (`vel`/`pan`/`bend`) the way `AUTOMATION_PARAMS` does for the
+  automation row, so a new per-item value is a table row rather than another
+  lane. `get`/`set` take the item, not a number, because `bend` is stored as an
+  absolute target frequency and semitones only mean anything beside the note's
+  own pitch — and `set` is where "neutral is stored as absent" lives per value.
+  Signed values carry a `zero` and grow from a centre line: a pan stem starting
+  at the floor would read as a quantity rather than as an offset from centre.
+  The verify step for it drags on the *Pan* lane and asserts a `pan` was
+  stored, because a picker that only changed the label would otherwise pass.
 - **Capture and correction pulled apart.** Recording used to snap on the way
   in — `snapToGrid(ctxTimeToCol(...))` for hits, `quant(start)` inside
   `commitNote()` — so the performance was discarded at the moment it was
