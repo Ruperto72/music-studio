@@ -1122,10 +1122,13 @@
         <li><span class="help-ico" data-glyph="eraser"></span><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
         <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse, for a part that came out too stiff. This is why <b>recording no longer snaps as you play</b> — a take keeps the timing you gave it, and correcting it is a separate decision you can make with a strength rather than one the recorder makes for you.</li>
+        <li><b>Transpose</b> in the menu is the same idea on the <i>pitch</i> axis, with the same scope rule. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i> — so a melody nudged upward stays in the key instead of landing on the note between, and a chord moves to the next chord of the key rather than sliding sideways. <b>Fit to the scale</b> pulls everything onto the nearest scale tone: the repair a recorded take needs, since playing is never corrected on the way in. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put, so fitting can't cost you a voice. The arrow keys use the same walk: with <b>Keep to scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
+        <li><b>Dynamics</b> in the menu is the third axis, with the same scope rule again. <b>Vary</b> is a random walk around each note's <i>current</i> level — a part you already shaped keeps its shape and just stops being mechanical about it, and pressing it again gives a different answer. <b>Accent the beat</b> plays the notes that land on a beat harder than the ones between them, read off the meter rather than guessed. Only velocity is touched: every note stays exactly where it is at exactly the pitch you put it, so trying one costs an undo at worst.</li>
         <li>The <b>Grid</b> menu also has <b>Free</b> — placing, dragging and resizing stop snapping and land wherever you put them (on the app's finest lattice, a sixth of an eighth). The grid still sets how long a new note is, so Free changes where things go, not what size they are. It is remembered per browser rather than saved with the song: the same file opened by someone else should not silently stop snapping.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
+        <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. That is how a drum part or a riff actually gets built — one piece at a time over a bar you can hear. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in, and a key held through the seam becomes a note that runs to the end of the loop rather than a stab.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level: a soft hit is darker, the way a real drum struck gently gives you less of the sharp top end, so a ghost note sits behind the beat instead of just being a quiet copy of the accent. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
@@ -1359,6 +1362,53 @@
     </div>
   </dialog>
 
+  <dialog id="transpose-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="scale"></span> Transpose</h2>
+      <button id="transpose-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note" id="transpose-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
+      <p class="songs-note">Quantize fixes a take's <i>timing</i> after the fact; this is the same idea for its <i>pitch</i>. Recording never corrects what you play, so both live here rather than in the recorder.</p>
+      <div class="pattern-opt">
+        <button id="transpose-oct-down">− Octave</button>
+        <button id="transpose-semi-down">− Semitone</button>
+        <button id="transpose-semi-up">+ Semitone</button>
+        <button id="transpose-oct-up">+ Octave</button>
+      </div>
+      <div class="pattern-opt">
+        <button id="transpose-step-down">− Scale step</button>
+        <button id="transpose-step-up">+ Scale step</button>
+        <button id="transpose-fit">Fit to the scale</button>
+        <span class="pattern-opt-note" id="transpose-key-note">— needs a key.</span>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dynamics-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="velocity"></span> Dynamics</h2>
+      <button id="dynamics-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note" id="dynamics-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
+      <p class="songs-note">Quantize shapes a part's <i>timing</i> and Transpose its <i>pitch</i>; this is the third axis. Only velocity is touched — every note stays exactly where it is, at exactly the pitch you put it — so trying one costs an undo at worst.</p>
+      <label class="pattern-opt" for="dynamics-amount">Amount
+        <input type="range" id="dynamics-amount" min="0.05" max="0.6" step="0.05" value="0.2">
+        <output id="dynamics-amount-val">20%</output>
+        <span class="pattern-opt-note">— how far a level may move.</span>
+      </label>
+      <div class="pattern-opt">
+        <button id="dynamics-vary">Vary</button>
+        <span class="pattern-opt-note">— a random walk around each note's <i>current</i> level, so a part you already shaped keeps its shape and just stops being mechanical about it. Press it again for a different answer.</span>
+      </div>
+      <div class="pattern-opt">
+        <button id="dynamics-accent">Accent the beat</button>
+        <span class="pattern-opt-note">— notes that land on a beat get played harder than the ones between them. Read off the meter, not guessed.</span>
+      </div>
+    </div>
+  </dialog>
+
   <h1 class="sr-only">Web Audio Studio — 8-bit chiptune editor</h1>
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
@@ -1383,6 +1433,8 @@
           <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
+          <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
+          <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
           <button id="export" class="file-menu-item" data-glyph="code">Export code</button>
           <button id="export-midi" class="file-menu-item" data-glyph="midiOut">Export MIDI</button>
           <button id="import-midi" class="file-menu-item" data-glyph="midiIn">Import MIDI</button>
@@ -6227,6 +6279,19 @@ function nudgeSelection(dCol, dRow) {
   state.tracks[track] = clearOverlaps(state.tracks[track], note, note);
   render();
 }
+// The scale-step counterpart of nudgeSelection()'s pitch half. It goes through
+// transposeItems() rather than repeating the walk, so a nudge and the
+// Transpose dialog cannot end up disagreeing about what "one step up" means —
+// including the fallback that keeps a chord whole.
+function nudgeSelectionByScale(dir) {
+  const track = state.activeTrack;
+  const items = state.multiSelected.size ? [...state.multiSelected]
+    : (state.selected && state.selected.track === track ? [state.selected.item] : []);
+  if (!items.length) return;
+  transposeItems(track, items, 'step', dir);
+  dropVanishedSelection(track);
+  render();
+}
 function copySelection() {
   let items, track;
   if (state.multiSelected.size > 0) { items = [...state.multiSelected]; track = state.activeTrack; }
@@ -7144,8 +7209,19 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); jumpSelection(e.key === 'Home' ? 'first' : 'last'); return; }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); nudgeSelection(-state.grid, 0); return; }
   if (e.key === 'ArrowRight') { e.preventDefault(); nudgeSelection(state.grid, 0); return; }
-  if (e.key === 'ArrowUp')    { e.preventDefault(); nudgeSelection(0, 1); return; }
-  if (e.key === 'ArrowDown')  { e.preventDefault(); nudgeSelection(0, -1); return; }
+  // Up/down moves by a *scale step* while Keep to scale is on, which is nearly
+  // always what you mean once the song has a key: a melody nudged upward
+  // should stay in the key rather than land on the note between. Alt is the
+  // chromatic escape hatch, and it works in both directions — Alt while the
+  // toggle is off is still chromatic, so the modifier always means the same
+  // thing.
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const dir = e.key === 'ArrowUp' ? 1 : -1;
+    if (!e.altKey && keepToScale && !scaleIsOff() && !isRhythm(state.activeTrack)) nudgeSelectionByScale(dir);
+    else nudgeSelection(0, dir);
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteClipboard(); return; }
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
@@ -8335,6 +8411,78 @@ document.getElementById('timing-quantize').addEventListener('click', () => {
 document.getElementById('timing-humanize').addEventListener('click', () => {
   runHumanize(parseFloat(timingAmount.value));
   refreshTimingScope();
+});
+
+// ---------- Transpose dialog ----------
+// Same scope rule as Timing (timingTargets(): multi-selection, else the single
+// selection, else the whole active track) and the same "say what it will act
+// on before it is pressed" — the two dialogs are the two axes of the same
+// operation, so they should not need to be learned separately.
+const transposeDialog = document.getElementById('transpose-dialog');
+function refreshTransposeScope() {
+  const { track, items } = timingTargets();
+  const off = scaleIsOff();
+  const drum = isRhythm(track);
+  document.getElementById('transpose-scope').textContent = drum
+    ? `${trackName(track)} is a rhythm track — a drum hit has no pitch to move. Pick a tonal track first.`
+    : (state.multiSelected.size || (state.selected && state.selected.track === track)
+      ? `Acts on the ${items.length} selected note${items.length === 1 ? '' : 's'}.`
+      : `Acts on all ${items.length} note${items.length === 1 ? '' : 's'} on ${trackName(track)}.`);
+  document.getElementById('transpose-key-note').textContent = off
+    ? '— needs a key: pick a tonic and scale in the bottom bar.'
+    : `— in ${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}.`;
+  for (const id of ['transpose-step-down', 'transpose-step-up', 'transpose-fit']) {
+    document.getElementById(id).disabled = off || drum;
+  }
+  for (const id of ['transpose-oct-down', 'transpose-semi-down', 'transpose-semi-up', 'transpose-oct-up']) {
+    document.getElementById(id).disabled = drum;
+  }
+}
+document.getElementById('transpose-btn').addEventListener('click', () => {
+  closeFileMenu();
+  refreshTransposeScope();
+  transposeDialog.showModal();
+});
+document.getElementById('transpose-close').addEventListener('click', () => transposeDialog.close());
+for (const [id, mode, n] of [
+  ['transpose-oct-down', 'semi', -12], ['transpose-semi-down', 'semi', -1],
+  ['transpose-semi-up', 'semi', 1], ['transpose-oct-up', 'semi', 12],
+  ['transpose-step-down', 'step', -1], ['transpose-step-up', 'step', 1],
+  ['transpose-fit', 'fit', 0],
+]) {
+  document.getElementById(id).addEventListener('click', () => { runTranspose(mode, n); refreshTransposeScope(); });
+}
+
+// ---------- Dynamics dialog ----------
+// Third of the three "fix a take afterwards" dialogs, and deliberately built
+// to the same pattern as Timing and Transpose: same scope rule
+// (timingTargets()), same "say what it will act on before it is pressed".
+const dynamicsDialog = document.getElementById('dynamics-dialog');
+const dynamicsAmount = document.getElementById('dynamics-amount');
+function refreshDynamicsScope() {
+  const { track, items } = timingTargets();
+  const kind = isRhythm(track) ? 'hit' : 'note';
+  document.getElementById('dynamics-scope').textContent =
+    state.multiSelected.size || (state.selected && state.selected.track === track)
+      ? `Acts on the ${items.length} selected ${kind}${items.length === 1 ? '' : 's'}.`
+      : `Acts on all ${items.length} ${kind}${items.length === 1 ? '' : 's'} on ${trackName(track)}.`;
+}
+dynamicsAmount.addEventListener('input', () => {
+  document.getElementById('dynamics-amount-val').textContent = Math.round(parseFloat(dynamicsAmount.value) * 100) + '%';
+});
+document.getElementById('dynamics-btn').addEventListener('click', () => {
+  closeFileMenu();
+  refreshDynamicsScope();
+  dynamicsDialog.showModal();
+});
+document.getElementById('dynamics-close').addEventListener('click', () => dynamicsDialog.close());
+document.getElementById('dynamics-vary').addEventListener('click', () => {
+  runDynamics('vary', parseFloat(dynamicsAmount.value));
+  refreshDynamicsScope();
+});
+document.getElementById('dynamics-accent').addEventListener('click', () => {
+  runDynamics('accent', parseFloat(dynamicsAmount.value));
+  refreshDynamicsScope();
 });
 
 // ---------- Playback ----------
@@ -10290,7 +10438,14 @@ function recKeyUp(id) {
     // Length from how long the key was down, floored at one grid step so a
     // stab still lands as a note rather than nothing.
     const end = quant(ctxTimeToCol(ctx.currentTime));
-    commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol), held.vel);
+    // A key held across the loop's seam comes up at a column *earlier* than
+    // the one it went down on, so the raw difference is negative and the
+    // floor below quietly filed every such note down to a one-step stab. The
+    // note really did run to the end of the loop, so that is where it ends —
+    // which is what makes holding a pad through a lap work at all.
+    const looping = document.getElementById('loop').checked;
+    const stop = end < held.startCol ? (looping ? state.loopEnd : COLS) : end;
+    commitNote(track, held.midi, held.startCol, Math.max(state.grid, stop - held.startCol), held.vel);
   }
   // Not in the guard above: a stepped chord has to move the cursor on when its
   // last key comes up, and none of its keys carry a startCol.
@@ -10399,28 +10554,37 @@ function humanizeStart(start, amount) {
 }
 // Applies `move` to each item, then rebuilds the track so collisions are
 // resolved once at the end. Returns how many items actually moved.
-function applyTiming(track, items, move) {
+// Applies an edit to a set of items and rebuilds the track around the result.
+// The mover mutates the item however it likes — a column on the time axis, a
+// pitch on the other — because everything after it is the same either way:
+// two moved items can land on each other, and both have to be resolved
+// against one another as well as against the items that did not move.
+// Quantizing a fast run at one pitch collapses it onto a single column;
+// transposing two notes a semitone apart into one scale does the same thing on
+// the pitch axis. One place for that rule, not two.
+function applyItemEdit(track, items, move) {
   const targets = new Set(items);
   const rest = state.tracks[track].filter((it) => !targets.has(it));
   let moved = 0;
-  for (const it of items) {
-    const before = it.start;
-    it.start = move(before);
-    if (it.start !== before) moved++;
-  }
+  for (const it of items) if (move(it)) moved++;
   const conflict = isRhythm(track) ? hitsConflict : notesConflict;
-  // Two moved items can land on each other — quantizing a fast run at one
-  // pitch collapses it onto a single column — so they are resolved against
-  // one another as well as against the items that did not move. Earliest
-  // wins, which is what a listener would have heard first.
+  // Earliest wins — what a listener would have heard first — and pitch breaks
+  // the tie so the outcome does not depend on array order.
   const survivors = [];
-  for (const it of [...items].sort((a, b) => a.start - b.start)) {
+  for (const it of [...items].sort((a, b) => a.start - b.start || (a.freq || 0) - (b.freq || 0))) {
     if (!survivors.some((o) => conflict(o, it))) survivors.push(it);
   }
   let kept = rest;
   for (const it of survivors) kept = kept.filter((o) => !conflict(o, it));
   state.tracks[track] = [...kept, ...survivors].sort((a, b) => a.start - b.start);
   return moved;
+}
+function applyTiming(track, items, move) {
+  return applyItemEdit(track, items, (it) => {
+    const before = it.start;
+    it.start = move(before);
+    return it.start !== before;
+  });
 }
 // What the operation acts on: the current multi-selection, or the single
 // selected item, or — with nothing selected — the whole active track. Same
@@ -10455,6 +10619,144 @@ function runHumanize(amount) {
   commitHistory(); render(); autosave();
   announce(`Humanized ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
 }
+// ---------- Pitch: transpose and fit to the scale ----------
+// The pitch counterpart of quantize, and there because of the same decision:
+// recording keeps what you played, so there has to be a deliberate way to fix
+// it afterwards. Time had one from the start; pitch had nothing until the app
+// knew what key it was in.
+//
+// One scale step, in semitones. The interval is deliberately *not* constant —
+// a step up from E in C major is one semitone and from C it is two, which is
+// exactly what makes a melody move inside the key instead of sliding out of
+// it. A note that is already outside the scale steps to the next one that is
+// inside, which is how a wrong note fixes itself by being moved.
+function scaleStep(midi, dir) {
+  if (scaleIsOff()) return dir;
+  for (let d = 1; d <= 12; d++) if (inScale(midi + dir * d)) return dir * d;
+  return dir;
+}
+const clampMidi = (m) => Math.max(MIDI_MIN, Math.min(MIDI_MAX, m));
+// Moves notes by semitones, by scale steps, or onto the scale. `mode` picks
+// which; `n` is the count and is ignored by 'fit'. Returns how many moved.
+//
+// Scale steps are per note, so a chord stays a chord *of the key*: C-E-G steps
+// to D-F-A rather than to C#-F-G#. Two notes can only merge when one of them
+// started outside the scale (C and C# both step to D), and the uniform
+// fallback below is what stops that from quietly costing a voice.
+function transposeItems(track, items, mode, n) {
+  if (isRhythm(track) || !items.length) return 0;
+  const midiOf = (it) => freqToMidi(it.freq);
+  const targetFor = (it) => {
+    const m = midiOf(it);
+    if (mode === 'semi') return clampMidi(m + n);
+    if (mode === 'fit') return clampMidi(snapToScaleAlways(m));
+    let out = m;
+    for (let i = 0; i < Math.abs(n); i++) out += scaleStep(out, Math.sign(n));
+    return clampMidi(out);
+  };
+  // Collisions are resolved with notesConflict(), not by comparing pitches:
+  // two notes only collide if they also overlap in *time*, and a whole-track
+  // fit is full of notes that share a pitch in different bars. An earlier
+  // version compared pitch alone, so on any real part it decided everything
+  // collided and moved nothing.
+  //
+  // A note whose target is already taken stays where it is, rather than the
+  // whole edit backing off or the note being dropped. Lowest first, so a
+  // chord resolves from the bottom up and the outcome doesn't depend on the
+  // order the notes were drawn in.
+  const byItem = new Map();
+  const placed = [];
+  for (const it of [...items].sort((a, b) => a.freq - b.freq)) {
+    const probe = { ...it, freq: round2(midiToFreq(targetFor(it))) };
+    const free = !placed.some((o) => notesConflict(o, probe));
+    byItem.set(it, free ? targetFor(it) : midiOf(it));
+    placed.push(free ? probe : it);
+  }
+  return applyItemEdit(track, items, (it) => {
+    const before = it.freq;
+    it.freq = round2(midiToFreq(byItem.get(it)));
+    // A bend is stored as an absolute target frequency, so it has to travel
+    // with the note or a transposed note would bend to where it used to be.
+    if (it.bend) it.bend = round2(it.bend * (it.freq / before));
+    return it.freq !== before;
+  });
+}
+// snapToScale() answers "…if the user asked for it"; this one always answers,
+// because Fit to scale *is* the user asking.
+function snapToScaleAlways(midi) {
+  if (scaleIsOff() || inScale(midi)) return midi;
+  for (let d = 1; d <= 6; d++) {
+    if (inScale(midi - d)) return midi - d;
+    if (inScale(midi + d)) return midi + d;
+  }
+  return midi;
+}
+// ---------- Dynamics: the third axis ----------
+// Quantize shapes a part's *timing* and Transpose its *pitch*; velocity had a
+// lane for editing one note at a time and nothing for shaping several. That is
+// why a stamped-in groove or a step-entered part sounds like a machine — every
+// note sits at full level, which is the one thing a player never does.
+//
+// Deliberately not a "vary this bar" button that rewrites what you wrote. Both
+// operations here only touch velocity, so the notes, their pitches and their
+// timing are exactly where you left them; the worst case is one undo. That is
+// what "suggest, don't overwrite" turns out to mean once you have undo.
+//
+// Both go through NOTE_LANE_PARAMS.vel, which is where "full velocity is
+// stored as *absent*" lives — so a part that ends up back at full serialises
+// the way it always did rather than growing a vel on every note.
+const VEL = () => NOTE_LANE_PARAMS.vel;
+const clampVel = (v) => Math.max(VEL_MIN, Math.min(1, round2(v)));
+// A random walk around each item's current level, not a reroll: a part that
+// was already shaped keeps its shape and just stops being mechanical about it.
+// Real randomness rather than a seeded stream — pressing it twice should give
+// you two different answers, which is the whole point of pressing it twice.
+function varyDynamics(items, amount) {
+  let moved = 0;
+  for (const it of items) {
+    const before = VEL().get(it);
+    const v = clampVel(before + (Math.random() * 2 - 1) * amount);
+    VEL().set(it, v);
+    if (VEL().get(it) !== before) moved++;
+  }
+  return moved;
+}
+// The one shape worth encoding, because it is read off the meter rather than
+// guessed: notes that land on a beat are played harder than the ones between.
+// Everything else a "make it groove" button might do is a genre opinion; this
+// is arithmetic.
+function accentBeats(items, strength) {
+  const beat = eighthsPerBeat();
+  let moved = 0;
+  for (const it of items) {
+    const onBeat = Math.abs(it.start / beat - Math.round(it.start / beat)) < EPS;
+    const before = VEL().get(it);
+    const v = clampVel(onBeat ? before + strength * (1 - before) : before - strength * before * 0.5);
+    VEL().set(it, v);
+    if (VEL().get(it) !== before) moved++;
+  }
+  return moved;
+}
+function runDynamics(what, amount) {
+  const { track, items } = timingTargets();
+  if (!items.length) { announce('Nothing to shape'); return; }
+  const moved = what === 'accent' ? accentBeats(items, amount) : varyDynamics(items, amount);
+  commitHistory(); render(); autosave();
+  announce(`${what === 'accent' ? 'Accented' : 'Varied'} ${moved} of ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
+}
+function runTranspose(mode, n) {
+  const { track, items } = timingTargets();
+  if (isRhythm(track)) { announce('A drum hit has no pitch to transpose'); return; }
+  if (mode !== 'semi' && scaleIsOff()) { announce('Pick a key and scale first'); return; }
+  if (!items.length) { announce('Nothing to transpose'); return; }
+  const moved = transposeItems(track, items, mode, n);
+  dropVanishedSelection(track);
+  commitHistory(); render(); autosave();
+  const what = mode === 'fit' ? 'into the scale'
+    : mode === 'semi' ? `${n > 0 ? '+' : ''}${n} semitone${Math.abs(n) === 1 ? '' : 's'}`
+    : `${n > 0 ? '+' : ''}${n} scale step${Math.abs(n) === 1 ? '' : 's'}`;
+  announce(`Moved ${moved} of ${items.length} notes ${what}`);
+}
 function commitNote(track, midi, start, len, vel = 1) {
   // A hair before zero is beat one, not a note to throw away. This used to
   // drop it: while recording snapped on the way in, a slightly early keypress
@@ -10485,6 +10787,18 @@ function commitHit(track, type, start, vel = 1) {
 // Record = one bar of count-in, then roll and capture. The count-in exists so
 // there is something to play *to* before the first beat lands; without it the
 // downbeat is always late.
+//
+// With Loop on this is an *overdub*: the transport keeps going round, the
+// count-in happens once, and each lap adds to what is already there rather
+// than replacing it — which is how a drum part or a riff actually gets built,
+// one piece at a time over a bar you can hear. Nothing here implements that;
+// it falls out of the pieces already being right. startPlaybackFrom() already
+// wraps to state.loopStart and re-anchors playStartCol there, so
+// ctxTimeToCol() keeps returning the true column on lap five; commitNote()
+// already goes through clearOverlaps(), so playing the same pitch again in
+// the same place replaces that one note and leaves every other lap's work
+// alone. The one thing that was *not* right is in recKeyUp() above: a key
+// held across the seam.
 function startRecording() {
   const track = state.recTrack;
   if (!track) { announce('Arm a track with its R button first'); return; }

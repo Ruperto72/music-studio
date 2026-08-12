@@ -47,6 +47,17 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   is a comparison, and heights compare better than shades of one colour
 - **Free** placement in the Grid menu (Pro Tools' Slip): place, drag and resize
   without snapping. The grid still sets how long a new note is
+- **Transpose** (menu → Transpose) by semitones, octaves or — with a key set —
+  by **scale steps**, which move each note to the next pitch *in the key*, so a
+  melody nudged upward stays in the key instead of landing on the note between.
+  **Fit to the scale** pulls a take onto the nearest scale tones, and never
+  merges two notes into one. With Keep to scale on, **↑/↓** move by a scale
+  step and **Alt+↑/↓** stay chromatic
+- **Dynamics** (menu → Dynamics) — the third axis. **Vary** walks each note's
+  velocity randomly around where it already is, so a stamped-in groove stops
+  sounding like a machine without losing the shape you gave it; **Accent the
+  beat** plays the notes on a beat harder than the ones between. Only velocity
+  moves, so trying one costs an undo at worst
 - **Quantize and humanize** (menu → Timing), with a **strength**: 100% lands
   every note on the grid, 50% halves the error and keeps the feel. Recording
   no longer snaps as you play — a take keeps your timing, and correcting it is
@@ -81,6 +92,10 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   Everything lands on the grid at the current snap resolution. A **metronome**
   clicks on every beat, accented on the downbeat, and never reaches an
   exported WAV
+- **Overdub** — turn **Loop** on before you record and the transport keeps
+  going round: the count-in happens once, and each lap adds to what's already
+  there instead of replacing it, which is how a drum part actually gets built.
+  Playing the same pitch in the same place replaces just that note
 - **MIDI keyboard** — **Connect MIDI keyboard** in the menu and play a real
   keyboard into the armed track, **with how hard you hit the keys**: velocity
   reaches the note you hear while playing and the note that lands on the grid,

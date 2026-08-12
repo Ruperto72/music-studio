@@ -296,6 +296,80 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   tabellen, därför fortsätter en följd fungera när man byter tonart under
   den, och därför är en ny följd **en tabellrad**. Verify-steget prövar just
   det: samma följd ska ge C–E–G i C-dur och A–C–E i a-moll.
+- [x] **Transponering — kvantisering fast på tonhöjdsaxeln.** Beslutet att
+  inspelning aldrig korrigerar det du spelar gav tiden en efterhandsfix
+  (quantize) men lämnade tonhöjden utan en enda. Nu finns **Transpose** i
+  menyn, med samma scope-regel som Timing (`timingTargets()`: flermarkering,
+  annars markeringen, annars hela spåret): halvtoner, oktaver, **skalsteg** och
+  **Fit to the scale**.
+  Skalsteget är poängen. Intervallet är medvetet *inte* konstant — ett steg upp
+  från E i C-dur är en halvton, från C är det två — vilket är precis det som
+  gör att en melodi flyttar sig *inuti* tonarten i stället för att glida ur
+  den. `scaleStep()` går utåt tills nästa ton som ligger i skalan, så en not
+  som redan ligger utanför fixar sig själv genom att flyttas. Pilarna använder
+  samma vandring: med Keep to scale på flyttar ↑/↓ ett skalsteg, Alt+↑/↓ är
+  kromatiskt. `nudgeSelectionByScale()` går genom `transposeItems()` i stället
+  för att upprepa vandringen, så tangenten och dialogen inte kan bli oense om
+  vad "ett steg upp" betyder.
+  **En bugg jag byggde in och som injektionskörningen fångade:** den första
+  kollisionskontrollen jämförde *tonhöjder* utan att bry sig om tid. Två noter
+  i olika takter kolliderar inte alls, så på en riktig stämma hade den nästan
+  alltid slagit till och fått Fit att göra ingenting. Den går genom
+  `notesConflict()` nu, som allt annat som placerar noter, och en not vars
+  målton är upptagen **står kvar** i stället för att hela operationen backar
+  eller noten försvinner — att fitta ett ackord får aldrig kosta en stämma.
+  Verify-steget har ett eget fall för just det.
+  `applyTiming()` och den nya `transposeItems()` delar `applyItemEdit()`:
+  konfliktupplösningen är densamma på bägge axlarna (två flyttade objekt kan
+  landa på varandra, och måste vägas mot både varandra och det som inte
+  flyttade), så den regeln står på ett ställe i stället för två.
+- [x] **Överdubbning i loopen.** Loop och inspelning fanns var för sig men
+  aldrig tillsammans — och det visade sig att de nästan redan gjorde det.
+  `startPlaybackFrom()` vänder till `state.loopStart` och sätter om
+  `playStartCol` där, så `ctxTimeToCol()` ger rätt kolumn även på femte varvet;
+  `commitNote()` går genom `clearOverlaps()`, så samma tonhöjd på samma plats
+  ersätter *den* noten och lämnar övriga varv i fred. Överdubbning föll alltså
+  ut av att delarna redan var rätt.
+  **Det som inte var rätt:** en tangent som hålls *över* loopens skarv släpps
+  på en kolumn tidigare än den trycktes på, så längden blev negativ och
+  golvet `Math.max(state.grid, …)` filade tyst ner varje sådan not till ett
+  rutsteg. En pad som hålls genom ett varv blev en stöt. Noten slutar vid
+  loopens slut nu, vilket är där den faktiskt ljöd.
+  Arbetet var därmed mest att **säga att det går** (hjälpen, README) och att
+  **binda fast det** — verify-steget spelar in tre varv i en tvåtaktslopp vid
+  240 BPM: två olika tonhöjder som måste överleva varandra, och en tredje
+  hållen över skarven som måste bli längre än ett rutsteg. Tre injektioner
+  (transporten stannar vid looppunkten, varje varv rensar spåret, skarvfixen
+  borttagen) och alla tre biter.
+- [x] **Dynamik — den tredje axeln.** Punkten hette "variation inom ramar" och
+  var den enda där designfrågan avgjorde om den var värd något alls. Svaret
+  blev att *inte* bygga en "variera takten"-knapp som skriver om det du skrivit.
+  Efter quantize (tid) och transponering (tonhöjd) var det uppenbara som
+  saknades **velocity**: den hade en lane för att redigera en not i taget och
+  ingenting för att forma flera. Det är därför en instämplad groove eller en
+  step-inmatad stämma låter som en maskin — varje not ligger på full styrka,
+  vilket är det enda en spelande människa aldrig gör.
+  Två operationer, bägge avsiktligt tråkiga: **Vary** är en slumpvandring runt
+  varje nots *nuvarande* nivå (inte en omlottning — en stämma du redan format
+  behåller sin form och slutar bara vara mekanisk om det), och **Accent the
+  beat** spelar noterna som ligger på ett taktslag hårdare än de mellan. Den
+  andra är den enda formen värd att koda in, för den läses ur taktarten i
+  stället för att gissas; allt annat en "gör det groovigt"-knapp kunde göra är
+  en genreåsikt.
+  **Ingendera rör en not.** Bara velocity ändras, så tonhöjd och läge är
+  exakt där du lämnade dem och värsta utfallet är en undo — vilket visade sig
+  vara vad "föreslå, inte skriva över" betyder när man redan har undo. Bägge
+  går genom `NOTE_LANE_PARAMS.vel`, där regeln "full styrka lagras som
+  *frånvarande*" bor, så en stämma som hamnar tillbaka på full serialiseras
+  som förut i stället för att växa ett `vel` på varje not.
+  **Två svaga påståenden som injektionskörningen fångade**, bägge lärorika:
+  att jämföra on-beat mot off-beat i *absoluta* nivåer bevisar ingenting,
+  eftersom en groove redan slår hårdare på taktslaget — en accent med testet
+  baklänges lämnade fortfarande taktslagen starkast och steget passerade. Nu
+  jämförs varje slag mot *sig självt*: riktningen går inte att förfalska. Och
+  "två tryck ger olika resultat" fångar inte en omlottning; en fast
+  subtraktion gör också det. Det som skiljer dem är om objekten flyttade sig
+  *olika mycket*, vilket är vad steget mäter nu.
 - [x] **Duplicera spår.** "Testa samma slinga på ett annat ljud" är ett av de
   drag man gör oftast när man skriver, och krävde tidigare att man markerade
   en hel stämma, la till ett spår och klistrade in — vid vilket tillfälle

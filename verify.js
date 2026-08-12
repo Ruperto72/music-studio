@@ -4829,6 +4829,17 @@ async function main() {
       await waitFor(`document.getElementById('key-root').value === ${JSON.stringify(String(root))}`);
     }
 
+    // Keep to scale is a per-browser preference, so it survives fresh() and a
+    // step that toggles it is really asserting what the *previous* step left
+    // behind. Set it, don't flip it.
+    async function setKeepToScale(on) {
+      await cdp.evaluate(`(() => {
+        const b = document.getElementById('key-snap');
+        if ((b.getAttribute('aria-pressed') === 'true') !== ${on}) b.click();
+      })()`);
+      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === ${JSON.stringify(String(on))}`);
+    }
+
     step('Key & scale: the lane shades what is outside it, and chromatic shades nothing', async () => {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
@@ -4925,6 +4936,7 @@ async function main() {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await setKey(0, 'major');
+      await setKeepToScale(false);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       // Off: every row is placeable, so clicking each of an octave's rows
       // gives twelve distinct pitches.
@@ -4948,8 +4960,7 @@ async function main() {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await setKey(0, 'major');
-      await cdp.evaluate(`document.getElementById('key-snap').click()`);
-      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'true'`);
+      await setKeepToScale(true);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await placeOctave();
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length > 0`);
@@ -5149,6 +5160,339 @@ async function main() {
       await waitFor(diverged, 6000).catch(() => {
         throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
       });
+    });
+
+    step('Transpose: scale steps move inside the key, semitones do not, and Fit repairs a take', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // A C major triad, placed by finding each pitch's own key in the gutter
+      // rather than by pixel arithmetic.
+      const placeAt = (name, x) => cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        const k = [...g.querySelectorAll('.pkey')].find(k => k.title === ${JSON.stringify(name)});
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect(), kr = k.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${x}, clientY: kr.top + 4 }));
+      })()`);
+      const pitches = () => cdp.evaluate(
+        `[...document.querySelectorAll('.track.active .lane .note')].map(n => n.getAttribute('aria-label').split(',')[0]).sort()`);
+      for (const [name, x] of [['C4', 30], ['E4', 30], ['G4', 30]]) await placeAt(name, x);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      if ((await pitches()).join(' ') !== 'C4 E4 G4') {
+        throw new Error(`expected a C major triad to start from, got ${JSON.stringify(await pitches())}`);
+      }
+
+      // Deselect first, or the dialog acts on the one note the pen left
+      // selected — which is correct behaviour and the wrong thing to measure
+      // here. With nothing selected the scope widens to the whole track.
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await waitFor(`!document.querySelector('.lane .note.selected')`);
+
+      const openTranspose = async () => {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('transpose-btn').click()`);
+        await waitFor(`document.getElementById('transpose-dialog').open`);
+      };
+      const press = (id) => cdp.evaluate(`document.getElementById(${JSON.stringify(id)}).click()`);
+      const close = () => cdp.evaluate(`document.getElementById('transpose-close').click()`);
+
+      // One scale step up: C-E-G becomes D-F-A. Not C#-F-G# — that is the
+      // whole difference between moving inside a key and moving off it, and
+      // the intervals change (2, 1, 2 semitones) because the scale says so.
+      await openTranspose();
+      await press('transpose-step-up');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const stepped = await pitches();
+      if (stepped.join(' ') !== 'A4 D4 F4') {
+        throw new Error(`one scale step up from C-E-G in C major is D-F-A, got ${JSON.stringify(stepped)}`);
+      }
+      // A semitone is still a semitone — the two operations must not have
+      // collapsed into one.
+      await press('transpose-semi-up');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const semi = await pitches();
+      if (semi.join(' ') !== 'A#4 D#4 F#4') {
+        throw new Error(`a semitone up from D-F-A is D#-F#-A#, got ${JSON.stringify(semi)}`);
+      }
+      // ...and Fit puts that back inside the key, which is the repair a take
+      // needs now that recording never corrects pitch on the way in.
+      await press('transpose-fit');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const fitted = await pitches();
+      if (fitted.some(p => p.includes('#'))) {
+        throw new Error(`Fit to the scale should leave nothing outside C major, got ${JSON.stringify(fitted)}`);
+      }
+      if (fitted.length !== 3) throw new Error(`Fit must not lose a voice: ${JSON.stringify(fitted)}`);
+      await close();
+
+      // The arrow keys use the same walk. With Keep to scale on, up is a scale
+      // step; Alt is the chromatic escape hatch.
+      await setKeepToScale(true);
+      await cdp.evaluate(`(() => {
+        const ns = [...document.querySelectorAll('.track.active .lane .note')];
+        ns.sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top));
+        ns[0].click();
+      })()`);
+      await waitFor(`!!document.querySelector('.lane .note.selected')`);
+      const selected = () => cdp.evaluate(
+        `document.querySelector('.track.active .lane .note.selected').getAttribute('aria-label').split(',')[0]`);
+      const midi = (n) => {
+        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const m = n.match(/^([A-G]#?)(\d)$/);
+        return names.indexOf(m[1]) + (parseInt(m[2], 10) + 1) * 12;
+      };
+      const arrow = async (opts) => {
+        await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', ${JSON.stringify({ key: 'ArrowUp', bubbles: true, ...opts })}))`);
+        await new Promise((r) => setTimeout(r, 200));
+        return selected();
+      };
+      // Both presses start from the *same* note, and it is deliberately one
+      // where the two answers differ: D is a whole tone below E in C major, so
+      // a scale step is 2 semitones and Alt is 1. Measured from a note where
+      // the scale step happens to be a semitone anyway (E, B) this step passes
+      // against a build with no escape hatch at all — which is exactly what it
+      // did before, and what running the injection caught.
+      const low = await selected();
+      if (midi(low) % 12 !== 2) throw new Error(`this step needs to start on a D, got ${low}`);
+      const afterAlt = await arrow({ altKey: true });
+      if (midi(afterAlt) - midi(low) !== 1) {
+        throw new Error(`Alt+Up must stay chromatic: ${low} -> ${afterAlt}`);
+      }
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 200));
+      if (await selected() !== low) throw new Error('Alt+Down should come straight back');
+      const afterStep = await arrow({});
+      if (midi(afterStep) - midi(low) !== 2) {
+        throw new Error(`a scale step from ${low} in C major is 2 semitones, landed on ${afterStep}`);
+      }
+
+      // A collision must cost a note its move, never its existence. Two notes
+      // a semitone apart in the same column both want the same pitch when
+      // fitted; the lower one gets it and the other stays put.
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      // Keep to scale is a per-browser preference and this step turned it on
+      // above, so it survives the reload — and with it on, C#4 would snap to
+      // C4 on the way in and there would be no collision to fit.
+      await setKeepToScale(false);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      for (const name of ['C4', 'C#4']) await placeAt(name, 30);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await openTranspose();
+      await press('transpose-fit');
+      await new Promise((r) => setTimeout(r, 300));
+      const survived = await pitches();
+      if (survived.length !== 2) {
+        throw new Error(`fitting a colliding pair must keep both notes, got ${JSON.stringify(survived)}`);
+      }
+    });
+
+    step('Overdub: recording round a loop layers laps instead of replacing them', async () => {
+      await fresh();
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      // A short song at a fast tempo, so two laps take seconds rather than
+      // most of a minute. Both go through the real controls: the length
+      // buttons and the loop's own reset, not state pokes.
+      await cdp.evaluate(`(() => {
+        const t = document.getElementById('tempo');
+        t.value = 240; t.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await cdp.evaluate(`(() => {
+        const minus = document.getElementById('len-minus');
+        for (let i = 0; i < 64 && !/^2 bars/.test(document.getElementById('len-bars').textContent); i++) minus.click();
+      })()`);
+      await waitFor(`/^2 bars/.test(document.getElementById('len-bars').textContent)`);
+      await cdp.evaluate(`document.getElementById('loop-reset').click()`);
+      await cdp.evaluate(`(() => {
+        const l = document.getElementById('loop');
+        if (!l.checked) l.click();
+      })()`);
+      await waitFor(`document.getElementById('loop').checked`);
+
+      const armBass = `(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`;
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const key = (code, type) => cdp.evaluate(
+        `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: ${JSON.stringify(code)}, bubbles: true }))`);
+      const bassNotes = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return [];
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
+        return (d.tracks[id] || []);
+      })()`);
+
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      // Lap one: one pitch. Then wait out the rest of the lap and play a
+      // *different* pitch on lap two — different, so a lap that wiped the
+      // previous one is visible as a missing note rather than as a tie.
+      await key('KeyZ', 'keydown');
+      await new Promise((r) => setTimeout(r, 200));
+      await key('KeyZ', 'keyup');
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
+        return (d.tracks[id] || []).length === 1;
+      })()`, 6000);
+      const lapOne = (await bassNotes()).map((n) => n.freq);
+
+      // Wait for the playhead to wrap — the transport must still be rolling,
+      // which is the half of "overdub" that is about the recorder not
+      // stopping at the loop's end.
+      const headLeft = () => cdp.evaluate(`parseFloat(document.querySelector('.playhead').style.left)`);
+      const before = await headLeft();
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) < ${before}`, 8000)
+        .catch(() => { throw new Error('the transport should keep rolling round the loop while recording'); });
+      if (!await cdp.evaluate(`document.body.classList.contains('playing')`)) {
+        throw new Error('recording stopped at the end of the loop instead of going round');
+      }
+      await key('KeyX', 'keydown');
+      await new Promise((r) => setTimeout(r, 200));
+      await key('KeyX', 'keyup');
+      await new Promise((r) => setTimeout(r, 400));
+
+      // A key held *across* the seam. Its keyup lands on a column earlier than
+      // its keydown, so the raw difference is negative — which used to be
+      // floored to a single grid step, filing a note held through a lap down
+      // to a stab. Press in the last quarter of the lap, release after the
+      // wrap, and require a length longer than one step.
+      const lanePx = await cdp.evaluate(`document.querySelector('.lane').getBoundingClientRect().width`);
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) > ${lanePx * 0.7}`, 8000);
+      await key('KeyC', 'keydown');
+      const heldAt = await headLeft();
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) < ${heldAt}`, 8000);
+      await new Promise((r) => setTimeout(r, 120));
+      await key('KeyC', 'keyup');
+      await new Promise((r) => setTimeout(r, 400));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+
+      const items = await bassNotes();
+      const after = items.map((n) => n.freq);
+      if (after.length < 2) {
+        throw new Error(`lap two should add to lap one, not replace it: ${JSON.stringify({ lapOne, after })}`);
+      }
+      if (!lapOne.every((f) => after.includes(f))) {
+        throw new Error(`lap one's note must survive lap two: ${JSON.stringify({ lapOne, after })}`);
+      }
+      if (new Set(after).size < 3) {
+        throw new Error(`three laps played three different pitches, so all three should be there: ${JSON.stringify(after)}`);
+      }
+      const grid = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        return JSON.parse(localStorage.getItem(k)).grid;
+      })()`);
+      const held = items.reduce((a, b) => (b.len > a.len ? b : a), items[0]);
+      if (held.len <= grid) {
+        throw new Error(`a note held across the loop's seam must outlast one grid step: ${JSON.stringify(items)}`);
+      }
+    });
+
+    step('Dynamics: velocity is shaped without moving a note, and full stays absent', async () => {
+      await fresh();
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      // Stamp in a groove, which is exactly the case this exists for: every
+      // hit lands at the pattern's own level and the part reads as a machine.
+      await cdp.evaluate(`(() => {
+        const t = [...document.querySelectorAll('.track')].find(t => t.dataset.kind === 'rhythm');
+        [...t.querySelectorAll('.th-tool-btn')].find(b => /pattern/i.test(b.title)).click();
+      })()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#pattern-list .song-item')]
+          .find(r => r.querySelector('.song-title').textContent === 'Rock');
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length > 8`);
+
+      const hits = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return (d.tracks[id] || []).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return (d.tracks[id] || []).length > 8;
+      })()`, 6000);
+      const before = await hits();
+
+      const openDynamics = async () => {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('dynamics-btn').click()`);
+        await waitFor(`document.getElementById('dynamics-dialog').open`);
+      };
+      await openDynamics();
+      await cdp.evaluate(`document.getElementById('dynamics-vary').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const after = await hits();
+
+      // Nothing may move. This is the promise the dialog makes in so many
+      // words, and the one that makes pressing it cheap.
+      const place = (l) => l.map(h => `${h.start}:${h.type}`).sort().join(',');
+      if (place(after) !== place(before)) {
+        throw new Error('Vary must not move a hit or change what it is — only how hard it lands');
+      }
+      // Something must actually change, or the button is a decoration.
+      const levels = (l) => l.map(h => (h.vel == null ? 1 : h.vel)).join(',');
+      if (levels(after) === levels(before)) {
+        throw new Error('Vary changed no velocity at all');
+      }
+      // It must be a *reroll*, not one offset applied to everything. Two
+      // presses giving different results proves nothing — a fixed subtraction
+      // does that too, which is what running that injection showed. What
+      // separates them is whether the items moved by different amounts.
+      const vel = (h) => (h.vel == null ? 1 : h.vel);
+      const deltas = after.map((h, i) => Math.round((vel(h) - vel(before[i])) * 100));
+      if (new Set(deltas).size < 3) {
+        throw new Error(`Vary must move items by different amounts, saw ${JSON.stringify([...new Set(deltas)])}`);
+      }
+      await cdp.evaluate(`document.getElementById('dynamics-vary').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const third = await hits();
+      if (place(third) !== place(before)) throw new Error('Vary moved a hit on the second press');
+
+      // Accent reads the meter. Compare each hit against *itself* rather than
+      // on-beat against off-beat: a groove already lands harder on the beat,
+      // so an accent that had the test backwards still left the on-beat hits
+      // louder in absolute terms and the step passed. What it cannot fake is
+      // the direction each hit moved.
+      const preAccent = await hits();
+      await cdp.evaluate(`document.getElementById('dynamics-accent').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const accented = await hits();
+      const beat = 2; // eighths per beat at 4/4
+      let raised = 0, lowered = 0;
+      accented.forEach((h, i) => {
+        const d = vel(h) - vel(preAccent[i]);
+        const onBeat = h.start % beat === 0;
+        if (onBeat && d < -1e-9) throw new Error(`an on-beat hit got quieter: ${JSON.stringify(h)}`);
+        if (!onBeat && d > 1e-9) throw new Error(`an off-beat hit got louder: ${JSON.stringify(h)}`);
+        if (onBeat && d > 1e-9) raised++;
+        if (!onBeat && d < -1e-9) lowered++;
+      });
+      if (!raised || !lowered) {
+        throw new Error(`accenting should raise on-beat hits and lower the others, raised ${raised} lowered ${lowered}`);
+      }
+      // Full velocity is stored as absent everywhere else, and this must not
+      // be the one place that writes 1 onto every item.
+      if (accented.some(h => h.vel === 1)) {
+        throw new Error('a full-velocity hit must serialise as absent, not as vel: 1');
+      }
     });
 
     for (const s of steps) await s();
