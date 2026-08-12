@@ -9583,7 +9583,16 @@ function createPwmSource(freq, sweepLfo) {
   // session. `stop(t)` is called at *schedule* time with a future t, so it is
   // the wrong place to do it — the oscillator's own `ended` event is the hook
   // that actually fires when the note is over.
-  if (sweepLfo) osc.addEventListener('ended', () => { try { width.disconnect(); } catch { /* gone */ } });
+  //
+  // It has to be `sweepLfo.disconnect(width)`, not `width.disconnect()`: the
+  // connection that accumulates is an *outgoing* one of the LFO, and a node
+  // only ever disconnects its own outputs. Taking the wrong end left every
+  // note's tap in place — and, because the LFO still referenced it, kept the
+  // whole `width` node alive too, so the graph grew by two nodes per pwm note
+  // for as long as the page was open and the sweep had to feed all of them
+  // every render quantum. That is the "it starts rasping a bit in" this fixed:
+  // 116 outstanding taps after 45 seconds of one song, still climbing.
+  if (sweepLfo) osc.addEventListener('ended', () => { try { sweepLfo.disconnect(width); } catch { /* gone */ } });
   return {
     out: sum, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
     start: (t) => { osc.start(t); if (ownLfo) ownLfo.start(t); },
