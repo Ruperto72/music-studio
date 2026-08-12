@@ -420,6 +420,32 @@ async function main() {
       await cdp.send('Page.navigate', { url });
       await loaded;
     }
+    // Every browser step starts from here. The suite used to let steps inherit
+    // whatever the previous one left: only 16 of 67 reset themselves and the
+    // other 51 quietly relied on their neighbours. That coupling is not a
+    // tidiness problem, it decided *results* — the same broken hitsConflict was
+    // caught or missed by the same three steps depending only on what else was
+    // injected in that run, which means an audit run against a coupled suite
+    // reports things that are not true.
+    async function fresh() {
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length >= 5`);
+    }
+    // A fresh page with one note placed and selected — the precondition five
+    // steps were getting from whichever step ran in front of them. The note
+    // inspector only exists while something is selected, so a step that reads
+    // it has to put it there itself.
+    async function withSelectedNote() {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`{
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 60, clientY: rect.top + 40 }));
+      }`);
+      await waitFor(`!!document.querySelector('.track.active .lane .note')`);
+      await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
+    }
     async function waitFor(expr, timeoutMs = 5000) {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
@@ -552,6 +578,7 @@ async function main() {
     });
 
     step('Pen: clicking into a track that is not active places at the clicked cell', async () => {
+      await fresh();
       // setActive() re-renders, which replaces the lane element the handler is
       // attached to — so reading its rect after activating read a detached
       // node's zeros and the item landed wherever the raw viewport coordinates
@@ -594,6 +621,7 @@ async function main() {
     });
 
     step('loads the Froggy Hop example via the Songs menu', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
       await waitFor(`document.querySelectorAll('.song-item').length > 0`);
@@ -607,6 +635,7 @@ async function main() {
     });
 
     step('opens the Automation panel and adds a curve point', async () => {
+      await fresh();
       await cdp.evaluate(`Array.from(document.querySelectorAll('.track')[0].querySelectorAll('button')).find(b => b.textContent.includes('Auto')).click()`);
       await waitFor(`!!document.querySelector('.automation-lane-el')`);
       const before = await cdp.evaluate(`document.querySelectorAll('.automation-point').length`);
@@ -651,6 +680,7 @@ async function main() {
     }
 
     step('FX panel: adding Delay opens its popover with a working knob', async () => {
+      await fresh();
       await addFxEffect('Delay');
       // 0 -> 0.5 at a 0.02 step is exactly 25 presses.
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
@@ -659,6 +689,7 @@ async function main() {
     });
 
     step('FX panel: EQ chip renders before Comp regardless of add order, and survives a reload', async () => {
+      await fresh();
       // Comp added first, EQ second — if the chip row still shows EQ before
       // Comp, the order is registry-driven (the real audio chain), not
       // insertion order.
@@ -690,6 +721,15 @@ async function main() {
     });
 
     step('FX panel: bypass dims the chip and its strip section but keeps showing the dialled value, and Reset clears every chip', async () => {
+      await fresh();
+      // Adds what it bypasses and dials it, instead of finding both left over
+      // from the step before. Without a dialled value, "bypass does not hide
+      // the real value" is being asserted about a default.
+      await addFxEffect('EQ');
+      await addFxEffect('Comp');
+      await stepKnob('eq', 'Lo', 'ArrowUp', 12); // 0 -> 6.0dB at a 0.5 step
+      await waitFor(`[...document.querySelector('.th-strip-section[data-key="eq"]').querySelectorAll('.th-knob')]
+        .find(k => k.querySelector('.th-knob-label').textContent === 'Lo').querySelector('.th-knob-val').textContent === '6.0dB'`);
       // Bypass moved off the chip and onto the strip section head, so each
       // control exists once rather than on both surfaces.
       await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="eq"] .th-fx-chip-bypass').click()`);
@@ -715,6 +755,7 @@ async function main() {
     });
 
     step('FX panel: the "+ Add effect" menu renders in the floating layer, not clipped by .daw', async () => {
+      await fresh();
       // The bug this used to chase (a sibling track's header painting over
       // the menu inside .daw's own stacking context) can't happen any more
       // now that the menu is portaled to #floating-layer, a
@@ -740,6 +781,7 @@ async function main() {
     });
 
     step('plays back for a moment with no errors', async () => {
+      await fresh();
       const before = errors.length;
       await cdp.evaluate(`document.querySelector('#play').click()`);
       await new Promise((r) => setTimeout(r, 1200));
@@ -749,6 +791,7 @@ async function main() {
     });
 
     step('adds a track via the menu and undoes it', async () => {
+      await fresh();
       // This step used to stop after adding — it never undid anything, so the
       // half its own name promised was untested. Found by counting assertions
       // per step rather than by reading: it had none at all.
@@ -760,6 +803,12 @@ async function main() {
       const added = (await ids()).find((id) => !before.includes(id));
       if (!added) throw new Error('the new track has no id of its own');
 
+      // Wait for the history to actually hold something: commitHistory() is
+      // debounced, and on a fresh page the stack starts empty. Before this
+      // step reset itself, the stack was full of whatever earlier steps had
+      // done — so its undo may well have been undoing one of those instead.
+      await waitFor(`!document.querySelector('#undo-btn').disabled`, 4000)
+        .catch(() => { throw new Error('adding a track should put something on the undo stack'); });
       await cdp.evaluate(`document.querySelector('#undo-btn').click()`);
       await waitFor(`document.querySelectorAll('.track').length === ${before.length}`, 4000)
         .catch(() => { throw new Error('undo did not remove the added track'); });
@@ -779,6 +828,7 @@ async function main() {
     });
 
     step('Pen: clicking a different pitch at the same time in a tonal track adds a chord tone, not a replacement', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       const hasLane = await cdp.evaluate(`!!document.querySelector('.track.active .lane')`);
       if (!hasLane) throw new Error('expected an active tonal track with a .lane element');
@@ -797,6 +847,7 @@ async function main() {
     });
 
     step('Note inspector: both preset palettes start collapsed', async () => {
+      await withSelectedNote();
       // Expanded, the two ten-button grids were 384px of a 745px inspector,
       // which pushed the panels below them off a 1366x768 screen. They collapse
       // by default and remember the choice; this must run before any other step
@@ -818,12 +869,16 @@ async function main() {
     });
 
     step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
+      await withSelectedNote();
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
       `);
-      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 4`);
+      // Root plus two chord tones. This read `=== 4` while the lane also held
+      // a note from an earlier step: the count was calibrated to inherited
+      // state rather than to what the button does.
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
       const multiCount = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note.multi-selected').length`);
       if (multiCount !== 3) throw new Error(`expected 3 notes multi-selected as the chord group, got ${multiCount}`);
       // No single note is selected any more, so the column falls back to the
@@ -835,6 +890,13 @@ async function main() {
     });
 
     step('Chord buttons: re-running on the same root adds nothing (no stacked duplicates)', async () => {
+      await withSelectedNote();
+      // The palettes are collapsed by default and render no buttons while
+      // closed, so a step that clicks one has to open it — and build the chord
+      // it is about to ask for again, rather than inheriting one.
+      await openPalette('chord');
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj"]').click()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note.multi-selected').length === 3`);
       // The chord tones from the previous step are already there, so asking
       // for the same chord again must be a no-op rather than stacking exact
       // duplicates on top of them. Done here, before the pitch-window pan
@@ -860,6 +922,7 @@ async function main() {
     });
 
     step('Chord buttons at the pitch ceiling: root survives, nothing is deleted', async () => {
+      await fresh();
       // Push the pitch window's auto-fit all the way up first (a big
       // negative-deltaY wheel scroll pans toward higher pitches, clamped at
       // MIDI_MAX) so a click near the very top row lands on the instrument's
@@ -913,6 +976,7 @@ async function main() {
     });
 
     step('Chord presets: every voicing is offered, and a 7th adds all three tones', async () => {
+      await withSelectedNote();
       // The other chord steps only exercise `maj` (two tones). A seventh is the
       // three-tone shape, and the power chord the one-tone shape, so check the
       // table is fully wired and that a longer interval list lands correctly.
@@ -954,6 +1018,7 @@ async function main() {
     });
 
     step('Arpeggio presets: same palette as Chord, writing intervals into the note', async () => {
+      await fresh();
       // Both rows read CHORD_PRESETS, so they must offer the same voicings —
       // but an arpeggio only rewrites this one note's `arp` list rather than
       // adding notes, and the Arpeggio field is where that shows up.
@@ -998,6 +1063,7 @@ async function main() {
     });
 
     step('Eraser: deleting a note does not move the selection to a different note', async () => {
+      await fresh();
       // state.selected used to be an index, so removing an earlier note
       // shifted it and silently re-pointed the inspector at another note.
       // Runs on its own freshly added track so earlier steps' notes (and the
@@ -1050,6 +1116,7 @@ async function main() {
     });
 
     step('Rhythm: placing a hit keeps the other rows in that column', async () => {
+      await fresh();
       // The rhythm counterpart of the same-pitch rule for notes: only a hit of
       // the same *type* in a column is a duplicate. Filtering on start alone
       // wiped the whole column, making kick+hi-hat on one beat unplaceable.
@@ -1136,6 +1203,7 @@ async function main() {
     // unrelated ones and the counts would mean nothing. A fresh track starts
     // empty and is made active by addRhythmTrack().
     step('Rhythm: pasting a stacked kick+snare keeps both hits', async () => {
+      await fresh();
       // The clipboard path keyed hits on their column alone, so one row of a
       // copied stack was dropped and the landing column's other rows cleared.
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
@@ -1186,12 +1254,32 @@ async function main() {
     });
 
     step('Adding a track does not carry the previous track\'s selection into it', async () => {
+      await fresh();
       // state.multiSelected is scoped to the active track, but addTrack() set
       // state.activeTrack directly and setActive() then early-returned, so the
       // old track's group stayed selected — and the next nudge copied those
       // items into the new track.
+      // Makes its own multi-selection. It used to rely on the hits pasted by
+      // the step before still being selected, so what it tested depended on
+      // which step ran in front of it.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (let i = 0; i < 3; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 40 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length === 3`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        [...lane.querySelectorAll('.note')].forEach((n, i) => {
+          n.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: i > 0 }));
+        });
+      })()`);
       const selected = `document.querySelectorAll('.hit.multi-selected, .note.multi-selected').length`;
-      if (await cdp.evaluate(selected) === 0) throw new Error('expected the pasted hits to still be selected');
+      await waitFor(`${selected} > 0`, 3000)
+        .catch(() => { throw new Error('this step needs a multi-selection of its own to work with'); });
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.trim().startsWith('Add track')).click()`);
       await new Promise((r) => setTimeout(r, 350));
@@ -1207,6 +1295,7 @@ async function main() {
     });
 
     step('Interface icons: drawn from GLYPHS, no emoji, and every control still named', async () => {
+      await fresh();
       // The point of replacing the emoji was one visual language, so the check
       // is twofold: no pictographic character is left on a control, and nothing
       // lost its accessible name on the way (a glyph is aria-hidden, so a
@@ -1280,6 +1369,7 @@ async function main() {
     });
 
     step('Icons: waveform picker, per-note toggles and FX headings are glyphed and still labelled', async () => {
+      await withSelectedNote();
       // The glyphs are aria-hidden decoration, so the risk isn't that they fail
       // to draw — it's that adding them quietly costs a control its accessible
       // name, or that the picker overflows the fixed-width header. Check
@@ -1401,6 +1491,10 @@ async function main() {
     });
 
     step('Accessibility: landmarks, labelled grid and keyboard note selection', async () => {
+      await fresh();
+      // A populated grid, since half of this is about how notes are named. It
+      // used to inherit whichever song an earlier step had loaded.
+      await loadExample('Froggy Hop');
       const structure = await cdp.evaluate(`({
         h1: document.querySelectorAll('h1').length,
         main: document.querySelectorAll('main').length,
@@ -1769,6 +1863,7 @@ async function main() {
     });
 
     step('Per-note and per-hit pan reach the audio graph; centre inserts no node', async () => {
+      await fresh();
       // A panned note looks identical in the DOM, so the DOM alone can't show
       // that pan is applied. Patch createStereoPanner before the page loads
       // and watch what gets built when a note is auditioned.
@@ -2186,6 +2281,7 @@ async function main() {
     });
 
     step('Voice pooling: notes share filter+gain nodes instead of one pair each', async () => {
+      await fresh();
       // Pooling shipped, then sat switched off behind a leftover `return null`
       // for long enough that both README and DESIGN had drifted into claiming
       // something the build didn't do. What is asserted here is the invariant
@@ -2238,6 +2334,7 @@ async function main() {
     });
 
     step('Noise buffers are seeded: identical across two page loads', async () => {
+      await fresh();
       // The reverb tail and the six noise-based drum sounds used to be filled
       // from Math.random(), so they differed on every page load. Checksum the
       // buffers themselves as they are handed to the nodes that play them,
@@ -2336,6 +2433,7 @@ async function main() {
     });
 
     step('Waveforms: all ten build a distinct sound, none is off in level, and PWM sweeps', async () => {
+      await fresh();
       // The DOM can only show that ten buttons exist. What matters is that each
       // one produces different audio — a waveform that silently fell through to
       // `square` would look perfect and sound wrong — so render a note per
@@ -2514,6 +2612,7 @@ async function main() {
     });
 
     step('PWM: the sweep free-runs across notes instead of restarting on each one', async () => {
+      await fresh();
       // The wiring check in the step above proves an LFO reaches the pulse-width
       // delay; it cannot tell a per-note LFO from the shared per-track one. Only
       // the audio can, because the difference IS the phase: a per-note LFO
@@ -2563,10 +2662,16 @@ async function main() {
       const placed = await cdp.evaluate(`(() => {
         const lane = document.querySelector('.track[data-kind="pitch"] .lane');
         const r = lane.getBoundingClientRect();
-        for (let i = 1; i < 8; i++) {
-          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: r.top + 60 }));
+        // All eight, inside this lane's own height, counted from a fresh
+        // query. It used to place seven and rely on the eighth being left
+        // over; +60 landed in the *next* track's lane, which the old
+        // whole-document count happily included; and render() rebuilds the
+        // lane, so the reference captured above is detached by the end.
+        const y = r.top + Math.min(40, r.height / 2);
+        for (let i = 0; i < 8; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 60, clientY: y }));
         }
-        return document.querySelectorAll('.lane .note').length;
+        return document.querySelector('.track[data-kind="pitch"] .lane').querySelectorAll('.note').length;
       })()`);
       if (placed !== 8) throw new Error(`expected 8 notes on the PWM track, got ${placed}`);
       await cdp.evaluate(`document.querySelector('.th-osc-trigger').click()`);
@@ -2589,6 +2694,7 @@ async function main() {
     });
 
     step('Duty: a square track has its own default, and a note can override it', async () => {
+      await fresh();
       // setPeriodicWave() takes an opaque PeriodicWave, so the DOM and the node
       // graph both hide which pulse width was used. Patch pulseWave's consumer
       // instead: record every duty that reaches setPeriodicWave via the app's
@@ -2740,6 +2846,7 @@ async function main() {
     });
 
     step('Per-track vibrato reaches the note oscillator, and only on tonal tracks', async () => {
+      await fresh();
       // Vibrato cannot be an insert like the other per-track effects — pitch
       // modulation has to reach each note's own oscillator — so the check is
       // that an LFO actually gets connected to an OscillatorNode's frequency,
@@ -2881,6 +2988,7 @@ async function main() {
     });
 
     step('FX panel: bypass writes the default value to the audio graph, not the dialled one', async () => {
+      await fresh();
       await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
         source: `
           (() => {
@@ -3070,6 +3178,7 @@ async function main() {
     });
 
     step('FX panel: a bypassed send is not re-armed by its own automation curve', async () => {
+      await fresh();
       // scheduleAutomationForChunk() has its own call site for the three FX
       // sends, separate from every per-effect bypass path the step above
       // covers — it used to write the raw dialled value straight to the
@@ -3186,6 +3295,7 @@ async function main() {
     const selectFirstTrack = () => cdp.evaluate(`document.querySelector('.track-header:not(.automation-header)').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
 
     step('Master FX: five fixed chips render, all dimmed at default', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('#master-fx-toggle').click()`);
       await waitFor(`document.querySelector('#master-fx-panel').style.display !== 'none'`);
       const chips = await cdp.evaluate(`[...document.querySelectorAll('.th-master-fx-chip')].map(c => ({
@@ -3209,6 +3319,7 @@ async function main() {
     });
 
     step('Master FX: a chip click hands the inspector to the master bus', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
       await waitFor(`!!${masterSec('eq')}`);
       // The whole point of the change: master's knobs live in the same column
@@ -3234,6 +3345,7 @@ async function main() {
     });
 
     step('Master FX: selecting a track takes the inspector back from master', async () => {
+      await fresh();
       await selectFirstTrack();
       await waitFor(`!${masterSec()}`);
       const shown = await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent`);
@@ -3250,6 +3362,7 @@ async function main() {
     });
 
     step('Master FX: the master volume slider does not steal the selection', async () => {
+      await fresh();
       // A track's volume slider deliberately does NOT activate its track (it
       // stops the header's own mousedown), so master's must not either — or
       // nudging the master fader throws away whatever the inspector was
@@ -3269,6 +3382,7 @@ async function main() {
     });
 
     step('Master FX: selecting master drops a track-scoped strip focus', async () => {
+      await fresh();
       // This bug only exists on the <=760px layout, where the strip opens
       // *only* for whoever stripFocus names. On a wide viewport both owners
       // render regardless and it leaves no trace in the DOM — which is how
@@ -3316,6 +3430,7 @@ async function main() {
     });
 
     step('Master FX: EQ knob updates state and un-dims its chip', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="eq"] .th-fx-chip-body').click()`);
       await waitFor(`!!${masterSec('eq')}`);
       const secSel = masterSec('eq');
@@ -3350,6 +3465,7 @@ async function main() {
     });
 
     step('Master FX: Sidechain has a real On/Off toggle, not a bypass button', async () => {
+      await fresh();
       await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
       await waitFor(`!!${masterSec('sidechain')}`);
       const toggleSel = `${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn')`;
@@ -3363,6 +3479,7 @@ async function main() {
     });
 
     step('Track header: a real click on Mute still lands, and on the name still renames', async () => {
+      await fresh();
       // The header used to stop `mousedown` on each of its fifteen controls,
       // one line at a time, so that its own mousedown -> setActive -> render
       // could not rebuild a control out from under a click in progress. That
@@ -3415,6 +3532,7 @@ async function main() {
     });
 
     step('FX: a real trusted click through the grid still lands after light-dismiss closes a popover', async () => {
+      await fresh();
       // Fix 1 regression test. The bug (light-dismiss rebuilding the DOM on
       // 'pointerdown', detaching the click's real target before 'click'
       // fires) only reproduces with a genuinely trusted click sequence —
@@ -3499,6 +3617,7 @@ async function main() {
     // Last on purpose: this step reloads the page to install its createGain
     // patch, which drops the loaded example song every step above depends on.
     step('Track header: it follows every change to its track', async () => {
+      await fresh();
       // A header is rebuilt from scratch on every render, so today this is
       // simply true. It is pinned because the obvious optimisation is to stop
       // rebuilding unchanged headers, and the hazard that buys is a value left
@@ -3568,6 +3687,7 @@ async function main() {
     });
 
     step('Many tracks: off-screen rows still report their real height', async () => {
+      await fresh();
       // Nothing skips layout here today, so this passes trivially — and that
       // is the point of pinning it. `content-visibility: auto` on `.track` was
       // tried and measured as a 3-4x speed-up (471 -> 155 ms at 48 tracks) and
@@ -4190,6 +4310,7 @@ async function main() {
     });
 
     step('MIDI input: a played note lands on the armed track with its velocity', async () => {
+      await fresh();
       // No hardware needed and none wanted: Web MIDI is an interface, so a
       // stub that answers requestMIDIAccess() with one fake input exercises
       // every line the real thing would — the message parsing, the velocity
@@ -4277,6 +4398,7 @@ async function main() {
     });
 
     step('Rhythm: a hit carries a velocity that reaches the audio graph and the saved file', async () => {
+      await fresh();
       // A quiet hit looks identical in the DOM to a loud one apart from an
       // opacity, so the DOM alone cannot show that velocity is actually
       // applied. Patch createGain before the page loads and record every
