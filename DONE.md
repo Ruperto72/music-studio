@@ -238,6 +238,78 @@ ett facit.
   och VU-mätaren tappar post-FX). Standardvärden är helt neutrala (0dB,
   ratio 1:1) så gamla låtar utan dessa fält låter exakt som förut.
 
+## Kreativa genvägar (efterfrågat)
+
+Önskemålet var inte en funktion utan ett tillstånd: *det ska vara lätt att
+vara kreativ i appen*. Genomgången av vad som faktiskt stod i vägen gav ett
+tydligt svar. Rytmsidan var väl försörjd — tolv grooves med fills, tre kit,
+velocity, mönsterdialog med förhandslyssning. **Tonsidan hade ingenting
+motsvarande**: ackordpaletten, arpeggio, och sedan ett helkromatiskt rutnät.
+Där satt tröskeln, och alla fyra punkterna nedan angriper den.
+
+- [x] **Tonart och skala.** Appen visste inte vilken tonart en låt gick i.
+  Rutnätet var tolv likvärdiga rader, klaviaturen tolv likvärdiga tangenter,
+  och ackordknapparna absoluta (`maj`, `m7`) snarare än relativa till något.
+  För den som inte spelar är varannan not fel och det hörs först efteråt.
+  Nu skuggas raderna utanför skalan, tangenterna dämpas, och tonikan är
+  markerad. **Ingenting är förbjudet** — det är fortfarande möjligt att
+  klicka var som helst, för att höra tonen man undviker är ofta hela poängen.
+  `SCALES` är tabellen (elva skalor: kyrkotonarter, pentatonik, blues); allt
+  annat går genom `degreeOf()`/`inScale()`, och `scaleClassFor()` är det enda
+  stället där en rads markering avgörs — både lanens celler och gutterns
+  tangenter läser den, så de kan inte säga emot varandra. `chromatic` är
+  identitetsfallet: en låt skriven innan detta fanns har varken `key` eller
+  `scale` och laddas exakt som förut.
+  **Två gränsdragningar som är medvetna, inte förbiseenden:**
+  - *Att spela korrigeras aldrig.* `snapToScale()` ligger på precis ett
+    ställe, `laneCoords()` — samma regel som `snapToGrid()` följer på
+    tidsaxeln — och datorklaviaturen, MIDI och step entry passerar aldrig
+    där. En tagning behåller vad du spelade, precis som med timingen.
+  - *En gruppdragning snäpper inte.* Att korrigera varje ton för sig hade
+    dragit två av dem till samma rad, så ett ackord draget uppför lanen hade
+    tyst tappat en stämma. Att flytta flera noter betyder att flytta *den
+    formen*.
+  Själva snäppningen (`keepToScale`) är en arbetsinställning i `localStorage`
+  som Slips `snapOn`, inte låtdata: att öppna någon annans låt ska inte ändra
+  vad din mus gör.
+- [x] **Diatoniska ackord i notinspektorn.** Med en tonart satt inleds
+  ackordpaletten av två knappar: treklangen och septimackordet som *den här
+  tonarten* bygger på just den noten. De heter `ii` och `ii7`, inte `min` och
+  `m7` — vilket är det som är värt att lära ut, eftersom vilka ackord som hör
+  ihop är precis det en tonart talar om. Tio absoluta kvaliteter är tio beslut
+  för någon som inte redan vet vilket som hör hemma; `ii` är noll.
+  **Kvaliteterna står ingenstans i koden.** `diatonicIntervals()` staplar
+  terser *inuti* skalan, så treklangen på durskalans andra steg blir moll för
+  att skalan säger det, och den på sjunde steget blir förminskad av samma
+  skäl. Det gör den rätt för varje rad i `SCALES`, inklusive de med fem eller
+  sex toner, utan att någon skriver ner kvaliteterna en andra gång.
+- [x] **Ackordföljder.** Den tonala motsvarigheten till `RHYTHM_PATTERNS`, och
+  där av samma skäl: en tom lane är en sämre utgångspunkt än en groove man
+  genast kan skriva över. Sju följder (I–V–vi–IV, Pachelbels nedgång,
+  doo-wop-vändningen, ii–V–I, den andalusiska kadensen, mollvampen,
+  tolvtaktsblues), ett ackord per takt, insatta från spelhuvudets takt till
+  låtens slut — **samma kontrakt som `insertPatternIntoRhythm()`**, så låtens
+  två halvor beter sig likadant när man börjar.
+  Tabellen lagrar **skalsteg, inte ackord**: `[0, 4, 5, 3]` är I–V–vi–IV i en
+  durtonart och i–v–VI–iv i en molltonart, eftersom kvaliteterna kommer från
+  `diatonicIntervals()`. Därför står det inte ett enda dur eller moll i
+  tabellen, därför fortsätter en följd fungera när man byter tonart under
+  den, och därför är en ny följd **en tabellrad**. Verify-steget prövar just
+  det: samma följd ska ge C–E–G i C-dur och A–C–E i a-moll.
+- [x] **Duplicera spår.** "Testa samma slinga på ett annat ljud" är ett av de
+  drag man gör oftast när man skriver, och krävde tidigare att man markerade
+  en hel stämma, la till ett spår och klistrade in — vid vilket tillfälle
+  idén oftast hunnit ta slut. Nu en knapp i spårhuvudet, bredvid Ta bort:
+  kopian hamnar direkt under originalet med hela rösten med sig.
+  Två detaljer som annars gör en kopia sämre än värdelös: **noterna kopieras
+  per värde** (att dela objekten hade gjort de två spåren till samma stämma,
+  så att dra en not i det ena flyttat den i bägge — verify-steget knuffar en
+  not i kopian och kräver att originalet står still), och rösten hämtas ur
+  **`SPARSE_TRACK_MAPS`** i stället för en handskriven lista, så en per-spårs-
+  karta som läggs till senare följer med utan att någon går tillbaka hit. Det
+  är exakt den lista fyra andra ställen tidigare skrev av var för sig och fick
+  fel.
+
 ## Ljud / export
 
 - [x] **`Popcorn` ut, `Rust Foundry` in.** Popcorn togs bort på begäran; den

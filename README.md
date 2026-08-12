@@ -27,6 +27,9 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - **Add / rename / remove / reorder** tonal tracks, plus one or more **rhythm**
   tracks sharing a fixed 10-piece palette (kick, snare, rim, hi-hat, open hat,
   shaker, tom, clap, crash, ride)
+- **Duplicate a track** (⧉ in its header) — the part *and* the whole voice,
+  copied below it. "Try this line on another instrument" is a two-second move
+  rather than a selection, a new track and a paste
 - **Three drum kits** — each rhythm track picks whether those ten pieces are
   synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
   snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on
@@ -50,6 +53,19 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   a separate decision
 - **Pen / Eraser / Grab** tools; drag to move, drag the right edge to resize,
   drag empty space to marquee-select
+- **Key and scale** — pick a tonic and a scale in the bottom bar and the lane
+  shades every row outside it, dims those keys on the keyboard, and marks the
+  tonic. Nothing is forbidden; you can just *see* where the wrong notes are
+  before you hear them. Turn on **Keep to scale** and a note placed or dragged
+  with the mouse moves to the nearest pitch in the scale — playing is never
+  corrected, the same way recording never quantises as you play
+- **Chord progressions** — a built-in progression (I–V–vi–IV, ii–V–I, the
+  Andalusian cadence, a 12-bar blues, …) written straight into a track, one
+  chord per bar, in the song's key. They're stored as *degrees*, not chords,
+  so the same progression comes out major or minor depending on the scale you
+  picked: change the key and insert it again to hear it somewhere else
+  entirely. The drum side has had this for a while — this is the same idea for
+  the half of a song that isn't the beat
 - **Chords** — place several pitches in one column, or build one from a
   selected note with the inspector's ten quick voicings (power chord, maj,
   min, dim, aug, sus2, sus4, 7, maj7, m7), which add real notes above the
