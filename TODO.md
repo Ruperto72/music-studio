@@ -46,14 +46,9 @@ hur roligt det vore att bygga.
 ## Kreativa genvägar (nästa steg)
 
 Tonart, skala, diatoniska ackord, ackordföljder, spårduplicering och
-transponering är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
+transponering och överdubbning är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
 ordning jag skulle ta det:
 
-- [ ] **Överdubbning i loopen.** Loop och inspelning finns var för sig, men
-  inte tillsammans: att spela in varv efter varv i samma loop utan att radera
-  är hur trumstämmor och riff faktiskt växer fram. Bör vara en flagga på
-  inspelningen snarare än en ny mekanism — `recNoteDown()`/`commitNote()`
-  gör redan rätt sak, det som saknas är att transporten inte nollställer.
 - [ ] **Variation inom ramar.** "Variera den här takten": knuffa några
   velocities, tappa eller lägg till ett slag, oktavflytta en not. Enkel att
   bygga och lätt att göra gimmickig — den ska föreslå, inte skriva över, och

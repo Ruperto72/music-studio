@@ -323,6 +323,24 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   konfliktupplösningen är densamma på bägge axlarna (två flyttade objekt kan
   landa på varandra, och måste vägas mot både varandra och det som inte
   flyttade), så den regeln står på ett ställe i stället för två.
+- [x] **Överdubbning i loopen.** Loop och inspelning fanns var för sig men
+  aldrig tillsammans — och det visade sig att de nästan redan gjorde det.
+  `startPlaybackFrom()` vänder till `state.loopStart` och sätter om
+  `playStartCol` där, så `ctxTimeToCol()` ger rätt kolumn även på femte varvet;
+  `commitNote()` går genom `clearOverlaps()`, så samma tonhöjd på samma plats
+  ersätter *den* noten och lämnar övriga varv i fred. Överdubbning föll alltså
+  ut av att delarna redan var rätt.
+  **Det som inte var rätt:** en tangent som hålls *över* loopens skarv släpps
+  på en kolumn tidigare än den trycktes på, så längden blev negativ och
+  golvet `Math.max(state.grid, …)` filade tyst ner varje sådan not till ett
+  rutsteg. En pad som hålls genom ett varv blev en stöt. Noten slutar vid
+  loopens slut nu, vilket är där den faktiskt ljöd.
+  Arbetet var därmed mest att **säga att det går** (hjälpen, README) och att
+  **binda fast det** — verify-steget spelar in tre varv i en tvåtaktslopp vid
+  240 BPM: två olika tonhöjder som måste överleva varandra, och en tredje
+  hållen över skarven som måste bli längre än ett rutsteg. Tre injektioner
+  (transporten stannar vid looppunkten, varje varv rensar spåret, skarvfixen
+  borttagen) och alla tre biter.
 - [x] **Duplicera spår.** "Testa samma slinga på ett annat ljud" är ett av de
   drag man gör oftast när man skriver, och krävde tidigare att man markerade
   en hel stämma, la till ett spår och klistrade in — vid vilket tillfälle

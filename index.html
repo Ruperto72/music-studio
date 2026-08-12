@@ -1127,6 +1127,7 @@
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
         <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time, since there is one keyboard — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <span class="help-ico" data-glyph="record"></span><b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. <b>Stop</b> ends the take. The <span class="help-ico" data-glyph="metronome"></span><b>Metronome</b> button clicks on every beat, accented on the downbeat — it is a rehearsal aid only and never appears in an exported WAV.</li>
+        <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. That is how a drum part or a riff actually gets built — one piece at a time over a bar you can hear. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in, and a key held through the seam becomes a note that runs to the end of the loop rather than a stab.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level: a soft hit is darker, the way a real drum struck gently gives you less of the sharp top end, so a ghost note sits behind the beat instead of just being a quiet copy of the accent. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
       </ul>
@@ -10379,7 +10380,14 @@ function recKeyUp(id) {
     // Length from how long the key was down, floored at one grid step so a
     // stab still lands as a note rather than nothing.
     const end = quant(ctxTimeToCol(ctx.currentTime));
-    commitNote(track, held.midi, held.startCol, Math.max(state.grid, end - held.startCol), held.vel);
+    // A key held across the loop's seam comes up at a column *earlier* than
+    // the one it went down on, so the raw difference is negative and the
+    // floor below quietly filed every such note down to a one-step stab. The
+    // note really did run to the end of the loop, so that is where it ends —
+    // which is what makes holding a pad through a lap work at all.
+    const looping = document.getElementById('loop').checked;
+    const stop = end < held.startCol ? (looping ? state.loopEnd : COLS) : end;
+    commitNote(track, held.midi, held.startCol, Math.max(state.grid, stop - held.startCol), held.vel);
   }
   // Not in the guard above: a stepped chord has to move the cursor on when its
   // last key comes up, and none of its keys carry a startCol.
@@ -10668,6 +10676,18 @@ function commitHit(track, type, start, vel = 1) {
 // Record = one bar of count-in, then roll and capture. The count-in exists so
 // there is something to play *to* before the first beat lands; without it the
 // downbeat is always late.
+//
+// With Loop on this is an *overdub*: the transport keeps going round, the
+// count-in happens once, and each lap adds to what is already there rather
+// than replacing it — which is how a drum part or a riff actually gets built,
+// one piece at a time over a bar you can hear. Nothing here implements that;
+// it falls out of the pieces already being right. startPlaybackFrom() already
+// wraps to state.loopStart and re-anchors playStartCol there, so
+// ctxTimeToCol() keeps returning the true column on lap five; commitNote()
+// already goes through clearOverlaps(), so playing the same pitch again in
+// the same place replaces that one note and leaves every other lap's work
+// alone. The one thing that was *not* right is in recKeyUp() above: a key
+// held across the seam.
 function startRecording() {
   const track = state.recTrack;
   if (!track) { announce('Arm a track with its R button first'); return; }

@@ -87,6 +87,10 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   Everything lands on the grid at the current snap resolution. A **metronome**
   clicks on every beat, accented on the downbeat, and never reaches an
   exported WAV
+- **Overdub** — turn **Loop** on before you record and the transport keeps
+  going round: the count-in happens once, and each lap adds to what's already
+  there instead of replacing it, which is how a drum part actually gets built.
+  Playing the same pitch in the same place replaces just that note
 - **MIDI keyboard** — **Connect MIDI keyboard** in the menu and play a real
   keyboard into the armed track, **with how hard you hit the keys**: velocity
   reaches the note you hear while playing and the note that lands on the grid,

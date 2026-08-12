@@ -5291,6 +5291,113 @@ async function main() {
       }
     });
 
+    step('Overdub: recording round a loop layers laps instead of replacing them', async () => {
+      await fresh();
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      // A short song at a fast tempo, so two laps take seconds rather than
+      // most of a minute. Both go through the real controls: the length
+      // buttons and the loop's own reset, not state pokes.
+      await cdp.evaluate(`(() => {
+        const t = document.getElementById('tempo');
+        t.value = 240; t.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await cdp.evaluate(`(() => {
+        const minus = document.getElementById('len-minus');
+        for (let i = 0; i < 64 && !/^2 bars/.test(document.getElementById('len-bars').textContent); i++) minus.click();
+      })()`);
+      await waitFor(`/^2 bars/.test(document.getElementById('len-bars').textContent)`);
+      await cdp.evaluate(`document.getElementById('loop-reset').click()`);
+      await cdp.evaluate(`(() => {
+        const l = document.getElementById('loop');
+        if (!l.checked) l.click();
+      })()`);
+      await waitFor(`document.getElementById('loop').checked`);
+
+      const armBass = `(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`;
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const key = (code, type) => cdp.evaluate(
+        `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: ${JSON.stringify(code)}, bubbles: true }))`);
+      const bassNotes = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return [];
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
+        return (d.tracks[id] || []);
+      })()`);
+
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      // Lap one: one pitch. Then wait out the rest of the lap and play a
+      // *different* pitch on lap two — different, so a lap that wiped the
+      // previous one is visible as a missing note rather than as a tie.
+      await key('KeyZ', 'keydown');
+      await new Promise((r) => setTimeout(r, 200));
+      await key('KeyZ', 'keyup');
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
+        return (d.tracks[id] || []).length === 1;
+      })()`, 6000);
+      const lapOne = (await bassNotes()).map((n) => n.freq);
+
+      // Wait for the playhead to wrap — the transport must still be rolling,
+      // which is the half of "overdub" that is about the recorder not
+      // stopping at the loop's end.
+      const headLeft = () => cdp.evaluate(`parseFloat(document.querySelector('.playhead').style.left)`);
+      const before = await headLeft();
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) < ${before}`, 8000)
+        .catch(() => { throw new Error('the transport should keep rolling round the loop while recording'); });
+      if (!await cdp.evaluate(`document.body.classList.contains('playing')`)) {
+        throw new Error('recording stopped at the end of the loop instead of going round');
+      }
+      await key('KeyX', 'keydown');
+      await new Promise((r) => setTimeout(r, 200));
+      await key('KeyX', 'keyup');
+      await new Promise((r) => setTimeout(r, 400));
+
+      // A key held *across* the seam. Its keyup lands on a column earlier than
+      // its keydown, so the raw difference is negative — which used to be
+      // floored to a single grid step, filing a note held through a lap down
+      // to a stab. Press in the last quarter of the lap, release after the
+      // wrap, and require a length longer than one step.
+      const lanePx = await cdp.evaluate(`document.querySelector('.lane').getBoundingClientRect().width`);
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) > ${lanePx * 0.7}`, 8000);
+      await key('KeyC', 'keydown');
+      const heldAt = await headLeft();
+      await waitFor(`parseFloat(document.querySelector('.playhead').style.left) < ${heldAt}`, 8000);
+      await new Promise((r) => setTimeout(r, 120));
+      await key('KeyC', 'keyup');
+      await new Promise((r) => setTimeout(r, 400));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+
+      const items = await bassNotes();
+      const after = items.map((n) => n.freq);
+      if (after.length < 2) {
+        throw new Error(`lap two should add to lap one, not replace it: ${JSON.stringify({ lapOne, after })}`);
+      }
+      if (!lapOne.every((f) => after.includes(f))) {
+        throw new Error(`lap one's note must survive lap two: ${JSON.stringify({ lapOne, after })}`);
+      }
+      if (new Set(after).size < 3) {
+        throw new Error(`three laps played three different pitches, so all three should be there: ${JSON.stringify(after)}`);
+      }
+      const grid = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        return JSON.parse(localStorage.getItem(k)).grid;
+      })()`);
+      const held = items.reduce((a, b) => (b.len > a.len ? b : a), items[0]);
+      if (held.len <= grid) {
+        throw new Error(`a note held across the loop's seam must outlast one grid step: ${JSON.stringify(items)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
