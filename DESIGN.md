@@ -647,6 +647,47 @@ Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae (one drop)
 and Trap. Each is one table row — nothing about phrasing, velocity or grid
 handling is per-pattern code.
 
+### A.11c Key, scale & chord progressions
+
+The bottom bar's **Key** cell holds a tonic (`#key-root`), a scale
+(`#key-scale`) and a **Keep to scale** toggle (`#key-snap`). The tonic and
+scale are song content — saved, restored and reset beside the meter — while
+the toggle is a per-browser working preference in `localStorage`, exactly like
+Slip's snap: opening someone else's song must not change what your mouse does.
+`chromatic` is the identity case, so a song with no key marks nothing and the
+root and toggle go disabled rather than sitting there looking operable.
+
+The marking is drawn twice from one decision: `scaleClassFor(midi)` returns
+`' tonic'`, `' off-scale'` or `''`, and both the lane's cells and the gutter's
+keys take it, so the grid and the keyboard cannot disagree about which notes
+belong to the song. Off-scale rows recede rather than disable — hearing the
+note you are avoiding is often the point.
+
+`SCALES` is the whole table: an id, a display name and the semitone offsets
+from the tonic. Everything downstream is derived, which is what lets one more
+scale be one more row:
+
+- `inScale()`/`isTonic()` → the shading.
+- `snapToScale()` → **one** call site, `laneCoords()`, mirroring `snapToGrid()`
+  on the time axis. Playing never passes through there, so a take keeps what
+  you played; a *group* drag doesn't snap either, since correcting each member
+  separately would pull two of them onto one row and cost a chord a voice.
+- `diatonicIntervals()` → the chord the key builds on a note, by stacking
+  thirds inside the scale rather than by looking a quality up. That single
+  function serves both the note inspector's in-key buttons — labelled by
+  degree (`ii`, `V7`) via `romanFor()`, because which chords belong together
+  is the thing a key tells you — and `PROGRESSIONS`.
+
+`PROGRESSIONS` is the tonal counterpart of `RHYTHM_PATTERNS` and stores **scale
+degrees, not chords**: `[0, 4, 5, 3]` is I–V–vi–IV in a major key and i–v–VI–iv
+in a minor one. So the table contains no majors or minors at all, a progression
+survives a change of key underneath it, and a new one is one row.
+`insertProgression()` keeps `insertPatternIntoRhythm()`'s contract exactly —
+from the playhead's bar, through the end of the song, replacing — so the two
+halves of starting a song behave the same way. Its dialog previews through
+`previewGain` on the active track's own voice, so what you audition is what
+Insert writes.
+
 ### A.12 Help dialog
 
 A single scrollable reference covering: overview, tracks & channel strips,
@@ -1069,6 +1110,7 @@ The shape returned by `currentSongData()` / accepted by `applySongData()`
   "cols": 576,
   "grid": 1,
   "timeSig": { "num": 4, "den": 4 },
+  "key": 0, "scale": "chromatic",
   "markers": [{ "col": 0, "name": "Intro" }],
   "trackList": [{ "id": "lead", "name": "Lead", "color": "#2ff3ff", "kind": "tone" }],
   "gains": { "lead": 0.9 }, "waveform": { "lead": "square" }, "pan": { "lead": 0 },

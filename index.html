@@ -358,7 +358,7 @@
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
   .track.collapsed .th-osc-section, .track.collapsed .th-tools,
-  .track.collapsed .th-output-section, .track.collapsed .th-remove,
+  .track.collapsed .th-output-section, .track.collapsed .th-remove, .track.collapsed .th-dup,
   .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
@@ -473,6 +473,10 @@
     background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
   }
   .th-btns button.x { color: #d88; font-size: 10px; }
+  /* Duplicate sits beside Remove and shares its shape, but it is additive —
+     so it takes the neutral ink rather than the warning red. */
+  .th-btns button.x.th-dup { color: var(--muted); }
+  .th-btns button.x.th-dup:hover { background: #2a2a33; color: var(--ink); border-color: #55555f; }
   /* Armed is red rather than the green M/S use: it is the one state where
      typing does something destructive, so it should not look like the others. */
   .th-btns button.r.on { background: #6a1620; color: #ffb3bd; border-color: #c2283c; }
@@ -608,6 +612,10 @@
   }
   .gutter .pkey.white:hover { background: #ecedf2; }
   .gutter .pkey.black:hover { background: #2b2b34; }
+  /* A key outside the scale is still playable — it recedes rather than
+     disabling, because hearing the note you are avoiding is often the point. */
+  .gutter .pkey.off-scale { opacity: 0.4; }
+  .gutter .pkey.tonic { box-shadow: inset 2px 0 0 rgba(122,79,209,0.9); }
   /* Held: the track's own colour, set inline — the same colour its notes are
      drawn in, so a sounding key and the notes it writes read as one thing. */
   .gutter .pkey.down { filter: brightness(1.35); }
@@ -692,6 +700,14 @@
   .cell.bar-start { border-left: 1px solid var(--bar); }
   .cell.black { background: rgba(0,0,0,0.28); }
   .cell.beat { border-right-color: #34343c; }
+  /* Rows outside the song's scale, and the tonic. Both are drawn on the cell
+     rather than as an overlay row, because the cells are already there — a
+     class costs nothing and an extra positioned element per row would be 64
+     more nodes per track. The tonic uses an inset shadow rather than a
+     background so it composes with .black instead of fighting it. */
+  .cell.off-scale { background: rgba(0,0,0,0.5); }
+  .cell.black.off-scale { background: rgba(0,0,0,0.66); }
+  .cell.tonic { box-shadow: inset 0 1px 0 rgba(122,79,209,0.55); }
 
   .note {
     border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
@@ -888,6 +904,10 @@
      bottom sheet it becomes on mobile). */
   .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 5px; }
   .preset-grid button { font-size: 11px; padding: 6px 2px; }
+  /* The in-key chords lead the same grid rather than living apart — but they
+     are the answer rather than one of ten options, so they say so. */
+  .preset-grid button.in-key { border-color: #5a3ea8; background: #2a2340; color: #d9cbff; }
+  .preset-grid button.in-key:hover { background: #362b53; }
   .palette-toggle {
     align-self: start; background: transparent; border: none; padding: 2px 0;
     font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
@@ -1087,6 +1107,8 @@
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>The <span class="help-ico" data-glyph="scale"></span><b>Chords</b> button (tonal tracks) writes a built-in <b>chord progression</b> into that track — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp, or a 12-bar blues — one chord per bar, from the playhead's bar to the end of the song, exactly like <b>Patterns</b> does for drums. The chords come from the song's <b>Key</b>: a progression is stored as scale <i>degrees</i>, so the same one is major or minor depending on the scale you picked. Change the key and insert it again to hear it somewhere else entirely. <b>▶</b> auditions it in the current key on that track's own sound before you commit.</li>
+        <li><b>⧉</b> next to <b>✕</b> duplicates a track: a copy of the part <i>and</i> the whole voice — waveform, envelope, filter, inserts, sends, kit — placed directly below it. It's the quickest way to try the same line on another instrument, and the two parts are independent afterwards, so editing one doesn't touch the other.</li>
         <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>Kit</b> picker in its header — the same picker a tonal track uses for its waveform, in the same spot, each kit drawing the shape of its own decay: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one <b>chip</b> per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are not there: click a chip and the <b>inspector column</b> on the right shows that track's whole chain, every effect at once. (With nothing selected it shows it anyway — that column is the mixing surface.) <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects are continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a 3-band <b>EQ</b>, a <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Bitcrush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
@@ -1136,11 +1158,21 @@
           selected one, in the same track and at the same length. They start with no effects of
           their own, so each can be tweaked afterwards.</li>
       </ul>
+      <p>
+        With a <b>Key</b> set (bottom bar), the Chord row is led by two more buttons: the triad
+        and the seventh chord <i>this key</i> builds on the selected note. They're labelled by
+        <b>degree</b> — <b>ii</b>, <b>V7</b> — rather than by quality, because which chords belong
+        together is exactly what a key tells you, and ten absolute qualities are ten decisions for
+        anyone who doesn't already know which one fits. The quality isn't written down anywhere:
+        it's read off the scale, so the triad on the second degree of a major scale comes out minor
+        because that's what the scale has there.
+      </p>
 
-      <h3>Bottom bar (Song · Tempo · Length · Grid · Master)</h3>
+      <h3>Bottom bar (Song · Tempo · Length · Key · Grid · Master)</h3>
       <p>
         The strip under the tracks holds the <b>Song</b> name (click it to rename), <b>Tempo</b>,
-        <b>Length</b>, <b>Grid</b> (the note snap resolution) and the <b>Master</b> volume. The
+        <b>Length</b>, <b>Key</b> (the tonic and scale — see Transport &amp; timeline),
+        <b>Grid</b> (the note snap resolution) and the <b>Master</b> volume. The
         <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions) —
         the song name stays visible, but only rename-able while expanded. <b>Length</b> makes the
         song longer/shorter one bar at a time: <b>+</b> appends an empty bar, <b>−</b> removes the
@@ -1164,6 +1196,7 @@
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
         <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <span class="help-ico" data-glyph="repeat"></span><b>Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
+        <li>The <b>Key</b> cell (bottom bar) sets the song's tonic and scale. Every row outside the scale is <b>shaded</b> in the piano roll and its key dimmed on the keyboard, and the tonic is marked — so you can <i>see</i> where the wrong notes are before you hear them. Nothing is forbidden: an out-of-scale row is still there and still clickable, because hearing the note you're avoiding is often the point. <span class="help-ico" data-glyph="scale"></span><b>Keep to scale</b> goes further and moves a note you place or drag with the mouse to the nearest pitch in the scale. It only affects the <i>mouse</i> — what you <b>play</b> is never corrected, the same way recording doesn't quantise as you play, and dragging several notes at once keeps the shape you're moving rather than pulling two of them onto one row. Key and scale are saved with the song; Keep to scale is a working preference remembered in this browser, so opening someone else's song doesn't change what your mouse does. <b>Chromatic</b> turns the whole thing off, which is what a song written before this existed loads as.</li>
         <li>The <span class="help-ico" data-glyph="marker"></span><b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
 
@@ -1287,6 +1320,18 @@
         <span class="pattern-opt-note">— hi-hat and ride to the right, shaker, toms and crash to the left; kick and snare stay centred. Off inserts everything dead centre.</span>
       </label>
       <div id="pattern-list" class="song-list"></div>
+    </div>
+  </dialog>
+
+  <dialog id="progression-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="scale"></span> Chord progressions</h2>
+      <button id="progression-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note">Writes one chord per bar into this track, from the playhead's bar through the end of the song (replacing whatever was there). The chords come from the song's <b>key</b> — the same progression is major or minor depending on the scale you picked, so change the key and press Insert again to hear it somewhere else entirely.</p>
+      <p class="songs-note" id="progression-key">Key: —</p>
+      <div id="progression-list" class="song-list"></div>
     </div>
   </dialog>
 
@@ -1469,6 +1514,16 @@
             </div>
           </div>
           <div class="mstrip-cell">
+            <span class="mstrip-cap">Key</span>
+            <div class="mstrip-row">
+              <select id="key-root" title="The song's tonic — which note the scale is built from"></select>
+              <select id="key-scale" title="Shades the rows outside the scale and dims their keys. Chromatic turns it off."></select>
+              <button id="key-snap" class="icon-btn" data-glyph="scale" aria-pressed="false"
+                      aria-label="Keep placed notes in the scale"
+                      title="Keep to scale: a note placed or dragged with the mouse moves to the nearest pitch in the scale. Playing is never corrected."></button>
+            </div>
+          </div>
+          <div class="mstrip-cell">
             <span class="mstrip-cap">Grid</span>
             <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
               <option value="1/4">1/4</option>
@@ -1565,6 +1620,59 @@ const tsId = (ts) => `${ts.num}/${ts.den}`;
 
 const MIDI_MIN = 33, MIDI_MAX = 96;
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// Which pitches the song is built out of. The lane stays chromatic — every row
+// is still there and still clickable — but the rows outside the scale are
+// shaded and their keys dimmed, so you can see where the wrong notes are
+// before you hear them. That is the whole feature for someone who does not
+// play: the grid stops being twelve equally plausible rows.
+//
+// `chromatic` is the default and is deliberately the identity case: every
+// pitch is in it, nothing shades, and a song written before this existed loads
+// with no `key`/`scale` keys at all and behaves exactly as it did. Same
+// "absent means the default" rule as every other sparse setting.
+//
+// A new scale is one row: an id, a display name, and the semitone offsets from
+// the tonic. Nothing else in the app knows the names of any of them.
+const SCALES = [
+  { id: 'chromatic', name: 'Chromatic', semis: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  { id: 'major',     name: 'Major',              semis: [0, 2, 4, 5, 7, 9, 11] },
+  { id: 'minor',     name: 'Minor',              semis: [0, 2, 3, 5, 7, 8, 10] },
+  { id: 'harmonic',  name: 'Harmonic minor',     semis: [0, 2, 3, 5, 7, 8, 11] },
+  { id: 'dorian',    name: 'Dorian',             semis: [0, 2, 3, 5, 7, 9, 10] },
+  { id: 'phrygian',  name: 'Phrygian',           semis: [0, 1, 3, 5, 7, 8, 10] },
+  { id: 'lydian',    name: 'Lydian',             semis: [0, 2, 4, 6, 7, 9, 11] },
+  { id: 'mixolydian', name: 'Mixolydian',        semis: [0, 2, 4, 5, 7, 9, 10] },
+  { id: 'majPenta',  name: 'Major pentatonic',   semis: [0, 2, 4, 7, 9] },
+  { id: 'minPenta',  name: 'Minor pentatonic',   semis: [0, 3, 5, 7, 10] },
+  { id: 'blues',     name: 'Blues',              semis: [0, 3, 5, 6, 7, 10] },
+];
+const DEFAULT_KEY = 0;              // C
+const DEFAULT_SCALE = 'chromatic';  // i.e. off
+const scaleOf = (id) => SCALES.find(s => s.id === id) || SCALES[0];
+// Pitch class relative to the tonic — the one conversion every scale question
+// goes through, so "which key are we in" is answered in exactly one place.
+const degreeOf = (midi) => (((midi - state.key) % 12) + 12) % 12;
+const isTonic = (midi) => degreeOf(midi) === 0;
+const inScale = (midi) => scaleOf(state.scale).semis.includes(degreeOf(midi));
+const scaleIsOff = () => scaleOf(state.scale).semis.length === 12;
+// Whether placing a pitch is *forced* into the scale, as opposed to merely
+// showing where it is. Remembered per browser rather than saved with the song,
+// exactly like Slip's `snapOn`: it is how you are working right now, and
+// opening someone else's song should not change what your mouse does.
+let keepToScale = localStorage.getItem('music-studio-keep-to-scale') === 'on';
+// Nearest pitch inside the scale, ties resolving *downward*. Ties are real —
+// in a major scale a C# sits one semitone from both C and D — and picking a
+// side once here is what keeps a drag from flickering between two rows as the
+// pointer crosses the middle of a gap.
+function snapToScale(midi) {
+  if (!keepToScale || inScale(midi)) return midi;
+  for (let d = 1; d <= 6; d++) {
+    if (inScale(midi - d)) return midi - d;
+    if (inScale(midi + d)) return midi + d;
+  }
+  return midi;
+}
 
 // Tracks are dynamic: the user can add, rename and remove tonal and rhythm
 // tracks. The ordered descriptors live in state.trackList ({ id, name, color,
@@ -1729,6 +1837,9 @@ const GLYPHS = {
                                         'M7 13l1.6 1.6L7 16.2 5.4 14.6z', 'M12 6l1.6 1.6L12 9.2 10.4 7.6z',
                                         'M17 16l1.6 1.6L17 19.2 15.4 17.6z'], },
   envelope: { box: '0 0 24 24', paths: ['M3 19l4-13 4 9 3-4 3 5 4-2'] },
+  // A rising staircase of unequal steps: what a scale is, as opposed to the
+  // twelve equal ones the lane draws. The tall first riser is the tonic.
+  scale:    { box: '0 0 24 24', paths: ['M3 21V9', 'M3 19h4v-4h4v-4h4V7h4V4', 'M20 4v17'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
   // A power switch: the stem plus an open ring (broken at the top, where the
@@ -1818,6 +1929,61 @@ const CHORD_PRESETS = [
   { label: 'maj7', name: 'Major 7th',                  intervals: [4, 7, 11] },
   { label: 'm7',   name: 'Minor 7th',                  intervals: [3, 7, 10] },
 ];
+
+// The chord the *key* puts on a given root, as intervals in the same shape
+// CHORD_PRESETS uses — so it goes through addChordAbove() unchanged.
+//
+// Built by stacking thirds inside the scale rather than by looking the quality
+// up in a table: the triad on the second degree of a major scale comes out
+// minor because that is what the scale has there, and the one on the seventh
+// comes out diminished for the same reason. That means it is right for every
+// row of SCALES, including the ones with five or six tones, without anybody
+// writing the qualities down twice. Returns null when the root is outside the
+// scale — there is no diatonic chord on a note the key does not contain.
+function diatonicIntervals(rootMidi, tones = 3) {
+  const semis = scaleOf(state.scale).semis;
+  const i = semis.indexOf(degreeOf(rootMidi));
+  if (i === -1 || semis.length > 7) return null;
+  const out = [];
+  for (let t = 1; t < tones; t++) {
+    const j = i + 2 * t;
+    out.push(semis[j % semis.length] + Math.floor(j / semis.length) * 12 - semis[i]);
+  }
+  return out;
+}
+// Built-in chord progressions — the tonal counterpart to RHYTHM_PATTERNS, and
+// there for the same reason: a blank lane is a worse place to start than a
+// groove you can immediately write over. One bar per chord, tiled from the
+// playhead's bar to the end of the song.
+//
+// Stored as *scale degrees*, not chords: `[0, 4, 5, 3]` is I-V-vi-IV in a
+// major key and i-v-VI-iv in a minor one, because the qualities come from
+// diatonicIntervals() reading the scale rather than from anything written
+// here. That is why the table has no majors or minors in it at all, and why a
+// progression keeps working when you change the key underneath it.
+//
+// A new progression is one row.
+const PROGRESSIONS = [
+  { id: 'pop',     name: 'I–V–vi–IV',   degrees: [0, 4, 5, 3], desc: 'The one behind an enormous number of songs. Lands home, leaves, and comes back.' },
+  { id: 'canon',   name: 'I–V–vi–iii',  degrees: [0, 4, 5, 2], desc: 'Pachelbel\'s descent — walks downward and keeps wanting to continue.' },
+  { id: 'fifties', name: 'I–vi–IV–V',   degrees: [0, 5, 3, 4], desc: 'The doo-wop turnaround. Warm, and it loops without a seam.' },
+  { id: 'twofive', name: 'ii–V–I',      degrees: [1, 4, 0],    desc: 'The jazz cadence. Three bars, and the third one is unmistakably home.' },
+  { id: 'andalu',  name: 'i–VII–VI–V',  degrees: [0, 6, 5, 4], desc: 'The Andalusian cadence — steps down and darkens. Try it in a minor scale.' },
+  { id: 'vamp',    name: 'i–VI–III–VII', degrees: [0, 5, 2, 6], desc: 'The minor vamp: moody, circular, hard to get wrong.' },
+  { id: 'blues',   name: '12-bar blues', degrees: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4], desc: 'Twelve bars, three chords. The whole form, ready to solo over.' },
+];
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+// The button says what chord you are actually on — "vi", not "min". That is
+// the part worth teaching: which chords belong together is the thing a key
+// tells you, and a label that only said "min" would hide it.
+function romanFor(rootMidi, intervals) {
+  const semis = scaleOf(state.scale).semis;
+  const i = semis.indexOf(degreeOf(rootMidi));
+  if (i === -1) return null;
+  const third = intervals[0], fifth = intervals[1];
+  const numeral = third === 3 ? ROMAN[i].toLowerCase() : ROMAN[i];
+  return numeral + (fifth === 6 ? '°' : fifth === 8 ? '+' : '');
+}
 
 // Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
 // (4/4) resolution — insertPatternIntoRhythm() scales the `start` columns to
@@ -2554,6 +2720,8 @@ const state = {
   tool: 'pen',
   grid: DEFAULT_GRID,        // eighth-notes per grid step (note snap resolution)
   timeSig: { ...DEFAULT_TS },  // song meter (bar grouping)
+  key: DEFAULT_KEY,          // tonic as a pitch class, 0 = C — song content, like the meter
+  scale: DEFAULT_SCALE,      // a SCALES id; 'chromatic' is the identity case (nothing shades)
   markers: [],               // [{ col, name }] editor-only timeline markers
   automation: {},            // id -> { <param>: [{col, value}] } for any AUTOMATION_PARAMS key — each sorted by col
   adsr: BOOT.adsr,           // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
@@ -2631,6 +2799,7 @@ function applySavedMix(data) {
   if (typeof data.grid === 'number' && data.grid > 0) state.grid = quant(data.grid);
   state.swing = (typeof data.swing === 'number') ? Math.max(0, Math.min(75, data.swing)) : DEFAULT_SWING;
   restoreTimeSig(data);
+  restoreKey(data);
   state.markers = Array.isArray(data.markers)
     ? data.markers.filter(m => m && typeof m.col === 'number').map(m => ({ col: m.col, name: String(m.name || '') }))
     : [];
@@ -2777,6 +2946,16 @@ function restoreTimeSig(data) {
   if (ts && typeof ts === 'object' && TIME_SIGS.some(s => s.num === ts.num && s.den === ts.den)) {
     state.timeSig = { num: ts.num, den: ts.den };
   }
+}
+// Tonic and scale, validated the same way and reset the same way: an absent or
+// unknown scale is the chromatic one, which is the identity case, so a song
+// from before this existed loads looking exactly as it did. Restoring rather
+// than merging matters — loading song B must not leave song A's key behind,
+// which is the bug SPARSE_TRACK_MAPS exists to prevent on the per-track side.
+function restoreKey(data) {
+  const pc = data.key;
+  state.key = (typeof pc === 'number' && pc >= 0 && pc <= 11) ? Math.round(pc) : DEFAULT_KEY;
+  state.scale = SCALES.some(s => s.id === data.scale) ? data.scale : DEFAULT_SCALE;
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Rebuild the track list and per-track maps from saved data, tolerating old
@@ -3606,6 +3785,46 @@ function addTrack() {
   ensureChannelNodes(id);
   activateTrack(id);
   render(); autosave();
+}
+// A copy of a track, its part included, placed directly below it. "Try this
+// line on another instrument" is one of the moves you make most often while
+// writing, and without this it meant selecting a whole part, adding a track
+// and pasting — by which point the idea has usually gone.
+//
+// The per-track settings come from SPARSE_TRACK_MAPS rather than a hand-written
+// list, so a copy carries the whole voice — envelope, filter, FM, inserts,
+// sends, kit — and a per-track map added later is copied without anyone
+// remembering to come back here. That list is exactly what four other places
+// got wrong by writing their own copy of it.
+function duplicateTrack(track) {
+  const src = trackOf(track);
+  if (!src) return;
+  const id = nextTrackId();
+  const desc = { ...src, id, name: src.name + ' copy' };
+  state.trackList.splice(state.trackList.indexOf(src) + 1, 0, desc);
+  // Notes and hits are copied by value: sharing the objects would make the two
+  // tracks the same part, so dragging a note in one would move it in both.
+  // `arp` is the only array on a note, and it has to be copied too.
+  state.tracks[id] = (state.tracks[track] || []).map(it => ({ ...it, ...(it.arp ? { arp: [...it.arp] } : {}) }));
+  state.gains[id] = state.gains[track];
+  state.waveform[id] = state.waveform[track];
+  state.pan[id] = state.pan[track];
+  state.mute[id] = state.mute[track];
+  state.solo[id] = state.solo[track];
+  for (const map of SPARSE_TRACK_MAPS) {
+    const v = state[map][track];
+    if (v !== undefined) state[map][id] = structuredClone(v);
+  }
+  // Automation is per track but is not one of the sparse maps (it is keyed by
+  // param inside), so it is copied here — deeply, for the same reason the
+  // notes are.
+  if (state.automation[track]) state.automation[id] = structuredClone(state.automation[track]);
+  refreshTrackArrays();
+  ensureChannelNodes(id);
+  applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
+  activateTrack(id);
+  render(); autosave();
+  announce(`${desc.name} added below ${src.name}`);
 }
 // Mirrors addTrack() for a new rhythm-kind track (same fixed ten pieces as
 // every other rhythm track; its kit sound is its own, defaulting to DEFAULT_KIT). Pushed to the very end so all rhythm tracks stay
@@ -4794,6 +5013,16 @@ function buildHeader(track) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); setRecTrack(armed ? null : track); });
     btns.append(btn);
   }
+  {
+    // Beside Remove rather than in a menu: duplicating and removing are the
+    // same kind of decision about this track, and the one you reach for while
+    // trying something out should be the one closest to hand.
+    const dup = el('button', 'x th-dup'); dup.textContent = '⧉';
+    dup.title = 'Duplicate this track — a copy of the part and the whole voice, below this one';
+    dup.setAttribute('aria-label', `Duplicate ${trackOf(track)?.name || track}`);
+    dup.addEventListener('click', (e) => { e.stopPropagation(); duplicateTrack(track); });
+    btns.append(dup);
+  }
   if (canRemoveTrack(track)) {
     const rm = el('button', 'x th-remove'); rm.textContent = '✕'; rm.title = 'Remove this track';
     rm.setAttribute('aria-label', `Remove ${trackOf(track)?.name || track}`); // "✕" repeated per track says nothing on its own
@@ -4905,7 +5134,21 @@ function buildHeader(track) {
     setGlyphLabel(presetBtn, 'preset', '');
     presetBtn.title = 'Instrument presets — save/load this track\'s waveform + envelope';
     presetBtn.addEventListener('click', (e) => { e.stopPropagation(); openPresetDialog(track); });
-    tools.append(presetBtn);
+    // The tonal counterpart of the rhythm track's Patterns button, in the same
+    // place and with the same shape — and, like it, it has to activate its own
+    // track, because insertProgression() works on state.activeTrack and the
+    // stopPropagation here is what stops the header's own mousedown from
+    // setting it.
+    const chordsBtn = el('button', 'th-tool-btn icon');
+    setGlyphLabel(chordsBtn, 'scale', '');
+    chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key';
+    chordsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setActive(track, true);
+      renderProgressionList();
+      progressionDialog.showModal();
+    });
+    tools.append(presetBtn, chordsBtn);
   } else {
     const patternsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(patternsBtn, 'drums', '');
@@ -4996,7 +5239,7 @@ function buildHeader(track) {
 // keyboard already exists and is better: arm the track and the letter keys
 // play it (see stepEntryActive()).
 function buildKeyCell(track, midi, isBlack, isC) {
-  const k = el('button', 'pkey ' + (isBlack ? 'black' : 'white'));
+  const k = el('button', 'pkey ' + (isBlack ? 'black' : 'white') + scaleClassFor(midi));
   k.type = 'button';
   k.tabIndex = -1;
   k.dataset.midi = String(midi); // the pitch itself, rather than something that has to be parsed back out of the label
@@ -5035,11 +5278,25 @@ function buildGutterCell(text, cls, title) {
 
 // Resolve a pointer event inside a lane to a snapped column (eighths, possibly
 // sub-eighth) and the MIDI pitch of the row it fell on.
+// The row's scale marking, as a class suffix. Empty while the scale is
+// chromatic, so a song that never picked one builds exactly the class list it
+// built before scales existed — the same "neutral costs nothing" rule the
+// audio side keeps for pan and velocity.
+function scaleClassFor(midi) {
+  if (scaleIsOff()) return '';
+  return isTonic(midi) ? ' tonic' : (inScale(midi) ? '' : ' off-scale');
+}
 function laneCoords(e, rollEl, rowH, midiTop) {
   const rect = rollEl.getBoundingClientRect();
   const col = Math.max(0, Math.min(COLS - state.grid, snapToGrid((e.clientX - rect.left) / colPx)));
   const rowIndex = Math.max(0, Math.floor((e.clientY - rect.top) / rowH));
-  return { col, midi: midiTop - rowIndex };
+  // Pitch goes through snapToScale() here for the same reason time goes
+  // through snapToGrid() just above: this is the one place a pointer position
+  // becomes a note's pitch, so there is one place to correct it. Playing —
+  // the computer keyboard, a MIDI keyboard — deliberately does not pass
+  // through here: a take keeps what you played, and fixing it afterwards is a
+  // separate decision, exactly as it is for timing.
+  return { col, midi: snapToScale(midiTop - rowIndex) };
 }
 
 // Vertical guide lines at the current grid resolution, layered above the eighth
@@ -5143,8 +5400,12 @@ function renderPitchTrack(track) {
   for (let p = 0; p < pitchCount; p++) {
     const midi = win.max - p;
     const isBlack = NOTE_NAMES[((midi % 12) + 12) % 12].includes('#');
+    // Resolved once per row rather than once per cell: this is the innermost
+    // loop in the whole render (pitches x columns), and the answer cannot
+    // differ between two cells of the same row.
+    const scaleCls = scaleClassFor(midi);
     for (let c = 0; c < COLS; c++) {
-      const cell = el('div', 'cell' + (c % epb === 0 ? ' bar-start' : (c % ebeat === 0 ? ' beat' : '')) + (isBlack ? ' black' : ''));
+      const cell = el('div', 'cell' + (c % epb === 0 ? ' bar-start' : (c % ebeat === 0 ? ' beat' : '')) + (isBlack ? ' black' : '') + scaleCls);
       cell.style.gridRow = p + 1;
       cell.style.gridColumn = c + 1;
       rollEl.appendChild(cell);
@@ -5733,6 +5994,56 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   render();
   autosave();
 }
+// Writes a PROGRESSIONS entry into the active tonal track — one chord per bar
+// from the playhead's bar to the end of the song, replacing whatever was in
+// that range. Deliberately the same contract as insertPatternIntoRhythm():
+// same "from the playhead, to the end, replacing", so the two halves of
+// starting a song behave identically.
+//
+// Every chord is built by diatonicIntervals(), so what gets written is
+// whatever the current key and scale say — this function knows nothing about
+// major or minor. Placed near the middle of the track's own pitch window so
+// the chords land where you can see them rather than off the top of the lane.
+function insertProgression(prog) {
+  const track = state.activeTrack;
+  if (isRhythm(track) || scaleIsOff()) return;
+  const barLen = eighthsPerBar();
+  const startBar = Math.floor(state.playhead / barLen) * barLen;
+  const win = pitchWindow(track);
+  const semis = scaleOf(state.scale).semis;
+  // The tonic octave nearest the middle of what the lane is showing.
+  const centre = Math.round((win.min + win.max) / 2);
+  const tonic = centre - (((centre - state.key) % 12) + 12) % 12;
+  const newNotes = [];
+  let bar = 0;
+  for (let barCol = startBar; barCol < COLS; barCol += barLen, bar++) {
+    const degree = prog.degrees[bar % prog.degrees.length];
+    if (degree >= semis.length) continue; // a five-tone scale has no seventh degree
+    const rootMidi = tonic + semis[degree];
+    const intervals = diatonicIntervals(rootMidi);
+    if (!intervals) continue;
+    const len = Math.min(barLen, COLS - barCol);
+    for (const semi of [0, ...intervals]) {
+      const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semi));
+      newNotes.push({
+        start: barCol, len, freq: round2(midiToFreq(midi)), vel: 0.8,
+        bend: null, vib: false, trem: false, duty: null, arp: null,
+        porta: false, crush: false, echo: false, chorus: false, reverb: false,
+      });
+    }
+  }
+  if (!newNotes.length) return;
+  // clearOverlaps() rather than a hand-written filter, like every other path
+  // that places notes — a chord tone landing on an existing note of the same
+  // pitch is the one case that has to give way, and only that case.
+  let notes = state.tracks[track].filter(n => n.start < startBar);
+  for (const n of newNotes) notes = clearOverlaps(notes, n);
+  state.tracks[track] = notes.concat(newNotes);
+  state.selected = null;
+  state.multiSelected = new Set(newNotes);
+  render();
+  autosave();
+}
 // Keyboard selection through the active track, ordered as the grid reads:
 // left to right, and low to high where notes share a column. Rhythm tracks
 // order by column then kit row, so a stacked kick/hi-hat steps predictably.
@@ -6023,7 +6334,12 @@ function startMoveNote(e, track, idx) {
     const pitchRowDelta = Math.max(maxMidi - MIDI_MAX, Math.min(minMidi - MIDI_MIN, Math.round(dy / ROW_H)));
     for (const { n, start, midi } of startPositions) {
       n.start = quant(start + deltaCols);
-      n.freq = round2(midiToFreq(midi - pitchRowDelta));
+      // Keep-to-scale corrects a single dragged note, but leaves a group's
+      // pitches alone: snapping each member independently would pull two of
+      // them onto the same row, so a chord dragged up the lane would quietly
+      // lose a voice. Moving several notes at once means moving *that shape*.
+      const landed = midi - pitchRowDelta;
+      n.freq = round2(midiToFreq(startPositions.length === 1 ? snapToScale(landed) : landed));
     }
     scheduleRender();
   }
@@ -6560,6 +6876,30 @@ function renderInspector() {
     const chordHint = el('div', 'insp-sub');
     chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
     grid.before(chordHint);
+    // With a key set, the first two buttons are the chord *this key* puts on
+    // this note — the triad and its seventh — labelled with the degree rather
+    // than the quality. Ten absolute qualities are ten decisions for someone
+    // who does not already know which one belongs here; "vi" is none.
+    // They lead the grid rather than sitting in a panel of their own: same
+    // gesture, same place, one of them simply already knows the answer.
+    const triad = scaleIsOff() ? null : diatonicIntervals(freqToMidi(note.freq));
+    if (triad && triad.length === 2) {
+      const seventh = diatonicIntervals(freqToMidi(note.freq), 4);
+      const roman = romanFor(freqToMidi(note.freq), triad);
+      for (const [label, intervals, what] of [
+        [roman, triad, 'triad'],
+        [roman + '7', seventh, 'seventh chord'],
+      ]) {
+        const btn = document.createElement('button');
+        btn.className = 'in-key';
+        btn.textContent = label;
+        btn.dataset.chord = label;
+        btn.title = `The ${what} this key builds on ${midiToName(freqToMidi(note.freq))} — ` +
+          `${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}`;
+        btn.addEventListener('click', () => addChordAbove(intervals));
+        grid.appendChild(btn);
+      }
+    }
     for (const preset of CHORD_PRESETS) {
       const btn = document.createElement('button');
       btn.textContent = preset.label;
@@ -6930,6 +7270,54 @@ swingInput.addEventListener('input', () => {
 });
 syncSwingUI();
 
+// ---------- Key & scale ----------
+// The tonic and the scale are song content (they travel with the file, like the
+// meter); whether placement is *forced* into the scale is a per-browser working
+// preference, like Slip. Changing any of the three only re-renders — no note is
+// touched, because a scale is a guide rather than an edit. Correcting the notes
+// you already have is what Timing's quantize is for on the other axis, and
+// doing it silently here would be the same mistake recording used to make.
+const keyRootSelect = document.getElementById('key-root');
+const keyScaleSelect = document.getElementById('key-scale');
+const keySnapBtn = document.getElementById('key-snap');
+for (let pc = 0; pc < 12; pc++) {
+  const opt = document.createElement('option');
+  opt.value = String(pc); opt.textContent = NOTE_NAMES[pc];
+  keyRootSelect.appendChild(opt);
+}
+for (const sc of SCALES) {
+  const opt = document.createElement('option');
+  opt.value = sc.id; opt.textContent = sc.name;
+  keyScaleSelect.appendChild(opt);
+}
+function syncKeyUI() {
+  keyRootSelect.value = String(state.key);
+  keyScaleSelect.value = state.scale;
+  // The tonic means nothing without a scale to be the tonic *of*, and the snap
+  // has nothing to snap to — so both go quiet rather than sitting there
+  // looking operable.
+  const off = scaleIsOff();
+  keyRootSelect.disabled = off;
+  keySnapBtn.disabled = off;
+  keySnapBtn.setAttribute('aria-pressed', String(keepToScale && !off));
+  keySnapBtn.classList.toggle('on', keepToScale && !off);
+}
+keyRootSelect.addEventListener('change', () => {
+  state.key = Math.max(0, Math.min(11, parseInt(keyRootSelect.value, 10) || 0));
+  syncKeyUI(); render(); autosave();
+});
+keyScaleSelect.addEventListener('change', () => {
+  state.scale = scaleOf(keyScaleSelect.value).id;
+  syncKeyUI(); render(); autosave();
+});
+keySnapBtn.addEventListener('click', () => {
+  keepToScale = !keepToScale;
+  try { localStorage.setItem('music-studio-keep-to-scale', keepToScale ? 'on' : 'off'); } catch { /* ignore */ }
+  syncKeyUI();
+  announce(keepToScale ? 'Keeping placed notes in the scale' : 'Placing notes freely');
+});
+syncKeyUI();
+
 // ---------- Time signature (meter) ----------
 const timeSigSelect = document.getElementById('time-sig');
 for (const ts of TIME_SIGS) {
@@ -7000,6 +7388,8 @@ function createNewSong(withStarterTracks, name) {
   updateSongNameUI();
   state.timeSig = { ...DEFAULT_TS };
   syncTimeSigUI();
+  state.key = DEFAULT_KEY; state.scale = DEFAULT_SCALE;
+  syncKeyUI();
   state.markers = [];
   clearSparseTrackMaps(); // was a hand-written nine, missing `filter` and `fm`
   // The same builder the page boots from (STARTER_TRACKS), so "Starter
@@ -7096,7 +7486,8 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 function currentSongData() {
   return {
     version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid),
-    timeSig: state.timeSig, markers: state.markers, trackList: state.trackList,
+    timeSig: state.timeSig, key: state.key, scale: state.scale,
+    markers: state.markers, trackList: state.trackList,
     gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo, tracks: state.tracks,
     ...sparseTrackMapsPayload(),
     masterVol: state.masterVol, masterEQ: state.masterEQ, masterComp: state.masterComp,
@@ -7127,6 +7518,7 @@ function applySongData(data, name) {
   state.tempo = typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM;
   tempoInput.value = state.tempo;
   restoreTimeSig(data);
+  restoreKey(data);
   restoreTrackList(data);
   COLS = colsFromSaved(data, state.tracks);
   state.loopStart = 0; state.loopEnd = COLS;
@@ -7137,6 +7529,7 @@ function applySongData(data, name) {
   syncGridUI();
   syncSwingUI();
   syncTimeSigUI();
+  syncKeyUI();
   if (masterGain) masterGain.gain.value = state.masterVol;
   applyGains();
   applyPan();
@@ -7848,6 +8241,62 @@ function renderPatternList() {
   }
 }
 document.getElementById('pattern-close').addEventListener('click', () => patternDialog.close());
+
+// ---------- Chord progression dialog ----------
+const progressionDialog = document.getElementById('progression-dialog');
+const progressionListEl = document.getElementById('progression-list');
+// Auditions the progression as one chord per bar at the song's own tempo,
+// through previewGain like every other preview — so what you hear is what
+// Insert writes, resolved through the same diatonicIntervals().
+function previewProgression(prog) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const eighthSec = 60 / state.tempo / 2;
+    const barSec = eighthsPerBar() * eighthSec;
+    const semis = scaleOf(state.scale).semis;
+    const voice = getTrackVoice(state.activeTrack);
+    const oscType = state.waveform[state.activeTrack] || 'square';
+    const tonic = 60 - ((((60 - state.key) % 12) + 12) % 12);
+    prog.degrees.forEach((degree, bar) => {
+      if (degree >= semis.length) return;
+      const rootMidi = tonic + semis[degree];
+      const intervals = diatonicIntervals(rootMidi);
+      if (!intervals) return;
+      for (const semi of [0, ...intervals]) {
+        const note = { freq: round2(midiToFreq(rootMidi + semi)), vel: 0.8, len: 1 };
+        scheduleTone(note, ctx.currentTime + 0.05 + bar * barSec, barSec * 0.9, oscType, previewGain, voice);
+      }
+    });
+  } catch { /* audio unavailable */ }
+}
+function renderProgressionList() {
+  const off = scaleIsOff();
+  document.getElementById('progression-key').textContent = off
+    ? 'Pick a key and scale in the bottom bar first — a progression is a set of degrees, and without a scale there is nothing for them to be degrees of.'
+    : `Key: ${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}`;
+  progressionListEl.innerHTML = '';
+  for (const prog of PROGRESSIONS) {
+    const row = el('div', 'song-item');
+    const info = el('div', 'song-info');
+    const title = el('div', 'song-title'); title.textContent = prog.name; info.appendChild(title);
+    const desc = el('div', 'song-desc'); desc.textContent = prog.desc; info.appendChild(desc);
+    row.appendChild(info);
+    const preview = el('button'); preview.textContent = '▶';
+    preview.title = 'Hear it in this key';
+    preview.setAttribute('aria-label', `Preview ${prog.name}`);
+    preview.disabled = off;
+    preview.addEventListener('click', () => previewProgression(prog));
+    row.appendChild(preview);
+    const insert = el('button'); insert.textContent = 'Insert';
+    insert.title = 'Write it into this track, from the playhead\'s bar through the end of the song';
+    insert.disabled = off;
+    insert.addEventListener('click', () => { insertProgression(prog); progressionDialog.close(); });
+    row.appendChild(insert);
+    progressionListEl.appendChild(row);
+  }
+}
+document.getElementById('progression-close').addEventListener('click', () => progressionDialog.close());
 
 // ---------- Timing dialog (quantize / humanize) ----------
 const timingDialog = document.getElementById('timing-dialog');

@@ -4814,6 +4814,343 @@ async function main() {
         .catch(() => { throw new Error('the saved kit should come back when the file is loaded'); });
     });
 
+    // Sets the song's key/scale through the real controls and waits for the
+    // lane to redraw, so every step below starts from a stated key rather than
+    // from whatever the previous one left.
+    async function setKey(root, scaleId) {
+      await cdp.evaluate(`(() => {
+        const r = document.getElementById('key-scale');
+        r.value = ${JSON.stringify(scaleId)};
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+        const k = document.getElementById('key-root');
+        k.value = ${JSON.stringify(String(root))};
+        k.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.getElementById('key-root').value === ${JSON.stringify(String(root))}`);
+    }
+
+    step('Key & scale: the lane shades what is outside it, and chromatic shades nothing', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      // Chromatic is the identity case: a song that never picked a key must
+      // build exactly the class list it built before scales existed, or every
+      // row would carry a marking that means nothing.
+      const before = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="pitch"] .cell.off-scale, .track[data-kind="pitch"] .cell.tonic').length`);
+      if (before !== 0) throw new Error(`chromatic should mark no rows, found ${before}`);
+
+      await setKey(0, 'major');
+      // Count *rows*, not cells: seven of every twelve semitones are in a major
+      // scale, so five of twelve rows shade and one of twelve is the tonic.
+      // Asserting the ratio rather than a raw number keeps this independent of
+      // the lane's pitch window, which changes with the notes on the track.
+      const rows = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const seen = new Map();
+        for (const c of lane.querySelectorAll('.cell')) {
+          const r = c.style.gridRow;
+          if (seen.has(r)) continue;
+          seen.set(r, c.classList.contains('tonic') ? 'tonic' : c.classList.contains('off-scale') ? 'off' : 'in');
+        }
+        const v = [...seen.values()];
+        return { total: v.length, off: v.filter(x => x === 'off').length, tonic: v.filter(x => x === 'tonic').length };
+      })()`);
+      if (rows.total < 12) throw new Error(`expected at least an octave of rows, got ${rows.total}`);
+      // Five of every twelve are outside a major scale, one of every twelve is
+      // the tonic — allow the window's partial octave at each end.
+      const octaves = rows.total / 12;
+      if (Math.abs(rows.off - octaves * 5) > 5) {
+        throw new Error(`a major scale should leave ~5 of every 12 rows outside it: ${JSON.stringify(rows)}`);
+      }
+      if (Math.abs(rows.tonic - octaves) > 1) {
+        throw new Error(`exactly one row per octave is the tonic: ${JSON.stringify(rows)}`);
+      }
+      // The keyboard says the same thing, or the gutter and the lane disagree
+      // about which notes belong to the song.
+      const keys = await cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        return {
+          total: g.querySelectorAll('.pkey').length,
+          off: g.querySelectorAll('.pkey.off-scale').length,
+          tonic: g.querySelectorAll('.pkey.tonic').length,
+        };
+      })()`);
+      if (keys.total !== rows.total || keys.off !== rows.off || keys.tonic !== rows.tonic) {
+        throw new Error(`the gutter must mark the same rows as the lane: ${JSON.stringify({ rows, keys })}`);
+      }
+
+      // And the tonic follows the root — in A major the marked row is an A.
+      await setKey(9, 'major');
+      const tonicNames = await cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        return [...g.querySelectorAll('.pkey.tonic')].map(k => k.title);
+      })()`);
+      if (!tonicNames.length || !tonicNames.every(n => /^A\d/.test(n))) {
+        throw new Error(`in A major every tonic key should be an A, got ${JSON.stringify(tonicNames)}`);
+      }
+    });
+
+    step('Key & scale: it travels with the song and resets between songs', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(2, 'minor');
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        return d.key === 2 && d.scale === 'minor';
+      })()`, 4000);
+      // Loading a song that predates keys must not inherit the one on screen —
+      // the same "restore, don't merge" rule the per-track maps live by, and
+      // the one that let song A's settings survive into song B.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`
+        const row = Array.from(document.querySelectorAll('.song-item')).find(r => r.querySelector('.song-title')?.textContent === 'Froggy Hop');
+        row.querySelector('button').click();
+      `);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Froggy Hop'`);
+      const after = await cdp.evaluate(`({
+        root: document.getElementById('key-root').value,
+        scale: document.getElementById('key-scale').value,
+        marked: document.querySelectorAll('.cell.off-scale').length,
+      })`);
+      if (after.scale !== 'chromatic' || after.root !== '0' || after.marked !== 0) {
+        throw new Error(`a song with no key must load as chromatic C, got ${JSON.stringify(after)}`);
+      }
+    });
+
+    step('Keep to scale: a placed note moves to the nearest scale tone, and playing is left alone', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Off: every row is placeable, so clicking each of an octave's rows
+      // gives twelve distinct pitches.
+      const placeOctave = () => cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (let i = 0; i < 12; i++) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 40 + i * 40, clientY: r.top + 6 + i * 11 }));
+        }
+      })()`);
+      const pitches = () => cdp.evaluate(
+        `[...document.querySelectorAll('.track.active .lane .note')].map(n => n.getAttribute('aria-label').split(',')[0])`);
+      await placeOctave();
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 12`);
+      const free = await pitches();
+      if (free.some(p => p.includes('#')) === false) {
+        throw new Error(`with keep-to-scale off, clicking every row should reach the black keys: ${JSON.stringify(free)}`);
+      }
+
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      await cdp.evaluate(`document.getElementById('key-snap').click()`);
+      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'true'`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await placeOctave();
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length > 0`);
+      const snapped = await pitches();
+      // Not "no sharps" — that is true of an empty lane too. Assert that notes
+      // landed AND that not one of them is outside C major.
+      if (snapped.length < 6) throw new Error(`expected the clicks to place notes, got ${snapped.length}`);
+      const outside = snapped.filter(p => p.includes('#'));
+      if (outside.length) {
+        throw new Error(`keep-to-scale should leave nothing outside C major, got ${JSON.stringify(outside)}`);
+      }
+      // The setting is a per-browser preference, not song content — it must not
+      // ride along in the file the way the key itself does.
+      // autosave() is debounced, so the draft may not exist yet — wait for it
+      // rather than reading a null and blaming the feature.
+      await waitFor(`!!Object.keys(localStorage).find((k) => k.includes('autosave'))`, 4000);
+      const inSong = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        return JSON.parse(localStorage.getItem(k)).keepToScale;
+      })()`);
+      if (inSong !== undefined) throw new Error('keep-to-scale is a working preference and must stay out of the song');
+    });
+
+    step('In-key chords: the palette offers the chord this key builds on the note', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Place a D (the second degree of C major) by clicking its own key in
+      // the gutter's lane row, found by name rather than by pixel arithmetic.
+      await cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        const keys = [...g.querySelectorAll('.pkey')];
+        const d = keys.find(k => /^D4$/.test(k.title));
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect(), kr = d.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 60, clientY: kr.top + 4 }));
+      })()`);
+      await waitFor(`!!document.querySelector('.track.active .lane .note')`);
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await openPalette('chord');
+      const inKey = await cdp.evaluate(
+        `[...document.querySelectorAll('.preset-grid button.in-key')].map(b => b.textContent)`);
+      // The second degree of a major scale carries a minor triad, so the label
+      // has to be lower-case "ii" — upper-case would mean the qualities are
+      // coming from somewhere other than the scale.
+      if (inKey.join(',') !== 'ii,ii7') {
+        throw new Error(`on D in C major the in-key buttons should read ii and ii7, got ${JSON.stringify(inKey)}`);
+      }
+      await cdp.evaluate(`document.querySelector('.preset-grid button.in-key').click()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const chord = await cdp.evaluate(
+        `[...document.querySelectorAll('.track.active .lane .note')].map(n => n.getAttribute('aria-label').split(',')[0]).sort()`);
+      if (chord.join(' ') !== 'A4 D4 F4') {
+        throw new Error(`ii in C major is D-F-A, got ${JSON.stringify(chord)}`);
+      }
+      // Chromatic has no degrees, so the in-key buttons must be absent rather
+      // than present and wrong.
+      await setKey(0, 'chromatic');
+      await cdp.evaluate(`document.querySelector('.track.active .lane .note').click()`);
+      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await openPalette('chord');
+      const none = await cdp.evaluate(`document.querySelectorAll('.preset-grid button.in-key').length`);
+      if (none !== 0) throw new Error(`chromatic has no degrees, so no in-key buttons: found ${none}`);
+    });
+
+    step('Chord progressions: written in the song key, and the same degrees follow it', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      const openProgressions = () => cdp.evaluate(`(() => {
+        const t = document.querySelector('.track[data-kind="pitch"]');
+        [...t.querySelectorAll('.th-tool-btn')].find(b => /progression/i.test(b.title)).click();
+      })()`);
+      await openProgressions();
+      await waitFor(`document.getElementById('progression-dialog').open`);
+      const listed = await cdp.evaluate(
+        `[...document.querySelectorAll('#progression-list .song-title')].map(t => t.textContent)`);
+      if (listed.length < 5) throw new Error(`expected the built-in progressions, got ${JSON.stringify(listed)}`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#progression-list .song-item')]
+          .find(r => r.querySelector('.song-title').textContent === 'I–V–vi–IV');
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length > 0`);
+      // The first bar of I-V-vi-IV in C major is a C triad: C-E-G, and every
+      // note of every bar has to be inside the scale or the chords are not
+      // coming from it.
+      const notes = await cdp.evaluate(`(() => {
+        return [...document.querySelectorAll('.track.active .lane .note')]
+          .map(n => ({ label: n.getAttribute('aria-label').split(',')[0], left: parseFloat(n.style.left) }))
+          .sort((a, b) => a.left - b.left || a.label.localeCompare(b.label));
+      })()`);
+      if (notes.some(n => n.label.includes('#'))) {
+        throw new Error(`a progression in C major must contain no sharps: ${JSON.stringify(notes.slice(0, 12))}`);
+      }
+      const firstBar = notes.filter(n => n.left === notes[0].left).map(n => n.label.replace(/\d/, '')).sort();
+      if (firstBar.join('') !== 'CEG') {
+        throw new Error(`bar 1 of I–V–vi–IV in C major is C-E-G, got ${JSON.stringify(firstBar)}`);
+      }
+      // Same degrees, different key: in A minor the very same progression has
+      // to come out as A-C-E, which is what proves the qualities are read from
+      // the scale rather than stored in the table.
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(9, 'minor');
+      await openProgressions();
+      await waitFor(`document.getElementById('progression-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#progression-list .song-item')]
+          .find(r => r.querySelector('.song-title').textContent === 'I–V–vi–IV');
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length > 0`);
+      const minorFirst = await cdp.evaluate(`(() => {
+        const ns = [...document.querySelectorAll('.track.active .lane .note')]
+          .map(n => ({ label: n.getAttribute('aria-label').split(',')[0], left: parseFloat(n.style.left) }));
+        const x = Math.min(...ns.map(n => n.left));
+        return ns.filter(n => n.left === x).map(n => n.label.replace(/\\d/, '')).sort();
+      })()`);
+      if (minorFirst.join('') !== 'ACE') {
+        throw new Error(`bar 1 of the same degrees in A minor is A-C-E, got ${JSON.stringify(minorFirst)}`);
+      }
+    });
+
+    step('Duplicate track: the copy carries the part and the whole voice, independently', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (const [dx, dy] of [[30, 30], [130, 50]]) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + dx, clientY: r.top + dy }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length >= 2`);
+      // Give the track a non-default voice, so "carries the whole voice" has
+      // something to carry beyond the notes.
+      await addFxEffect('Delay');
+      await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
+      const firstTrack = `document.querySelectorAll('.track[data-kind="pitch"]')[0]`;
+      const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+      await cdp.evaluate(`(${firstTrack}).querySelector('.th-dup').click()`);
+      await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
+      // Directly below the original, not appended at the end.
+      const names = await cdp.evaluate(`[...document.querySelectorAll('.track .th-name')].map(n => n.textContent)`);
+      if (names[1] !== names[0] + ' copy') {
+        throw new Error(`the copy belongs directly below its original: ${JSON.stringify(names)}`);
+      }
+      // Wait for the draft to *contain the copy*, not merely to exist:
+      // autosave() is debounced, and an earlier step's song is still sitting
+      // in that key until it fires. Waiting on the key alone read Froggy Hop's
+      // 355 notes and blamed the duplication for them.
+      const savedTracks = `(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const ids = d.trackList.filter(t => t.kind !== 'rhythm');
+        return { d, ids: ids.map(t => t.id), names: ids.map(t => t.name) };
+      })()`;
+      await waitFor(`(() => { const s = ${savedTracks}; return !!s && s.names.some(n => n.endsWith(' copy')); })()`, 6000);
+      const copied = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const ids = d.trackList.filter(t => t.kind !== 'rhythm').map(t => t.id);
+        return {
+          notes: (d.tracks[ids[0]] || []).length,
+          copyNotes: (d.tracks[ids[1]] || []).length,
+          send: (d.fxSend || {})[ids[1]],
+        };
+      })()`);
+      if (copied.notes < 2 || copied.copyNotes !== copied.notes) {
+        throw new Error(`the copy should hold the same part: ${JSON.stringify(copied)}`);
+      }
+      if (!copied.send || Math.abs(copied.send.delay - 0.5) > 1e-6) {
+        throw new Error(`the copy should carry the track's inserts, got ${JSON.stringify(copied.send)}`);
+      }
+      // The two parts must be separate objects, or editing one edits both —
+      // the failure that makes a "copy" worse than useless.
+      await cdp.evaluate(`(() => {
+        const n = document.querySelectorAll('.track[data-kind="pitch"]')[1].querySelector('.lane .note');
+        n.click();
+      })()`);
+      await waitFor(`!!document.querySelector('.lane .note.selected')`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))`);
+      // Same debounce again: poll for the two parts to differ rather than
+      // sleeping a guessed interval and reading once. Never diverging within
+      // the timeout IS the failure this step is here to catch.
+      const diverged = `(() => {
+        const s = ${savedTracks};
+        if (!s) return false;
+        const a = (s.d.tracks[s.ids[0]] || []).map(n => n.freq).sort().join(',');
+        const b = (s.d.tracks[s.ids[1]] || []).map(n => n.freq).sort().join(',');
+        return a !== b;
+      })()`;
+      await waitFor(diverged, 6000).catch(() => {
+        throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
+      });
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
