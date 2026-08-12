@@ -128,7 +128,11 @@ hur roligt det vore att bygga.
   *båda* halvorna — att orörda rader återanvänds och att varje sak en rad
   ritar fortfarande tvingar fram en ombyggnad — och en svit som är stabil över
   upprepade körningar *före* ändringen, så att ett nytt oregelbundet fel går
-  att härleda. Notera att märka radelementet för att upptäcka en ombyggnad
+  att härleda. **Det sista villkoret är nu uppfyllt:** varje steg nollställer
+  appen själv, varje steg är kört mot en trasig app och bevisat bita, och
+  `verify.js --only` gör det billigt att köra ett misstänkt steg tio gånger i
+  rad. Det som fällde förra försöket — tre steg som föll oregelbundet utan att
+  det gick att avgöra om ombyggnaden orsakade dem — går att avgöra nu. Notera att märka radelementet för att upptäcka en ombyggnad
   inte fungerar: en återanvänd rad *är* samma element, vilket är hela poängen.
   Steget "off-screen rows keep their real height" i `verify.js` finns för att
   hålla nästa försök ärligt.
