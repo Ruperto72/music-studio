@@ -46,13 +46,9 @@ hur roligt det vore att bygga.
 ## Kreativa genvägar (nästa steg)
 
 Tonart, skala, diatoniska ackord, ackordföljder, spårduplicering och
-transponering och överdubbning är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
+transponering, överdubbning och dynamik är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
 ordning jag skulle ta det:
 
-- [ ] **Variation inom ramar.** "Variera den här takten": knuffa några
-  velocities, tappa eller lägg till ett slag, oktavflytta en not. Enkel att
-  bygga och lätt att göra gimmickig — den ska föreslå, inte skriva över, och
-  det är den designfrågan som avgör om den är värd något.
 - [ ] **Alternativa tagningar per spår.** Den enda på listan som kräver en ny
   dimension i datamodellen (ett spår får flera stämmor, en aktiv). Medvetet
   framskjuten tills det visar sig att den saknas — undo täcker det mesta av

@@ -5398,6 +5398,103 @@ async function main() {
       }
     });
 
+    step('Dynamics: velocity is shaped without moving a note, and full stays absent', async () => {
+      await fresh();
+      await waitFor(`document.querySelectorAll('.track').length === 5`);
+      // Stamp in a groove, which is exactly the case this exists for: every
+      // hit lands at the pattern's own level and the part reads as a machine.
+      await cdp.evaluate(`(() => {
+        const t = [...document.querySelectorAll('.track')].find(t => t.dataset.kind === 'rhythm');
+        [...t.querySelectorAll('.th-tool-btn')].find(b => /pattern/i.test(b.title)).click();
+      })()`);
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#pattern-list .song-item')]
+          .find(r => r.querySelector('.song-title').textContent === 'Rock');
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length > 8`);
+
+      const hits = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return (d.tracks[id] || []).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return (d.tracks[id] || []).length > 8;
+      })()`, 6000);
+      const before = await hits();
+
+      const openDynamics = async () => {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('dynamics-btn').click()`);
+        await waitFor(`document.getElementById('dynamics-dialog').open`);
+      };
+      await openDynamics();
+      await cdp.evaluate(`document.getElementById('dynamics-vary').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const after = await hits();
+
+      // Nothing may move. This is the promise the dialog makes in so many
+      // words, and the one that makes pressing it cheap.
+      const place = (l) => l.map(h => `${h.start}:${h.type}`).sort().join(',');
+      if (place(after) !== place(before)) {
+        throw new Error('Vary must not move a hit or change what it is — only how hard it lands');
+      }
+      // Something must actually change, or the button is a decoration.
+      const levels = (l) => l.map(h => (h.vel == null ? 1 : h.vel)).join(',');
+      if (levels(after) === levels(before)) {
+        throw new Error('Vary changed no velocity at all');
+      }
+      // It must be a *reroll*, not one offset applied to everything. Two
+      // presses giving different results proves nothing — a fixed subtraction
+      // does that too, which is what running that injection showed. What
+      // separates them is whether the items moved by different amounts.
+      const vel = (h) => (h.vel == null ? 1 : h.vel);
+      const deltas = after.map((h, i) => Math.round((vel(h) - vel(before[i])) * 100));
+      if (new Set(deltas).size < 3) {
+        throw new Error(`Vary must move items by different amounts, saw ${JSON.stringify([...new Set(deltas)])}`);
+      }
+      await cdp.evaluate(`document.getElementById('dynamics-vary').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const third = await hits();
+      if (place(third) !== place(before)) throw new Error('Vary moved a hit on the second press');
+
+      // Accent reads the meter. Compare each hit against *itself* rather than
+      // on-beat against off-beat: a groove already lands harder on the beat,
+      // so an accent that had the test backwards still left the on-beat hits
+      // louder in absolute terms and the step passed. What it cannot fake is
+      // the direction each hit moved.
+      const preAccent = await hits();
+      await cdp.evaluate(`document.getElementById('dynamics-accent').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const accented = await hits();
+      const beat = 2; // eighths per beat at 4/4
+      let raised = 0, lowered = 0;
+      accented.forEach((h, i) => {
+        const d = vel(h) - vel(preAccent[i]);
+        const onBeat = h.start % beat === 0;
+        if (onBeat && d < -1e-9) throw new Error(`an on-beat hit got quieter: ${JSON.stringify(h)}`);
+        if (!onBeat && d > 1e-9) throw new Error(`an off-beat hit got louder: ${JSON.stringify(h)}`);
+        if (onBeat && d > 1e-9) raised++;
+        if (!onBeat && d < -1e-9) lowered++;
+      });
+      if (!raised || !lowered) {
+        throw new Error(`accenting should raise on-beat hits and lower the others, raised ${raised} lowered ${lowered}`);
+      }
+      // Full velocity is stored as absent everywhere else, and this must not
+      // be the one place that writes 1 onto every item.
+      if (accented.some(h => h.vel === 1)) {
+        throw new Error('a full-velocity hit must serialise as absent, not as vel: 1');
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

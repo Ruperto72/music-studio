@@ -53,6 +53,11 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   **Fit to the scale** pulls a take onto the nearest scale tones, and never
   merges two notes into one. With Keep to scale on, **↑/↓** move by a scale
   step and **Alt+↑/↓** stay chromatic
+- **Dynamics** (menu → Dynamics) — the third axis. **Vary** walks each note's
+  velocity randomly around where it already is, so a stamped-in groove stops
+  sounding like a machine without losing the shape you gave it; **Accent the
+  beat** plays the notes on a beat harder than the ones between. Only velocity
+  moves, so trying one costs an undo at worst
 - **Quantize and humanize** (menu → Timing), with a **strength**: 100% lands
   every note on the grid, 50% halves the error and keeps the feel. Recording
   no longer snaps as you play — a take keeps your timing, and correcting it is

@@ -341,6 +341,35 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   hållen över skarven som måste bli längre än ett rutsteg. Tre injektioner
   (transporten stannar vid looppunkten, varje varv rensar spåret, skarvfixen
   borttagen) och alla tre biter.
+- [x] **Dynamik — den tredje axeln.** Punkten hette "variation inom ramar" och
+  var den enda där designfrågan avgjorde om den var värd något alls. Svaret
+  blev att *inte* bygga en "variera takten"-knapp som skriver om det du skrivit.
+  Efter quantize (tid) och transponering (tonhöjd) var det uppenbara som
+  saknades **velocity**: den hade en lane för att redigera en not i taget och
+  ingenting för att forma flera. Det är därför en instämplad groove eller en
+  step-inmatad stämma låter som en maskin — varje not ligger på full styrka,
+  vilket är det enda en spelande människa aldrig gör.
+  Två operationer, bägge avsiktligt tråkiga: **Vary** är en slumpvandring runt
+  varje nots *nuvarande* nivå (inte en omlottning — en stämma du redan format
+  behåller sin form och slutar bara vara mekanisk om det), och **Accent the
+  beat** spelar noterna som ligger på ett taktslag hårdare än de mellan. Den
+  andra är den enda formen värd att koda in, för den läses ur taktarten i
+  stället för att gissas; allt annat en "gör det groovigt"-knapp kunde göra är
+  en genreåsikt.
+  **Ingendera rör en not.** Bara velocity ändras, så tonhöjd och läge är
+  exakt där du lämnade dem och värsta utfallet är en undo — vilket visade sig
+  vara vad "föreslå, inte skriva över" betyder när man redan har undo. Bägge
+  går genom `NOTE_LANE_PARAMS.vel`, där regeln "full styrka lagras som
+  *frånvarande*" bor, så en stämma som hamnar tillbaka på full serialiseras
+  som förut i stället för att växa ett `vel` på varje not.
+  **Två svaga påståenden som injektionskörningen fångade**, bägge lärorika:
+  att jämföra on-beat mot off-beat i *absoluta* nivåer bevisar ingenting,
+  eftersom en groove redan slår hårdare på taktslaget — en accent med testet
+  baklänges lämnade fortfarande taktslagen starkast och steget passerade. Nu
+  jämförs varje slag mot *sig självt*: riktningen går inte att förfalska. Och
+  "två tryck ger olika resultat" fångar inte en omlottning; en fast
+  subtraktion gör också det. Det som skiljer dem är om objekten flyttade sig
+  *olika mycket*, vilket är vad steget mäter nu.
 - [x] **Duplicera spår.** "Testa samma slinga på ett annat ljud" är ett av de
   drag man gör oftast när man skriver, och krävde tidigare att man markerade
   en hel stämma, la till ett spår och klistrade in — vid vilket tillfälle

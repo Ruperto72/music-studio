@@ -1123,6 +1123,7 @@
         <li><span class="help-ico" data-glyph="grab"></span><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
         <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse, for a part that came out too stiff. This is why <b>recording no longer snaps as you play</b> — a take keeps the timing you gave it, and correcting it is a separate decision you can make with a strength rather than one the recorder makes for you.</li>
         <li><b>Transpose</b> in the menu is the same idea on the <i>pitch</i> axis, with the same scope rule. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i> — so a melody nudged upward stays in the key instead of landing on the note between, and a chord moves to the next chord of the key rather than sliding sideways. <b>Fit to the scale</b> pulls everything onto the nearest scale tone: the repair a recorded take needs, since playing is never corrected on the way in. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put, so fitting can't cost you a voice. The arrow keys use the same walk: with <b>Keep to scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
+        <li><b>Dynamics</b> in the menu is the third axis, with the same scope rule again. <b>Vary</b> is a random walk around each note's <i>current</i> level — a part you already shaped keeps its shape and just stops being mechanical about it, and pressing it again gives a different answer. <b>Accent the beat</b> plays the notes that land on a beat harder than the ones between them, read off the meter rather than guessed. Only velocity is touched: every note stays exactly where it is at exactly the pitch you put it, so trying one costs an undo at worst.</li>
         <li>The <b>Grid</b> menu also has <b>Free</b> — placing, dragging and resizing stop snapping and land wherever you put them (on the app's finest lattice, a sixth of an eighth). The grid still sets how long a new note is, so Free changes where things go, not what size they are. It is remembered per browser rather than saved with the song: the same file opened by someone else should not silently stop snapping.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it — so you can place sixteenths and triplet figures between the eighth lines. Finer grids draw extra guide lines.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
@@ -1384,6 +1385,30 @@
     </div>
   </dialog>
 
+  <dialog id="dynamics-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="velocity"></span> Dynamics</h2>
+      <button id="dynamics-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note" id="dynamics-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
+      <p class="songs-note">Quantize shapes a part's <i>timing</i> and Transpose its <i>pitch</i>; this is the third axis. Only velocity is touched — every note stays exactly where it is, at exactly the pitch you put it — so trying one costs an undo at worst.</p>
+      <label class="pattern-opt" for="dynamics-amount">Amount
+        <input type="range" id="dynamics-amount" min="0.05" max="0.6" step="0.05" value="0.2">
+        <output id="dynamics-amount-val">20%</output>
+        <span class="pattern-opt-note">— how far a level may move.</span>
+      </label>
+      <div class="pattern-opt">
+        <button id="dynamics-vary">Vary</button>
+        <span class="pattern-opt-note">— a random walk around each note's <i>current</i> level, so a part you already shaped keeps its shape and just stops being mechanical about it. Press it again for a different answer.</span>
+      </div>
+      <div class="pattern-opt">
+        <button id="dynamics-accent">Accent the beat</button>
+        <span class="pattern-opt-note">— notes that land on a beat get played harder than the ones between them. Read off the meter, not guessed.</span>
+      </div>
+    </div>
+  </dialog>
+
   <h1 class="sr-only">Web Audio Studio — 8-bit chiptune editor</h1>
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
@@ -1409,6 +1434,7 @@
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
+          <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
           <button id="export" class="file-menu-item" data-glyph="code">Export code</button>
           <button id="export-midi" class="file-menu-item" data-glyph="midiOut">Export MIDI</button>
           <button id="import-midi" class="file-menu-item" data-glyph="midiIn">Import MIDI</button>
@@ -8427,6 +8453,38 @@ for (const [id, mode, n] of [
   document.getElementById(id).addEventListener('click', () => { runTranspose(mode, n); refreshTransposeScope(); });
 }
 
+// ---------- Dynamics dialog ----------
+// Third of the three "fix a take afterwards" dialogs, and deliberately built
+// to the same pattern as Timing and Transpose: same scope rule
+// (timingTargets()), same "say what it will act on before it is pressed".
+const dynamicsDialog = document.getElementById('dynamics-dialog');
+const dynamicsAmount = document.getElementById('dynamics-amount');
+function refreshDynamicsScope() {
+  const { track, items } = timingTargets();
+  const kind = isRhythm(track) ? 'hit' : 'note';
+  document.getElementById('dynamics-scope').textContent =
+    state.multiSelected.size || (state.selected && state.selected.track === track)
+      ? `Acts on the ${items.length} selected ${kind}${items.length === 1 ? '' : 's'}.`
+      : `Acts on all ${items.length} ${kind}${items.length === 1 ? '' : 's'} on ${trackName(track)}.`;
+}
+dynamicsAmount.addEventListener('input', () => {
+  document.getElementById('dynamics-amount-val').textContent = Math.round(parseFloat(dynamicsAmount.value) * 100) + '%';
+});
+document.getElementById('dynamics-btn').addEventListener('click', () => {
+  closeFileMenu();
+  refreshDynamicsScope();
+  dynamicsDialog.showModal();
+});
+document.getElementById('dynamics-close').addEventListener('click', () => dynamicsDialog.close());
+document.getElementById('dynamics-vary').addEventListener('click', () => {
+  runDynamics('vary', parseFloat(dynamicsAmount.value));
+  refreshDynamicsScope();
+});
+document.getElementById('dynamics-accent').addEventListener('click', () => {
+  runDynamics('accent', parseFloat(dynamicsAmount.value));
+  refreshDynamicsScope();
+});
+
 // ---------- Playback ----------
 let ctx = null, loopTimer = null, playing = false;
 let masterGain = null;
@@ -10632,6 +10690,59 @@ function snapToScaleAlways(midi) {
     if (inScale(midi + d)) return midi + d;
   }
   return midi;
+}
+// ---------- Dynamics: the third axis ----------
+// Quantize shapes a part's *timing* and Transpose its *pitch*; velocity had a
+// lane for editing one note at a time and nothing for shaping several. That is
+// why a stamped-in groove or a step-entered part sounds like a machine — every
+// note sits at full level, which is the one thing a player never does.
+//
+// Deliberately not a "vary this bar" button that rewrites what you wrote. Both
+// operations here only touch velocity, so the notes, their pitches and their
+// timing are exactly where you left them; the worst case is one undo. That is
+// what "suggest, don't overwrite" turns out to mean once you have undo.
+//
+// Both go through NOTE_LANE_PARAMS.vel, which is where "full velocity is
+// stored as *absent*" lives — so a part that ends up back at full serialises
+// the way it always did rather than growing a vel on every note.
+const VEL = () => NOTE_LANE_PARAMS.vel;
+const clampVel = (v) => Math.max(VEL_MIN, Math.min(1, round2(v)));
+// A random walk around each item's current level, not a reroll: a part that
+// was already shaped keeps its shape and just stops being mechanical about it.
+// Real randomness rather than a seeded stream — pressing it twice should give
+// you two different answers, which is the whole point of pressing it twice.
+function varyDynamics(items, amount) {
+  let moved = 0;
+  for (const it of items) {
+    const before = VEL().get(it);
+    const v = clampVel(before + (Math.random() * 2 - 1) * amount);
+    VEL().set(it, v);
+    if (VEL().get(it) !== before) moved++;
+  }
+  return moved;
+}
+// The one shape worth encoding, because it is read off the meter rather than
+// guessed: notes that land on a beat are played harder than the ones between.
+// Everything else a "make it groove" button might do is a genre opinion; this
+// is arithmetic.
+function accentBeats(items, strength) {
+  const beat = eighthsPerBeat();
+  let moved = 0;
+  for (const it of items) {
+    const onBeat = Math.abs(it.start / beat - Math.round(it.start / beat)) < EPS;
+    const before = VEL().get(it);
+    const v = clampVel(onBeat ? before + strength * (1 - before) : before - strength * before * 0.5);
+    VEL().set(it, v);
+    if (VEL().get(it) !== before) moved++;
+  }
+  return moved;
+}
+function runDynamics(what, amount) {
+  const { track, items } = timingTargets();
+  if (!items.length) { announce('Nothing to shape'); return; }
+  const moved = what === 'accent' ? accentBeats(items, amount) : varyDynamics(items, amount);
+  commitHistory(); render(); autosave();
+  announce(`${what === 'accent' ? 'Accented' : 'Varied'} ${moved} of ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
 }
 function runTranspose(mode, n) {
   const { track, items } = timingTargets();
