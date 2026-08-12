@@ -47,6 +47,12 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   is a comparison, and heights compare better than shades of one colour
 - **Free** placement in the Grid menu (Pro Tools' Slip): place, drag and resize
   without snapping. The grid still sets how long a new note is
+- **Transpose** (menu → Transpose) by semitones, octaves or — with a key set —
+  by **scale steps**, which move each note to the next pitch *in the key*, so a
+  melody nudged upward stays in the key instead of landing on the note between.
+  **Fit to the scale** pulls a take onto the nearest scale tones, and never
+  merges two notes into one. With Keep to scale on, **↑/↓** move by a scale
+  step and **Alt+↑/↓** stay chromatic
 - **Quantize and humanize** (menu → Timing), with a **strength**: 100% lands
   every note on the grid, 50% halves the error and keeps the feel. Recording
   no longer snaps as you play — a take keeps your timing, and correcting it is

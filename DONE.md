@@ -296,6 +296,33 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   tabellen, därför fortsätter en följd fungera när man byter tonart under
   den, och därför är en ny följd **en tabellrad**. Verify-steget prövar just
   det: samma följd ska ge C–E–G i C-dur och A–C–E i a-moll.
+- [x] **Transponering — kvantisering fast på tonhöjdsaxeln.** Beslutet att
+  inspelning aldrig korrigerar det du spelar gav tiden en efterhandsfix
+  (quantize) men lämnade tonhöjden utan en enda. Nu finns **Transpose** i
+  menyn, med samma scope-regel som Timing (`timingTargets()`: flermarkering,
+  annars markeringen, annars hela spåret): halvtoner, oktaver, **skalsteg** och
+  **Fit to the scale**.
+  Skalsteget är poängen. Intervallet är medvetet *inte* konstant — ett steg upp
+  från E i C-dur är en halvton, från C är det två — vilket är precis det som
+  gör att en melodi flyttar sig *inuti* tonarten i stället för att glida ur
+  den. `scaleStep()` går utåt tills nästa ton som ligger i skalan, så en not
+  som redan ligger utanför fixar sig själv genom att flyttas. Pilarna använder
+  samma vandring: med Keep to scale på flyttar ↑/↓ ett skalsteg, Alt+↑/↓ är
+  kromatiskt. `nudgeSelectionByScale()` går genom `transposeItems()` i stället
+  för att upprepa vandringen, så tangenten och dialogen inte kan bli oense om
+  vad "ett steg upp" betyder.
+  **En bugg jag byggde in och som injektionskörningen fångade:** den första
+  kollisionskontrollen jämförde *tonhöjder* utan att bry sig om tid. Två noter
+  i olika takter kolliderar inte alls, så på en riktig stämma hade den nästan
+  alltid slagit till och fått Fit att göra ingenting. Den går genom
+  `notesConflict()` nu, som allt annat som placerar noter, och en not vars
+  målton är upptagen **står kvar** i stället för att hela operationen backar
+  eller noten försvinner — att fitta ett ackord får aldrig kosta en stämma.
+  Verify-steget har ett eget fall för just det.
+  `applyTiming()` och den nya `transposeItems()` delar `applyItemEdit()`:
+  konfliktupplösningen är densamma på bägge axlarna (två flyttade objekt kan
+  landa på varandra, och måste vägas mot både varandra och det som inte
+  flyttade), så den regeln står på ett ställe i stället för två.
 - [x] **Duplicera spår.** "Testa samma slinga på ett annat ljud" är ett av de
   drag man gör oftast när man skriver, och krävde tidigare att man markerade
   en hel stämma, la till ett spår och klistrade in — vid vilket tillfälle

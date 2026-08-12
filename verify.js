@@ -5151,6 +5151,140 @@ async function main() {
       });
     });
 
+    step('Transpose: scale steps move inside the key, semitones do not, and Fit repairs a take', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // A C major triad, placed by finding each pitch's own key in the gutter
+      // rather than by pixel arithmetic.
+      const placeAt = (name, x) => cdp.evaluate(`(() => {
+        const g = document.querySelector('.track[data-kind="pitch"] .gutter');
+        const k = [...g.querySelectorAll('.pkey')].find(k => k.title === ${JSON.stringify(name)});
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect(), kr = k.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${x}, clientY: kr.top + 4 }));
+      })()`);
+      const pitches = () => cdp.evaluate(
+        `[...document.querySelectorAll('.track.active .lane .note')].map(n => n.getAttribute('aria-label').split(',')[0]).sort()`);
+      for (const [name, x] of [['C4', 30], ['E4', 30], ['G4', 30]]) await placeAt(name, x);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      if ((await pitches()).join(' ') !== 'C4 E4 G4') {
+        throw new Error(`expected a C major triad to start from, got ${JSON.stringify(await pitches())}`);
+      }
+
+      // Deselect first, or the dialog acts on the one note the pen left
+      // selected — which is correct behaviour and the wrong thing to measure
+      // here. With nothing selected the scope widens to the whole track.
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await waitFor(`!document.querySelector('.lane .note.selected')`);
+
+      const openTranspose = async () => {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('transpose-btn').click()`);
+        await waitFor(`document.getElementById('transpose-dialog').open`);
+      };
+      const press = (id) => cdp.evaluate(`document.getElementById(${JSON.stringify(id)}).click()`);
+      const close = () => cdp.evaluate(`document.getElementById('transpose-close').click()`);
+
+      // One scale step up: C-E-G becomes D-F-A. Not C#-F-G# — that is the
+      // whole difference between moving inside a key and moving off it, and
+      // the intervals change (2, 1, 2 semitones) because the scale says so.
+      await openTranspose();
+      await press('transpose-step-up');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const stepped = await pitches();
+      if (stepped.join(' ') !== 'A4 D4 F4') {
+        throw new Error(`one scale step up from C-E-G in C major is D-F-A, got ${JSON.stringify(stepped)}`);
+      }
+      // A semitone is still a semitone — the two operations must not have
+      // collapsed into one.
+      await press('transpose-semi-up');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const semi = await pitches();
+      if (semi.join(' ') !== 'A#4 D#4 F#4') {
+        throw new Error(`a semitone up from D-F-A is D#-F#-A#, got ${JSON.stringify(semi)}`);
+      }
+      // ...and Fit puts that back inside the key, which is the repair a take
+      // needs now that recording never corrects pitch on the way in.
+      await press('transpose-fit');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      const fitted = await pitches();
+      if (fitted.some(p => p.includes('#'))) {
+        throw new Error(`Fit to the scale should leave nothing outside C major, got ${JSON.stringify(fitted)}`);
+      }
+      if (fitted.length !== 3) throw new Error(`Fit must not lose a voice: ${JSON.stringify(fitted)}`);
+      await close();
+
+      // The arrow keys use the same walk. With Keep to scale on, up is a scale
+      // step; Alt is the chromatic escape hatch.
+      await cdp.evaluate(`document.getElementById('key-snap').click()`);
+      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'true'`);
+      await cdp.evaluate(`(() => {
+        const ns = [...document.querySelectorAll('.track.active .lane .note')];
+        ns.sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top));
+        ns[0].click();
+      })()`);
+      await waitFor(`!!document.querySelector('.lane .note.selected')`);
+      const selected = () => cdp.evaluate(
+        `document.querySelector('.track.active .lane .note.selected').getAttribute('aria-label').split(',')[0]`);
+      const midi = (n) => {
+        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const m = n.match(/^([A-G]#?)(\d)$/);
+        return names.indexOf(m[1]) + (parseInt(m[2], 10) + 1) * 12;
+      };
+      const arrow = async (opts) => {
+        await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', ${JSON.stringify({ key: 'ArrowUp', bubbles: true, ...opts })}))`);
+        await new Promise((r) => setTimeout(r, 200));
+        return selected();
+      };
+      // Both presses start from the *same* note, and it is deliberately one
+      // where the two answers differ: D is a whole tone below E in C major, so
+      // a scale step is 2 semitones and Alt is 1. Measured from a note where
+      // the scale step happens to be a semitone anyway (E, B) this step passes
+      // against a build with no escape hatch at all — which is exactly what it
+      // did before, and what running the injection caught.
+      const low = await selected();
+      if (midi(low) % 12 !== 2) throw new Error(`this step needs to start on a D, got ${low}`);
+      const afterAlt = await arrow({ altKey: true });
+      if (midi(afterAlt) - midi(low) !== 1) {
+        throw new Error(`Alt+Up must stay chromatic: ${low} -> ${afterAlt}`);
+      }
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 200));
+      if (await selected() !== low) throw new Error('Alt+Down should come straight back');
+      const afterStep = await arrow({});
+      if (midi(afterStep) - midi(low) !== 2) {
+        throw new Error(`a scale step from ${low} in C major is 2 semitones, landed on ${afterStep}`);
+      }
+
+      // A collision must cost a note its move, never its existence. Two notes
+      // a semitone apart in the same column both want the same pitch when
+      // fitted; the lower one gets it and the other stays put.
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await setKey(0, 'major');
+      // Keep to scale is a per-browser preference and this step turned it on
+      // above, so it survives the reload — and with it on, C#4 would snap to
+      // C4 on the way in and there would be no collision to fit.
+      await cdp.evaluate(`(() => {
+        const b = document.getElementById('key-snap');
+        if (b.getAttribute('aria-pressed') === 'true') b.click();
+      })()`);
+      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'false'`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      for (const name of ['C4', 'C#4']) await placeAt(name, 30);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await openTranspose();
+      await press('transpose-fit');
+      await new Promise((r) => setTimeout(r, 300));
+      const survived = await pitches();
+      if (survived.length !== 2) {
+        throw new Error(`fitting a colliding pair must keep both notes, got ${JSON.stringify(survived)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

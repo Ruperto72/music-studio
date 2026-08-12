@@ -45,16 +45,10 @@ hur roligt det vore att bygga.
 
 ## Kreativa genvägar (nästa steg)
 
-Tonart, skala, diatoniska ackord, ackordföljder och spårduplicering är byggda
-(se `DONE.md`). Det som står kvar på samma tema, i den ordning jag skulle ta
-det:
+Tonart, skala, diatoniska ackord, ackordföljder, spårduplicering och
+transponering är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
+ordning jag skulle ta det:
 
-- [ ] **Transponera efter skalsteg.** Med en tonart satt borde ↑/↓ på en
-  markering flytta ett *skalsteg* i stället för en halvton (Alt för kromatiskt)
-   — det är nästan alltid vad man menar, och det gör en melodi flyttbar utan
-  att den lämnar tonarten. Samma sak för hela spår: det går i dag inte att
-  flytta en stämma till en annan tonart över huvud taget, vilket är märkligt
-  nu när appen vet vilken tonart den är i.
 - [ ] **Överdubbning i loopen.** Loop och inspelning finns var för sig, men
   inte tillsammans: att spela in varv efter varv i samma loop utan att radera
   är hur trumstämmor och riff faktiskt växer fram. Bör vara en flagga på
