@@ -197,6 +197,7 @@ test command is:
 
 ```bash
 node verify.js            # headless-browser smoke test
+node verify.js --only kit # just the steps whose name contains "kit"
 ```
 
 The screenshots above are generated the same way, so they can be refreshed

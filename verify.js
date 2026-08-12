@@ -30,6 +30,12 @@ const { findBrowser, requireFreePort, waitForHttp, launchChrome, openPage } = re
 // draws under `require.main === module`.
 const ICONS_GENERATOR = require('./icons.js');
 
+// `--only <substring>` runs just the steps whose name contains it, which is
+// what makes a single step cheap enough to re-run while working on it — the
+// whole suite is a twenty-minute round trip. Every step resets the app first
+// (see fresh()), so one run alone means the same thing it means in the suite.
+const onlyArg = process.argv.indexOf('--only');
+const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || '').toLowerCase() : '';
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
@@ -375,6 +381,7 @@ async function main() {
   const steps = [];
   function step(name, fn) {
     steps.push(async () => {
+      if (ONLY && !name.toLowerCase().includes(ONLY)) return;
       try { await fn(); console.log(`  ok  ${name}`); }
       catch (e) { console.log(`FAIL  ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
     });
