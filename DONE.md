@@ -384,6 +384,37 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   är exakt den lista fyra andra ställen tidigare skrev av var för sig och fick
   fel.
 
+## Buggar hittade av rapporter
+
+- [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan
+  gräns.** Rapporterat som "The Fitting Bay får dåligt ljud en bit in, det
+  skrapar och hackar".
+  **Två hypoteser med motsatt åtgärd:** klippning i signalen, eller missar i
+  realtidsschemaläggningen. En offline-rendering skiljer dem åt, för
+  `OfflineAudioContext` räknar ut varje sampel oavsett hur lång tid det tar —
+  allt som är fel *där* sitter i signalen. Renderingen var ren: högsta topp
+  0,86, noll sampel i taket över 84 sekunder. Alltså realtiden.
+  **Mätningen:** en probe som lindar `AudioNode.connect`/`disconnect` och var
+  sekund rapporterar utestående kopplingar per källnod. En enda
+  `OscillatorNode` steg monotont — 45 → 90 → 116 efter 45 sekunder. Det var
+  kanalens fria PWM-LFO.
+  **Buggen:** `createPwmSource()` gjorde `sweepLfo.connect(width)` och städade
+  med `width.disconnect()`. En nod kopplar bara bort sina *egna utgångar*, så
+  det tog bort `width → delay.delayTime` och lämnade `sweepLfo → width` kvar.
+  Varje pwm-not lämnade alltså sin avtappning på en LFO som lever hela
+  sessionen, och eftersom LFO:n fortsatte referera `width` kunde den noden
+  aldrig städas bort heller: **två noder per not, för alltid**, och svepet
+  måste mata varenda en varje renderingskvantum. Därav "en bit in".
+  Rätt ände är `sweepLfo.disconnect(width)`. Efteråt stiger antalet med varje
+  schemalagd chunk och faller tillbaka till noll när noterna tar slut.
+  **Vad steget måste påstå:** inte toppen — en chunk håller legitimt en
+  lookahead värd av avtappningar oavsett läcka. Skillnaden är om siffran
+  någonsin *kommer ner igen*. Steget samplar över flera chunkar och kräver
+  både en låg botten och att sista mätningen inte är den högsta.
+  Kommentaren ovanför raden var för övrigt korrekt om *när* frånkopplingen
+  skulle ske (`ended`, inte `stop(t)`) och beskrev till och med följden av att
+  låta bli — den var bara fel om *vilken nod* som skulle anropas.
+
 ## Ljud / export
 
 - [x] **`Popcorn` ut, `Rust Foundry` in.** Popcorn togs bort på begäran; den

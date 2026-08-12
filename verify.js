@@ -5495,6 +5495,86 @@ async function main() {
       }
     });
 
+    step('PWM: every note gives back its tap on the shared sweep, so the graph does not grow', async () => {
+      await fresh();
+      // The shared sweep LFO outlives every note, so a note's tap on it has to
+      // come off when the note ends. It did not: the disconnect took the wrong
+      // end of the connection (`width.disconnect()` drops width's own output,
+      // not the LFO's), so every pwm note left its tap in place and kept the
+      // width node alive with it. The graph grew by two nodes per note for as
+      // long as the page was open and the sweep had to feed all of them every
+      // render quantum — audible as rasping and stuttering a minute into a
+      // pwm-heavy song, and invisible in an offline render, which computes
+      // every sample however long it takes.
+      //
+      // Counting connections is the only way to see this: the DOM says
+      // nothing, and the audio is correct until the CPU gives out.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            const live = new Map();
+            const oc = AudioNode.prototype.connect, od = AudioNode.prototype.disconnect;
+            AudioNode.prototype.connect = function (...a) {
+              live.set(this, (live.get(this) || 0) + 1);
+              return oc.apply(this, a);
+            };
+            AudioNode.prototype.disconnect = function (...a) {
+              const had = live.get(this) || 0;
+              live.set(this, Math.max(0, had - (a.length ? 1 : had)));
+              return od.apply(this, a);
+            };
+            // The busiest oscillator's outstanding fan-out. The sweep LFO is
+            // the only oscillator anything else connects to repeatedly.
+            window.__maxOscFanOut = () => {
+              let m = 0;
+              for (const [n, c] of live) if (n instanceof OscillatorNode && c > m) m = c;
+              return m;
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('#file-menu-toggle')`);
+      // A bundled song whose lead is a pwm part — 193 notes of it.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`
+        const row = Array.from(document.querySelectorAll('.song-item')).find(r => r.querySelector('.song-title')?.textContent === 'The Fitting Bay');
+        row.querySelector('button').click();
+      `);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'The Fitting Bay'`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+
+      // Sample across more than one scheduling chunk. The *peak* proves
+      // nothing — a chunk legitimately holds a lookahead's worth of taps at
+      // once, leaked or not. What separates them is whether the count ever
+      // comes back down: released taps return to nearly nothing between
+      // chunks, a leak only ever climbs.
+      const samples = [];
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        samples.push(await cdp.evaluate(`window.__maxOscFanOut()`));
+      }
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      const peak = Math.max(...samples);
+      const floor = Math.min(...samples);
+      if (peak < 5) {
+        throw new Error(`this step is only meaningful while pwm notes are sounding, saw ${JSON.stringify(samples)}`);
+      }
+      if (floor > 5) {
+        throw new Error(
+          `taps on the shared sweep are never released — the fan-out only climbs ` +
+          `(low ${floor}, high ${peak}): ${JSON.stringify(samples)}`);
+      }
+      // And the last word must not be the high-water mark: a leak's final
+      // sample is its largest.
+      if (samples[samples.length - 1] >= peak) {
+        throw new Error(`the fan-out ended at its maximum, which is what a leak looks like: ${JSON.stringify(samples)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
