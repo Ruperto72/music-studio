@@ -27,6 +27,19 @@ hur roligt det vore att bygga.
   URL-fragment, så en låt kan skickas vidare utan att laddas upp någonstans.
   Se även "Lagring / delning" nedan.
 
+- [ ] **Alternativa tagningar per spår.** Ett spår får flera stämmor, en aktiv
+  — "spela in en till version av refrängen utan att förlora den här".
+  Den återstående punkten ur omgången kreativa genvägar (tonart, skala,
+  diatoniska ackord, ackordföljder, spårduplicering, transponering,
+  överdubbning och dynamik är byggda — se `DONE.md`), och den enda som kräver
+  en **ny dimension i datamodellen**: allt annat där var en tabellrad eller en
+  ny läsning av något som redan fanns. Det slår igenom i låtformatet, i
+  `SPARSE_TRACK_MAPS`, i undo-ögonblicksbilden och i exporten.
+  Uppskjuten på beslut, inte på oklarhet: undo täcker det mesta av "prova
+  något" i dag, och duplicera spår täcker resten — vill man ha två versioner
+  kan man ha två spår och stänga av det ena. Tas upp igen när det visar sig
+  att den saknas i praktiken snarare än i teorin.
+
 - [ ] **MIDI-learn för trumpaddar.** Inkommande trumnoter går genom en fast
   General MIDI-tabell (`GM_DRUM_REVERSE`), som inte går att ändra i appen —
   träffar din klaviaturs paddar inte de noterna får du fel ljud eller inget
@@ -42,17 +55,6 @@ hur roligt det vore att bygga.
      dessutom är exakt det man behöver veta för att mappa den.
   Notera också att åtta paddar inte täcker tio kit-ljud; shaker (82) ligger
   långt från de andra och är den som oftast hamnar utanför.
-
-## Kreativa genvägar (nästa steg)
-
-Tonart, skala, diatoniska ackord, ackordföljder, spårduplicering och
-transponering, överdubbning och dynamik är byggda (se `DONE.md`). Det som står kvar på samma tema, i den
-ordning jag skulle ta det:
-
-- [ ] **Alternativa tagningar per spår.** Den enda på listan som kräver en ny
-  dimension i datamodellen (ett spår får flera stämmor, en aktiv). Medvetet
-  framskjuten tills det visar sig att den saknas — undo täcker det mesta av
-  "prova något" i dag.
 
 ## Inte planerat
 
