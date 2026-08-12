@@ -10007,7 +10007,13 @@ function runHumanize(amount) {
   announce(`Humanized ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
 }
 function commitNote(track, midi, start, len, vel = 1) {
-  if (start < 0 || start >= COLS) return;
+  // A hair before zero is beat one, not a note to throw away. This used to
+  // drop it: while recording snapped on the way in, a slightly early keypress
+  // rounded up to 0 and survived, but once recording started keeping the
+  // timing it was played with, the same keypress arrived at -0.02 and was
+  // discarded. Landing on the downbeat is what the player meant.
+  start = Math.max(0, start);
+  if (start >= COLS) return;
   const note = { start: quant(start), len: Math.min(len, COLS - start), freq: round2(midiToFreq(midi)), vel,
     bend: null, vib: false, trem: false, duty: null, arp: null,
     porta: false, crush: false, echo: false, chorus: false, reverb: false };
@@ -10017,7 +10023,8 @@ function commitNote(track, midi, start, len, vel = 1) {
   render(); autosave();
 }
 function commitHit(track, type, start, vel = 1) {
-  if (start < 0 || start >= COLS) return;
+  start = Math.max(0, start); // see commitNote(): a hair before zero is beat one
+  if (start >= COLS) return;
   // Absent means full, the same rule every other hit-placing path follows — so
   // a kit played at full level serialises exactly as it did before velocity
   // could reach it at all.

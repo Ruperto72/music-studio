@@ -1522,6 +1522,33 @@ async function main() {
       if (!labelled.lanesNamed) throw new Error('every lane needs an accessible name');
       // Roving tabindex: the grid must not put hundreds of stops in Tab order.
       if (labelled.tabStops > 1) throw new Error(`expected at most one grid tab stop, got ${labelled.tabStops}`);
+
+      // Stateful controls have to say what state they are in, or a screen
+      // reader user cannot tell which tool is active or which track is muted.
+      // This was documented and unverified: removing aria-checked from a tool
+      // button left every assertion in this step green.
+      const stateful = await cdp.evaluate(`(() => {
+        const tools = [...document.querySelectorAll('.tool-group [role="radio"]')];
+        const toggles = [...document.querySelectorAll('.track-header [aria-pressed]')];
+        return {
+          tools: tools.length,
+          toolsStated: tools.filter(b => b.getAttribute('aria-checked') !== null).length,
+          checked: tools.filter(b => b.getAttribute('aria-checked') === 'true').length,
+          group: !!document.querySelector('.tool-group[role="radiogroup"]'),
+          toggles: toggles.length,
+        };
+      })()`);
+      if (!stateful.group) throw new Error('the tool buttons should form a radiogroup');
+      if (stateful.tools < 3) throw new Error(`expected the three editing tools, got ${stateful.tools}`);
+      if (stateful.toolsStated !== stateful.tools) {
+        throw new Error(`every tool must report aria-checked, ${stateful.tools - stateful.toolsStated} do not`);
+      }
+      if (stateful.checked !== 1) {
+        throw new Error(`exactly one tool should read aria-checked="true", got ${stateful.checked}`);
+      }
+      if (stateful.toggles < 2) {
+        throw new Error(`Mute/Solo should report aria-pressed, found ${stateful.toggles} such controls`);
+      }
       // Keyboard is the only way in without a mouse: Home selects, Shift+arrow steps.
       // Click a real note to make its track active — clicking the row itself
       // doesn't, and by this point an empty added track holds focus.
@@ -2087,6 +2114,9 @@ async function main() {
       await new Promise((r) => setTimeout(r, 500));
 
       const rec = await bassNotes();
+      // Three, including one played a hair before the transport's zero — which
+      // recording used to round up to beat one and, once it stopped snapping,
+      // silently dropped instead.
       if (rec.length !== 3) throw new Error(`expected three recorded notes, got ${JSON.stringify(rec)}`);
       // Z X C are C, D and E of the current octave — the pitches, not just the
       // count, so a mis-wired key map can't pass.
