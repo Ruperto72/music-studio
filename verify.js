@@ -367,7 +367,20 @@ function auditIcons(repoRoot) {
       problems.push(`${rel} is missing — icons.js declares it, so run \`node icons.js\``);
       continue;
     }
-    if (out.size) continue; // PNGs can only be compared by re-rendering them
+    if (out.size) {
+      // A PNG's *drawing* can only be compared by re-rendering it, which needs
+      // a browser this audit deliberately doesn't open. Its dimensions can be
+      // read straight out of the header, though, and that is the half that
+      // catches a size changed in OUTPUTS without re-running the generator —
+      // which used to pass silently: the manifest check below compares the
+      // file against the *manifest*, so a declaration only icons.js knows
+      // about had nothing checking it at all.
+      const [w, h] = pngSize(rel);
+      if (w !== out.size || h !== out.size) {
+        problems.push(`${rel} is ${w}x${h} but icons.js declares ${out.size} — re-run \`node icons.js\``);
+      }
+      continue;
+    }
     if (norm(read(rel)) !== norm(ICONS_GENERATOR.markup(out.framing))) {
       problems.push(`${rel} is not what icons.js draws for the '${out.framing}' framing — re-run \`node icons.js\``);
     }
@@ -702,6 +715,15 @@ async function main() {
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
       const text = await knobText('sendDelay', 'Delay');
       if (text !== '50%') throw new Error(`expected Delay to show 50%, got ${text}`);
+      // The readout alone is the knob talking to itself: it is painted from
+      // the dial's own value, so a knob that repaints and never calls onInput
+      // reads 50% while nothing downstream has moved. Ask the song instead.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const fx = (JSON.parse(localStorage.getItem(k)).fxSend || {});
+        return Object.values(fx).some((s) => s && s.delay === 0.5);
+      })()`);
     });
 
     step('FX panel: EQ chip renders before Comp regardless of add order, and survives a reload', async () => {
@@ -3392,6 +3414,12 @@ async function main() {
 
     step('Master FX: selecting a track takes the inspector back from master', async () => {
       await fresh();
+      // Put the column *on* master first. Without this the step read as a
+      // pass on a fresh page, where the inspector belongs to the Lead track
+      // and there is nothing to take back — it asserted that master was not
+      // showing, having never made it show.
+      await clickMasterCell();
+      await waitFor(`!!${masterSec()}`);
       await selectFirstTrack();
       await waitFor(`!${masterSec()}`);
       const shown = await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent`);
