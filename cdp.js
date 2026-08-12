@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 
 function findBrowser() {
   const candidates = [];
@@ -63,6 +64,29 @@ function httpJson(url, method = 'GET') {
     });
     req.on('error', reject);
     req.end();
+  });
+}
+
+// A server already on the port is not a head start — it is a *different tree*.
+// Both tools spawn their own dev-server and then wait for the port to answer,
+// and `waitForHttp` cannot tell whose answer it got: when the spawn dies of
+// EADDRINUSE the wait succeeds anyway, against whatever was already listening.
+// That is not hypothetical — a run left its server behind, and every later run
+// silently drove the abandoned copy of the repo instead of its own, reporting
+// confident verdicts about code the browser never loaded. Refuse to start.
+function requireFreePort(port, hint) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', (e) => {
+      if (e.code !== 'EADDRINUSE') return reject(e);
+      reject(new Error(
+        `Port ${port} is already in use, so this run would test whatever is ` +
+        `already listening there rather than this working tree. Stop that ` +
+        `server (or set ${hint} to a free port) and try again.`,
+      ));
+    });
+    probe.once('listening', () => probe.close(() => resolve()));
+    probe.listen(port, '127.0.0.1');
   });
 }
 
@@ -220,4 +244,4 @@ class CDP {
   close() { try { this.ws.close(); } catch { /* already closed */ } }
 }
 
-module.exports = { findBrowser, httpJson, waitForHttp, launchChrome, openPage, CDP };
+module.exports = { findBrowser, httpJson, requireFreePort, waitForHttp, launchChrome, openPage, CDP };

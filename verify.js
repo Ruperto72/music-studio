@@ -23,13 +23,19 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
+const { findBrowser, requireFreePort, waitForHttp, launchChrome, openPage } = require('./cdp.js');
 // The icon generator, imported for its mark rather than run: auditIcons()
 // compares the committed SVGs against what icons.js actually draws, so the
 // drawing is never retyped here. Requiring it is side-effect free — it only
 // draws under `require.main === module`.
 const ICONS_GENERATOR = require('./icons.js');
 
+// `--only <substring>` runs just the steps whose name contains it, which is
+// what makes a single step cheap enough to re-run while working on it — the
+// whole suite is a twenty-minute round trip. Every step resets the app first
+// (see fresh()), so one run alone means the same thing it means in the suite.
+const onlyArg = process.argv.indexOf('--only');
+const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || '').toLowerCase() : '';
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
@@ -361,7 +367,20 @@ function auditIcons(repoRoot) {
       problems.push(`${rel} is missing — icons.js declares it, so run \`node icons.js\``);
       continue;
     }
-    if (out.size) continue; // PNGs can only be compared by re-rendering them
+    if (out.size) {
+      // A PNG's *drawing* can only be compared by re-rendering it, which needs
+      // a browser this audit deliberately doesn't open. Its dimensions can be
+      // read straight out of the header, though, and that is the half that
+      // catches a size changed in OUTPUTS without re-running the generator —
+      // which used to pass silently: the manifest check below compares the
+      // file against the *manifest*, so a declaration only icons.js knows
+      // about had nothing checking it at all.
+      const [w, h] = pngSize(rel);
+      if (w !== out.size || h !== out.size) {
+        problems.push(`${rel} is ${w}x${h} but icons.js declares ${out.size} — re-run \`node icons.js\``);
+      }
+      continue;
+    }
     if (norm(read(rel)) !== norm(ICONS_GENERATOR.markup(out.framing))) {
       problems.push(`${rel} is not what icons.js draws for the '${out.framing}' framing — re-run \`node icons.js\``);
     }
@@ -375,6 +394,7 @@ async function main() {
   const steps = [];
   function step(name, fn) {
     steps.push(async () => {
+      if (ONLY && !name.toLowerCase().includes(ONLY)) return;
       try { await fn(); console.log(`  ok  ${name}`); }
       catch (e) { console.log(`FAIL  ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
     });
@@ -388,10 +408,19 @@ async function main() {
   }
 
   console.log(`Starting dev server on ${APP_URL} ...`);
+  await requireFreePort(SERVER_PORT, 'VERIFY_PORT');
   const server = spawn(process.execPath, [path.join(repoRoot, 'dev-server.js')], {
     env: { ...process.env, PORT: String(SERVER_PORT) },
     stdio: 'ignore',
   });
+  // The `finally` below only runs when this process gets to finish. Killed
+  // from outside — a harness timeout, Ctrl-C — it does not, and the dev-server
+  // outlives it holding the port. The next run then tests *that* tree instead
+  // of its own; requireFreePort() above turns the aftermath into an error, but
+  // not leaving it behind is the actual fix.
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.on(sig, () => { server.kill(); process.exit(130); });
+  }
   await waitForHttp(APP_URL, 10000).catch((e) => { server.kill(); throw e; });
 
   let launched, cdp;
@@ -686,6 +715,15 @@ async function main() {
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
       const text = await knobText('sendDelay', 'Delay');
       if (text !== '50%') throw new Error(`expected Delay to show 50%, got ${text}`);
+      // The readout alone is the knob talking to itself: it is painted from
+      // the dial's own value, so a knob that repaints and never calls onInput
+      // reads 50% while nothing downstream has moved. Ask the song instead.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return false;
+        const fx = (JSON.parse(localStorage.getItem(k)).fxSend || {});
+        return Object.values(fx).some((s) => s && s.delay === 0.5);
+      })()`);
     });
 
     step('FX panel: EQ chip renders before Comp regardless of add order, and survives a reload', async () => {
@@ -3376,6 +3414,12 @@ async function main() {
 
     step('Master FX: selecting a track takes the inspector back from master', async () => {
       await fresh();
+      // Put the column *on* master first. Without this the step read as a
+      // pass on a fresh page, where the inspector belongs to the Lead track
+      // and there is nothing to take back — it asserted that master was not
+      // showing, having never made it show.
+      await clickMasterCell();
+      await waitFor(`!!${masterSec()}`);
       await selectFirstTrack();
       await waitFor(`!${masterSec()}`);
       const shown = await cdp.evaluate(`document.querySelector('.inspector .th-strip-name').textContent`);
