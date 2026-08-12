@@ -688,6 +688,50 @@ halves of starting a song behave the same way. Its dialog previews through
 `previewGain` on the active track's own voice, so what you audition is what
 Insert writes.
 
+### A.11d Fixing a take: Timing, Transpose, Dynamics
+
+Three menu dialogs, one shape. All three take their scope from
+`timingTargets()` — the multi-selection, else the single selection, else the
+whole active track — and all three say what they will act on before they are
+pressed. They exist because recording deliberately corrects nothing on the way
+in, so each of a note's three axes needs a way to be fixed afterwards:
+
+| Dialog | Axis | Operations |
+|---|---|---|
+| Timing | time | Quantize (with a strength), Humanize |
+| Transpose | pitch | ± semitone, ± octave, ± scale step, Fit to the scale |
+| Dynamics | velocity | Vary, Accent the beat |
+
+Timing and Transpose both *move* items, so both go through `applyItemEdit()`:
+two moved items can land on each other on either axis, and the rule for who
+survives (earliest, pitch breaking the tie) belongs in one place rather than
+two. Dynamics moves nothing — that is its whole promise — so it needs none of
+it, and writes through `NOTE_LANE_PARAMS.vel` so a level back at full
+serialises as absent.
+
+Two decisions worth keeping:
+
+- **Transpose resolves collisions with `notesConflict()`, not by comparing
+  pitches.** Notes in different bars share a pitch constantly; an earlier
+  version compared pitch alone and therefore decided that everything on a real
+  part collided, and moved nothing. A note whose target is already taken stays
+  where it is rather than being dropped, so fitting a chord cannot cost it a
+  voice.
+- **`scaleStep()` is the one walk.** The Transpose dialog and the `↑`/`↓`
+  nudge (`nudgeSelectionByScale()`) both use it, so a key and a button cannot
+  disagree about what one step up means. `Alt` is the chromatic escape hatch
+  and means the same thing whether or not Keep to scale is on.
+
+**Overdub** is not a fourth mechanism. Recording with Loop on already goes
+round, because `startPlaybackFrom()` wraps to `state.loopStart` and re-anchors
+`playStartCol` there (so `ctxTimeToCol()` still returns the true column on lap
+five) and `commitNote()` goes through `clearOverlaps()` (so replaying a pitch
+in the same place replaces that one note and leaves the rest of the lap
+alone). The one thing that was wrong lives in `recKeyUp()`: a key held across
+the loop's seam comes up on an *earlier* column, making the raw length
+negative, which the `Math.max` floor quietly turned into a one-step stab. It
+ends at the loop's end now, which is where it actually sounded.
+
 ### A.12 Help dialog
 
 A single scrollable reference covering: overview, tracks & channel strips,
