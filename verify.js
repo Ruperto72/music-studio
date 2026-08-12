@@ -5100,7 +5100,18 @@ async function main() {
       if (names[1] !== names[0] + ' copy') {
         throw new Error(`the copy belongs directly below its original: ${JSON.stringify(names)}`);
       }
-      await waitFor(`!!Object.keys(localStorage).find((k) => k.includes('autosave'))`, 4000);
+      // Wait for the draft to *contain the copy*, not merely to exist:
+      // autosave() is debounced, and an earlier step's song is still sitting
+      // in that key until it fires. Waiting on the key alone read Froggy Hop's
+      // 355 notes and blamed the duplication for them.
+      const savedTracks = `(() => {
+        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const ids = d.trackList.filter(t => t.kind !== 'rhythm');
+        return { d, ids: ids.map(t => t.id), names: ids.map(t => t.name) };
+      })()`;
+      await waitFor(`(() => { const s = ${savedTracks}; return !!s && s.names.some(n => n.endsWith(' copy')); })()`, 6000);
       const copied = await cdp.evaluate(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
@@ -5125,16 +5136,19 @@ async function main() {
       })()`);
       await waitFor(`!!document.querySelector('.lane .note.selected')`);
       await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))`);
-      await new Promise((r) => setTimeout(r, 400));
-      const diverged = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
-        const d = JSON.parse(localStorage.getItem(k));
-        const ids = d.trackList.filter(t => t.kind !== 'rhythm').map(t => t.id);
-        const a = (d.tracks[ids[0]] || []).map(n => n.freq).sort().join(',');
-        const b = (d.tracks[ids[1]] || []).map(n => n.freq).sort().join(',');
+      // Same debounce again: poll for the two parts to differ rather than
+      // sleeping a guessed interval and reading once. Never diverging within
+      // the timeout IS the failure this step is here to catch.
+      const diverged = `(() => {
+        const s = ${savedTracks};
+        if (!s) return false;
+        const a = (s.d.tracks[s.ids[0]] || []).map(n => n.freq).sort().join(',');
+        const b = (s.d.tracks[s.ids[1]] || []).map(n => n.freq).sort().join(',');
         return a !== b;
-      })()`);
-      if (!diverged) throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
+      })()`;
+      await waitFor(diverged, 6000).catch(() => {
+        throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
+      });
     });
 
     for (const s of steps) await s();
