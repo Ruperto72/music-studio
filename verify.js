@@ -4829,6 +4829,17 @@ async function main() {
       await waitFor(`document.getElementById('key-root').value === ${JSON.stringify(String(root))}`);
     }
 
+    // Keep to scale is a per-browser preference, so it survives fresh() and a
+    // step that toggles it is really asserting what the *previous* step left
+    // behind. Set it, don't flip it.
+    async function setKeepToScale(on) {
+      await cdp.evaluate(`(() => {
+        const b = document.getElementById('key-snap');
+        if ((b.getAttribute('aria-pressed') === 'true') !== ${on}) b.click();
+      })()`);
+      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === ${JSON.stringify(String(on))}`);
+    }
+
     step('Key & scale: the lane shades what is outside it, and chromatic shades nothing', async () => {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
@@ -4925,6 +4936,7 @@ async function main() {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await setKey(0, 'major');
+      await setKeepToScale(false);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       // Off: every row is placeable, so clicking each of an octave's rows
       // gives twelve distinct pitches.
@@ -4948,8 +4960,7 @@ async function main() {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);
       await setKey(0, 'major');
-      await cdp.evaluate(`document.getElementById('key-snap').click()`);
-      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'true'`);
+      await setKeepToScale(true);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await placeOctave();
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length > 0`);
@@ -5218,8 +5229,7 @@ async function main() {
 
       // The arrow keys use the same walk. With Keep to scale on, up is a scale
       // step; Alt is the chromatic escape hatch.
-      await cdp.evaluate(`document.getElementById('key-snap').click()`);
-      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'true'`);
+      await setKeepToScale(true);
       await cdp.evaluate(`(() => {
         const ns = [...document.querySelectorAll('.track.active .lane .note')];
         ns.sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top));
@@ -5267,11 +5277,7 @@ async function main() {
       // Keep to scale is a per-browser preference and this step turned it on
       // above, so it survives the reload — and with it on, C#4 would snap to
       // C4 on the way in and there would be no collision to fit.
-      await cdp.evaluate(`(() => {
-        const b = document.getElementById('key-snap');
-        if (b.getAttribute('aria-pressed') === 'true') b.click();
-      })()`);
-      await waitFor(`document.getElementById('key-snap').getAttribute('aria-pressed') === 'false'`);
+      await setKeepToScale(false);
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       for (const name of ['C4', 'C#4']) await placeAt(name, 30);
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
