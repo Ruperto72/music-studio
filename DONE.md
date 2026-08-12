@@ -2024,14 +2024,64 @@ med pan per not på plats är asymmetrierna i den här listan slut.
     effekt är noder i ljudgrafen plus ett chip, och en omritning rör inte
     ljudgrafen. Men frågan ställdes som om effekter var det dyra, och jag
     hade svarat likadant utan att mäta.
-  - **Kostnaden är det utfällda spårhuvudet, inte rutnätet.** 48 tomma
-    utfällda spår: 471 ms. *Samma* 48 hopfällda: **12,5 ms**. Trettioåtta
-    gånger, utan att en enda not togs bort. Varje huvud bygger om
-    vågformsväljare, chip-rad, två reglage och en VU-mätare varje bildruta,
-    och det överskuggar notblocken bredvid (Rust Foundrys 4428 block vid 7
-    spår: 776 ms).
+  - **Kostnaden är den utfällda spårraden, inte rutnätet — men det är inte
+    huvudet.** 48 tomma utfällda spår: 471 ms. *Samma* 48 hopfällda:
+    **12,5 ms**. Trettioåtta gånger, utan att en enda not togs bort. Den
+    mätningen står; attributionen som först skrevs här ("varje huvud bygger
+    om vågformsväljare, chip-rad, två reglage och en VU-mätare") var **fel**,
+    och att instrumentera faserna avgjorde det. Per render vid 24 spår: bygga
+    allt 81 ms, varav `buildHeader()` för alla 24 är **7 ms**; sammanfogning
+    och påtvingad layout **191 ms**. Hopfällt är billigt för att
+    `renderPitchTrack()` returnerar innan gutter och lane byggs, inte för att
+    huvudet hoppas över. (Rust Foundrys 4428 notblock vid 7 spår: 776 ms.)
   Praktiska konsekvensen: reglaget är per-spårs-hopfällning, inte färre
-  effekter. Den öppna optimeringen är att sluta bygga om huvuden som inte
-  ändrats — det enda stället där husregeln "ingen diffning" faktiskt kostar.
+  effekter. Den optimering som såg självklar ut — sluta bygga om huvuden som
+  inte ändrats — är **byggd och utesluten**: en cache med 100 % träff ändrade
+  rendertiden med ingenting, eftersom den cachade just den del som aldrig var
+  dyr. `DESIGN.md` B.4 bär hela listan över provade och förkastade vägar
+  (`content-visibility: auto`, att låta raden sitta kvar, och den fullständiga
+  varianten som mätte 272 → 21 ms och ändå återställdes).
   Mätskriptet är inte incheckat; enraderen i `DESIGN.md` B.4 gör om mätningen
   på vilken maskin som helst, vilket är den varaktiga formen.
+
+- [x] **Varje verify-steg körd mot en trasig app — hela sviten, ett steg i
+  taget.** Ett test är värt att ha bara om det går sönder när det det
+  beskriver går sönder. Sextiosju steg, sextiosju injektioner: en smal
+  ändring i `index.html` (eller i en låtfil, eller i `icons.js`) som bryter
+  precis det steget påstår, körd mot en kopia av trädet.
+  **64 föll direkt. De sex som blev gröna delade sig i två högar, och den
+  uppdelningen är hela behållningen:**
+  - **Tre var felsiktade injektioner, inte svaga steg.** En vakt som redan är
+    falsk i just det scenariot (raderarsteget tar bort en *annan* not än den
+    markerade, så `state.selected.item === item` aldrig slår till). En
+    `input`-lyssnare när steget skickar `click` på ett `<input type=range>`.
+    En `let openPalettes = new Set()` som raden efter skriver över från
+    `localStorage`. Alla tre läser som "steget biter inte" ända tills man går
+    och läser koden; med rätt ankare bet de.
+  - **Tre var äkta luckor, nu lagade.** Ratten läste rattens *egen* avläsning,
+    som målas ur dess eget värde — en ratt som ritar om sig men aldrig anropar
+    `onInput` visade 50 % medan ingenting nedströms rört sig; steget frågar
+    den sparade låten nu. Masterssteget påstod att inspektorn *inte* låg på
+    master, på en nyladdad sida där den aldrig legat där — halva steget var
+    innehållslöst; det lägger kolumnen på master först nu. Ikonrevisionen
+    jämförde PNG:er mot manifestet men aldrig mot storleken `icons.js` själv
+    deklarerar, så en storlek ändrad där utan att generatorn körts om hade
+    ingenting som kontrollerade den.
+  **En riktig bugg föll ut, och inte i appen utan i verktygen.** `verify.js`
+  och `shots.js` startar var sin dev-server på en fast port och väntar sedan
+  på att porten ska svara — men `waitForHttp()` kan inte se *vems* svar den
+  fick. Dör starten av `EADDRINUSE` lyckas väntan ändå, mot det som redan
+  lyssnade. En körning som dödats av en timeout lämnade sin server kvar, och
+  nästa batch drev den övergivna kopian av repot: fyra verdikt i rad kom
+  tillbaka som "svagt steg" när injektionerna aldrig nått webbläsaren. Det som
+  till slut avslöjade det var en stacktrace vars radnummer låg **ett** fel mot
+  filen på disk. `requireFreePort()` i `cdp.js` gör nu en upptagen port till
+  ett fel innan webbläsaren startar, och `verify.js` dödar sin server på
+  `SIGINT`/`SIGTERM` så föräldralösa servrar slutar uppstå.
+  **Två metodregler som kostade mest att lära sig:** verifiera injektionen
+  innan du litar på verdikten — hälften av "svaga steg" var felsiktade — och
+  kör en injektion i taget. En bred injektion (bort med varje glyfetikett)
+  sänkte ett dussin orelaterade steg och gjorde verdikten runt sig oläsbara;
+  `verify.js --only <delsträng>` finns för att en enstegskörning ska kosta en
+  minut i stället för tjugo, vilket är det som gör ett-i-taget överhuvudtaget
+  praktiskt.
