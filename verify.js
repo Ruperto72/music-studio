@@ -23,7 +23,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
+const { findBrowser, requireFreePort, waitForHttp, launchChrome, openPage } = require('./cdp.js');
 // The icon generator, imported for its mark rather than run: auditIcons()
 // compares the committed SVGs against what icons.js actually draws, so the
 // drawing is never retyped here. Requiring it is side-effect free — it only
@@ -388,10 +388,19 @@ async function main() {
   }
 
   console.log(`Starting dev server on ${APP_URL} ...`);
+  await requireFreePort(SERVER_PORT, 'VERIFY_PORT');
   const server = spawn(process.execPath, [path.join(repoRoot, 'dev-server.js')], {
     env: { ...process.env, PORT: String(SERVER_PORT) },
     stdio: 'ignore',
   });
+  // The `finally` below only runs when this process gets to finish. Killed
+  // from outside — a harness timeout, Ctrl-C — it does not, and the dev-server
+  // outlives it holding the port. The next run then tests *that* tree instead
+  // of its own; requireFreePort() above turns the aftermath into an error, but
+  // not leaving it behind is the actual fix.
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.on(sig, () => { server.kill(); process.exit(130); });
+  }
   await waitForHttp(APP_URL, 10000).catch((e) => { server.kill(); throw e; });
 
   let launched, cdp;

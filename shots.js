@@ -18,7 +18,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { findBrowser, waitForHttp, launchChrome, openPage } = require('./cdp.js');
+const { findBrowser, requireFreePort, waitForHttp, launchChrome, openPage } = require('./cdp.js');
 
 const SERVER_PORT = process.env.SHOTS_PORT || 8097;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
@@ -76,6 +76,7 @@ async function main() {
 
   let server, launched, cdp;
   try {
+    await requireFreePort(SERVER_PORT, 'SHOTS_PORT');
     server = spawn(process.execPath, [path.join(__dirname, 'dev-server.js')], {
       env: { ...process.env, PORT: String(SERVER_PORT) },
       stdio: ['ignore', 'ignore', 'inherit'],
