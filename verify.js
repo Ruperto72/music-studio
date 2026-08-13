@@ -2183,6 +2183,17 @@ async function main() {
       await new Promise((r) => setTimeout(r, 400));
       const after = await bassNotes();
       if (after.length !== 3) throw new Error(`a disarmed track should ignore note keys, got ${JSON.stringify(after)}`);
+
+      // Metronome is a remembered-per-browser preference (see above), which
+      // means turning it on here outlives this step: fresh() reloads the same
+      // page, not a new profile, so every later step's playback would click
+      // too. Restore it before finishing rather than leaving that for whoever
+      // hits it — it surfaced as a later step measuring nonzero output where
+      // it expected silence, with nothing about *that* step's own code wrong.
+      await cdp.evaluate(`document.getElementById('metronome-btn').click()`);
+      if (await cdp.evaluate(`localStorage.getItem('music-studio-metronome')`) !== '0') {
+        throw new Error('the metronome should turn back off, not just visually toggle');
+      }
     });
 
     step('Step entry: with the transport stopped, keys write notes at the playhead', async () => {
@@ -5572,6 +5583,133 @@ async function main() {
       // sample is its largest.
       if (samples[samples.length - 1] >= peak) {
         throw new Error(`the fan-out ended at its maximum, which is what a leak looks like: ${JSON.stringify(samples)}`);
+      }
+    });
+
+    step('Seeking takes back what was scheduled, instead of layering it under the new position', async () => {
+      await fresh();
+      // Playback commits SCHEDULE_LOOKAHEAD_BARS of notes to the graph with
+      // future start times. Seeking used to start a new chunk without taking
+      // those back, so the old position kept playing underneath the new one —
+      // eight bars of it, and dragging the ruler could stack several layers.
+      //
+      // Measured as the user hears it rather than as the code does it: put
+      // notes at the very start, play them, then seek to an empty stretch. If
+      // what was scheduled has been taken back the output is silent; if it is
+      // still playing, it is not. A tap on the destination is the only way to
+      // ask — the DOM cannot tell you what is still sounding.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            let tap = null;
+            const oc = AudioNode.prototype.connect;
+            AudioNode.prototype.connect = function (dest, ...rest) {
+              const r = oc.call(this, dest, ...rest);
+              try {
+                const c = this.context;
+                if (c && dest === c.destination && !(c instanceof OfflineAudioContext)) {
+                  if (!tap || tap.context !== c) {
+                    tap = c.createAnalyser();
+                    tap.fftSize = 2048;
+                  }
+                  oc.call(this, tap);
+                }
+              } catch { /* not tappable */ }
+              return r;
+            };
+            window.__level = () => {
+              if (!tap) return -1;
+              const buf = new Float32Array(tap.fftSize);
+              tap.getFloatTimeDomainData(buf);
+              let sum = 0;
+              for (const v of buf) sum += v * v;
+              return Math.sqrt(sum / buf.length);
+            };
+          })();
+        `,
+      });
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      // Drum hits, spread across the first bars — and drums specifically.
+      // Two earlier versions of this step proved nothing: one put a chord at
+      // bar 1, which had finished sounding before the seek, so both builds
+      // were silent; the other used tonal notes, which go through the voice
+      // pool, and the *new* generation stealing a pooled voice re-envelopes
+      // its gain and silences the old note as a side effect. Drums are never
+      // pooled, so nothing masks a hit that was scheduled and not taken back.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Query .lane fresh before *every* click rather than once outside the
+      // loop: onRhythmCellClick() re-renders on each hit, which replaces the
+      // .lane element entirely, so a cached reference goes stale (detached
+      // from the document) after the first click. A click dispatched on a
+      // detached node still fires its listener, but that listener's own
+      // getBoundingClientRect() then reads all-zero, so every column after
+      // the first was computed against clientX alone with nothing subtracted
+      // — the 30 hits landed at column 0 and then ~21..49 instead of 0..29,
+      // reaching all the way into the "empty" stretch this step seeks into
+      // and making the step measure a real, newly-scheduled hit rather than
+      // anything left over from before the seek.
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 30; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      // One click per column: the lane is 16px a column here, so a tighter
+      // spacing would land two clicks in one and replace rather than add.
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length >= 25`);
+      // And confirm they actually landed where intended: the step's "empty
+      // stretch" assumption is only true if every hit stayed in the first
+      // few bars, which is exactly what the stale-lane bug above defeated.
+      const hitCols = await cdp.evaluate(`JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')].map(h => parseFloat(h.style.left) / 16))`);
+      const maxCol = Math.max(...JSON.parse(hitCols));
+      if (!(maxCol < 40)) {
+        throw new Error(`hits should stay within the first bars, not reach the "empty" stretch this step seeks into: max column ${maxCol}`);
+      }
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+
+      // Peak over a window, not one instantaneous reading: a part has gaps
+      // between its notes, and a single sample can land in one.
+      const peakLevel = async (ms) => {
+        let peak = 0;
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+          const v = await cdp.evaluate(`window.__level()`);
+          if (v > peak) peak = v;
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        return peak;
+      };
+      const sounding = await peakLevel(900);
+      if (!(sounding > 0.005)) {
+        throw new Error(`the part should be audible before the seek, peak ${sounding}`);
+      }
+
+      // Seek far ahead, into the empty stretch, through the ruler itself.
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const cell = cells[Math.floor(cells.length * 0.75)];
+        const r = cell.getBoundingClientRect();
+        cell.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 7, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 7, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      // Past the 10ms fade and any release tail, and well inside the eight bars
+      // the old generation would otherwise have kept playing.
+      // A step that did not actually seek proves nothing, so say so outright.
+      const moved = await cdp.evaluate(`parseFloat(document.querySelector('.playhead').style.left)`);
+      if (!(moved > 600)) throw new Error(`the seek did not move the playhead: ${moved}px`);
+      await new Promise((r) => setTimeout(r, 250));
+      const after = await peakLevel(900);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      if (after > 0.002) {
+        throw new Error(
+          `after seeking into an empty stretch the output should be silent, ` +
+          `but it is still playing what was scheduled before the seek (level ${after} vs ${sounding} before)`);
       }
     });
 
