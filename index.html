@@ -5815,6 +5815,73 @@ function colFromClientX(clientX, rect = rulerGridEl.getBoundingClientRect()) {
 // only the audio reschedule is throttled.
 const SCRUB_AUDIO_RESCHEDULE_MS = 120;
 let lastScrubReschedule = 0;
+// Takes back everything the scheduler has already committed to the audio graph.
+//
+// Playback schedules SCHEDULE_LOOKAHEAD_BARS ahead, so at the moment you seek
+// there can be eight bars of the *old* position already started with future
+// times — around sixteen seconds at 118 BPM. Starting a new chunk does not
+// take those back: startPlaybackFrom() clears the timer, not the sound. So the
+// old position kept playing underneath the new one, and dragging along the
+// ruler (which reschedules every SCRUB_AUDIO_RESCHEDULE_MS) could stack eight
+// such generations at once. That is what "muddy" was.
+//
+// Rather than track every source — twenty-odd start() sites across the ten drum
+// schedulers alone, and a silent leak the first time an eleventh is added
+// without its matching line — each channel plays its scheduled voices into one
+// node that can be *replaced*. Ramping the old one to zero silences that whole
+// generation in a single operation, whatever it was made of.
+//
+// What survives on purpose: an echo or reverb *tail* already in a shared bus.
+// Those buses are per channel and keyed on the stable channel gain, so a seek
+// costs one GainNode rather than a new ConvolverNode per channel — and a tail
+// fades on its own in well under a second, which is nothing like eight bars of
+// notes still playing their parts.
+const VOICE_CUT_SEC = 0.01; // fade rather than cut, so a seek does not click
+function cancelScheduledVoices() {
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const retire = (node) => {
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(node.gain.value, now);
+    node.gain.linearRampToValueAtTime(0, now + VOICE_CUT_SEC);
+    // The pool is keyed on the destination, so the retired node takes its
+    // voices with it and the new generation starts with a fresh pool.
+    voicePools.delete(node);
+    voiceInChannel.delete(node);
+    // Orphan it once the fade is done: still-sounding sources hold it alive
+    // until they end, and then the whole subgraph goes.
+    setTimeout(() => { try { node.disconnect(); } catch { /* context gone */ } }, 200);
+  };
+  for (const id of ALL_TRACKS) {
+    const old = chanVoiceIn[id];
+    if (!old || !chanGain[id]) continue;
+    retire(old);
+    chanVoiceIn[id] = ctx.createGain();
+    chanVoiceIn[id].connect(chanGain[id]);
+    voiceInChannel.set(chanVoiceIn[id], chanGain[id]);
+  }
+  // The metronome is its own bus straight to the destination (it must not pass
+  // the master chain), so it needs the same treatment or the old position keeps
+  // clicking. Rebuilt lazily by ensureMetronomeBus().
+  if (metroGain) { retire(metroGain); metroGain = null; }
+  // Notes are not the only thing written ahead: automation curves, the
+  // sidechain duck and the sends all schedule AudioParam ramps for the same
+  // eight bars, and those belong to the old position too. Cancelling without
+  // restoring would leave each param wherever its last ramp had reached, so
+  // every one is put back to the value the mixer says it should have.
+  for (const ch of ALL_TRACKS) {
+    if (chanGain[ch]) { chanGain[ch].gain.cancelScheduledValues(now); }
+    if (chanPan[ch]) { chanPan[ch].pan.cancelScheduledValues(now); }
+    for (const send of [trackDelaySend[ch], trackChorusSend[ch], trackReverbSend[ch]]) {
+      if (send) send.gain.cancelScheduledValues(now);
+    }
+  }
+  applyGains(); applyPan(); applyFxSend();
+  if (duckGain) {
+    duckGain.gain.cancelScheduledValues(now);
+    duckGain.gain.setValueAtTime(1, now);
+  }
+}
 function seekTo(col, { throttleAudio = false } = {}) {
   col = Math.max(0, Math.min(COLS - 1, Math.round(col)));
   state.playhead = col;
@@ -5825,6 +5892,7 @@ function seekTo(col, { throttleAudio = false } = {}) {
     if (throttleAudio && now - lastScrubReschedule < SCRUB_AUDIO_RESCHEDULE_MS) return;
     lastScrubReschedule = now;
     ensureCtx();
+    cancelScheduledVoices();
     startPlaybackFrom(col);
   }
 }
@@ -7991,6 +8059,7 @@ async function renderSongToWav() {
   spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
   crushBus = null; crusherNode = null;
   chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
+    chanVoiceIn = {}; voiceInChannel.clear();
   trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
   fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
   fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
@@ -8490,6 +8559,14 @@ let ctx = null, loopTimer = null, playing = false;
 let masterGain = null;
 let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
+// id -> GainNode that every *scheduled* voice of that channel plays into, ahead
+// of chanGain. It exists to be thrown away: see cancelScheduledVoices().
+let chanVoiceIn = {};
+// A retired voice input still keys the per-channel echo/reverb caches, so those
+// look their destination up through here and keep returning into the channel
+// gain — which is stable. Without it a seek would build a fresh ConvolverNode
+// per channel, and dragging along the ruler builds one every 120ms.
+const voiceInChannel = new Map(); // voice-in GainNode -> that channel's chanGain
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let chanEq = {}; // id -> { low, mid, high } BiquadFilterNodes, the first insert: chanGain[id] -> chanEq[id].low -> .mid -> .high -> chanComp[id]
@@ -8784,6 +8861,9 @@ function buildChannelChain(c, id, withAnalyser) {
   chanPan[id] = c.createStereoPanner();
   chanPan[id].connect(masterGain);
   chanGain[id] = c.createGain();
+  chanVoiceIn[id] = c.createGain();
+  chanVoiceIn[id].connect(chanGain[id]);
+  voiceInChannel.set(chanVoiceIn[id], chanGain[id]);
   createChanEq(id);
   createChanComp(id);
   createChanTremolo(id);
@@ -9121,6 +9201,7 @@ function bitcrushCurve() {
 // pre-fader would keep ringing after muting an echo-heavy track like the lead.)
 const chanDelays = new Map(); // destGain node -> { delay }
 function ensureDelay(destGain) {
+  destGain = voiceInChannel.get(destGain) || destGain;
   let d = chanDelays.get(destGain);
   if (!d) {
     const delay = ctx.createDelay(1.0);
@@ -9186,6 +9267,7 @@ function ensureReverbImpulse() {
 }
 const chanReverbs = new Map(); // destGain -> { convolver }
 function ensureReverb(destGain) {
+  destGain = voiceInChannel.get(destGain) || destGain;
   let r = chanReverbs.get(destGain);
   if (!r) {
     const convolver = ctx.createConvolver();
@@ -10143,12 +10225,12 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanGain[id], getTrackVoice(id));
+    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanVoiceIn[id] || chanGain[id], getTrackVoice(id));
   }
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;
     for (const h of state.tracks[id].filter(n => n.start >= fromCol && n.start < toCol)) {
-      scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanGain[id], hitVel(h), hitPan(h), getTrackKitId(id));
+      scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanVoiceIn[id] || chanGain[id], hitVel(h), hitPan(h), getTrackKitId(id));
     }
   }
 }
@@ -10883,6 +10965,7 @@ function stopPlayback() {
     previewGain = null;
     chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {};
     chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
+    chanVoiceIn = {}; voiceInChannel.clear();
     trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
     fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
     fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
