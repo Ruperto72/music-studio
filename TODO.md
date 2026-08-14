@@ -40,6 +40,62 @@ hur roligt det vore att bygga.
   kan man ha två spår och stänga av det ena. Tas upp igen när det visar sig
   att den saknas i praktiken snarare än i teorin.
 
+- [ ] **Klipp (clips) — en inspelning som ett eget objekt på tidslinjen.**
+  I dag löses en tagning upp i lösnoter i samma ögonblick den landar:
+  `state.tracks[id]` är en platt lista med absoluta `start`-kolumner, och vill
+  man flytta tagningen markerar man den med marquee och drar. Den grupperingen
+  är tillfällig — den finns tills man klickar någon annanstans. Det finns
+  ingenting som *är* tagningen.
+  **Modellen som efterfrågas är Pro Tools, och den har tre fält, inte två:**
+  `{ start, len, offset, content }`. En not ljuder på
+  `clip.start + (note.start - clip.offset)`, men bara innanför fönstret.
+  `offset` är hjärtat: ett klipp är inte noterna utan ett **fönster** in i
+  dem, vilket är precis det som gör trim icke-destruktivt — drar man in kanten
+  raderas ingenting, och drar man ut den igen kommer noterna tillbaka. Utan
+  `offset` har man "en grupp noter man kan dra", vilket är en annan funktion
+  som råkar se likadan ut. Läkningsvillkoret faller dessutom ut gratis ur
+  samma fält: två klipp går att slå ihop precis när
+  `A.content === B.content && A.offset + A.len === B.offset && A.start + A.len === B.start`
+  — samma källa, angränsande i innehållet, angränsande på tidslinjen. Det
+  är Pro Tools egen regel, inte ett specialfall att koda.
+  **Mätt spridning:** ≈115 läsningar av `.start` som datafält, fördelat på
+  ett fyrtiotal funktioner. (Rå-grep ger fler — 27 rader är `osc.start()`,
+  Web Audio och irrelevant. Funktionsattributionen är ungefärlig, gjord med
+  awk mot närmast föregående `function`, så pilfunktioner kan hamna på fel
+  namn.) **Den siffran är inte det dyra** — mekaniska omskrivningar är trista
+  och säkra, och sviten täcker 76 steg av dem.
+  **Det dyra är besluten modellen tvingar fram, som koden i dag inte har
+  någon åsikt om:** får klipp överlappa på ett spår (Pro Tools säger nej i
+  en lane — annars slutar `notesConflict()` betyda något på spårnivå)? Vad
+  händer när en not dras förbi klippets kant — lämnar den klippet, växer
+  klippet, eller tar den emot? Skapar inspelning alltid ett nytt klipp, och
+  vad händer vid inspelning ovanpå ett befintligt? Opererar
+  quantize/transponering på ett noturval, ett klipputval eller båda? Klipps
+  en not som börjar innanför och slutar utanför (Pro Tools: ja, vid kanten)?
+  Plus formatbrottet: `state.tracks[id]` går från `Note[]` till `Clip[]`,
+  alltså `version` 2 → 3 i `currentSongData()`, med migrering för de
+  medföljande låtarna i `songs/`, `js/song-data.js` och allt någon sparat —
+  `auditBundledSongs()` validerar de första och måste följa med.
+  **Konflikten med husets grepp är värd att säga rakt ut:** hela filosofin är
+  "ett nytt X är en tabellrad", "en konvertering, en korrigering", "en
+  redigeringsyta per värde". Ett klipplager är motsatsen — en ny dimension som
+  varje befintlig yta måste växa en åsikt om. Det är samma sak som posten om
+  alternativa tagningar säger om sig själv, fast större: den lägger en axel
+  *ovanpå* `state.tracks[id]`, medan klipp bygger om själva notlagringen och
+  ändrar vad varje redigeringsgest betyder.
+  **Vägen, i två steg — och risken med att dela upp det.** Steg 1: klipp som
+  fönster med noterna kvar absoluta, `state.clips[trackId]` som ett additivt
+  och valfritt fält. Ger synliga block, dra-som-enhet, split och merge; ger
+  *inte* icke-destruktiv trim. Passar kodbasen ovanligt väl, eftersom en låt
+  utan `clips` då beter sig exakt som i dag — samma "absent means the
+  default"-regel som `vel`, `pan`, `kit` och `duty` redan följer, och inget
+  format bryts. Steg 2: `offset` och klipprelativt innehåll, alltså den
+  riktiga modellen, och det är här de fyrtio funktionerna får betala.
+  **Risken är att steg 1 kommer kännas 80 % rätt och att steg 2 aldrig blir
+  av** — kvar blir den billiga modellen i den dyras kläder: block man kan dra,
+  men trim som fortfarande raderar. Den som tar upp det här igen bör bestämma
+  i förväg om steg 1 är ett mål eller bara en etapp.
+
 - [ ] **MIDI-learn för trumpaddar.** Inkommande trumnoter går genom en fast
   General MIDI-tabell (`GM_DRUM_REVERSE`), som inte går att ändra i appen —
   träffar din klaviaturs paddar inte de noterna får du fel ljud eller inget
