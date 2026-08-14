@@ -95,6 +95,48 @@ hur roligt det vore att bygga.
   av** — kvar blir den billiga modellen i den dyras kläder: block man kan dra,
   men trim som fortfarande raderar. Den som tar upp det här igen bör bestämma
   i förväg om steg 1 är ett mål eller bara en etapp.
+  **Vad det gör med uppspelningen — den axeln avgör om det här får byggas.**
+  Att materialet spelas upp utan störningar går före funktionen; hackar
+  ljudet är klippen inte värda något. Uppdelat på de tre ställen kostnaden
+  kan hamna:
+  - *Ljudtråden: oförändrad.* Ett klipp är ett datamodellsbegrepp. Samma
+    noter ger samma oscillatorer och gain-noder, röstpoolen
+    (`VOICE_POOL_SIZE = 16` per kanal) är orörd, grafen är identisk. Det som
+    faktiskt renderar ljud vet inte om att clips finns.
+  - *Schemaläggningen: troligen en vinst.* `scheduleTrackNotes()` inleder i
+    dag med `[...notes].sort(...)`, alltså en full kopia och sortering av
+    spårets **hela** notlista vid varje chunk och för varje spår, trots att
+    bara noterna i fönstret ska schemaläggas — en kostnad som skalar med
+    låtens längd i stället för med fönstret. Med klipp hoppas hela klipp som
+    inte överlappar fönstret över utan att deras noter rörs. Offset-räkningen
+    (`clip.start + (note.start - clip.offset)` plus en fönsterkoll per not)
+    är två additioner och en jämförelse — försumbart mot det.
+  - *Renderingen: dyrare, och det är den som hotar ljudet här.* Kedjan är
+    `loopTimer` (en vanlig `setTimeout` på huvudtråden) → `SCHEDULE_AHEAD_SEC
+    = 0.3`, alltså hela marginalen JS har på sig att hinna schemalägga nästa
+    chunk innan den ska låta. Instrumenterad render vid 24 spår är 81 ms
+    bygge + 191 ms sammanfogning och layout = **272 ms**, alltså större delen
+    av marginalen i *en* omritning. Appen ligger redan på den kanten: att
+    dra en not anropar `scheduleRender()` per `pointermove`, coalescerat till
+    en full `render()` per animationsruta. Klippdrag kostar exakt detsamma —
+    inte värre — men klipprelativt→absolut per not läggs till i just den
+    loop som redan är flaskhalsen.
+  **Slutsatsen, och skälet att inte behandla det här som två arbeten:**
+  ett klipp är en klart bättre enhet för radsignaturen i prestandaposten
+  nedan än en platt notlista — `{start, len, offset}` plus en
+  innehållsidentitet är några få fält, mot "varje not i spåret". Den
+  optimeringen är redan byggd och mätt (**272 ms → 21 ms** vid 24 spår) och
+  återställd enbart för att signaturen inte gick att göra säker. Klipp gör
+  den lättare, inte svårare, och ger dessutom en optimering den platta
+  modellen inte kan: ett klipp utanför vyn ritas som en enda ruta utan sitt
+  innehåll. Bygger man klippen utan att röra renderingen får man en app som
+  hackar vid ungefär samma spårantal som i dag, marginellt tidigare; bygger
+  man dem tillsammans med radsignaturen hackar den *senare* än i dag. Knyt
+  ihop de två.
+  Andra ordningens effekt att hålla ögonen på: klipp gör det trivialt att
+  duplicera material, så låtar blir tätare fortare, och täthet driver antalet
+  samtidiga röster. Det är användaren som skriver mer musik snarare än
+  modellen som slösar, men det är där taket kommer märkas först.
 
 - [ ] **MIDI-learn för trumpaddar.** Inkommande trumnoter går genom en fast
   General MIDI-tabell (`GM_DRUM_REVERSE`), som inte går att ändra i appen —
@@ -205,6 +247,11 @@ hur roligt det vore att bygga.
   inte fungerar: en återanvänd rad *är* samma element, vilket är hela poängen.
   Steget "off-screen rows keep their real height" i `verify.js` finns för att
   hålla nästa försök ärligt.
+  **Se även klipp-posten ovan.** Signaturen är hela svårigheten här, och ett
+  klipp är en bättre enhet för den än en platt notlista — `{start, len,
+  offset}` plus en innehållsidentitet i stället för "varje not i spåret".
+  Byggs klipp någon gång bör det här försöket göras i samma omgång, inte
+  före och inte efter.
 
 ## Lagring / delning
 
