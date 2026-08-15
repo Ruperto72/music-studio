@@ -4072,6 +4072,15 @@ function trackRowSignature(track, index) {
     sel ? serialOf(sel) : 0,
     state.activeTrack === track ? [...state.multiSelected].map(serialOf).sort() : null,
     state.marquee && state.marquee.track === track ? state.marquee : null,
+    // The chip a track's inspector strip has focused draws as `.open` in that
+    // track's header, so both the ownership and the key are inputs here.
+    inspectorOwner === track, inspectorOwner === track ? stripFocusKey : null,
+    // The keyboard gutter is drawn from the pitch window, which is not a plain
+    // read of state: pitchWindow() freezes to winCache while `interacting` and
+    // otherwise re-fits to the notes, and a manual scroll overrides both. The
+    // computed window is what the row actually draws from, so that is what
+    // belongs here rather than its three inputs.
+    t.kind === 'rhythm' ? null : pitchWindow(track),
     COLS, colPx, state.grid, state.timeSig, state.key, state.scale,
   ]);
 }
@@ -4135,7 +4144,13 @@ function auditReusedRow(t, kept) {
   // would produce something else, and anything written outside render is not
   // render's to reproduce. Add to this list only for state with the same
   // property, never to silence a real mismatch.
-  const norm = (h) => h.replace(/(class="vu-mask")[^>]*/g, '$1');
+  // `.dragging` on a clip's edge or grip is added by the pointer handler to the
+  // live element and has never survived a render — every render rebuilt the row
+  // long before this change existed. Same category as the VU mask: written
+  // outside render, so not render's to reproduce.
+  const norm = (h) => h
+    .replace(/(class="vu-mask")[^>]*/g, '$1')
+    .replace(/ dragging(?=["\s])/g, '');
   const a = kept.map(e => norm(e.outerHTML)).join('');
   const b = fresh.map(e => norm(e.outerHTML)).join('');
   if (a !== b) {
