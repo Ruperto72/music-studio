@@ -1340,11 +1340,20 @@ Measured after the change, on the one-liner below:
 
 | tracks, expanded | before | after |
 |---|---|---|
-| 5 | 60.8 ms | 25.3 ms |
-| 12 | 126.9 ms | 21.2 ms |
-| 24 | 245.9 ms | 20.7 ms |
+| 5 | 60.8 ms | 30.9 ms |
+| 12 | 126.9 ms | 29.7 ms |
+| 24 | 245.9 ms | 28.6 ms |
 
 Roughly flat with track count, since only the row that changed is built.
+
+**These first read 20.7 ms and were wrong.** The fix that stopped the reconcile
+deleting rows left the cursor parked on the row being replaced, so every
+following row — including every reused one — was inserted ahead of it, and
+inserting an attached node moves it. That is a re-attach, and re-attaching is
+the whole thing this avoids: ~22 rows per render. The win was absent for hours
+with every test green, because correctness was re-verified after that change
+and speed was not. Anything that touches the reconcile has to re-run the
+one-liner below, not just the suite.
 
 Re-measure on any machine by timing what a real click costs, which is the
 same path a drag takes:
