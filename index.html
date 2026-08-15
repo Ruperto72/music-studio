@@ -3401,7 +3401,6 @@ const LANE_ORIGIN = HEADER_W + GUTTER_W; // x (within .daw content) where lane c
 
 let playheadEl = null, playheadGrip = null, loopEls = null, rulerGridEl = null, markersLayer = null;
 let visualPlayhead = 0;
-const laneRolls = [];       // [{ track, rollEl }] for the current render — used by marquee/positioning
 let interacting = false;    // freezes pitch-window auto-fit during a drag so lanes don't jump
 
 // Pitch auto-fit window per pitch track. Cached; frozen while `interacting`.
@@ -4001,15 +4000,154 @@ function renderTimeline() {
   renderMarkers();
 }
 
+// ---------- Row reuse ----------
+// A render used to clear #tracks and rebuild every row. Measured, that is
+// 272 ms at 24 tracks (81 ms building, 191 ms laying out) — most of the 300 ms
+// SCHEDULE_AHEAD_SEC gives the scheduler to place the next chunk of audio, so
+// a drag over a big song can starve playback. Skipping rows whose content has
+// not changed takes it to a fraction of that. See DESIGN.md B.4 for the full
+// measurement history, including two earlier attempts that were reverted.
+//
+// **A reused row is never re-appended.** Re-attaching a recycled node forces
+// the same layout a fresh one does, which is why "keep the row and refill it"
+// bought nothing when it was tried; the reconcile below leaves untouched rows
+// exactly where they are and only replaces the ones that differ.
+//
+// What sent the previous attempt back was not the idea but the cost of being
+// sure: the signature has to name every input a row draws, and a forgotten one
+// is a row that silently stops updating. Two things guard that here.
+//
+// 1. **Identity, not just values.** A row's listeners close over the actual
+//    note and hit objects — the selection holds the object, multi-select is a
+//    Set of them, removeHit() filters on `h !== hit`. Undo and song loading
+//    replace those objects with equal-valued copies, so a value-derived
+//    signature reads as unchanged and the reused row's handlers go on pointing
+//    at objects no longer in the song. Nothing throws; clicks just stop
+//    landing. serialOf() gives every object a stable number from a WeakMap, so
+//    the signature moves when identity does.
+// 2. **An audit that measures the enumeration instead of trusting it.** With
+//    window.__rowAudit on, every reused row is built anyway and compared
+//    against what was kept; a mismatch is a console error, and verify.js turns
+//    every console error into a failed step. The whole suite therefore runs as
+//    one long test of whether this signature is complete, across every
+//    interaction the suite performs, rather than against the inputs whoever
+//    wrote it happened to think of.
+const itemSerials = new WeakMap();
+let nextItemSerial = 1;
+function serialOf(o) {
+  if (!o || typeof o !== 'object') return 0;
+  let n = itemSerials.get(o);
+  if (!n) { n = nextItemSerial++; itemSerials.set(o, n); }
+  return n;
+}
+// The part, by value *and* by identity. Clips and their items both get a
+// serial, so replacing a note with an equal-valued copy moves the signature.
+function partSignature(track) {
+  const clips = state.tracks[track];
+  if (!Array.isArray(clips)) return '-';
+  return clips.map(c => (isClip(c)
+    ? serialOf(c) + ':' + c.start + ':' + c.len + ':' + c.source + ':' +
+      c.notes.map(n => serialOf(n) + '#' + JSON.stringify(n)).join(',')
+    : serialOf(c) + '#' + JSON.stringify(c))).join('|');
+}
+// The per-track maps come from SPARSE_TRACK_MAPS rather than a second
+// hand-written list — the same rule save, load, undo and track removal follow,
+// so a per-track setting added later is covered here without anyone coming
+// back. The seeded maps are named explicitly because they are not in that list.
+function trackRowSignature(track, index) {
+  const t = trackOf(track) || {};
+  const sel = state.selected && state.selected.track === track ? state.selected.item : null;
+  return JSON.stringify([
+    index, state.trackList.length, track, t.name, t.color, t.kind,
+    partSignature(track),
+    state.gains[track], state.waveform[track], state.pan[track],
+    state.mute[track], state.solo[track], anySolo(),
+    SPARSE_TRACK_MAPS.map(k => (state[k] || {})[track] ?? null),
+    collapsedTracks.has(track),
+    automationOpen.has(track) ? automationOpen.get(track) : null,
+    adsrOpen.has(track),
+    velOpen.has(track) ? velOpen.get(track) : null,
+    oscPickerOpen === track, fxAddMenuOpen === track,
+    state.activeTrack === track, state.recTrack === track,
+    sel ? serialOf(sel) : 0,
+    state.activeTrack === track ? [...state.multiSelected].map(serialOf).sort() : null,
+    state.marquee && state.marquee.track === track ? state.marquee : null,
+    COLS, colPx, state.grid, state.timeSig, state.key, state.scale,
+  ]);
+}
+let rowCache = new Map();          // track id -> { sig, els }
+const invalidateRowCache = () => { rowCache = new Map(); };
+let trackSink = null;              // where the row builders append, see renderTracks()
+function buildTrackRows(t) {
+  const frag = document.createDocumentFragment();
+  trackSink = frag;
+  try {
+    if (t.kind === 'rhythm') renderRhythmTrack(t.id); else renderPitchTrack(t.id);
+    if (automationOpen.has(t.id)) frag.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
+    if (adsrOpen.has(t.id)) frag.appendChild(renderAdsrRow(t.id));
+    if (velOpen.has(t.id)) frag.appendChild(renderVelocityRow(t.id, velOpen.get(t.id)));
+  } finally { trackSink = null; }
+  return [...frag.children];
+}
 function renderTracks() {
-  tracksEl.innerHTML = '';
-  laneRolls.length = 0;
-  for (const t of state.trackList) {
-    if (t.kind === 'rhythm') renderRhythmTrack(t.id);
-    else renderPitchTrack(t.id);
-    if (automationOpen.has(t.id)) tracksEl.appendChild(renderAutomationRow(t.id, automationOpen.get(t.id)));
-    if (adsrOpen.has(t.id)) tracksEl.appendChild(renderAdsrRow(t.id));
-    if (velOpen.has(t.id)) tracksEl.appendChild(renderVelocityRow(t.id, velOpen.get(t.id)));
+  const want = [];
+  const next = new Map();
+  for (let i = 0; i < state.trackList.length; i++) {
+    const t = state.trackList[i];
+    const sig = trackRowSignature(t.id, i);
+    const hit = rowCache.get(t.id);
+    if (hit && hit.sig === sig && hit.els.every(el => el.parentNode === tracksEl)) {
+      if (window.__rowAudit) auditReusedRow(t, hit.els);
+      want.push(...hit.els);
+      next.set(t.id, hit);
+      continue;
+    }
+    const els = buildTrackRows(t);
+    want.push(...els);
+    next.set(t.id, { sig, els });
+  }
+  rowCache = next;
+  // Positional reconcile. Rows that are already where they belong are left
+  // alone — not removed and re-added, which is the whole point.
+  const have = [...tracksEl.children];
+  for (let i = 0; i < Math.max(have.length, want.length); i++) {
+    const a = have[i], b = want[i];
+    if (a === b) continue;
+    if (!b) { a.remove(); continue; }
+    if (!a) { tracksEl.appendChild(b); continue; }
+    a.replaceWith(b);
+  }
+}
+// Builds the row again and compares it with the one that was kept. Only ever
+// called with window.__rowAudit set — see the note above renderTracks() for
+// why this exists rather than a careful reading of the signature.
+function auditReusedRow(t, kept) {
+  // Building a throwaway copy re-points anything the builders register by
+  // side effect — vuMeters[track] is set in buildHeader() — at a node that is
+  // about to be discarded, which would stop the meter updating for as long as
+  // the audit is on. Put it back.
+  const meter = vuMeters[t.id];
+  const fresh = buildTrackRows(t);
+  vuMeters[t.id] = meter;
+  // The VU mask's width is written by the metering loop, not by render — a
+  // freshly built row simply has not been metered yet. Normalising it out is
+  // not papering over a difference: the audit's question is whether *render*
+  // would produce something else, and anything written outside render is not
+  // render's to reproduce. Add to this list only for state with the same
+  // property, never to silence a real mismatch.
+  const norm = (h) => h.replace(/(class="vu-mask")[^>]*/g, '$1');
+  const a = kept.map(e => norm(e.outerHTML)).join('');
+  const b = fresh.map(e => norm(e.outerHTML)).join('');
+  if (a !== b) {
+    // Point at the first difference rather than the first 400 characters:
+    // two rows that differ deep inside look identical from the front, and a
+    // prefix says nothing about which input was forgotten.
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    const win = (x) => x.slice(Math.max(0, i - 60), i + 120);
+    console.error('[row-audit] reused row for "' + t.id + '" is stale at char ' + i +
+      ' — trackRowSignature() is missing an input it draws from.\n  kept:  …' + win(a) +
+      '\n  fresh: …' + win(b));
   }
 }
 
@@ -5829,7 +5967,7 @@ function renderPitchTrack(track) {
     // left edge with the rest of the row instead of staying pinned.
     row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
     row.appendChild(renderCollapsedOverview(track));
-    tracksEl.appendChild(row);
+    (trackSink || tracksEl).appendChild(row);
     return;
   }
 
@@ -5942,8 +6080,7 @@ function renderPitchTrack(track) {
 
   renderMarquee(rollEl, track, pitchCount * ROW_H);
   row.appendChild(rollEl);
-  tracksEl.appendChild(row);
-  laneRolls.push({ track, rollEl });
+  (trackSink || tracksEl).appendChild(row);
 }
 
 function renderRhythmTrack(track) {
@@ -5960,7 +6097,7 @@ function renderRhythmTrack(track) {
     // left edge with the rest of the row instead of staying pinned.
     row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
     row.appendChild(renderCollapsedOverview(track));
-    tracksEl.appendChild(row);
+    (trackSink || tracksEl).appendChild(row);
     return;
   }
 
@@ -6030,8 +6167,7 @@ function renderRhythmTrack(track) {
 
   renderMarquee(rollEl, track, RHYTHM_ROWS.length * RHY_H);
   row.appendChild(rollEl);
-  tracksEl.appendChild(row);
-  laneRolls.push({ track, rollEl });
+  (trackSink || tracksEl).appendChild(row);
 }
 
 // Master has no notes of its own, so it's a header-only strip (no gutter/lane)

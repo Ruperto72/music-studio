@@ -478,6 +478,16 @@ async function main() {
     });
     cdp.on('Page.javascriptDialogOpening', () => { cdp.send('Page.handleJavaScriptDialog', { accept: true }); });
     await cdp.send('Page.setBypassCSP', { enabled: true });
+    // Row reuse audits itself for the whole run. renderTracks() skips rebuilding
+    // a track row whose signature is unchanged, and a signature that forgets an
+    // input is a row that silently stops updating — the failure that sent two
+    // earlier attempts back (DESIGN.md B.4). With this flag set, every reused
+    // row is rebuilt and compared against the one kept, and a mismatch is a
+    // console error; this file already fails any step that logs one. So the
+    // whole suite becomes one long test of whether the signature is complete,
+    // measured against every interaction these steps perform rather than
+    // against the inputs whoever wrote it thought of.
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__rowAudit = true;' });
     // Survives every goto()/fresh(), so a step never has to remember to
     // install it — see SAVED_NOTES_INSTALL for why the assertions need it.
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SAVED_NOTES_INSTALL });
@@ -6585,6 +6595,158 @@ async function main() {
       const after3 = afterThird.filter(c => midSources.has(c.source) && c.start >= t3.start + t3.len);
       if (!before3.length || !after3.length) {
         throw new Error(`a clip the take lands inside is split around it, leaving material either side, got ${JSON.stringify(afterThird)}`);
+      }
+    });
+
+    step('Row reuse: untouched rows are kept, and everything a row draws still rebuilds it', async () => {
+      await fresh();
+      // The step DESIGN.md B.4 demands before the row-reuse work can be
+      // defended, and it has to assert *both* halves. Half a step here is
+      // worse than none: "rows are reused" alone passes a build that never
+      // updates anything, and "rows rebuild" alone passes a build that reuses
+      // nothing and has simply not made the change.
+      //
+      // A rebuild is detected by element *identity* across renders, not by a
+      // tag: a reused row is the same element, so a marker survives on it and
+      // proves nothing. Stashing the nodes and comparing with === is what
+      // distinguishes them.
+      const stash = () => cdp.evaluate(`(() => {
+        window.__rows = [...document.querySelectorAll('#tracks > .track')];
+        return window.__rows.length;
+      })()`);
+      // Returns, per row index, whether that element survived the render.
+      const kept = () => cdp.evaluate(`JSON.stringify(
+        [...document.querySelectorAll('#tracks > .track')].map((el, i) => el === window.__rows[i]))`);
+      const rowIndexOf = (name) => cdp.evaluate(
+        `[...document.querySelectorAll('#tracks > .track')].findIndex(
+           el => (el.querySelector('.th-name') || {}).textContent === ${JSON.stringify(name)})`);
+
+      // Collapse state is remembered per browser, so a previous run of this
+      // step leaves rows folded and fresh() restores them that way — the same
+      // cross-run contamination the metronome once caused. Expand everything
+      // first, and fold nothing permanently at the end.
+      const expandAll = () => cdp.evaluate(`(() => {
+        for (const t of document.querySelectorAll('#tracks > .track.collapsed')) {
+          const b = t.querySelector('.th-collapse');
+          if (b) b.click();
+        }
+      })()`);
+      await expandAll();
+      await new Promise((r) => setTimeout(r, 200));
+
+      const n = await stash();
+      if (n < 5) throw new Error(`expected the starter layout's rows, got ${n}`);
+      const bassRow = await rowIndexOf('Bass');
+      if (bassRow < 0) throw new Error('could not find the Bass row');
+
+      // Both halves are asserted by the same mutation rather than separately,
+      // which is stronger: a track-local change has to rebuild the row that
+      // draws it *and* leave every other row exactly where it was. Asserting
+      // only the first passes a build that reuses nothing and has therefore
+      // not made this change at all; asserting only the second passes a build
+      // that never updates anything.
+      //
+      // (An earlier version tried "a render that changes nothing keeps every
+      // row" as its first half, driven by a zoom in followed by a zoom out.
+      // That is two renders that each change something and happen to end where
+      // they started — it rebuilt every row and said so.)
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const onBass = (expr) => `(() => {
+        const t = [...document.querySelectorAll('#tracks > .track')][${bassRow}];
+        ${expr}
+      })()`;
+      const mutations = [
+        ['mute', true, onBass(`[...t.querySelectorAll('.th-btns button')].find(b => b.textContent === 'M').click();`)],
+        // Solo is deliberately not local: audible() reads anySolo(), so soloing
+        // one track changes how every other row draws itself.
+        ['solo', false, onBass(`[...t.querySelectorAll('.th-btns button')].find(b => b.textContent === 'S').click();`)],
+        // Activating is not local either — the row that *was* active loses its
+        // class and has to be rebuilt too. Done before arming on purpose:
+        // setRecTrack() activates as well ("you are about to type into this
+        // track"), so arming an already-active track is the local case, and
+        // arming a different one would legitimately touch two rows.
+        // A real mousedown on the header, not a click on .th-name: the header
+        // activates on mousedown and excludes .th-name from that guard on
+        // purpose (double-click renames it, and a render on the first mousedown
+        // would replace the span before the second click landed).
+        ['activate', false, onBass(`t.querySelector('.track-header').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));`)],
+        ['arm', true, onBass(`[...t.querySelectorAll('.th-btns button')].find(b => b.textContent === 'R').click();`)],
+        // Volume is deliberately absent from this list. Its slider writes
+        // state.gains and updates its own readout without calling render() at
+        // all, so a drag does not pay for a rebuild — there is nothing here for
+        // row reuse to get right. `gains` is still in the signature, because
+        // undo and song loading change it *and* render.
+        ['a placed note', true, onBass(`const l = t.querySelector('.lane'); const r = l.getBoundingClientRect();
+           l.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 20, clientY: r.top + 40 }));`)],
+        // Last of the row-local ones: collapsing hides the lane, so anything
+        // reaching for it has to have run already.
+        ['collapse', true, onBass(`t.querySelector('.th-collapse').click();`)],
+        ['the grid', false, `(() => {
+           const g = document.getElementById('grid-select');
+           g.value = [...g.options].map(o => o.value).find(v => v !== g.value);
+           g.dispatchEvent(new Event('change', { bubbles: true }));
+         })()`],
+        ['the zoom', false, `document.getElementById('zoom-in').click();`],
+      ];
+      for (const [what, local, expr] of mutations) {
+        await stash();
+        await cdp.evaluate(expr);
+        await new Promise((r) => setTimeout(r, 220));
+        const after = JSON.parse(await kept());
+        if (after.length !== n) throw new Error(`${what} changed the row count, which none of these should: ${after.length}`);
+        if (after[bassRow] !== false) {
+          throw new Error(`changing ${what} must rebuild the row that draws it, kept = ${JSON.stringify(after)}`);
+        }
+        if (local) {
+          const others = after.filter((_, i) => i !== bassRow);
+          if (others.some(k => !k)) {
+            throw new Error(`changing ${what} on one track must leave the other rows in place, kept = ${JSON.stringify(after)}`);
+          }
+        }
+      }
+
+      // Leave nothing folded behind, for the same reason it had to be undone
+      // at the start.
+      await expandAll();
+
+      // And the fourth condition, which is not about values at all: undo and
+      // song loading replace note objects with equal-valued copies, and a row
+      // whose listeners close over the old ones goes on pointing at objects no
+      // longer in the song. Nothing throws — clicks simply stop landing — so
+      // this is asserted here rather than trusted.
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const leadRow = await rowIndexOf('Lead');
+      const place = (row, x) => cdp.evaluate(`(() => {
+        const t = [...document.querySelectorAll('#tracks > .track')][${row}];
+        const l = t.querySelector('.lane'); const r = l.getBoundingClientRect();
+        l.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${x}, clientY: r.top + 40 }));
+      })()`);
+      await place(leadRow, 20);
+      await waitFor(`document.querySelectorAll('#tracks > .track')[${leadRow}].querySelectorAll('.note').length === 1`);
+      // Past commitHistory()'s 400 ms debounce, so the two placements become
+      // two undo steps rather than one. Coalesced, the undo below removes the
+      // Lead note as well — Lead's *values* then change and the row rebuilds
+      // for an ordinary reason, which is not what this is asking about. A
+      // first version of this did exactly that and reported the identity
+      // check as covered when it was not.
+      await new Promise((r) => setTimeout(r, 700));
+      const bass2 = await rowIndexOf('Bass');
+      await place(bass2, 20);
+      await waitFor(`document.querySelectorAll('#tracks > .track')[${bass2}].querySelectorAll('.note').length === 1`);
+      // Let the undo checkpoint settle, then undo the Bass note. That restores
+      // state.tracks wholesale from JSON, so the *Lead* row's notes are now
+      // different objects holding identical values.
+      await new Promise((r) => setTimeout(r, 700));
+      await stash();
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await waitFor(`document.querySelectorAll('#tracks > .track')[${bass2}].querySelectorAll('.note').length === 0`);
+      const afterUndo = JSON.parse(await kept());
+      if (afterUndo[leadRow] !== false) {
+        throw new Error(
+          'an undo replaces every note object with an equal-valued copy, so a row whose values did not change ' +
+          'must still be rebuilt — otherwise its handlers keep pointing at objects no longer in the song. ' +
+          `kept = ${JSON.stringify(afterUndo)}`);
       }
     });
 
