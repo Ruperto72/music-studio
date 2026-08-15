@@ -2660,10 +2660,21 @@ const clampCols = (c) => { const bar = eighthsPerBar(); return Math.max(bar, Mat
 function derivedColsFromTracks(tracks) {
   const bar = eighthsPerBar();
   let max = bar;
-  for (const t of PITCH_TRACKS) for (const n of tracks[t] || []) max = Math.max(max, n.start + n.len);
+  // Walks clips rather than state, since this is also called with a *loaded*
+  // map before it has been installed — so it takes both shapes through
+  // toClips() and measures in absolute columns like everything outside the
+  // clip section does.
+  const itemsOf = (id) => {
+    let out = [];
+    for (const clip of toClips(tracks[id])) {
+      for (const item of clip.notes) if (clipHolds(clip, item)) out.push({ ...item, start: toAbsolute(clip, item) });
+    }
+    return out;
+  };
+  for (const t of PITCH_TRACKS) for (const n of itemsOf(t)) max = Math.max(max, n.start + n.len);
   // Called after restoreTrackList() has already populated state.trackList, so
   // this reflects every rhythm-kind track, not just the default one.
-  for (const t of state.trackList) if (t.kind === 'rhythm') for (const h of tracks[t.id] || []) max = Math.max(max, h.start + 1);
+  for (const t of state.trackList) if (t.kind === 'rhythm') for (const h of itemsOf(t.id)) max = Math.max(max, h.start + 1);
   return Math.max(bar, Math.ceil(max / bar) * bar);
 }
 function colsFromSaved(data, tracks) {
@@ -2736,14 +2747,14 @@ function starterProject(withTonalTracks = true) {
   if (withTonalTracks) {
     for (const t of STARTER_TRACKS) {
       trackList.push({ id: t.id, name: t.name, color: TRACK_PALETTE[trackList.length % TRACK_PALETTE.length], kind: 'tone' });
-      tracks[t.id] = []; gains[t.id] = t.gain; waveform[t.id] = t.waveform;
+      tracks[t.id] = [makeClip()]; gains[t.id] = t.gain; waveform[t.id] = t.waveform;
       pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
       if (t.duty != null) duty[t.id] = t.duty;
       if (t.adsr) adsr[t.id] = { ...t.adsr };
     }
   }
   trackList.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
-  tracks.rhythm = []; gains.rhythm = 1.2; waveform.rhythm = 'kit';
+  tracks.rhythm = [makeClip()]; gains.rhythm = 1.2; waveform.rhythm = 'kit';
   pan.rhythm = 0; mute.rhythm = false; solo.rhythm = false;
   return { trackList, tracks, gains, waveform, pan, mute, solo, duty, adsr };
 }
@@ -2806,6 +2817,95 @@ const state = {
   loopStart: 0, loopEnd: COLS,
   marquee: null              // { col0, col1, track } while marquee-selecting
 };
+
+// ---------- Clips ----------
+// A track's part is stored as a list of *clips* rather than a flat list of
+// notes. A clip is not the notes — it is a **window** onto them:
+//
+//   { start, len, offset, notes }
+//
+// `start`/`len` place the window on the timeline; `offset` says how far into
+// the content its left edge sits; `notes` carry starts relative to the
+// content's own origin. A note therefore sounds at
+// `clip.start + (note.start - clip.offset)`, and only while it falls inside
+// the window. That separation is the whole point: trimming an edge moves the
+// window, so nothing is thrown away and pulling the edge back out brings the
+// notes back. Without `offset` this would be "a group of notes you can drag",
+// which is a different feature that happens to look the same. See TODO.md.
+//
+// **Everything reads through trackNotes() and writes through setTrackNotes().**
+// Both deal in *absolute* columns, which is what every caller already meant,
+// so the clip layer stays invisible to the ~70 places that only ever wanted
+// "this track's items". Adding a second way to reach the notes is how the
+// note/hit conflict helpers grew five hand-written variants (see
+// notesConflict) — one door in, one door out.
+const CLIP_ORIGIN = { start: 0, offset: 0 };
+// The migration case and the starting case are the same shape: one clip at the
+// origin covering everything, where `offset`/`start` are 0 and relative time is
+// therefore identical to absolute. A v2 song (a flat note list) loads into
+// exactly this, which is why it behaves precisely as it did before.
+function makeClip(notes = [], { start = 0, offset = 0, len = null } = {}) {
+  return { start, offset, len, notes };
+}
+const isClip = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Array.isArray(c.notes);
+// A saved track is either v3 (already clips) or v2 (a flat note list). Both
+// arrive here; nothing else in the app has to know which it was.
+function toClips(stored) {
+  if (!Array.isArray(stored)) return [makeClip()];
+  if (stored.every(isClip)) return stored.length ? stored : [makeClip()];
+  return [makeClip(stored.filter(n => n && typeof n === 'object'))];
+}
+const clipsOf = (track) => state.tracks[track] || (state.tracks[track] = [makeClip()]);
+// An item is inside its window when its start falls within [offset, offset+len).
+// A null `len` means "unbounded", which is what a clip covering the whole track
+// has until trimming exists to give it a real edge.
+const clipHolds = (clip, item) =>
+  item.start >= clip.offset && (clip.len == null || item.start < clip.offset + clip.len);
+const toAbsolute = (clip, item) => clip.start + (item.start - clip.offset);
+// The one read path. Returns the track's items positioned in absolute columns,
+// which is the coordinate every caller outside this section works in.
+//
+// While a track holds one clip at the origin the items are handed back *by
+// reference*, unchanged — so the drag paths that mutate `n.start` in place go
+// on working exactly as they did. That equivalence is what makes this step
+// provably invisible, and it is also what stops holding once a clip can move:
+// see TODO.md's phase list, where moving clips and mutation-through-this-view
+// are deliberately the same piece of work.
+function trackNotes(track) {
+  const clips = clipsOf(track);
+  if (clips.length === 1 && clips[0].start === CLIP_ORIGIN.start && clips[0].offset === CLIP_ORIGIN.offset) {
+    return clips[0].notes;
+  }
+  const out = [];
+  for (const clip of clips) {
+    for (const item of clip.notes) {
+      if (clipHolds(clip, item)) out.push({ ...item, start: toAbsolute(clip, item) });
+    }
+  }
+  return out;
+}
+// The one write path. Takes absolute-column items and files them back into the
+// clips they belong to. With a single clip at the origin this is the identity,
+// which is the case every caller is in today.
+function setTrackNotes(track, items) {
+  const clips = clipsOf(track);
+  if (clips.length === 1 && clips[0].start === CLIP_ORIGIN.start && clips[0].offset === CLIP_ORIGIN.offset) {
+    clips[0].notes = items;
+    return items;
+  }
+  // More than one clip: an item belongs to the clip whose window covers it,
+  // and anything landing outside every window extends the last one rather than
+  // being dropped — losing a note to a gap between clips would be the silent
+  // kind of data loss this codebase has been bitten by before.
+  for (const clip of clips) clip.notes = [];
+  for (const item of items) {
+    const home = clips.find(c => c.len == null
+      ? item.start >= c.start
+      : item.start >= c.start && item.start < c.start + c.len) || clips[clips.length - 1];
+    home.notes.push({ ...item, start: item.start - home.start + home.offset });
+  }
+  return items;
+}
 
 // The per-track song settings that are *sparse*: `state[key][trackId]` absent
 // means "the default", so nothing seeds an entry per track and clearing one
@@ -3038,7 +3138,10 @@ function restoreTrackList(data) {
   refreshTrackArrays();
   const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
   for (const t of state.trackList) {
-    tracks[t.id] = Array.isArray(src[t.id]) ? src[t.id] : [];
+    // toClips() takes both shapes: a v3 file already holds clips, a v2 file
+    // holds a flat note list and becomes one clip at the origin — which is
+    // why an older song loads and behaves exactly as it did.
+    tracks[t.id] = toClips(src[t.id]);
     gains[t.id] = 0.9; waveform[t.id] = t.kind === 'rhythm' ? 'kit' : 'square'; pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
   }
   state.tracks = tracks; state.gains = gains; state.waveform = waveform; state.pan = pan; state.mute = mute; state.solo = solo;
@@ -3213,7 +3316,7 @@ const winCache = {};
 // deliberately looking at a different octave to place new ones.
 const manualPitchWindow = {};
 function autoFitPitchWindow(track) {
-  const notes = state.tracks[track];
+  const notes = trackNotes(track);
   let lo, hi;
   // An empty lane has nothing to fit, so it gets the narrowest window the app
   // ever draws (MIN_SPAN, starting at middle C) and returns straight away —
@@ -3831,7 +3934,7 @@ function addTrack() {
   const desc = { id, name: 'Track ' + (tonalCount + 1), color: TRACK_PALETTE[tonalCount % TRACK_PALETTE.length], kind: 'tone' };
   const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm'); // keep tonal tracks before every rhythm track
   state.trackList.splice(rIdx < 0 ? state.trackList.length : rIdx, 0, desc);
-  state.tracks[id] = [];
+  setTrackNotes(id, []);
   state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
   refreshTrackArrays();
   ensureChannelNodes(id);
@@ -3857,7 +3960,7 @@ function duplicateTrack(track) {
   // Notes and hits are copied by value: sharing the objects would make the two
   // tracks the same part, so dragging a note in one would move it in both.
   // `arp` is the only array on a note, and it has to be copied too.
-  state.tracks[id] = (state.tracks[track] || []).map(it => ({ ...it, ...(it.arp ? { arp: [...it.arp] } : {}) }));
+  setTrackNotes(id, (trackNotes(track) || []).map(it => ({ ...it, ...(it.arp ? { arp: [...it.arp] } : {}) })));
   state.gains[id] = state.gains[track];
   state.waveform[id] = state.waveform[track];
   state.pan[id] = state.pan[track];
@@ -3886,7 +3989,7 @@ function addRhythmTrack() {
   const rhythmCount = state.trackList.filter(t => t.kind === 'rhythm').length;
   const desc = { id, name: 'Rhythm ' + (rhythmCount + 1), color: RHYTHM_PALETTE[rhythmCount % RHYTHM_PALETTE.length], kind: 'rhythm' };
   state.trackList.push(desc);
-  state.tracks[id] = [];
+  setTrackNotes(id, []);
   state.gains[id] = 0.9; state.waveform[id] = 'kit'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
   refreshTrackArrays();
   ensureChannelNodes(id);
@@ -3926,7 +4029,7 @@ function canRemoveTrack(id) {
 function removeTrack(id) {
   const t = trackOf(id);
   if (!t || !canRemoveTrack(id)) return;
-  const n = (state.tracks[id] || []).length;
+  const n = (trackNotes(id) || []).length;
   if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
   for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, ...SPARSE_TRACK_MAPS.map(k => state[k])]) delete map[id];
@@ -4368,7 +4471,7 @@ function renderVelocityRow(track, param) {
     lane.appendChild(line);
   }
 
-  for (const item of state.tracks[track]) {
+  for (const item of trackNotes(track)) {
     const v = spec.get(item);
     const x = item.start * colPx;
     const y = valueToY(v);
@@ -4566,7 +4669,7 @@ function renderAdsrRow(track) {
     dutySelect.addEventListener('change', (e) => {
       e.stopPropagation();
       setTrackDuty(track, dutySelect.value === '' ? null : parseFloat(dutySelect.value));
-      const n = state.tracks[track][0];
+      const n = trackNotes(track)[0];
       if (n) previewNote(track, n);
       render(); // the note inspector's own Duty label names the track default
       autosave();
@@ -4974,7 +5077,7 @@ function buildFloatingOscMenu(track) {
       e.stopPropagation();
       state.waveform[track] = w;
       oscPickerOpen = null;
-      const n = state.tracks[track][0];
+      const n = trackNotes(track)[0];
       if (n) previewNote(track, n);
       autosave();
       // Re-render so the note inspector's Duty cycle field (square-only)
@@ -5380,13 +5483,13 @@ function renderCollapsedOverview(track) {
   cx.fillStyle = trackColor(track);
   if (isRhythm(track)) {
     const rowH = height / RHYTHM_ROWS.length;
-    for (const h of state.tracks[track]) {
+    for (const h of trackNotes(track)) {
       const r = RHYTHM_ROWS.indexOf(h.type);
       if (r < 0) continue;
       cx.fillRect(GUTTER_W + h.start * colPx, r * rowH, Math.max(1.5, colPx * 0.8), Math.max(1, rowH - 0.5));
     }
   } else {
-    const notes = state.tracks[track];
+    const notes = trackNotes(track);
     if (notes.length) {
       let lo = Infinity, hi = -Infinity;
       for (const n of notes) { const m = freqToMidi(n.freq); if (m < lo) lo = m; if (m > hi) hi = m; }
@@ -5444,7 +5547,7 @@ function renderPitchTrack(track) {
   rollEl.style.gridTemplateRows = `repeat(${pitchCount}, ${ROW_H}px)`;
   rollEl.dataset.track = track;
   rollEl.setAttribute('role', 'group');
-  rollEl.setAttribute('aria-label', `${trackOf(track)?.name || track} — piano roll, ${state.tracks[track].length} notes`);
+  rollEl.setAttribute('aria-label', `${trackOf(track)?.name || track} — piano roll, ${trackNotes(track).length} notes`);
   if (active) rollEl.title = 'Scroll to change octave';
   attachPitchWheel(rollEl, track);
 
@@ -5481,7 +5584,7 @@ function renderPitchTrack(track) {
   });
   rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
 
-  state.tracks[track].forEach((note, idx) => {
+  trackNotes(track).forEach((note, idx) => {
     const midi = freqToMidi(note.freq);
     const p = Math.max(0, Math.min(pitchCount - 1, win.max - midi));
     const div = el('div');
@@ -5565,7 +5668,7 @@ function renderRhythmTrack(track) {
   rollEl.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
   rollEl.dataset.track = track;
   rollEl.setAttribute('role', 'group');
-  rollEl.setAttribute('aria-label', `${trackOf(track)?.name || track} — rhythm grid, ${state.tracks[track].length} hits`);
+  rollEl.setAttribute('aria-label', `${trackOf(track)?.name || track} — rhythm grid, ${trackNotes(track).length} hits`);
 
   const epb = eighthsPerBar(), ebeat = eighthsPerBeat();
   RHYTHM_ROWS.forEach((type, r) => {
@@ -5588,7 +5691,7 @@ function renderRhythmTrack(track) {
   });
   rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
 
-  for (const hit of state.tracks[track]) {
+  for (const hit of trackNotes(track)) {
     const r = RHYTHM_ROWS.indexOf(hit.type);
     const isSelected = state.selected && state.selected.track === track && state.selected.item === hit;
     const div = el('div', 'hit' + (hit.type !== 'kick' ? ' ' + hit.type : '')
@@ -5984,24 +6087,24 @@ function onCellClick(track, midi, col) {
     bend: null, vib: false, trem: false, duty: null, arp: null,
     porta: false, crush: false, echo: false, chorus: false, reverb: false
   };
-  const cleared = clearOverlaps(state.tracks[track], note);
+  const cleared = clearOverlaps(trackNotes(track), note);
   cleared.push(note);
-  state.tracks[track] = cleared;
+  setTrackNotes(track, cleared);
   state.selected = { track, item: note };
   previewNote(track, note);
   render();
 }
 function onRhythmCellClick(track, row, col) {
   const hit = { start: col, type: RHYTHM_ROWS[row] };
-  const hits = state.tracks[track].filter(h => !hitsConflict(h, hit));
+  const hits = trackNotes(track).filter(h => !hitsConflict(h, hit));
   hits.push(hit);
-  state.tracks[track] = hits;
+  setTrackNotes(track, hits);
   state.selected = { track, item: hit }; // so the new hit's Velocity is editable straight away
   state.multiSelected.clear();
   previewHit(hit.type, hitVel(hit), hitPan(hit));
   render();
 }
-function removeHit(track, hit) { state.tracks[track] = state.tracks[track].filter(h => h !== hit); render(); }
+function removeHit(track, hit) { setTrackNotes(track, trackNotes(track).filter(h => h !== hit)); render(); }
 // Plays one bar of a built-in RHYTHM_PATTERNS entry for audition before
 // inserting — `which` picks the groove bar or the pattern's fill.
 function previewPattern(pattern, which = 'hits') {
@@ -6102,7 +6205,7 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
     }
     newHits.push(...barHits);
   }
-  state.tracks[track] = state.tracks[track].filter(h => h.start < startBar).concat(newHits);
+  setTrackNotes(track, trackNotes(track).filter(h => h.start < startBar).concat(newHits));
   if (pattern.swing != null) { state.swing = pattern.swing; syncSwingUI(); }
   // A pattern written on 16ths has to bring the grid with it, the same way
   // shuffle brings its swing. A hit's block is drawn one *grid step* wide
@@ -6156,9 +6259,9 @@ function insertProgression(prog) {
   // clearOverlaps() rather than a hand-written filter, like every other path
   // that places notes — a chord tone landing on an existing note of the same
   // pitch is the one case that has to give way, and only that case.
-  let notes = state.tracks[track].filter(n => n.start < startBar);
+  let notes = trackNotes(track).filter(n => n.start < startBar);
   for (const n of newNotes) notes = clearOverlaps(notes, n);
-  state.tracks[track] = notes.concat(newNotes);
+  setTrackNotes(track, notes.concat(newNotes));
   state.selected = null;
   state.multiSelected = new Set(newNotes);
   render();
@@ -6168,7 +6271,7 @@ function insertProgression(prog) {
 // left to right, and low to high where notes share a column. Rhythm tracks
 // order by column then kit row, so a stacked kick/hi-hat steps predictably.
 function orderedItems(track) {
-  const items = [...(state.tracks[track] || [])];
+  const items = [...(trackNotes(track) || [])];
   return isRhythm(track)
     ? items.sort((a, b) => a.start - b.start || RHYTHM_ROWS.indexOf(a.type) - RHYTHM_ROWS.indexOf(b.type))
     : items.sort((a, b) => a.start - b.start || a.freq - b.freq);
@@ -6218,7 +6321,7 @@ function selectItem(track, item) {
   render();
 }
 function deleteItem(track, item) {
-  state.tracks[track] = state.tracks[track].filter(n => n !== item);
+  setTrackNotes(track, trackNotes(track).filter(n => n !== item));
   if (state.selected && state.selected.item === item) state.selected = null;
   render();
 }
@@ -6256,7 +6359,7 @@ function startMarquee(e, rollEl, track) {
 }
 function selectRange(lo, hi) {
   state.multiSelected.clear();
-  const items = state.tracks[state.activeTrack];
+  const items = trackNotes(state.activeTrack);
   for (const item of items) if (item.start >= lo && item.start < hi) state.multiSelected.add(item);
   state.selected = null;
   render();
@@ -6288,7 +6391,7 @@ function clearSelection() {
 }
 function deleteSelection() {
   if (state.multiSelected.size > 0) {
-    state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(n => !state.multiSelected.has(n));
+    setTrackNotes(state.activeTrack, trackNotes(state.activeTrack).filter(n => !state.multiSelected.has(n)));
     state.multiSelected.clear();
     render();
   } else if (state.selected) {
@@ -6309,9 +6412,9 @@ function nudgeSelection(dCol, dRow) {
       // Keyed on the column alone this also removed unselected hits on *other*
       // rows of the landing column — hitsConflict is the one place that
       // comparison belongs.
-      state.tracks[state.activeTrack] = state.tracks[state.activeTrack].filter(h => selSet.has(h) || !sel.some(s => hitsConflict(s, h)));
+      setTrackNotes(state.activeTrack, trackNotes(state.activeTrack).filter(h => selSet.has(h) || !sel.some(s => hitsConflict(s, h))));
     } else {
-      const notes = state.tracks[state.activeTrack];
+      const notes = trackNotes(state.activeTrack);
       const minStart = Math.min(...sel.map(n => n.start));
       const maxEnd   = Math.max(...sel.map(n => n.start + n.len));
       const midis    = sel.map(n => freqToMidi(n.freq));
@@ -6321,7 +6424,7 @@ function nudgeSelection(dCol, dRow) {
       const selSet = state.multiSelected;
       let rest = notes.filter(n => !selSet.has(n));
       for (const n of sel) rest = rest.filter(o => !notesConflict(o, n));
-      state.tracks[state.activeTrack] = [...rest, ...sel];
+      setTrackNotes(state.activeTrack, [...rest, ...sel]);
     }
     render();
     return;
@@ -6334,7 +6437,7 @@ function nudgeSelection(dCol, dRow) {
     const row = RHYTHM_ROWS.indexOf(item.type);
     item.start = quant(Math.max(0, Math.min(COLS - state.grid, item.start + dCol)));
     if (dRow) item.type = RHYTHM_ROWS[Math.max(0, Math.min(RHYTHM_ROWS.length - 1, row - dRow))];
-    state.tracks[track] = state.tracks[track].filter(h => h === item || !hitsConflict(h, item));
+    setTrackNotes(track, trackNotes(track).filter(h => h === item || !hitsConflict(h, item)));
     render();
     return;
   }
@@ -6344,7 +6447,7 @@ function nudgeSelection(dCol, dRow) {
     const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
     note.freq = round2(midiToFreq(midi));
   }
-  state.tracks[track] = clearOverlaps(state.tracks[track], note, note);
+  setTrackNotes(track, clearOverlaps(trackNotes(track), note, note));
   render();
 }
 // The scale-step counterpart of nudgeSelection()'s pitch half. It goes through
@@ -6383,11 +6486,11 @@ function pasteClipboard() {
       if (pasted.some(p => hitsConflict(p, hit))) continue;
       pasted.push(hit);
     }
-    const kept = state.tracks[state.activeTrack].filter(h => !pasted.some(p => hitsConflict(p, h)));
-    state.tracks[state.activeTrack] = [...kept, ...pasted];
+    const kept = trackNotes(state.activeTrack).filter(h => !pasted.some(p => hitsConflict(p, h)));
+    setTrackNotes(state.activeTrack, [...kept, ...pasted]);
     state.multiSelected = new Set(pasted);
   } else {
-    let notes = state.tracks[state.activeTrack];
+    let notes = trackNotes(state.activeTrack);
     const pasted = [];
     for (const it of clipboard.items) {
       const newNote = { ...it, start: quant(Math.max(0, Math.min(COLS - it.len, it.start + anchor))), arp: it.arp ? [...it.arp] : null };
@@ -6395,7 +6498,7 @@ function pasteClipboard() {
       notes.push(newNote);
       pasted.push(newNote);
     }
-    state.tracks[state.activeTrack] = notes;
+    setTrackNotes(state.activeTrack, notes);
     state.multiSelected = new Set(pasted);
   }
   state.selected = null;
@@ -6411,7 +6514,7 @@ function startResize(e, track, idx) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
   const pointerId = e.pointerId;
-  const notes = state.tracks[track];
+  const notes = trackNotes(track);
   const note = notes[idx];
   const startX = e.clientX;
   const startLen = note.len;
@@ -6445,7 +6548,7 @@ function startMoveNote(e, track, idx) {
   e.preventDefault(); e.stopPropagation();
   interacting = true;
   const pointerId = e.pointerId;
-  const notes = state.tracks[track];
+  const notes = trackNotes(track);
   const note = notes[idx];
   const group = (state.multiSelected.size > 1 && state.multiSelected.has(note)) ? [...state.multiSelected] : [note];
   const startPositions = group.map(n => ({ n, start: n.start, midi: freqToMidi(n.freq) }));
@@ -6484,13 +6587,13 @@ function startMoveNote(e, track, idx) {
     interacting = false;
     if (!moved) { selectItem(track, note); return; }
     const groupSet = new Set(group);
-    // Read state.tracks[track] fresh here rather than reusing the `notes` closure
+    // Read trackNotes(track) fresh here rather than reusing the `notes` closure
     // captured at gesture start — a concurrent touch drag on another note of this
     // same track may have already committed its own array replacement, and filtering
     // against the stale `notes` snapshot would silently discard that other commit.
-    let rest = state.tracks[track].filter(n => !groupSet.has(n));
+    let rest = trackNotes(track).filter(n => !groupSet.has(n));
     for (const n of group) rest = rest.filter(o => !notesConflict(o, n));
-    state.tracks[track] = [...rest, ...group];
+    setTrackNotes(track, [...rest, ...group]);
     state.selected = { track, item: note };
     render();
   }
@@ -6527,7 +6630,7 @@ function startMoveHit(e, track, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    state.tracks[track] = state.tracks[track].filter(h => groupSet.has(h) || !group.some(g => hitsConflict(g, h)));
+    setTrackNotes(track, trackNotes(track).filter(h => groupSet.has(h) || !group.some(g => hitsConflict(g, h))));
     if (group.length === 1) { selectItem(track, hit); return; } // a click-without-drag selects, like a note
     render();
   }
@@ -6552,7 +6655,7 @@ function startMoveHit(e, track, hit) {
 // never serialised.
 //
 // It is deliberately NOT `state.activeTrack`. That is read as a live index in
-// some twenty places (`state.tracks[state.activeTrack]`, `orderedItems()`,
+// some twenty places (`trackNotes(state.activeTrack)`, `orderedItems()`,
 // `isRhythm()`, …), so a `'master'` sentinel there would be an id that indexes
 // nothing. The two travel together for tracks — every path that moves
 // activeTrack calls setInspectorOwner() with it — and diverge only when the
@@ -6776,7 +6879,7 @@ function renderInspector() {
   // from the track since (undo, a paste that displaced it, another drag), so
   // confirm it's actually still there before showing controls that edit it.
   const track = sel && sel.track;
-  const item = sel && state.tracks[track] && state.tracks[track].includes(sel.item) ? sel.item : null;
+  const item = sel && trackNotes(track) && trackNotes(track).includes(sel.item) ? sel.item : null;
   document.body.classList.toggle('has-sel', !!item); // drives the mobile close button
   if (!item) {
     // No note selected: the column goes to whoever owns it — a track's FX
@@ -6996,10 +7099,10 @@ function renderInspector() {
     // there's no chord to add, so leave the selection and the track alone
     // rather than closing the inspector for a no-op.
     if (!newNotes.length) return;
-    let notes = state.tracks[track];
+    let notes = trackNotes(track);
     for (const n of newNotes) notes = clearOverlaps(notes, n, note);
     notes.push(...newNotes);
-    state.tracks[track] = notes;
+    setTrackNotes(track, notes);
     for (const n of newNotes) previewNote(track, n);
     state.multiSelected = new Set([note, ...newNotes]);
     state.selected = null;
@@ -7502,11 +7605,11 @@ function setCols(newCols) {
   const wasFullLoop = state.loopStart === 0 && state.loopEnd === COLS;
   if (newCols < COLS) {
     for (const t of PITCH_TRACKS) {
-      state.tracks[t] = state.tracks[t]
+      setTrackNotes(t, trackNotes(t)
         .filter(n => n.start < newCols)
-        .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n));
+        .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n)));
     }
-    for (const id of RHYTHM_TRACK_IDS) state.tracks[id] = state.tracks[id].filter(h => h.start < newCols);
+    for (const id of RHYTHM_TRACK_IDS) setTrackNotes(id, trackNotes(id).filter(h => h.start < newCols));
     state.markers = state.markers.filter(m => m.col <= newCols);
   }
   COLS = newCols;
@@ -7607,15 +7710,15 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
   }
   if (neededCols > COLS) setCols(neededCols);
   for (const t of PITCH_TRACKS) {
-    const source = state.tracks[t].filter(n => n.start >= start && n.start < end);
-    const rest = state.tracks[t].filter(n => !(n.start >= destStart && n.start < destEnd));
+    const source = trackNotes(t).filter(n => n.start >= start && n.start < end);
+    const rest = trackNotes(t).filter(n => !(n.start >= destStart && n.start < destEnd));
     const copies = source.map(n => ({ ...n, start: n.start - start + destStart, arp: n.arp ? [...n.arp] : null }));
-    state.tracks[t] = [...rest, ...copies];
+    setTrackNotes(t, [...rest, ...copies]);
   }
   for (const id of RHYTHM_TRACK_IDS) {
-    const sourceHits = state.tracks[id].filter(h => h.start >= start && h.start < end);
-    const restHits = state.tracks[id].filter(h => !(h.start >= destStart && h.start < destEnd));
-    state.tracks[id] = [...restHits, ...sourceHits.map(h => ({ ...h, start: h.start - start + destStart }))];
+    const sourceHits = trackNotes(id).filter(h => h.start >= start && h.start < end);
+    const restHits = trackNotes(id).filter(h => !(h.start >= destStart && h.start < destEnd));
+    setTrackNotes(id, [...restHits, ...sourceHits.map(h => ({ ...h, start: h.start - start + destStart }))]);
   }
   state.loopStart = destStart;
   state.loopEnd = destEnd;
@@ -7629,7 +7732,9 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
 // The current editor state serialized as a song (save-file / local-slot format).
 function currentSongData() {
   return {
-    version: 2, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid),
+    // 3 since a track's part is a clip list rather than a flat note list; a v2
+    // file still loads, through toClips() in restoreTrackList().
+    version: 3, songName: state.songName, tempo: state.tempo, cols: COLS, grid: round4(state.grid),
     timeSig: state.timeSig, key: state.key, scale: state.scale,
     markers: state.markers, trackList: state.trackList,
     gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo, tracks: state.tracks,
@@ -7758,7 +7863,7 @@ function exportMidiBytes() {
     if (t.kind === 'tone') {
       if (channel === 9) channel++; // channel 9 is reserved for drums
       const ch = channel++ % 16;
-      for (const n of state.tracks[t.id] || []) {
+      for (const n of trackNotes(t.id) || []) {
         if (!n.freq) continue;
         const midiNum = Math.max(0, Math.min(127, freqToMidi(n.freq)));
         const vel = Math.max(1, Math.min(127, Math.round((n.vel ?? 1) * 127)));
@@ -7769,7 +7874,7 @@ function exportMidiBytes() {
       }
     } else {
       const hitDurTick = Math.max(1, Math.round(ticksPerEighth * 0.25));
-      for (const h of state.tracks[t.id] || []) {
+      for (const h of trackNotes(t.id) || []) {
         const note = GM_DRUM_NOTE[h.type] ?? 38;
         const startTick = Math.round(h.start * ticksPerEighth);
         const vel = Math.max(1, Math.min(127, Math.round(hitVel(h) * 127)));
@@ -7945,7 +8050,7 @@ function importMidiIntoSong(buffer) {
     const desc = { id, name, color: TRACK_PALETTE[tonalCount % TRACK_PALETTE.length], kind: 'tone' };
     const rIdx = state.trackList.findIndex(t => t.kind === 'rhythm');
     state.trackList.splice(rIdx < 0 ? state.trackList.length : rIdx, 0, desc);
-    state.tracks[id] = notes;
+    setTrackNotes(id, notes);
     state.gains[id] = 0.9; state.waveform[id] = 'square'; state.pan[id] = 0; state.mute[id] = false; state.solo[id] = false;
     lastNewId = id;
   }
@@ -7954,7 +8059,7 @@ function importMidiIntoSong(buffer) {
   // event came from beyond the source MIDI track, which this doesn't track.
   const rhythmTargetId = (state.trackList.find(t => t.kind === 'rhythm') || {}).id;
   if (rhythmTargetId && importedRhythmHits.length) {
-    state.tracks[rhythmTargetId] = state.tracks[rhythmTargetId].concat(importedRhythmHits);
+    setTrackNotes(rhythmTargetId, trackNotes(rhythmTargetId).concat(importedRhythmHits));
   }
   refreshTrackArrays();
   for (const t of state.trackList) ensureChannelNodes(t.id);
@@ -8277,7 +8382,7 @@ function applyPresetToTrack(track, preset) {
   // `in`, not truthiness: null is a real value here (a plain 50% square), and
   // presets saved before duty existed have no key at all and must not reset it.
   if ('duty' in preset) setTrackDuty(track, preset.duty);
-  const n = state.tracks[track][0];
+  const n = trackNotes(track)[0];
   if (n) previewNote(track, n);
   render();
   autosave();
@@ -9130,7 +9235,7 @@ function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
   if (!enabled || !depth) return;
   const duckTo = Math.max(0.05, 1 - depth);
   const releaseSec = 0.15;
-  for (const id of RHYTHM_TRACK_IDS) for (const h of state.tracks[id]) {
+  for (const id of RHYTHM_TRACK_IDS) for (const h of trackNotes(id)) {
     if ((h.type !== 'kick' && h.type !== 'snare') || h.start < fromCol || h.start >= toCol) continue;
     const at = startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec;
     duckGain.gain.cancelScheduledValues(at);
@@ -10225,11 +10330,11 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
     const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(state.tracks[id], startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanVoiceIn[id] || chanGain[id], getTrackVoice(id));
+    scheduleTrackNotes(trackNotes(id), startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanVoiceIn[id] || chanGain[id], getTrackVoice(id));
   }
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;
-    for (const h of state.tracks[id].filter(n => n.start >= fromCol && n.start < toCol)) {
+    for (const h of trackNotes(id).filter(n => n.start >= fromCol && n.start < toCol)) {
       scheduleDrum(h.type, startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec, chanVoiceIn[id] || chanGain[id], hitVel(h), hitPan(h), getTrackKitId(id));
     }
   }
@@ -10393,7 +10498,7 @@ function endStepIfDone() {
 // between navigating a part and counting bars in the dark. Sorted low to high
 // so a chord is always read out in the same order.
 function stepContentsLabel(track, col) {
-  const here = (state.tracks[track] || []).filter(it => it.start > col - EPS && it.start < col + state.grid - EPS);
+  const here = (trackNotes(track) || []).filter(it => it.start > col - EPS && it.start < col + state.grid - EPS);
   if (!here.length) return 'empty';
   return isRhythm(track)
     ? here.map(h => RHYTHM_LABELS[h.type] || h.type).sort().join(', ')
@@ -10426,7 +10531,7 @@ function stepTrack(dir) {
 // than to the end of the song, because that is where you would carry on
 // writing. An empty track has nowhere to carry on from, so it stays at 0.
 function stepEnd(track) {
-  const seq = state.tracks[track] || [];
+  const seq = trackNotes(track) || [];
   if (!seq.length) return 0;
   return quant(Math.min(COLS - state.grid, Math.max(...seq.map(it => it.start)) + state.grid));
 }
@@ -10436,11 +10541,11 @@ function stepBack() {
   const track = state.recTrack;
   const col = quant(Math.max(0, state.playhead - state.grid));
   setStepPlayhead(col);
-  const seq = state.tracks[track] || [];
+  const seq = trackNotes(track) || [];
   const inStep = (it) => it.start > col - EPS && it.start < col + state.grid - EPS;
   const removed = seq.filter(inStep);
   if (removed.length) {
-    state.tracks[track] = seq.filter(it => !inStep(it));
+    setTrackNotes(track, seq.filter(it => !inStep(it)));
     if (state.selected && removed.includes(state.selected.item)) state.selected = null;
     for (const it of removed) state.multiSelected.delete(it);
     render(); autosave();
@@ -10655,7 +10760,7 @@ function humanizeStart(start, amount) {
 // the pitch axis. One place for that rule, not two.
 function applyItemEdit(track, items, move) {
   const targets = new Set(items);
-  const rest = state.tracks[track].filter((it) => !targets.has(it));
+  const rest = trackNotes(track).filter((it) => !targets.has(it));
   let moved = 0;
   for (const it of items) if (move(it)) moved++;
   const conflict = isRhythm(track) ? hitsConflict : notesConflict;
@@ -10667,7 +10772,7 @@ function applyItemEdit(track, items, move) {
   }
   let kept = rest;
   for (const it of survivors) kept = kept.filter((o) => !conflict(o, it));
-  state.tracks[track] = [...kept, ...survivors].sort((a, b) => a.start - b.start);
+  setTrackNotes(track, [...kept, ...survivors].sort((a, b) => a.start - b.start));
   return moved;
 }
 function applyTiming(track, items, move) {
@@ -10684,13 +10789,13 @@ function timingTargets() {
   const track = state.activeTrack;
   if (state.multiSelected.size) return { track, items: [...state.multiSelected] };
   if (state.selected && state.selected.track === track) return { track, items: [state.selected.item] };
-  return { track, items: [...state.tracks[track]] };
+  return { track, items: [...trackNotes(track)] };
 }
 // Anything applyTiming() merged away is gone from the track, so the selection
 // must let go of it — a selected note that no longer exists would be nudged
 // and drawn as if it did.
 function dropVanishedSelection(track) {
-  const live = new Set(state.tracks[track]);
+  const live = new Set(trackNotes(track));
   for (const it of [...state.multiSelected]) if (!live.has(it)) state.multiSelected.delete(it);
   if (state.selected && !live.has(state.selected.item)) state.selected = null;
 }
@@ -10861,7 +10966,7 @@ function commitNote(track, midi, start, len, vel = 1) {
     porta: false, crush: false, echo: false, chorus: false, reverb: false };
   // The same predicate every other placement path uses, so a recorded note
   // replaces an overlapping one of the same pitch instead of stacking on it.
-  state.tracks[track] = clearOverlaps(state.tracks[track], note).concat([note]);
+  setTrackNotes(track, clearOverlaps(trackNotes(track), note).concat([note]));
   render(); autosave();
 }
 function commitHit(track, type, start, vel = 1) {
@@ -10872,7 +10977,7 @@ function commitHit(track, type, start, vel = 1) {
   // could reach it at all.
   const hit = { start: quant(start), type };
   if (vel < 1) hit.vel = vel;
-  state.tracks[track] = state.tracks[track].filter(h => !hitsConflict(h, hit)).concat([hit]);
+  setTrackNotes(track, trackNotes(track).filter(h => !hitsConflict(h, hit)).concat([hit]));
   render(); autosave();
 }
 // Record = one bar of count-in, then roll and capture. The count-in exists so
@@ -11017,12 +11122,12 @@ document.getElementById('export').addEventListener('click', () => {
   const box = document.getElementById('exportBox');
   if (box.style.display === 'block') { box.style.display = 'none'; return; } // click again to close
   const toneBlocks = state.trackList.filter(t => t.kind === 'tone').map(t => {
-    const notes = exportNotesArray(fromColumnNotes(state.tracks[t.id]), false, '  ');
+    const notes = exportNotesArray(fromColumnNotes(trackNotes(t.id)), false, '  ');
     return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
   }).join(',\n');
   const tracksCode = `export const TRACKS = [\n${toneBlocks}\n];`;
   const rhythmBlocks = state.trackList.filter(t => t.kind === 'rhythm').map(t => {
-    const hits = exportNotesArray(fromColumnHits(state.tracks[t.id]), true, '  ');
+    const hits = exportNotesArray(fromColumnHits(trackNotes(t.id)), true, '  ');
     return `  { name: ${jsStr(t.name)}, pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, hits: ${hits} }`;
   }).join(',\n');
   const rhythmCode = `export const RHYTHM_TRACKS = [\n${rhythmBlocks}\n];`;
