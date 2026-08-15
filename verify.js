@@ -427,11 +427,18 @@ function auditIcons(repoRoot) {
 async function main() {
   const errors = [];
   const steps = [];
+  // Each line carries how long its step took. A full run is a twenty-minute
+  // round trip, so "the suite got slower" is a thing that happens and then has
+  // to be chased with no evidence — the timing turns that into a line you can
+  // read off the log. It is also the cheapest way to notice a step that has
+  // quietly started waiting out a timeout instead of asserting something.
   function step(name, fn) {
     steps.push(async () => {
       if (ONLY && !name.toLowerCase().includes(ONLY)) return;
-      try { await fn(); console.log(`  ok  ${name}`); }
-      catch (e) { console.log(`FAIL  ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
+      const t0 = Date.now();
+      const secs = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+      try { await fn(); console.log(`  ok  [${secs()}] ${name}`); }
+      catch (e) { console.log(`FAIL  [${secs()}] ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
     });
   }
 
