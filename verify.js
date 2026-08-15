@@ -39,6 +39,40 @@ const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || '').toLowerCase() : 
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
+// A saved song stores a track's part as *clips* rather than a flat note list
+// (see the Clips section in index.html): each clip is a window onto its own
+// notes, whose starts are relative to the clip's content origin. Anything
+// asserting on a saved song therefore has to flatten that the way the app's
+// own trackNotes() does — read `song.tracks[id][0]` directly and you get a
+// clip object where you meant a note, which does not throw, it just silently
+// compares the wrong thing. That is exactly how ten steps in this suite failed
+// at once with `{"start":0,"len":null}` in their message: not one of them had
+// found a bug, they had all read a clip as a note.
+//
+// Takes both shapes on purpose. A v2 file (and any hand-written one) still
+// holds a flat list, and `applySongData()` still loads it, so the audit below
+// must keep accepting it too.
+function savedNotesOf(song, id) {
+  const part = ((song && song.tracks) || {})[id] || [];
+  // Note the empty-array trap CLAUDE.md warns about: [].every() is true, so an
+  // empty part would read as "already clips" and flatten to nothing rather
+  // than to itself. Length first.
+  if (!part.length || !part.every((c) => c && Array.isArray(c.notes))) return part;
+  const out = [];
+  for (const c of part) {
+    for (const n of c.notes) {
+      if (n.start >= c.offset && (c.len == null || n.start < c.offset + c.len)) {
+        out.push({ ...n, start: c.start + (n.start - c.offset) });
+      }
+    }
+  }
+  return out;
+}
+// The same function, installed on the page once per document so the browser-
+// side assertions can call it too. One definition, two sides — the alternative
+// was pasting the flattening into seventeen evaluate() strings.
+const SAVED_NOTES_INSTALL = `window.__savedNotes = ${String(savedNotesOf)};`;
+
 // ---------------------------------------------------------------------------
 // Bundled-song audit. The first of two checks in this file that never open a
 // browser: it reads songs/*.json and asks whether index.html would accept
@@ -135,7 +169,7 @@ function auditBundledSongs(repoRoot) {
 
     for (const id of Object.keys(song.tracks || {})) {
       if (!ids.includes(id)) { add(`tracks["${id}"] is not in trackList — its notes/hits are dropped on load`); continue; }
-      const seq = song.tracks[id] || [];
+      const seq = savedNotesOf(song, id);
       if (isRhythm(id)) {
         const unknown = [...new Set(seq.filter((h) => !RHYTHM_ROWS.includes(h.type)).map((h) => h.type))];
         if (unknown.length) add(`${id}: hit(s) on an unknown drum: ${unknown.join(', ')}`);
@@ -443,6 +477,9 @@ async function main() {
     });
     cdp.on('Page.javascriptDialogOpening', () => { cdp.send('Page.handleJavaScriptDialog', { accept: true }); });
     await cdp.send('Page.setBypassCSP', { enabled: true });
+    // Survives every goto()/fresh(), so a step never has to remember to
+    // install it — see SAVED_NOTES_INSTALL for why the assertions need it.
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SAVED_NOTES_INSTALL });
 
     async function goto(url) {
       const loaded = new Promise((resolve) => cdp.on('Page.loadEventFired', resolve));
@@ -2000,14 +2037,14 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
-        return (d.tracks[id] || [])[0] || null;
+        return window.__savedNotes(d, id)[0] || null;
       })()`);
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
-        const n = (d.tracks[id] || [])[0];
+        const n = window.__savedNotes(d, id)[0];
         return n && Math.abs(n.pan + 0.7) < 1e-6;
       })()`, 4000);
 
@@ -2067,7 +2104,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind === 'rhythm').id;
-        const h = (d.tracks[id] || [])[0];
+        const h = window.__savedNotes(d, id)[0];
         return h && Math.abs(h.pan - 0.6) < 1e-6 && !('vel' in h);
       })()`, 4000);
     });
@@ -2107,7 +2144,7 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
+        return window.__savedNotes(d, id).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
       })()`);
 
       // Plain Play with a track armed means "listen", not "type into the song":
@@ -2215,7 +2252,7 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === ${JSON.stringify(name)}) || {}).id;
-        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq, type: n.type }))
+        return window.__savedNotes(d, id).map((n) => ({ start: n.start, len: n.len, freq: n.freq, type: n.type }))
           .sort((a, b) => a.start - b.start || (a.freq || 0) - (b.freq || 0));
       })()`);
       const playheadLeft = () => cdp.evaluate(`document.querySelector('.playhead').style.left`);
@@ -3992,7 +4029,7 @@ async function main() {
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].map(n => n.vel ?? 1).sort();
+        return window.__savedNotes(d, id).map(n => n.vel ?? 1).sort();
       })()`);
       if (!saved || !saved.some((v) => v < 0.5)) {
         throw new Error(`dragging a head should store a quieter velocity, song has ${JSON.stringify(saved)}`);
@@ -4062,7 +4099,7 @@ async function main() {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].filter(n => n.pan != null).length;
+        return window.__savedNotes(d, id).filter(n => n.pan != null).length;
       })()`);
       if (!wrote) throw new Error('dragging on the Pan lane should store a pan, not a velocity');
       await goto(APP_URL);
@@ -4151,7 +4188,7 @@ async function main() {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].map(n => n.start).sort((a, b) => a - b);
+        return window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b);
       })()`);
       // Total distance from the grid. `grid` is 1 (an eighth) on a fresh page.
       const err = (list) => list.reduce((sum, st) => sum + Math.abs(st - Math.round(st)), 0);
@@ -4223,7 +4260,7 @@ async function main() {
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
         const seen = new Set(); let dupes = 0;
-        for (const n of d.tracks[id]) {
+        for (const n of window.__savedNotes(d, id)) {
           const key = n.start + '@' + n.freq;
           if (seen.has(key)) dupes++;
           seen.add(key);
@@ -4447,7 +4484,7 @@ async function main() {
       // after the last message and finding yesterday's copy.
       const savedItems = async (expected) => {
         const id = await armed();
-        const read = `((JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).tracks || {})[${JSON.stringify(id)}] || []`;
+        const read = `window.__savedNotes(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}, ${JSON.stringify(id)})`;
         await waitFor(`(${read}).length === ${expected}`);
         return cdp.evaluate(read);
       };
@@ -4638,7 +4675,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        const h = d.tracks[id][0];
+        const h = window.__savedNotes(d, id)[0];
         return h && Math.abs(h.vel - 0.45) < 1e-6;
       })()`, 4000);
 
@@ -5139,8 +5176,8 @@ async function main() {
         const d = JSON.parse(localStorage.getItem(k));
         const ids = d.trackList.filter(t => t.kind !== 'rhythm').map(t => t.id);
         return {
-          notes: (d.tracks[ids[0]] || []).length,
-          copyNotes: (d.tracks[ids[1]] || []).length,
+          notes: window.__savedNotes(d, ids[0]).length,
+          copyNotes: window.__savedNotes(d, ids[1]).length,
           send: (d.fxSend || {})[ids[1]],
         };
       })()`);
@@ -5164,8 +5201,8 @@ async function main() {
       const diverged = `(() => {
         const s = ${savedTracks};
         if (!s) return false;
-        const a = (s.d.tracks[s.ids[0]] || []).map(n => n.freq).sort().join(',');
-        const b = (s.d.tracks[s.ids[1]] || []).map(n => n.freq).sort().join(',');
+        const a = window.__savedNotes(s.d, s.ids[0]).map(n => n.freq).sort().join(',');
+        const b = window.__savedNotes(s.d, s.ids[1]).map(n => n.freq).sort().join(',');
         return a !== b;
       })()`;
       await waitFor(diverged, 6000).catch(() => {
@@ -5337,7 +5374,7 @@ async function main() {
         if (!k) return [];
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []);
+        return window.__savedNotes(d, id);
       })()`);
 
       await cdp.evaluate(`document.getElementById('record-btn').click()`);
@@ -5353,7 +5390,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []).length === 1;
+        return window.__savedNotes(d, id).length === 1;
       })()`, 6000);
       const lapOne = (await bassNotes()).map((n) => n.freq);
 
@@ -5431,14 +5468,14 @@ async function main() {
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        return (d.tracks[id] || []).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
+        return window.__savedNotes(d, id).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
       })()`);
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        return (d.tracks[id] || []).length > 8;
+        return window.__savedNotes(d, id).length > 8;
       })()`, 6000);
       const before = await hits();
 
