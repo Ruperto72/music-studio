@@ -89,7 +89,7 @@ hur roligt det vore att bygga.
   alternativa tagningar säger om sig själv, fast större: den lägger en axel
   *ovanpå* `state.tracks[id]`, medan klipp bygger om själva notlagringen och
   ändrar vad varje redigeringsgest betyder.
-  **Byggt hittills** (fas 1–4; posten blir kvar tills resten är gjord):
+  **Byggt hittills** (fas 1–5; posten blir kvar tills resten är gjord):
   1. Klipp som lagring, ett obundet klipp per spår. Osynligt av konstruktion —
      samma svit, samma utfall, ny lagring. `version` 2 → 3, v2-filer laddar
      genom `toClips()`.
@@ -106,9 +106,10 @@ hur roligt det vore att bygga.
      samma skäl som kroppen inte tar pointer events alls: ett klipp täcker
      hela sin sträcka av lanen, så en gripbar kropp hade ätit varje
      placeringsklick och varje marquee-drag inuti den.
-  **Kvar:** heal (6), inspelning skapar klipp (7), radsignaturen (8). Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell
-  sen" — blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem,
-  och det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att
+  **Kvar:** heal (6), inspelning skapar klipp (7), radsignaturen (8).
+  Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell sen" —
+  blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem, och
+  det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att
   fastna i.
   **Vad det gör med uppspelningen — den axeln avgör om det här får byggas.**
   Att materialet spelas upp utan störningar går före funktionen; hackar
