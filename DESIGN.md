@@ -1289,71 +1289,62 @@ establish, and is worth recording because both look obviously right:
   set correctly either — a row is as tall as the taller of its lane (known at
   build time) and its header (content-driven, varying with the chip count).
 
-**Built, measured at 13×, and reverted — twice over.** Two things had to be
+**Built, measured, reverted twice — and now shipped.** Two things had to be
 true together, and only the pair works:
 
 - *Keeping the row attached and refilling it* buys **nothing**. Measured: rows
   survived a render 24/24, and the time did not move (250 ms before, 250 ms
   after). The probe that suggested it would — "detach and re-attach the same
   nodes costs 194 ms of the 265" — measured re-attaching nodes whose layout was
-  already computed, which is not what a render does. A second probe was
-  misleading the same way: "replace every lane in place: 30 ms" used an
-  `innerHTML` round-trip, nothing like 24 591 `createElement` calls.
+  already computed, which is not what a render does.
 - *Also skipping rows whose contents are unchanged* is where the win is.
-  With a per-row signature deciding that, **272 ms → 21 ms** at 24 tracks,
-  against a measured ceiling of 15 ms for touching only the one row that
-  changed.
 
-So the design is settled and the prize is real. What sent it back was the
-cost of being *sure*: the signature must name every input a row draws, and a
-forgotten one is a row that silently stops updating. Three were missed on the
-first attempt and caught by the suite (`oscPickerOpen`, the marquee, and the
-row's own index — the reorder arrows disable at the ends of the list). Then
-three *different* steps began failing intermittently — the master EQ knob
-losing focus, step-entry Backspace, the mobile song list — where the same
-build passed on a re-run. Whether the render rework caused those or merely
-changed the timing enough to expose them was not established, and shipping a
-change to the render core on that footing is not defensible. The measurements
-are kept here; the code is not.
+What sent the first two attempts back was not the design but the cost of being
+*sure*: the signature must name every input a row draws, and a forgotten one is
+a row that silently stops updating. Three were missed the first time
+(`oscPickerOpen`, the marquee, and the row's own index), then three unrelated
+steps began failing intermittently and it could not be established whether the
+rework caused them.
 
-Anything that tries again needs: the signature derived from lists that already
-exist (`SPARSE_TRACK_MAPS` covers the per-track maps), a verify step asserting
-both halves — that unchanged rows really are reused *and* that each thing a row
-draws still forces a rebuild — and a suite that is stable across repeated runs
-*before* the change, so a new intermittent failure is attributable. Note that
-tagging the row element to detect a rebuild does not work: a reused row is the
-same element, which is the entire point.
+**What made the third attempt defensible.** `renderTracks()` now keeps a
+per-track signature and rebuilds only the rows whose signature moved. Reused
+rows are never re-appended, since re-attaching forces the same layout a fresh
+node does. Two guards carry it:
 
-**A fourth requirement, found while building clips and not previously written
-down: the signature has to change when an item's *identity* changes, not only
-when its values do.** A row's listeners close over the actual note and hit
-objects — `state.selected` holds the object, `state.multiSelected` is a Set of
-them, `removeHit()` filters on `h !== hit`. Undo and song loading replace those
-objects wholesale with equal-valued ones (`restoreSnapshot()` assigns
-`state.tracks` straight from parsed JSON), so a value-derived signature reads as
-unchanged, the row is reused, and its listeners go on pointing at objects that
-are no longer in the song. Nothing throws; clicks simply stop reaching the
-state. That is a candidate mechanism for the three unrelated steps that began
-failing intermittently on the reverted attempt — the master EQ knob, step-entry
-Backspace and the mobile song list all sit downstream of stale handlers — though
-it was never established and is offered as a lead rather than a conclusion.
+- **Identity, not just values** (`serialOf()`, a WeakMap of object → number).
+  A row's listeners close over the actual note and hit objects; undo and song
+  loading replace them with equal-valued copies, so a value-derived signature
+  reads as unchanged and the reused row's handlers point at objects no longer
+  in the song. Nothing throws — clicks simply stop landing.
+- **An audit that measures the enumeration instead of trusting it.** With
+  `window.__rowAudit`, every reused row is built anyway and compared with the
+  one kept; a mismatch is a console error, and `verify.js` fails any step that
+  logs one. The flag is on for the whole suite, so all 86 steps test whether
+  the signature is complete against every interaction they perform.
 
-What makes it tractable now is that the clip work gave the note lists a single
-write path. Every mutation goes through `setTrackNotes()` (see the Clips
-section in `index.html`), so a per-track revision counter bumped there, plus the
-handful of places that replace `state.tracks` as a whole, covers identity
-completely — which was not true when the attempt was made and every call site
-wrote to the array directly.
+It earned its keep on the first full run: three real gaps (the pitch window,
+`inspectorOwner`, `stripFocusKey`) and one correct difference to normalise
+away. The pitch-window gap was also the cause of the run's only outright step
+failure — "Chord buttons at the pitch ceiling" saw two notes at one pitch,
+because a reused row positioned them against a stale window. Without the audit
+that is an inexplicable failure in an unrelated step, which is exactly what
+made the second attempt impossible to judge.
 
-**Measured again after clips landed, on the same one-liner below:** 60.8 ms at
-5 tracks, 126.9 at 12, 245.9 at 24 — against 61 / 122 / 247 before the clip
-layer existed. The blocks, their two trim edges and the move grip are one more
-`div` each per clip per row and cost nothing a render can feel, which is the
-same result effects gave, and for the same reason: it is the layout, not the
-node count.
+Two things the audit deliberately normalises out: the VU mask's width, written
+by the metering loop, and `.dragging`, written by the pointer handlers. Both
+are written outside `render()`, and what is written outside render is not
+render's to reproduce. Add to that list only for state with the same property,
+never to silence a real mismatch.
 
-`verify.js`'s "off-screen rows keep their real height" step exists to keep
-whatever does it honest.
+Measured after the change, on the one-liner below:
+
+| tracks, expanded | before | after |
+|---|---|---|
+| 5 | 60.8 ms | 25.3 ms |
+| 12 | 126.9 ms | 21.2 ms |
+| 24 | 245.9 ms | 20.7 ms |
+
+Roughly flat with track count, since only the row that changed is built.
 
 Re-measure on any machine by timing what a real click costs, which is the
 same path a drag takes:
