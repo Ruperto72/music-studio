@@ -59,11 +59,12 @@ function savedNotesOf(song, id) {
   // than to itself. Length first.
   if (!part.length || !part.every((c) => c && Array.isArray(c.notes))) return part;
   const out = [];
+  // Notes carry timeline columns, so a window shows an item when the item's
+  // own start falls inside it — no translation. See the Clips section in
+  // index.html for why the `offset` this used to apply was removed.
   for (const c of part) {
     for (const n of c.notes) {
-      if (n.start >= c.offset && (c.len == null || n.start < c.offset + c.len)) {
-        out.push({ ...n, start: c.start + (n.start - c.offset) });
-      }
+      if (n.start >= c.start && (c.len == null || n.start < c.start + c.len)) out.push(n);
     }
   }
   return out;
@@ -5842,6 +5843,154 @@ async function main() {
       const { clip, hit } = JSON.parse(order);
       if (!(Number(clip) < Number(hit))) {
         throw new Error(`the clip block must draw behind the part it holds, got ${order}`);
+      }
+    });
+
+    step('Clips: splitting cuts the window in two and keeps the whole part on both sides', async () => {
+      await fresh();
+      // Phase 3. The interesting claim is not that two blocks appear — it is
+      // that a split is a *window* operation: each half keeps the entire
+      // content and merely shows its own part of it. That is what makes the
+      // trim in phase 4 able to give material back, so it is asserted here
+      // rather than left until the feature that depends on it.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Six hits, one per column from 0..5 — re-querying the lane each time,
+      // since placing one re-renders and replaces the element.
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      // Activate the rhythm track and put the playhead in the middle of them.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      // autosave() is debounced, so wait for the draft to carry the split
+      // rather than reading it the instant the DOM shows two blocks.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && (d.tracks[t.id] || []).length === 2;
+      })()`);
+
+      // The saved song is the honest place to look: what the windows show
+      // must be unchanged (all six hits, same columns), while each clip must
+      // still be holding all six in its own content.
+      const shape = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        const clips = d.tracks[id];
+        return JSON.stringify({
+          clips: clips.map(c => ({ start: c.start, len: c.len, held: c.notes.length })),
+          sameSource: new Set(clips.map(c => c.source)).size === 1,
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const s = JSON.parse(shape);
+      if (s.clips.length !== 2) throw new Error(`a split should leave two clips, got ${shape}`);
+      // Windows meet exactly at the cut, and the right half's offset has moved
+      // into the content by as much as the left half is long.
+      const [l, r] = s.clips;
+      if (!(l.start === 0 && l.len === 3)) throw new Error(`left window wrong: ${shape}`);
+      if (!(r.start === 3)) throw new Error(`right window wrong: ${shape}`);
+      if (!s.sameSource) throw new Error(`both halves came from one clip and must share its source: ${shape}`);
+      // The claim that matters: neither half threw material away.
+      if (!(l.held === 6 && r.held === 6)) {
+        throw new Error(`each half must keep the whole part so a trim can give it back, got ${shape}`);
+      }
+      // ...and yet nothing changed about what is heard or drawn.
+      if (JSON.stringify(s.visible) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`splitting must not change what the windows show, got ${shape}`);
+      }
+      const drawn = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      if (drawn !== 6) throw new Error(`splitting must not change the drawn part, got ${drawn} hits`);
+    });
+
+    step('Clips: an edit after a split keeps what the other window hides', async () => {
+      await fresh();
+      // The trap phase 1's setTrackNotes() walked straight into: `items` comes
+      // from trackNotes(), which returns only what the windows *show*, so
+      // emptying every clip before refiling would silently drop everything
+      // they hide. With one unbounded clip nothing was hidden and it could not
+      // bite; the moment a split creates a second window it destroys exactly
+      // the material trimming is supposed to be able to give back.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+
+      // Now edit: erase one visible hit, which routes through setTrackNotes().
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      // Picking the tool re-renders and replaces the hit elements, so query
+      // them after it — and use .click(), the pattern the other erase steps
+      // use, rather than a hand-built MouseEvent.
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`(() => {
+        const hits = [...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')];
+        hits.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        hits[0].click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && window.__savedNotes(d, t.id).length === 5;
+      })()`);
+
+      const after = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify({
+          held: d.tracks[id].map(c => c.notes.length),
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const a = JSON.parse(after);
+      if (JSON.stringify(a.visible) !== JSON.stringify([1, 2, 3, 4, 5])) {
+        throw new Error(`erasing one visible hit should leave the other five, got ${after}`);
+      }
+      // The right clip hides columns 0-2 and must still be holding them: it
+      // was not edited, so an edit on its neighbour must not have cost it
+      // anything. Five in the left (it lost the erased one), six in the right.
+      if (JSON.stringify(a.held) !== JSON.stringify([5, 6])) {
+        throw new Error(`an edit must only replace what a window shows, not what it hides, got ${after}`);
       }
     });
 

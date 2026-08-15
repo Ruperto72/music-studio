@@ -1449,6 +1449,7 @@
           <button id="save-file" class="file-menu-item" data-glyph="save">Save as .json</button>
           <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
+          <button id="split-clip-btn" class="file-menu-item" data-glyph="scissors" title="Cut the active track's clip in two at the playhead">Split clip at playhead</button>
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
           <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
@@ -1900,6 +1901,12 @@ const GLYPHS = {
   // The velocity lane draws stems of differing height with a diamond head, so
   // the icon is that: three stems, tallest in the middle, on a baseline.
   // Quantize: two marks off the line being pulled onto it.
+  // A cut through a block: the block's outline with a gap where the blade went
+  // and the blade itself down the middle. It draws the *result* of splitting
+  // rather than a pair of scissors, matching the kit glyphs, which draw the
+  // shape of a decay rather than a drum.
+  scissors: { box: '0 0 24 24', paths: ['M4 8h6', 'M4 8v8', 'M4 16h6', 'M20 8h-6', 'M20 8v8', 'M20 16h-6',
+                                        'M12 4v16'], },
   quantize: { box: '0 0 24 24', paths: ['M12 3v18', 'M6 7h4', 'M6 7l-2 0', 'M14 15h4', 'M18 15h2',
                                         'M8.5 5.5L10.5 7L8.5 8.5z', 'M15.5 13.5L13.5 15L15.5 16.5z'], },
   velocity: { box: '0 0 24 24', paths: ['M3 20h18', 'M7 20V13', 'M12 20V6', 'M17 20V16',
@@ -2684,7 +2691,7 @@ function derivedColsFromTracks(tracks) {
   const itemsOf = (id) => {
     let out = [];
     for (const clip of toClips(tracks[id])) {
-      for (const item of clip.notes) if (clipHolds(clip, item)) out.push({ ...item, start: toAbsolute(clip, item) });
+      for (const item of clip.notes) if (clipHolds(clip, item)) out.push(item);
     }
     return out;
   };
@@ -2748,6 +2755,133 @@ function hasRhythmTrackData(data) {
 // a track you don't want is one click, while adding one means naming it,
 // picking a waveform and setting a level. Starting fuller is the cheaper
 // mistake.
+// ---------- Clips ----------
+// A track's part is stored as a list of *clips* rather than a flat list of
+// notes. A clip is not the notes — it is a **window** onto them:
+//
+//   { start, len, source, notes }
+//
+// `start`/`len` place the window on the timeline, and `notes` are the material
+// it is a window onto. An item sounds only while it falls inside the window,
+// so trimming an edge *hides* rather than deletes, and pulling the edge back
+// out brings the same notes back. That is the property the whole model exists
+// for; without it this would be "a group of notes you can drag", which is a
+// different feature that happens to look the same. See TODO.md.
+//
+// **Notes are stored in timeline columns, not clip-relative ones.** An earlier
+// version carried an `offset` saying how far into the content the window's
+// left edge sat, with note starts relative to the content's own origin. It was
+// removed once it had to work, for two reasons:
+//
+//   - It bought nothing. Every behaviour it was there for — trim that gives
+//     material back, split, moving a clip, sliding content inside a fixed
+//     window — comes out the same when the notes carry timeline positions and
+//     moving a clip rewrites them, which is exactly what a group drag already
+//     does to the same objects.
+//   - It was actively harmful. Translating on read means handing back *copies*,
+//     and this app identifies a note by the object itself: state.selected holds
+//     the item, state.multiSelected is a Set of items, removeHit() filters on
+//     `h !== hit`, and every drag mutates `n.start` in place. With copies, all
+//     of that silently stopped matching — erasing a hit after a split did
+//     nothing at all, because the object being removed was never the object in
+//     the list.
+//
+// **Everything reads through trackNotes() and writes through setTrackNotes().**
+// Adding a second way to reach the notes is how the note/hit conflict helpers
+// grew five hand-written variants (see notesConflict) — one door in, one out.
+//
+// Two clips that came from splitting one original share a `source`. That is
+// the identity heal needs (phase 6): same source, adjacent windows. It cannot
+// be answered by comparing note arrays, because splitting hands each half its
+// own copy of the material.
+let nextClipSource = 1;
+const newClipSource = () => `c${nextClipSource++}`;
+// A loaded song brings its own ids, so the counter has to clear them or the
+// next split would mint one that already exists and heal would join two clips
+// that never came from the same original.
+function adoptClipSources(tracks) {
+  for (const part of Object.values(tracks || {})) {
+    for (const clip of Array.isArray(part) ? part : []) {
+      const n = isClip(clip) && typeof clip.source === 'string' ? parseInt(clip.source.slice(1), 10) : NaN;
+      if (Number.isFinite(n) && n >= nextClipSource) nextClipSource = n + 1;
+    }
+  }
+}
+function makeClip(notes = [], { start = 0, len = null, source = null } = {}) {
+  return { start, len, source: source || newClipSource(), notes };
+}
+const isClip = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Array.isArray(c.notes);
+// A saved track is either v3 (already clips) or v2 (a flat note list). Both
+// arrive here; nothing else in the app has to know which it was.
+function toClips(stored) {
+  if (!Array.isArray(stored)) return [makeClip()];
+  // Length first: [].every() is true, so an empty part would read as "already
+  // clips" and be left with no clip at all.
+  if (stored.length && stored.every(isClip)) return stored;
+  return [makeClip(stored.filter(n => n && typeof n === 'object'))];
+}
+const clipsOf = (track) => state.tracks[track] || (state.tracks[track] = [makeClip()]);
+// A null `len` means "unbounded", which is what a clip covering a whole track
+// has until trimming gives it a real edge — so it ends where the song does.
+const clipEnd = (clip) => (clip.len == null ? COLS : clip.start + clip.len);
+// The one predicate for "this window shows that item", used by the read path,
+// the write path and the renderer alike.
+const clipHolds = (clip, item) =>
+  item.start >= clip.start && (clip.len == null || item.start < clip.start + clip.len);
+// Whether a track is in the shape every song starts and migrates into: one
+// window, at the origin, hiding nothing. Both paths below shortcut on it.
+const isWholeTrackClip = (clips) => clips.length === 1 && clips[0].start === 0 && clips[0].len == null;
+// The one read path. Hands back the real item objects — never copies — because
+// identity is what selection, dragging and removal are built on.
+function trackNotes(track) {
+  const clips = clipsOf(track);
+  if (isWholeTrackClip(clips)) return clips[0].notes;
+  const out = [];
+  for (const clip of clips) for (const item of clip.notes) if (clipHolds(clip, item)) out.push(item);
+  return out;
+}
+// The one write path. Files items back into the window that covers each.
+function setTrackNotes(track, items) {
+  const clips = clipsOf(track);
+  if (isWholeTrackClip(clips)) { clips[0].notes = items; return items; }
+  // **Only what the windows show is replaced.** `items` came from
+  // trackNotes(), which returns the visible material, so emptying every clip
+  // before refiling would throw away everything they hide — and what a trimmed
+  // edge hides is precisely what pulling that edge back out has to give back.
+  // Clearing wholesale was safe only while there could be one window and
+  // nothing was hidden; the first split plus the first edit would have
+  // destroyed the model's whole point.
+  for (const clip of clips) clip.notes = clip.notes.filter(n => !clipHolds(clip, n));
+  for (const item of items) {
+    // Anything landing outside every window joins the last clip rather than
+    // being dropped — losing a note to a gap would be the silent kind of data
+    // loss this codebase has been bitten by before.
+    const home = clips.find(c => clipHolds(c, item)) || clips[clips.length - 1];
+    home.notes.push(item);
+  }
+  // Hidden notes kept their places and new ones were appended, so order is not
+  // guaranteed by the pass above. scheduleTrackNotes() sorts anyway, but a
+  // stable order keeps a saved file diffable.
+  for (const clip of clips) clip.notes.sort((a, b) => a.start - b.start);
+  return items;
+}
+// Cuts the clip under `col` into two windows onto the same material. Neither
+// half loses anything: the material is copied whole to both and each takes the
+// window covering its side, so trimming either edge back out afterwards finds
+// the notes still there. A cut on a clip's own edge is not a cut but a no-op,
+// which is why both bounds are strict.
+function splitClipAt(track, col) {
+  const clips = clipsOf(track);
+  const i = clips.findIndex(c => col > c.start && col < clipEnd(c));
+  if (i === -1) return false;
+  const c = clips[i];
+  const copy = () => c.notes.map(n => ({ ...n, ...(n.arp ? { arp: [...n.arp] } : {}) }));
+  clips.splice(i, 1,
+    { start: c.start, len: col - c.start, source: c.source, notes: copy() },
+    { start: col, len: c.len == null ? null : c.len - (col - c.start), source: c.source, notes: copy() });
+  return true;
+}
+
 const STARTER_TRACKS = [
   { id: 'lead',    name: 'Lead',    waveform: 'square',   gain: 0.9 },
   { id: 'harmony', name: 'Harmony', waveform: 'square',   gain: 0.75, duty: 0.25 },
@@ -2834,99 +2968,6 @@ const state = {
   loopStart: 0, loopEnd: COLS,
   marquee: null              // { col0, col1, track } while marquee-selecting
 };
-
-// ---------- Clips ----------
-// A track's part is stored as a list of *clips* rather than a flat list of
-// notes. A clip is not the notes — it is a **window** onto them:
-//
-//   { start, len, offset, notes }
-//
-// `start`/`len` place the window on the timeline; `offset` says how far into
-// the content its left edge sits; `notes` carry starts relative to the
-// content's own origin. A note therefore sounds at
-// `clip.start + (note.start - clip.offset)`, and only while it falls inside
-// the window. That separation is the whole point: trimming an edge moves the
-// window, so nothing is thrown away and pulling the edge back out brings the
-// notes back. Without `offset` this would be "a group of notes you can drag",
-// which is a different feature that happens to look the same. See TODO.md.
-//
-// **Everything reads through trackNotes() and writes through setTrackNotes().**
-// Both deal in *absolute* columns, which is what every caller already meant,
-// so the clip layer stays invisible to the ~70 places that only ever wanted
-// "this track's items". Adding a second way to reach the notes is how the
-// note/hit conflict helpers grew five hand-written variants (see
-// notesConflict) — one door in, one door out.
-const CLIP_ORIGIN = { start: 0, offset: 0 };
-// The migration case and the starting case are the same shape: one clip at the
-// origin covering everything, where `offset`/`start` are 0 and relative time is
-// therefore identical to absolute. A v2 song (a flat note list) loads into
-// exactly this, which is why it behaves precisely as it did before.
-function makeClip(notes = [], { start = 0, offset = 0, len = null } = {}) {
-  return { start, offset, len, notes };
-}
-const isClip = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Array.isArray(c.notes);
-// A saved track is either v3 (already clips) or v2 (a flat note list). Both
-// arrive here; nothing else in the app has to know which it was.
-function toClips(stored) {
-  if (!Array.isArray(stored)) return [makeClip()];
-  if (stored.every(isClip)) return stored.length ? stored : [makeClip()];
-  return [makeClip(stored.filter(n => n && typeof n === 'object'))];
-}
-const clipsOf = (track) => state.tracks[track] || (state.tracks[track] = [makeClip()]);
-// An item is inside its window when its start falls within [offset, offset+len).
-// A null `len` means "unbounded", which is what a clip covering the whole track
-// has until trimming exists to give it a real edge.
-const clipHolds = (clip, item) =>
-  item.start >= clip.offset && (clip.len == null || item.start < clip.offset + clip.len);
-// Where the window closes on the timeline. A null `len` means "unbounded",
-// which is what a clip covering a whole track has until trimming exists to
-// give it a real edge — so it ends where the song does.
-const clipEnd = (clip) => (clip.len == null ? COLS : clip.start + clip.len);
-const toAbsolute = (clip, item) => clip.start + (item.start - clip.offset);
-// The one read path. Returns the track's items positioned in absolute columns,
-// which is the coordinate every caller outside this section works in.
-//
-// While a track holds one clip at the origin the items are handed back *by
-// reference*, unchanged — so the drag paths that mutate `n.start` in place go
-// on working exactly as they did. That equivalence is what makes this step
-// provably invisible, and it is also what stops holding once a clip can move:
-// see TODO.md's phase list, where moving clips and mutation-through-this-view
-// are deliberately the same piece of work.
-function trackNotes(track) {
-  const clips = clipsOf(track);
-  if (clips.length === 1 && clips[0].start === CLIP_ORIGIN.start && clips[0].offset === CLIP_ORIGIN.offset) {
-    return clips[0].notes;
-  }
-  const out = [];
-  for (const clip of clips) {
-    for (const item of clip.notes) {
-      if (clipHolds(clip, item)) out.push({ ...item, start: toAbsolute(clip, item) });
-    }
-  }
-  return out;
-}
-// The one write path. Takes absolute-column items and files them back into the
-// clips they belong to. With a single clip at the origin this is the identity,
-// which is the case every caller is in today.
-function setTrackNotes(track, items) {
-  const clips = clipsOf(track);
-  if (clips.length === 1 && clips[0].start === CLIP_ORIGIN.start && clips[0].offset === CLIP_ORIGIN.offset) {
-    clips[0].notes = items;
-    return items;
-  }
-  // More than one clip: an item belongs to the clip whose window covers it,
-  // and anything landing outside every window extends the last one rather than
-  // being dropped — losing a note to a gap between clips would be the silent
-  // kind of data loss this codebase has been bitten by before.
-  for (const clip of clips) clip.notes = [];
-  for (const item of items) {
-    const home = clips.find(c => c.len == null
-      ? item.start >= c.start
-      : item.start >= c.start && item.start < c.start + c.len) || clips[clips.length - 1];
-    home.notes.push({ ...item, start: item.start - home.start + home.offset });
-  }
-  return items;
-}
 
 // The per-track song settings that are *sparse*: `state[key][trackId]` absent
 // means "the default", so nothing seeds an entry per track and clearing one
@@ -3165,6 +3206,7 @@ function restoreTrackList(data) {
     tracks[t.id] = toClips(src[t.id]);
     gains[t.id] = 0.9; waveform[t.id] = t.kind === 'rhythm' ? 'kit' : 'square'; pan[t.id] = 0; mute[t.id] = false; solo[t.id] = false;
   }
+  adoptClipSources(tracks); // before the ids are in play — see newClipSource()
   state.tracks = tracks; state.gains = gains; state.waveform = waveform; state.pan = pan; state.mute = mute; state.solo = solo;
   // Every sparse map, not the two this used to name: applySavedMix() only
   // *sets* what the file contains, so anything left behind here survives into
@@ -3265,6 +3307,7 @@ function commitHistory() {
 }
 function restoreSnapshot(s) {
   const data = JSON.parse(s);
+  adoptClipSources(data.tracks); // an undo snapshot carries clip ids too
   state.tracks = data.tracks;
   if (Array.isArray(data.trackList)) {
     state.trackList = data.trackList;
@@ -8618,6 +8661,24 @@ timingStrength.addEventListener('input', () => {
 timingAmount.addEventListener('input', () => {
   const sixths = Math.round(parseFloat(timingAmount.value) / MICRO);
   timingAmountVal.textContent = sixths === 6 ? 'a whole eighth' : `${sixths}/6 of an eighth`;
+});
+// Split at the playhead rather than under the pointer: the app already has one
+// cursor that means "here" and one way to put it somewhere (the ruler), so a
+// split tool would have added a fourth entry to the Pen/Eraser/Grab radiogroup
+// and a second notion of where "here" is. Pro Tools separates at the edit
+// cursor for the same reason. Acts on the active track, like every other
+// track-scoped action in this menu.
+document.getElementById('split-clip-btn').addEventListener('click', () => {
+  closeFileMenu();
+  const track = state.activeTrack;
+  if (!splitClipAt(track, state.playhead)) {
+    // The playhead is on a clip's own edge, or past the end of the part —
+    // neither is a cut. Say which, rather than doing nothing silently.
+    announce('Nothing to split: the playhead is not inside a clip on this track.');
+    return;
+  }
+  render(); autosave(); commitHistory();
+  announce(`Split ${trackOf(track)?.name || track} at bar ${Math.floor(state.playhead / eighthsPerBar()) + 1}.`);
 });
 document.getElementById('timing-btn').addEventListener('click', () => {
   closeFileMenu();
