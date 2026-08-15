@@ -46,24 +46,30 @@ hur roligt det vore att bygga.
   man flytta tagningen markerar man den med marquee och drar. Den grupperingen
   är tillfällig — den finns tills man klickar någon annanstans. Det finns
   ingenting som *är* tagningen.
-  **Modellen som efterfrågas är Pro Tools, och den har tre fält, inte två:**
-  `{ start, len, offset, content }`. En not ljuder på
-  `clip.start + (note.start - clip.offset)`, men bara innanför fönstret.
-  `offset` är hjärtat: ett klipp är inte noterna utan ett **fönster** in i
-  dem, vilket är precis det som gör trim icke-destruktivt — drar man in kanten
-  raderas ingenting, och drar man ut den igen kommer noterna tillbaka. Utan
-  `offset` har man "en grupp noter man kan dra", vilket är en annan funktion
-  som råkar se likadan ut. Läkningsvillkoret faller dessutom ut gratis ur
-  samma fält: två klipp går att slå ihop precis när
-  `A.content === B.content && A.offset + A.len === B.offset && A.start + A.len === B.start`
-  — samma källa, angränsande i innehållet, angränsande på tidslinjen. Det
-  är Pro Tools egen regel, inte ett specialfall att koda.
+  **Ett klipp är inte noterna utan ett fönster in i dem:**
+  `{ start, len, source, notes }`. En not ljuder bara innanför fönstret, så
+  trim *döljer* i stället för att radera — drar man in kanten kastas ingenting,
+  och drar man ut den igen kommer noterna tillbaka. Utan den egenskapen har man
+  "en grupp noter man kan dra", vilket är en annan funktion som råkar se
+  likadan ut. Läkningsvillkoret blir: samma `source`, angränsande fönster.
+  **Rättelse mot den ursprungliga skissen här:** posten föreskrev ett fjärde
+  fält, `offset`, med nottider relativa innehållets origo och uppspelning på
+  `clip.start + (note.start - clip.offset)`. Det är borttaget, och det togs
+  bort för att det både var onödigt och skadligt. Onödigt: allt det fanns till
+  för — icke-destruktiv trim, split, flytt, slip inuti ett fast fönster — blir
+  identiskt när noterna bär tidslinjekolumner och flytt skriver om dem, vilket
+  är exakt vad ett gruppdrag redan gör mot samma objekt. Skadligt: översättning
+  vid läsning betyder att man lämnar ut *kopior*, och appen identifierar en not
+  med objektet självt (`state.selected` håller det, `state.multiSelected` är en
+  mängd av dem, `removeHit()` filtrerar på `h !== hit`, varje drag muterar
+  `n.start` på plats). Mot kopior slutade allt det matcha, tyst: att radera en
+  hit efter en split gjorde ingenting alls.
   **Mätt spridning:** ≈115 läsningar av `.start` som datafält, fördelat på
   ett fyrtiotal funktioner. (Rå-grep ger fler — 27 rader är `osc.start()`,
   Web Audio och irrelevant. Funktionsattributionen är ungefärlig, gjord med
   awk mot närmast föregående `function`, så pilfunktioner kan hamna på fel
   namn.) **Den siffran är inte det dyra** — mekaniska omskrivningar är trista
-  och säkra, och sviten täcker 76 steg av dem.
+  och säkra, och sviten täcker 78 steg av dem.
   **Det dyra är besluten modellen tvingar fram, som koden i dag inte har
   någon åsikt om:** får klipp överlappa på ett spår (Pro Tools säger nej i
   en lane — annars slutar `notesConflict()` betyda något på spårnivå)? Vad
@@ -83,18 +89,21 @@ hur roligt det vore att bygga.
   alternativa tagningar säger om sig själv, fast större: den lägger en axel
   *ovanpå* `state.tracks[id]`, medan klipp bygger om själva notlagringen och
   ändrar vad varje redigeringsgest betyder.
-  **Vägen, i två steg — och risken med att dela upp det.** Steg 1: klipp som
-  fönster med noterna kvar absoluta, `state.clips[trackId]` som ett additivt
-  och valfritt fält. Ger synliga block, dra-som-enhet, split och merge; ger
-  *inte* icke-destruktiv trim. Passar kodbasen ovanligt väl, eftersom en låt
-  utan `clips` då beter sig exakt som i dag — samma "absent means the
-  default"-regel som `vel`, `pan`, `kit` och `duty` redan följer, och inget
-  format bryts. Steg 2: `offset` och klipprelativt innehåll, alltså den
-  riktiga modellen, och det är här de fyrtio funktionerna får betala.
-  **Risken är att steg 1 kommer kännas 80 % rätt och att steg 2 aldrig blir
-  av** — kvar blir den billiga modellen i den dyras kläder: block man kan dra,
-  men trim som fortfarande raderar. Den som tar upp det här igen bör bestämma
-  i förväg om steg 1 är ett mål eller bara en etapp.
+  **Byggt hittills** (fas 1–4; posten blir kvar tills resten är gjord):
+  1. Klipp som lagring, ett obundet klipp per spår. Osynligt av konstruktion —
+     samma svit, samma utfall, ny lagring. `version` 2 → 3, v2-filer laddar
+     genom `toClips()`.
+  2. Klippblocket ritas, bakom delen det håller, utan att ta pointer events.
+  3. `splitClipAt()` från menyn, vid spelhuvudet på det aktiva spåret. Båda
+     halvorna behåller hela materialet och delar `source`.
+  4. Trim genom att dra en kant (`startClipTrim()`, fjärde delta-avrundande
+     draget i filen, hedrar Slip som de tre andra). Döljer utan att radera,
+     och klampar mot grannen — klipp överlappar inte.
+  **Kvar:** dra klipp (5), heal (6), inspelning skapar klipp (7), radsignaturen
+  (8). Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell
+  sen" — blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem,
+  och det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att
+  fastna i.
   **Vad det gör med uppspelningen — den axeln avgör om det här får byggas.**
   Att materialet spelas upp utan störningar går före funktionen; hackar
   ljudet är klippen inte värda något. Uppdelat på de tre ställen kostnaden
@@ -108,9 +117,9 @@ hur roligt det vore att bygga.
     spårets **hela** notlista vid varje chunk och för varje spår, trots att
     bara noterna i fönstret ska schemaläggas — en kostnad som skalar med
     låtens längd i stället för med fönstret. Med klipp hoppas hela klipp som
-    inte överlappar fönstret över utan att deras noter rörs. Offset-räkningen
-    (`clip.start + (note.start - clip.offset)` plus en fönsterkoll per not)
-    är två additioner och en jämförelse — försumbart mot det.
+    inte överlappar fönstret över utan att deras noter rörs. Fönsterkollen är
+    en jämförelse per not — försumbart mot det. (Skrevs när modellen hade ett
+    `offset` att räkna om; utan det är den ännu billigare.)
   - *Renderingen: dyrare, och det är den som hotar ljudet här.* Kedjan är
     `loopTimer` (en vanlig `setTimeout` på huvudtråden) → `SCHEDULE_AHEAD_SEC
     = 0.3`, alltså hela marginalen JS har på sig att hinna schemalägga nästa
@@ -123,8 +132,8 @@ hur roligt det vore att bygga.
     loop som redan är flaskhalsen.
   **Slutsatsen, och skälet att inte behandla det här som två arbeten:**
   ett klipp är en klart bättre enhet för radsignaturen i prestandaposten
-  nedan än en platt notlista — `{start, len, offset}` plus en
-  innehållsidentitet är några få fält, mot "varje not i spåret". Den
+  nedan än en platt notlista — `{start, len, source}` är några få fält, mot
+  "varje not i spåret". Den
   optimeringen är redan byggd och mätt (**272 ms → 21 ms** vid 24 spår) och
   återställd enbart för att signaturen inte gick att göra säker. Klipp gör
   den lättare, inte svårare, och ger dessutom en optimering den platta
@@ -249,7 +258,7 @@ hur roligt det vore att bygga.
   hålla nästa försök ärligt.
   **Se även klipp-posten ovan.** Signaturen är hela svårigheten här, och ett
   klipp är en bättre enhet för den än en platt notlista — `{start, len,
-  offset}` plus en innehållsidentitet i stället för "varje not i spåret".
+  source}` i stället för "varje not i spåret".
   Byggs klipp någon gång bör det här försöket göras i samma omgång, inte
   före och inte efter.
 

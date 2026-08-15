@@ -5994,6 +5994,131 @@ async function main() {
       }
     });
 
+    step('Clips: trimming an edge hides material without destroying it, and pulling it back returns it', async () => {
+      await fresh();
+      // Phase 4, and the whole reason the clip model exists. A trim must move
+      // the *window*: what it hides has to stop drawing and stop sounding, the
+      // material has to survive in the file, and dragging the edge back out
+      // has to bring exactly it back. Anything less is "a group of notes you
+      // can drag" wearing this feature's name.
+      const sixHits = async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          for (let i = 0; i < 6; i++) {
+            const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+            const r = lane.getBoundingClientRect();
+            lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+              clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+          }
+        })()`);
+        await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      };
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      // Drags the right edge of the first clip by `cols` columns (negative
+      // pulls it in, positive pushes it back out).
+      const dragEnd = async (cols, pointerId) => cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
+          .querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: ${pointerId}, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+      })()`);
+
+      await sixHits();
+      // A lone clip covering the whole track offers no edges: there is nothing
+      // to reveal by trimming it and its edges are the song's own.
+      const edgesBefore = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-edge').length`);
+      if (edgesBefore !== 0) throw new Error(`a single whole-track clip should offer no trim edges, got ${edgesBefore}`);
+
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      if (JSON.parse(await drawnCols()).length !== 6) throw new Error('the split itself should change nothing that is drawn');
+
+      // Pull the left clip's right edge in by two columns.
+      await dragEnd(-2, 9);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 4`);
+      const hidden = JSON.parse(await drawnCols());
+      if (JSON.stringify(hidden) !== JSON.stringify([0, 3, 4, 5])) {
+        throw new Error(`trimming should hide exactly the items past the new edge, drawn ${JSON.stringify(hidden)}`);
+      }
+      // The material must still be in the file — that is the difference
+      // between hiding and deleting, and it is invisible from the DOM.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && (d.tracks[t.id] || []).length === 2 && d.tracks[t.id][0].len === 1;
+      })()`);
+      const kept = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify({
+          held: d.tracks[id].map(c => c.notes.length),
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const k = JSON.parse(kept);
+      if (JSON.stringify(k.held) !== JSON.stringify([6, 6])) {
+        throw new Error(`a trim must hide material, not delete it — the clips hold ${kept}`);
+      }
+      if (JSON.stringify(k.visible) !== JSON.stringify([0, 3, 4, 5])) {
+        throw new Error(`what sounds must match what is drawn, got ${kept}`);
+      }
+
+      // ...and the edge back out returns exactly what it hid.
+      await dragEnd(2, 11);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      const back = JSON.parse(await drawnCols());
+      if (JSON.stringify(back) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`pulling the edge back out must return what it hid, drawn ${JSON.stringify(back)}`);
+      }
+
+      // Clips do not overlap on a track, so an edge stops at its neighbour.
+      // Asserted with a drag far past it, because the two drags above stay
+      // inside the clip's own room and never reach the clamp at all — a first
+      // version of this step left the rule uncovered without looking like it.
+      await dragEnd(10, 13);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2;
+      })()`);
+      const clamped = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({ start: c.start, len: c.len })));
+      })()`);
+      const [first, second] = JSON.parse(clamped);
+      if (first.start + first.len > second.start) {
+        throw new Error(`an edge must stop at its neighbour rather than overlap it, got ${clamped}`);
+      }
+      // Nothing doubled: an overlap would have drawn the same column twice.
+      const afterClamp = JSON.parse(await drawnCols());
+      if (JSON.stringify(afterClamp) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`clamping at the neighbour must leave the part as it was, drawn ${JSON.stringify(afterClamp)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
