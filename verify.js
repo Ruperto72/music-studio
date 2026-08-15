@@ -6694,6 +6694,12 @@ async function main() {
            g.dispatchEvent(new Event('change', { bubbles: true }));
          })()`],
         ['the zoom', false, `document.getElementById('zoom-in').click();`],
+        // The resize handle on a note is drawn only in Grab mode, so the tool
+        // is an input a row draws from. Found by the bundled audit during a
+        // code review: no other mutation here switches tools *without* also
+        // changing the selection, so the gap hid behind a rebuild it did not
+        // cause.
+        ['the tool', false, `document.querySelector('[data-tool="grab"]').click();`],
       ];
       for (const [what, local, expr] of mutations) {
         await stash();
@@ -6754,6 +6760,130 @@ async function main() {
           'an undo replaces every note object with an equal-valued copy, so a row whose values did not change ' +
           'must still be rebuilt — otherwise its handlers keep pointing at objects no longer in the song. ' +
           `kept = ${JSON.stringify(afterUndo)}`);
+      }
+    });
+
+    step('Row reuse: closing an extra lane keeps every other row', async () => {
+      await fresh();
+      // A code review found this the day row reuse landed, and it is as bad as
+      // it sounds: the reconcile paired a static snapshot of #tracks against
+      // the wanted list by index and called replaceWith(), which *moves* an
+      // already-attached node — so from the first shrink onwards the snapshot
+      // no longer described where anything was, and the loop deleted the rows
+      // it had just relocated. Five tracks became one. Growth was safe (it ends
+      // in appends), which is why nothing else in the suite noticed.
+      const rows = () => cdp.evaluate(`document.querySelectorAll('#tracks > .track').length`);
+      const before = await rows();
+      if (before < 5) throw new Error(`expected the starter layout, got ${before}`);
+      const toggleVelOnFirst = () => cdp.evaluate(`(() => {
+        const t = document.querySelectorAll('#tracks > .track')[0];
+        [...t.querySelectorAll('button')].find(b => b.textContent.trim() === 'Vel').click();
+      })()`);
+      // The first track, not the last: closing the last row's extra lane only
+      // ever removes from the end, which the broken version handled fine.
+      await toggleVelOnFirst();
+      await waitFor(`document.querySelectorAll('#tracks > .track').length === ${before + 1}`);
+      await toggleVelOnFirst();
+      await new Promise((r) => setTimeout(r, 250));
+      const after = await rows();
+      if (after !== before) {
+        throw new Error(`closing an extra lane must leave the other rows alone: ${before} rows before, ${after} after`);
+      }
+    });
+
+    step('Clips: an operation that copies the material drops the selection with it', async () => {
+      await fresh();
+      // Also from that review. splitClipAt() hands each half a *copy* of the
+      // material, but state.selected and state.multiSelected hold the item
+      // objects themselves — so after a split they name objects no longer in
+      // the song. A nudge then moved the ghosts back in alongside the copies:
+      // two selected notes became four.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 2; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 2`);
+      // Select both, then split between them and nudge.
+      await cdp.evaluate(`(() => {
+        for (const h of document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')) {
+          h.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+        }
+      })()`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[4].getBoundingClientRect();
+        cells[4].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click();
+                          document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 300));
+      const hits = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      if (hits !== 2) {
+        throw new Error(`nudging after a split must not resurrect the pre-copy objects — expected 2 hits, got ${hits}`);
+      }
+    });
+
+    step('Clips: a note placed in a gap between clips is audible, not filed out of sight', async () => {
+      await fresh();
+      // Third from the review. setTrackNotes() filed an item that no window
+      // covers into the last clip without growing that clip, so trackNotes()
+      // never returned it again: placing a note in a gap looked like the click
+      // had not registered at all, while the note sat in the file unreachable.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click();
+                          document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      // Open a gap by pulling the second clip's start to the right.
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
+          .querySelector('.clip-edge.start');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 51, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 51, clientX: x + 2 * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 51, clientX: x + 2 * 16, clientY: y }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 4`);
+      const before = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      // Place a hit inside the gap, on a drum row nothing else uses.
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+          clientX: r.left + 4 * 16 + 4, clientY: r.top + 60 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const after = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      if (after !== before + 1) {
+        throw new Error(`a hit placed in a gap between clips must be drawn and sounding, went ${before} -> ${after}`);
       }
     });
 

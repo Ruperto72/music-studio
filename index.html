@@ -2884,13 +2884,28 @@ function setTrackNotes(track, items) {
   // nothing was hidden; the first split plus the first edit would have
   // destroyed the model's whole point.
   for (const clip of clips) clip.notes = clip.notes.filter(n => !clipHolds(clip, n));
+  const orphans = [];
   for (const item of items) {
-    // Anything landing outside every window joins the last clip rather than
-    // being dropped — losing a note to a gap would be the silent kind of data
-    // loss this codebase has been bitten by before.
-    const home = clips.find(c => clipHolds(c, item)) || clips[clips.length - 1];
-    home.notes.push(item);
+    const home = clips.find(c => clipHolds(c, item));
+    if (home) home.notes.push(item); else orphans.push(item);
   }
+  // An item that no window covers gets a window of its own, the way drawing in
+  // empty space makes a region in a DAW. Two rejected alternatives, both
+  // measured: filing it into the last clip without growing that clip was the
+  // original bug — the item was stored where trackNotes() would never return
+  // it, so placing a note in a gap looked like the click had not registered
+  // while the note sat in the file unreachable. Growing the nearest clip to
+  // reach it fixes that but *also* reveals whatever that clip was hiding in
+  // between, so placing one note made two unrelated ones reappear.
+  for (const item of orphans) {
+    clips.push({
+      start: Math.floor(item.start),
+      len: Math.max(1, Math.ceil(item.start + (typeof item.len === 'number' ? item.len : 1)) - Math.floor(item.start)),
+      source: newClipSource(),
+      notes: [item],
+    });
+  }
+  if (orphans.length) clips.sort((a, b) => a.start - b.start);
   // Hidden notes kept their places and new ones were appended, so order is not
   // guaranteed by the pass above. scheduleTrackNotes() sorts anyway, but a
   // stable order keeps a saved file diffable.
@@ -2902,6 +2917,17 @@ function setTrackNotes(track, items) {
 // window covering its side, so trimming either edge back out afterwards finds
 // the notes still there. A cut on a clip's own edge is not a cut but a no-op,
 // which is why both bounds are strict.
+// Every operation that hands a clip a *copy* of its material has to drop the
+// selection with it. state.selected holds the item object itself and
+// multiSelected is a Set of them, so after a copy those references name objects
+// that are no longer in the song: a nudge then moves the ghosts back in
+// alongside the copies (two selected notes became four), and Delete silently
+// removes nothing. restoreSnapshot() and applySongData() already do this — the
+// clip operations were the ones that forgot.
+function dropCopiedSelection(track) {
+  if (state.selected && state.selected.track === track) state.selected = null;
+  if (state.multiSelected.size) state.multiSelected = new Set();
+}
 function splitClipAt(track, col) {
   const clips = clipsOf(track);
   const i = clips.findIndex(c => col > c.start && col < clipEnd(c));
@@ -2911,6 +2937,7 @@ function splitClipAt(track, col) {
   clips.splice(i, 1,
     { start: c.start, len: col - c.start, source: c.source, notes: copy() },
     { start: col, len: c.len == null ? null : c.len - (col - c.start), source: c.source, notes: copy() });
+  dropCopiedSelection(track);
   return true;
 }
 
@@ -4081,6 +4108,11 @@ function trackRowSignature(track, index) {
     // computed window is what the row actually draws from, so that is what
     // belongs here rather than its three inputs.
     t.kind === 'rhythm' ? null : pitchWindow(track),
+    // The resize handle on a note is drawn only in Grab mode, so the tool is
+    // an input a row draws from even though most of its effect is CSS on the
+    // body. The bundled audit logs this one; no step happened to switch tools
+    // without also changing the selection, so the suite stayed green.
+    state.tool,
     COLS, colPx, state.grid, state.timeSig, state.key, state.scale,
   ]);
 }
@@ -4116,16 +4148,28 @@ function renderTracks() {
     next.set(t.id, { sig, els });
   }
   rowCache = next;
-  // Positional reconcile. Rows that are already where they belong are left
-  // alone — not removed and re-added, which is the whole point.
-  const have = [...tracksEl.children];
-  for (let i = 0; i < Math.max(have.length, want.length); i++) {
-    const a = have[i], b = want[i];
-    if (a === b) continue;
-    if (!b) { a.remove(); continue; }
-    if (!a) { tracksEl.appendChild(b); continue; }
-    a.replaceWith(b);
+  // Reconcile against the *live* DOM with a cursor, never against a snapshot
+  // of it. Rows already in the right place are left completely alone — not
+  // removed and re-added — which is the whole point: re-attaching a node forces
+  // the same layout building a fresh one does.
+  //
+  // The first version of this paired a static `[...tracksEl.children]` against
+  // `want` by index and called `a.replaceWith(b)`. That is wrong the moment the
+  // row count shrinks, because replaceWith *moves* a node that is already
+  // attached, so the snapshot's later entries no longer describe where anything
+  // is. Closing a Vel, Automation or Env lane on any track but the last walked
+  // the list deleting the rows it had just relocated: five tracks became one.
+  // Growth happened to be safe (it ends in appends), which is why nothing in
+  // the suite caught it.
+  let cursor = tracksEl.firstChild;
+  for (const el of want) {
+    if (cursor === el) { cursor = cursor.nextSibling; continue; }
+    tracksEl.insertBefore(el, cursor); // moves it if it is already attached
   }
+  // Anything from the cursor on is not wanted: every element of `want` either
+  // was already at the cursor (which then advanced past it) or has been moved
+  // in front of it.
+  while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
 }
 // Builds the row again and compares it with the one that was kept. Only ever
 // called with window.__rowAudit set — see the note above renderTracks() for
@@ -11544,6 +11588,21 @@ function finishTake() {
   const taken = [...takeItems];
   takeItems = new Set();
   if (!track || !taken.length || !Array.isArray(state.tracks[track])) return;
+  // The take spans the first to the last thing captured, which is the *tightest*
+  // span that still holds everything the pass played — it can never reach past
+  // where the transport was stopped, since nothing can be played after that.
+  //
+  // Punch-in to punch-out was tried instead, on the reasoning that a sparse
+  // pass is otherwise greedy: two notes eight bars apart claim all eight. It is
+  // strictly worse here. Loop is on by default with the loop set to the whole
+  // song, so with Loop on the honest punch region *is* the whole song, and
+  // every take claimed the entire track. Measured, then reverted.
+  //
+  // What remains true, and is the model rather than a defect: a take is a clip,
+  // clips do not overlap, so material inside the take's span stops sounding.
+  // It is displaced rather than destroyed — the halves either side keep it and
+  // it comes back if the take is moved or removed — but it does go quiet, and
+  // for a sparse pass that reaches further than what was played.
   let from = Infinity, to = -Infinity;
   for (const it of taken) {
     from = Math.min(from, it.start);
@@ -11556,6 +11615,7 @@ function finishTake() {
   const held = new Set(taken);
   for (const clip of clipsOf(track)) clip.notes = clip.notes.filter(n => !held.has(n));
   const rest = clearClipRange(clipsOf(track), from, to);
+  dropCopiedSelection(track); // clearClipRange() copies when it splits a clip
   rest.push({ start: from, len: to - from, source: newClipSource(), notes: taken.sort((a, b) => a.start - b.start) });
   rest.sort((a, b) => a.start - b.start);
   state.tracks[track] = rest;
