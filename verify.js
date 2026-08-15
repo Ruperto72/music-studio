@@ -41,7 +41,8 @@ const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
 // A saved song stores a track's part as *clips* rather than a flat note list
 // (see the Clips section in index.html): each clip is a window onto its own
-// notes, whose starts are relative to the clip's content origin. Anything
+// notes, which carry timeline columns — the `offset` model this once described
+// was removed while it was being built. Anything
 // asserting on a saved song therefore has to flatten that the way the app's
 // own trackNotes() does — read `song.tracks[id][0]` directly and you get a
 // clip object where you meant a note, which does not throw, it just silently
@@ -6884,6 +6885,85 @@ async function main() {
       const after = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
       if (after !== before + 1) {
         throw new Error(`a hit placed in a gap between clips must be drawn and sounding, went ${before} -> ${after}`);
+      }
+    });
+
+    step('Clips: trimming a selected item out of view lets go of it', async () => {
+      await fresh();
+      // From the drift hunt. The selection holds the item *object*, so once a
+      // trim closes the window on it the object is no longer in trackNotes() —
+      // and nothing reconciled after a trim. Delete then silently removed
+      // nothing and the arrow keys moved hidden material under a closed window.
+      // The predicate was wrong, not just the call site: "did we copy?" misses
+      // trimming entirely, where "is it still in the song?" catches both.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click();
+                          document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      // Select the last hit, then trim the right clip's end past it.
+      await cdp.evaluate(`(() => {
+        const hits = [...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')];
+        hits.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        hits[hits.length - 1].click();
+      })()`);
+      await waitFor(`!!document.querySelector('.track[data-kind="rhythm"] .lane .hit.selected')`);
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
+          .querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 61, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 61, clientX: r.left - 100 * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 61, clientX: r.left - 100 * 16, clientY: y }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const drawn = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      if (drawn >= 6) throw new Error(`the trim should have hidden something, still ${drawn} hits`);
+
+      // Asserted through what a stale selection *does*, not through the DOM: a
+      // hidden item is not drawn at all, so counting `.hit.selected` is zero
+      // either way and proves nothing. A first version of this checked exactly
+      // that and passed against the unreconciled build. The real symptom is
+      // that arrow keys go on nudging the item nobody can see.
+      const saved = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => c.notes.map(n => n.start).sort((a, b) => a - b)));
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2 && d.tracks[t.id][1].len != null;
+      })()`);
+      const beforeNudge = await saved();
+      for (let i = 0; i < 3; i++) {
+        await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))`);
+        await new Promise((r) => setTimeout(r, 80));
+      }
+      await new Promise((r) => setTimeout(r, 600));
+      const afterNudge = await saved();
+      if (afterNudge !== beforeNudge) {
+        throw new Error(`arrow keys must not move material a closed window is hiding.\n  before: ${beforeNudge}\n  after:  ${afterNudge}`);
       }
     });
 
