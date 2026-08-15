@@ -111,7 +111,16 @@ hur roligt det vore att bygga.
      ger tillbaka ursprungsklippet exakt. Kräver samma `source` och *exakt*
      angränsning — en lucka mellan två klipp är en tystnad någon lagt dit med
      flit, och ett nekat heal säger ifrån i stället för att göra ingenting.
-  **Kvar:** inspelning skapar klipp (7), radsignaturen (8).
+  7. Inspelning blir ett klipp (`finishTake()`, `clearClipRange()`), på
+     Pro Tools-varianten: tagningen tar marken den landar på i stället för att
+     ligga under. Vad den tränger undan trimmas — eller splittas runt tagningen
+     om den landar mitt i ett klipp — så materialet finns kvar dolt. Bara ett
+     klipp som täcks *helt* försvinner, för det har inget fönster kvar att
+     dölja i; undo är vad som tar tillbaka det. Tagningen samlas ihop när
+     passet **slutar**, inte när det börjar: ett klipp öppnat vid
+     inspelningsstart hade trängt undan resten av spåret innan en enda not
+     spelats.
+  **Kvar:** radsignaturen (8).
   Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell sen" —
   blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem, och
   det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att

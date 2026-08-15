@@ -5591,6 +5591,35 @@ function addClipBlocks(rollEl, track, heightPx) {
     rollEl.appendChild(div);
   });
 }
+// Clears a stretch of a track's timeline so a new clip can occupy it, the way
+// dropping a recording onto occupied ground works in Pro Tools: what was there
+// gets out of the way rather than sounding underneath.
+//
+// Four cases, and only the last loses anything. A clip entirely outside the
+// range is untouched; one hanging into it from either side is trimmed back to
+// the boundary — so its material is *hidden*, not destroyed, and pulling that
+// edge out again would bring it back if the new clip were not in the way; one
+// spanning the range is split around it, both halves keeping the whole
+// material for the same reason. A clip the range covers completely has no
+// window left to hide anything in, so it goes. That is the honest outcome
+// rather than a ghost of zero width, and undo is what gets it back.
+function clearClipRange(clips, from, to) {
+  const out = [];
+  for (const c of clips) {
+    const s = c.start, e = clipEnd(c);
+    if (e <= from || s >= to) { out.push(c); continue; }
+    const copy = () => c.notes.map(n => ({ ...n, ...(n.arp ? { arp: [...n.arp] } : {}) }));
+    if (s < from && e > to) {
+      out.push({ ...c, len: from - s, notes: copy() });
+      out.push({ ...c, start: to, len: c.len == null ? null : e - to, notes: copy() });
+    } else if (s < from) {
+      out.push({ ...c, len: from - s });
+    } else if (e > to) {
+      out.push({ ...c, start: to, len: c.len == null ? null : e - to });
+    }
+  }
+  return out;
+}
 // Joins two clips back into one. Deliberately the exact inverse of
 // splitClipAt(): a split copies the whole material to both halves and lets the
 // windows decide who shows what, so a heal takes from each half precisely the
@@ -10743,6 +10772,12 @@ const REC_KEY_SEMIS = {
 const REC_KEY_DRUMS = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash'];
 const REC_OCTAVE_MIN = 1, REC_OCTAVE_MAX = 7;
 let recOctave = 4;              // C of this octave is where KeyZ sits
+// The items captured by the pass currently being recorded, held as the objects
+// themselves so nothing has to be matched by value later. Filled by
+// commitNote()/commitHit() while `recording`, and emptied into a clip of their
+// own by finishTake() when the transport stops — see there for why a take
+// becomes a clip at the *end* of the pass rather than the start.
+let takeItems = new Set();
 let recording = false;          // transport is rolling *and* capturing
 let countingIn = false;         // the bar of clicks before capture starts
 let countInTimer = null;
@@ -11279,6 +11314,7 @@ function commitNote(track, midi, start, len, vel = 1) {
   // The same predicate every other placement path uses, so a recorded note
   // replaces an overlapping one of the same pitch instead of stacking on it.
   setTrackNotes(track, clearOverlaps(trackNotes(track), note).concat([note]));
+  if (recording) takeItems.add(note);
   render(); autosave();
 }
 function commitHit(track, type, start, vel = 1) {
@@ -11290,6 +11326,7 @@ function commitHit(track, type, start, vel = 1) {
   const hit = { start: quant(start), type };
   if (vel < 1) hit.vel = vel;
   setTrackNotes(track, trackNotes(track).filter(h => !hitsConflict(h, hit)).concat([hit]));
+  if (recording) takeItems.add(hit);
   render(); autosave();
 }
 // Record = one bar of count-in, then roll and capture. The count-in exists so
@@ -11318,6 +11355,7 @@ function startRecording() {
   const at = ctx.currentTime + 0.1;
   countingIn = true;
   recording = false;
+  takeItems = new Set(); // a new pass starts a new take
   document.body.classList.add('counting-in');
   syncRecordUI();
   // The count-in clicks whether or not the metronome is on — you asked to
@@ -11333,12 +11371,54 @@ function startRecording() {
     startPlaybackFrom(state.playhead);
   }, (bar * eighthSec) * 1000);
 }
+// Turns the pass that just ended into a clip of its own.
+//
+// The take is gathered at the *end* rather than opened at the start, and that
+// is deliberate: a clip created on hitting record would have to claim a stretch
+// of timeline before a single note had been played, so arming, recording
+// nothing and stopping would have shoved the rest of the track aside for a take
+// that never happened. Collecting what was actually captured cannot do that.
+//
+// The clip spans what the pass captured rather than the punch-in and punch-out
+// points. With Loop on, recording is an overdub that wraps, so the playhead at
+// stop can sit *before* where it started — there is no single pair of columns
+// describing the pass, but there is always a first and last item.
+//
+// Where the take lands on occupied ground the old clips get out of the way
+// (clearClipRange), which is the Pro Tools answer: a recording is not layered
+// under what was there, it takes the ground. What it displaces is trimmed
+// rather than deleted wherever a window survives to hide it in.
+function finishTake() {
+  const track = state.recTrack;
+  const taken = [...takeItems];
+  takeItems = new Set();
+  if (!track || !taken.length || !Array.isArray(state.tracks[track])) return;
+  let from = Infinity, to = -Infinity;
+  for (const it of taken) {
+    from = Math.min(from, it.start);
+    to = Math.max(to, it.start + (typeof it.len === 'number' ? it.len : 1));
+  }
+  from = Math.max(0, Math.floor(from));
+  to = Math.min(COLS, Math.max(from + 1, Math.ceil(to)));
+  // Lift the captured items out of whichever windows they were filed into
+  // while the pass ran; they belong to the take now.
+  const held = new Set(taken);
+  for (const clip of clipsOf(track)) clip.notes = clip.notes.filter(n => !held.has(n));
+  const rest = clearClipRange(clipsOf(track), from, to);
+  rest.push({ start: from, len: to - from, source: newClipSource(), notes: taken.sort((a, b) => a.start - b.start) });
+  rest.sort((a, b) => a.start - b.start);
+  state.tracks[track] = rest;
+  render(); autosave(); commitHistory();
+  announce(`Take captured as a clip, bar ${Math.floor(from / eighthsPerBar()) + 1} to ${Math.floor(to / eighthsPerBar()) + 1}.`);
+}
 function stopRecording() {
   clearTimeout(countInTimer);
   countingIn = false;
   document.body.classList.remove('counting-in');
-  releaseAllKeys();
+  releaseAllKeys(); // before finishTake(), so a key still down is captured into it
+  const wasRecording = recording;
   recording = false;
+  if (wasRecording) finishTake();
   syncRecordUI();
 }
 function syncRecordUI() {

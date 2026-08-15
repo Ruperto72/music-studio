@@ -6402,6 +6402,192 @@ async function main() {
       }
     });
 
+    step('Clips: a recorded take becomes its own clip, and takes the ground it lands on', async () => {
+      await fresh();
+      // Phase 7, on the Pro Tools reading: a pass becomes a clip of its own,
+      // and where it lands on occupied ground the old clips get out of the way
+      // rather than sounding underneath it.
+      // Put real material on the track first. It gives the take occupied
+      // ground to land on — which is the case worth testing — and it is also
+      // what puts a draft in localStorage at all: a freshly loaded page has
+      // not autosaved, so reading the baseline before any edit finds nothing.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 8; i++) {
+          const t = [...document.querySelectorAll('.track')].find(t => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+          const lane = t.querySelector('.lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 40 }));
+        }
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.name === 'Bass');
+        return !!t && window.__savedNotes(d, t.id).length === 8;
+      })()`);
+
+      const armBass = `(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`;
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const key = (code, type) => cdp.evaluate(
+        `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: ${JSON.stringify(code)}, bubbles: true }))`);
+      const bassClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Bass') || {}).id;
+        return JSON.stringify((d.tracks[id] || []).map(c => ({
+          start: c.start, len: c.len, source: c.source, held: c.notes.length })));
+      })()`);
+      const rawDraft = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return k ? localStorage.getItem(k) : '';
+      })()`);
+      const recordPass = async (play, atCol = null) => {
+        if (atCol == null) await cdp.evaluate(`document.getElementById('rtz').click()`);
+        else await cdp.evaluate(`(() => {
+          const cells = [...document.querySelectorAll('.ruler-cell')];
+          const cell = cells[${atCol}];
+          const r = cell.getBoundingClientRect();
+          cell.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, pointerId: 41, clientX: r.left + 1, clientY: r.top + 6 }));
+          window.dispatchEvent(new PointerEvent('pointerup', {
+            bubbles: true, pointerId: 41, clientX: r.left + 1, clientY: r.top + 6 }));
+        })()`);
+        await cdp.evaluate(`document.getElementById('record-btn').click()`);
+        await waitFor(`document.body.classList.contains('counting-in')`, 3000);
+        await waitFor(`document.body.classList.contains('playing')`, 8000);
+        if (play) {
+          for (const code of ['KeyZ', 'KeyX', 'KeyC']) {
+            await key(code, 'keydown');
+            await new Promise((r) => setTimeout(r, 240));
+            await key(code, 'keyup');
+            await new Promise((r) => setTimeout(r, 60));
+          }
+        } else {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        await cdp.evaluate(`document.getElementById('stop').click()`);
+        await new Promise((r) => setTimeout(r, 600));
+      };
+
+      // A pass that captured nothing must not claim any timeline. This is why
+      // a take is gathered when the pass *ends*: a clip opened on hitting
+      // record would have shoved the rest of the track aside before a single
+      // note was played.
+      const before = JSON.parse(await bassClips());
+      const priorSources = new Set(before.map(c => c.source));
+      await recordPass(false);
+      const afterSilence = JSON.parse(await bassClips());
+      if (JSON.stringify(afterSilence) !== JSON.stringify(before)) {
+        throw new Error(`recording nothing must leave the track alone.\n  was: ${JSON.stringify(before)}\n  now: ${JSON.stringify(afterSilence)}`);
+      }
+
+      // A real pass becomes a clip of its own, with its own source.
+      const draftBeforeTake = await rawDraft();
+      await recordPass(true);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeTake)};
+      })()`);
+      const afterTake = JSON.parse(await bassClips());
+      // A take is identified by its *source*, not by holding material: the
+      // displaced remnant of what was there holds its own eight notes too, so
+      // "the clip with notes in it" matches both. A first version of this
+      // assertion used exactly that and reported the correct behaviour as a
+      // failure.
+      const takes = afterTake.filter(c => !priorSources.has(c.source));
+      if (takes.length !== 1) {
+        throw new Error(`the pass should have become exactly one new clip, got ${JSON.stringify(afterTake)}`);
+      }
+      if (afterTake.length < 2) {
+        throw new Error(`the take should sit beside what was there, not replace the track, got ${JSON.stringify(afterTake)}`);
+      }
+      const take = takes[0];
+      if (take.held !== 3) {
+        throw new Error(`the take's clip should hold exactly what the pass captured, got ${JSON.stringify(take)}`);
+      }
+      if (take.len == null || take.len <= 0) {
+        throw new Error(`a take's clip must have real bounds, got ${JSON.stringify(take)}`);
+      }
+      // What it landed on kept its material — displaced, not deleted.
+      const remnant = afterTake.filter(c => priorSources.has(c.source));
+      if (!remnant.length || !remnant.some(c => c.held === 8)) {
+        throw new Error(`the material the take landed on should be moved aside, not thrown away, got ${JSON.stringify(afterTake)}`);
+      }
+
+      // Clips never overlap on a track — the invariant every phase shares.
+      const noOverlap = (list, label) => {
+        const sorted = [...list].sort((a, b) => a.start - b.start);
+        for (let i = 0; i < sorted.length - 1; i++) {
+          const end = sorted[i].len == null ? Infinity : sorted[i].start + sorted[i].len;
+          if (end > sorted[i + 1].start) {
+            throw new Error(`${label}: clips must not overlap, got ${JSON.stringify(sorted)}`);
+          }
+        }
+      };
+      noOverlap(afterTake, 'after one take');
+
+      // A second pass over the same ground displaces the first rather than
+      // layering under it. Nothing may still be covering the new take.
+      const draftBeforeSecond = await rawDraft();
+      await recordPass(true);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeSecond)};
+      })()`);
+      const afterSecond = JSON.parse(await bassClips());
+      noOverlap(afterSecond, 'after two takes');
+      const known = new Set([...priorSources, take.source]);
+      const second = afterSecond.filter(c => !known.has(c.source));
+      if (second.length !== 1) {
+        throw new Error(`the second pass is its own clip, not the first one grown, got ${JSON.stringify(afterSecond)}`);
+      }
+      // Whatever is left of the first take must be out of the second's way —
+      // taking the ground is the whole point of the Pro Tools reading.
+      const firstLeft = afterSecond.filter(c => c.source === take.source);
+      const s2 = second[0], s2end = s2.len == null ? Infinity : s2.start + s2.len;
+      for (const c of firstLeft) {
+        const e = c.len == null ? Infinity : c.start + c.len;
+        if (c.start < s2end && e > s2.start) {
+          throw new Error(`the earlier take must give up the ground, got ${JSON.stringify(afterSecond)}`);
+        }
+      }
+
+      // A take landing in the *middle* of a clip splits it around itself.
+      // Both passes above started at column 0, so they only ever trimmed a
+      // clip's start — the branch that splits, and the one that trims a
+      // clip's end, went unexercised and an injection into them proved
+      // nothing. Punching in partway covers them.
+      const draftBeforeThird = await rawDraft();
+      const midSources = new Set(afterSecond.map(c => c.source));
+      await recordPass(true, 12);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeThird)};
+      })()`);
+      const afterThird = JSON.parse(await bassClips());
+      noOverlap(afterThird, 'after a punch-in');
+      const third = afterThird.filter(c => !midSources.has(c.source));
+      if (third.length !== 1) {
+        throw new Error(`a punched-in pass is one new clip, got ${JSON.stringify(afterThird)}`);
+      }
+      const t3 = third[0];
+      const before3 = afterThird.filter(c => midSources.has(c.source) && c.start < t3.start);
+      const after3 = afterThird.filter(c => midSources.has(c.source) && c.start >= t3.start + t3.len);
+      if (!before3.length || !after3.length) {
+        throw new Error(`a clip the take lands inside is split around it, leaving material either side, got ${JSON.stringify(afterThird)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
