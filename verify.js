@@ -6119,6 +6119,133 @@ async function main() {
       }
     });
 
+    step('Clips: moving one takes its material with it, hidden material included', async () => {
+      await fresh();
+      // Phase 5. The claim worth asserting is not that the block slides — it is
+      // that what the window *hides* slides by the same amount. That is what
+      // keeps window and contents in the same relationship, so a trim after a
+      // move still reveals what sat beyond that edge rather than whatever now
+      // happens to lie at those columns. It is invisible from the DOM, so the
+      // saved song is where it has to be checked.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+
+      const gripsBefore = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-grip').length`);
+      if (gripsBefore !== 0) throw new Error(`a lone whole-track clip has nowhere to move, so it offers no grip; got ${gripsBefore}`);
+
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+
+      const dragGrip = async (which, cols, pointerId) => cdp.evaluate(`(() => {
+        const grip = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[${which}]
+          .querySelector('.clip-grip');
+        const r = grip.getBoundingClientRect();
+        const x = r.left + 10, y = r.top + 3;
+        grip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: ${pointerId}, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+      })()`);
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      const savedClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({
+          start: c.start, len: c.len, notes: c.notes.map(n => n.start).sort((a, b) => a - b) })));
+      })()`);
+
+      // Move the right clip four columns later.
+      await dragGrip(1, 4, 21);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2 && d.tracks[t.id][1].start === 7;
+      })()`);
+      const drawn = JSON.parse(await drawnCols());
+      if (JSON.stringify(drawn) !== JSON.stringify([0, 1, 2, 7, 8, 9])) {
+        throw new Error(`the moved clip's part should sit four columns later, drawn ${JSON.stringify(drawn)}`);
+      }
+      const moved = JSON.parse(await savedClips());
+      if (moved[0].start !== 0 || JSON.stringify(moved[0].notes) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`moving one clip must not disturb its neighbour, got ${JSON.stringify(moved)}`);
+      }
+      // The assertion this step exists for: every item the moved clip holds
+      // shifted by four, not only the three its window was showing.
+      if (JSON.stringify(moved[1].notes) !== JSON.stringify([4, 5, 6, 7, 8, 9])) {
+        throw new Error(`hidden material must move with its clip, got ${JSON.stringify(moved)}`);
+      }
+
+      // And the relationship survived: trimming the moved clip's left edge
+      // back out reveals what used to sit before it, at its new place.
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
+          .querySelector('.clip-edge.start');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 23, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 23, clientX: x - 3 * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 23, clientX: x - 3 * 16, clientY: y }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 9`);
+      // Wait for the *trim* to reach the draft before the next drag reads it.
+      // Without this the clamp check below waited on `start !== 4` while the
+      // draft still said 7 from the move — true on the previous state, so it
+      // returned instantly and the assertion ran against a stale song in both
+      // the real and the broken build. It passed either way, proving nothing.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2 && d.tracks[t.id][1].start === 4;
+      })()`);
+      const revealed = JSON.parse(await drawnCols());
+      if (JSON.stringify(revealed) !== JSON.stringify([0, 1, 2, 4, 5, 6, 7, 8, 9])) {
+        throw new Error(`trimming the moved clip open should reveal its own carried material, drawn ${JSON.stringify(revealed)}`);
+      }
+
+      // Clips do not overlap: dragged hard left, the moved clip stops against
+      // its neighbour instead of sliding through it.
+      await dragGrip(1, -20, 25);
+      // Wait for the drag to have *settled* rather than for the clamped value
+      // itself: waiting for the right answer turns a real failure into a bare
+      // timeout message that names no symptom.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id][1].start !== 4;
+      })()`);
+      const clamped = JSON.parse(await savedClips());
+      if (clamped[1].start < clamped[0].start + clamped[0].len) {
+        throw new Error(`a moved clip must stop at its neighbour rather than slide through it, got ${JSON.stringify(clamped)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

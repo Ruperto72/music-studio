@@ -723,6 +723,19 @@
   .clip-edge.end { right: -3px; }
   .clip-edge:hover, .clip-edge.dragging { background: rgba(255,255,255,0.30); }
   .clip-edge:focus-visible { outline: 2px solid #7aa2ff; outline-offset: -1px; }
+  /* The grip for moving a clip, along its top edge — the strip the inset cap
+     already draws, made grabbable. It is a band rather than the whole body for
+     the same reason the body takes no pointer events at all: a clip covers its
+     whole stretch of lane, so a grabbable body would eat every placement click
+     and every marquee drag inside it. Sits between the two edge handles so a
+     corner grab resizes rather than moves, which is the way round a DAW
+     user expects. */
+  .clip-grip {
+    position: absolute; top: 0; left: 7px; right: 7px; height: 7px;
+    pointer-events: auto; cursor: grab; z-index: 4;
+  }
+  .clip-grip:hover { background: rgba(255,255,255,0.22); }
+  .clip-grip.dragging { background: rgba(255,255,255,0.34); cursor: grabbing; }
   .cell {
     border-right: 1px solid var(--grid); border-bottom: 1px solid rgba(255,255,255,0.02);
   }
@@ -5564,9 +5577,66 @@ function addClipBlocks(rollEl, track, heightPx) {
         h.addEventListener('pointerdown', (e) => startClipTrim(e, track, clip, which));
         div.appendChild(h);
       }
+      const grip = el('div', 'clip-grip');
+      grip.addEventListener('pointerdown', (e) => startClipMove(e, track, clip));
+      div.appendChild(grip);
     }
     rollEl.appendChild(div);
   });
+}
+// Moving a clip takes its material with it: the window slides and every item
+// it holds slides by the same amount, hidden ones included. That the hidden
+// material moves too is the point rather than a detail — it is what keeps the
+// window and its contents in the same relationship, so trimming an edge *after*
+// a move still reveals what sat beyond that edge rather than whatever now
+// happens to lie at those columns.
+//
+// The items are mutated in place, so every reference the app is holding stays
+// valid: the selection carries the object itself, and so does the multi-select
+// Set. Rewriting starts is exactly what a group drag already does to these
+// same objects, which is the reason clip-relative storage bought nothing (see
+// the Clips section).
+//
+// The fifth delta-rounding drag in the file, so like the other four it rounds
+// the delta rather than the destination and honours Slip itself.
+function startClipMove(e, track, clip) {
+  e.preventDefault(); e.stopPropagation();
+  interacting = true;
+  const pointerId = e.pointerId;
+  e.currentTarget.classList.add('dragging');
+  const startX = e.clientX;
+  const clips = clipsOf(track);
+  const i = clips.indexOf(clip);
+  const origStart = clip.start;
+  const origNoteStarts = clip.notes.map(n => n.start);
+  // Clips do not overlap, so a clip stops against its neighbours. An unbounded
+  // clip runs to the song's end, and moving it does not change that — `len` is
+  // left alone, so what slides is where the window opens.
+  const span = clipEnd(clip) - clip.start;
+  const floor = i > 0 ? clipEnd(clips[i - 1]) : 0;
+  const ceil = (i < clips.length - 1 ? clips[i + 1].start : COLS) - (clip.len == null ? 0 : span);
+  function onMove(ev) {
+    if (ev.pointerId !== pointerId) return;
+    const dCols = (ev.clientX - startX) / colPx;
+    const stepped = snapOn ? Math.round(dCols / state.grid) * state.grid : quant(dCols);
+    const target = Math.max(floor, Math.min(Math.max(floor, ceil), origStart + stepped));
+    const delta = quant(target - origStart);
+    clip.start = quant(origStart + delta);
+    clip.notes.forEach((n, k) => { n.start = quant(origNoteStarts[k] + delta); });
+    scheduleRender();
+  }
+  function onUp(ev) {
+    if (ev.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    interacting = false;
+    render(); autosave(); commitHistory();
+    announce(`Clip moved to bar ${Math.floor(clip.start / eighthsPerBar()) + 1}.`);
+  }
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
 }
 // Trimming moves the window, never the material. Nothing is deleted here and
 // nothing is created: notes that fall outside the new bounds simply stop being

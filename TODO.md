@@ -99,8 +99,14 @@ hur roligt det vore att bygga.
   4. Trim genom att dra en kant (`startClipTrim()`, fjärde delta-avrundande
      draget i filen, hedrar Slip som de tre andra). Döljer utan att radera,
      och klampar mot grannen — klipp överlappar inte.
-  **Kvar:** dra klipp (5), heal (6), inspelning skapar klipp (7), radsignaturen
-  (8). Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell
+  5. Flytt genom att dra klippets övre greppband (`startClipMove()`, det femte
+     delta-draget). Materialet följer med, **dolt material inkluderat**, så
+     fönster och innehåll behåller sin relation och en trim efter en flytt
+     avslöjar rätt saker. Greppet är ett band snarare än hela kroppen av
+     samma skäl som kroppen inte tar pointer events alls: ett klipp täcker
+     hela sin sträcka av lanen, så en gripbar kropp hade ätit varje
+     placeringsklick och varje marquee-drag inuti den.
+  **Kvar:** heal (6), inspelning skapar klipp (7), radsignaturen (8). Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell
   sen" — blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem,
   och det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att
   fastna i.
