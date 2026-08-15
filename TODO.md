@@ -89,7 +89,7 @@ hur roligt det vore att bygga.
   alternativa tagningar säger om sig själv, fast större: den lägger en axel
   *ovanpå* `state.tracks[id]`, medan klipp bygger om själva notlagringen och
   ändrar vad varje redigeringsgest betyder.
-  **Byggt hittills** (fas 1–5; posten blir kvar tills resten är gjord):
+  **Byggt hittills** (fas 1–7; posten blir kvar tills resten är gjord):
   1. Klipp som lagring, ett obundet klipp per spår. Osynligt av konstruktion —
      samma svit, samma utfall, ny lagring. `version` 2 → 3, v2-filer laddar
      genom `toClips()`.
