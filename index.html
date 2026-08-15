@@ -1475,6 +1475,7 @@
           <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
           <button id="split-clip-btn" class="file-menu-item" data-glyph="scissors" title="Cut the active track's clip in two at the playhead">Split clip at playhead</button>
+          <button id="heal-clip-btn" class="file-menu-item" data-glyph="heal" title="Join the two clips meeting at the playhead back into one">Heal clips at playhead</button>
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
           <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
@@ -1932,6 +1933,12 @@ const GLYPHS = {
   // shape of a decay rather than a drum.
   scissors: { box: '0 0 24 24', paths: ['M4 8h6', 'M4 8v8', 'M4 16h6', 'M20 8h-6', 'M20 8v8', 'M20 16h-6',
                                         'M12 4v16'], },
+  // The same two blocks as `scissors`, with the blade replaced by two arrows
+  // pointing at each other — the operation drawn as its own inverse, which is
+  // what it is.
+  heal: { box: '0 0 24 24', paths: ['M4 8h6', 'M4 8v8', 'M4 16h6', 'M20 8h-6', 'M20 8v8', 'M20 16h-6',
+                                    'M7 12h4', 'M9.5 10.5L11 12l-1.5 1.5',
+                                    'M17 12h-4', 'M14.5 10.5L13 12l1.5 1.5'], },
   quantize: { box: '0 0 24 24', paths: ['M12 3v18', 'M6 7h4', 'M6 7l-2 0', 'M14 15h4', 'M18 15h2',
                                         'M8.5 5.5L10.5 7L8.5 8.5z', 'M15.5 13.5L13.5 15L15.5 16.5z'], },
   velocity: { box: '0 0 24 24', paths: ['M3 20h18', 'M7 20V13', 'M12 20V6', 'M17 20V16',
@@ -5584,6 +5591,43 @@ function addClipBlocks(rollEl, track, heightPx) {
     rollEl.appendChild(div);
   });
 }
+// Joins two clips back into one. Deliberately the exact inverse of
+// splitClipAt(): a split copies the whole material to both halves and lets the
+// windows decide who shows what, so a heal takes from each half precisely the
+// part its window governed — everything in the left clip before the boundary,
+// everything in the right clip from the boundary on. Split-then-heal therefore
+// returns the original clip exactly, material and window alike.
+//
+// That division is also what settles the awkward case. Once the halves have
+// been edited apart they no longer hold the same material, and the boundary
+// decides whose copy survives on each side rather than one clip silently
+// winning the whole thing. Material a window was *hiding* travels with the
+// side that owned it, so it is still there to be revealed afterwards.
+//
+// The rule is the one written down before any of this was built: same source,
+// adjacent windows. Same source cannot be answered by comparing note arrays —
+// each half has its own copy from the moment of the split — and adjacency has
+// to be exact, since a gap between two clips is a silence somebody put there
+// on purpose.
+function healClipsAt(track, col) {
+  const clips = clipsOf(track);
+  const i = clips.findIndex((c, k) => k < clips.length - 1
+    && clipEnd(c) === col && clips[k + 1].start === col
+    && c.source && c.source === clips[k + 1].source);
+  if (i === -1) return false;
+  const a = clips[i], b = clips[i + 1];
+  const notes = [
+    ...a.notes.filter(n => n.start < b.start),
+    ...b.notes.filter(n => n.start >= b.start),
+  ].sort((x, y) => x.start - y.start);
+  clips.splice(i, 2, {
+    start: a.start,
+    len: b.len == null ? null : clipEnd(b) - a.start,
+    source: a.source,
+    notes,
+  });
+  return true;
+}
 // Moving a clip takes its material with it: the window slides and every item
 // it holds slides by the same amount, hidden ones included. That the hidden
 // material moves too is the point rather than a detail — it is what keeps the
@@ -8823,6 +8867,22 @@ document.getElementById('split-clip-btn').addEventListener('click', () => {
   }
   render(); autosave(); commitHistory();
   announce(`Split ${trackOf(track)?.name || track} at bar ${Math.floor(state.playhead / eighthsPerBar()) + 1}.`);
+});
+// Mirrors the split action rather than inventing a second way to point at a
+// boundary: same cursor, same track, same menu. A split puts the boundary
+// exactly on the playhead, so healing at the same column is the round trip.
+document.getElementById('heal-clip-btn').addEventListener('click', () => {
+  closeFileMenu();
+  const track = state.activeTrack;
+  if (!healClipsAt(track, state.playhead)) {
+    // Three different reasons land here — no boundary at the playhead, a gap
+    // rather than a join, or two clips that never came from one. All of them
+    // mean the same thing to the user, and none of them should be silent.
+    announce('Nothing to heal: the playhead is not on a join between two halves of one clip.');
+    return;
+  }
+  render(); autosave(); commitHistory();
+  announce(`Healed ${trackOf(track)?.name || track} at bar ${Math.floor(state.playhead / eighthsPerBar()) + 1}.`);
 });
 document.getElementById('timing-btn').addEventListener('click', () => {
   closeFileMenu();

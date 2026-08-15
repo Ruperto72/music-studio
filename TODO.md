@@ -106,7 +106,12 @@ hur roligt det vore att bygga.
      samma skäl som kroppen inte tar pointer events alls: ett klipp täcker
      hela sin sträcka av lanen, så en gripbar kropp hade ätit varje
      placeringsklick och varje marquee-drag inuti den.
-  **Kvar:** heal (6), inspelning skapar klipp (7), radsignaturen (8).
+  6. Heal (`healClipsAt()`, menyn, vid spelhuvudet). Exakt split baklänges:
+     varje halva bidrar med den del dess fönster styrde, så split-följt-av-heal
+     ger tillbaka ursprungsklippet exakt. Kräver samma `source` och *exakt*
+     angränsning — en lucka mellan två klipp är en tystnad någon lagt dit med
+     flit, och ett nekat heal säger ifrån i stället för att göra ingenting.
+  **Kvar:** inspelning skapar klipp (7), radsignaturen (8).
   Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell sen" —
   blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem, och
   det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att

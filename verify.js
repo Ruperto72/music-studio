@@ -6246,6 +6246,162 @@ async function main() {
       }
     });
 
+    step('Clips: healing is split run backwards, and refuses across a gap', async () => {
+      await fresh();
+      // Phase 6. The strong claim is the round trip: split then heal has to
+      // give back the original clip exactly — window, source and material —
+      // or the two operations are not inverses and every later edit inherits
+      // whatever they disagreed about.
+      const sixHitsOnRhythm = async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          for (let i = 0; i < 6; i++) {
+            const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+            const r = lane.getBoundingClientRect();
+            lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+              clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+          }
+        })()`);
+        await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+        await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      };
+      const seekTo = (col) => cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[${col}].getBoundingClientRect();
+        cells[${col}].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      const menu = (id) => cdp.evaluate(
+        `document.getElementById('file-menu-toggle').click(); document.getElementById('${id}').click()`);
+      const clipCount = () => cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length`);
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      const savedClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({
+          start: c.start, len: c.len, source: c.source,
+          notes: c.notes.map(n => n.start).sort((a, b) => a - b) })));
+      })()`);
+      // Waits for the draft to *change* from a snapshot taken before the
+      // action, rather than for a particular value. Waiting for a value is
+      // how this step first went wrong: "one clip" was true of the state
+      // before the split as well, so the wait returned instantly and the
+      // assertion read a song two operations out of date — and waiting for
+      // the *right* value instead would turn every real failure into a bare
+      // timeout naming no symptom.
+      const settledChange = async (prev) => {
+        await waitFor(`(() => {
+          const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+          if (!k) return false;
+          return localStorage.getItem(k) !== ${JSON.stringify(prev)};
+        })()`);
+      };
+      const rawDraft = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return k ? localStorage.getItem(k) : '';
+      })()`);
+      const settled = (n) => waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === ${n};
+      })()`);
+
+      await sixHitsOnRhythm();
+      // Wait for the six hits to reach the draft, not merely for "one clip" —
+      // that was true at boot too, so the baseline could otherwise be captured
+      // from an empty song and the round-trip comparison below would be
+      // between two different things.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && window.__savedNotes(d, t.id).length === 6;
+      })()`);
+      const original = await savedClips();
+
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await settled(2);
+      await menu('heal-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 1`);
+      await settled(1);
+      const healed = await savedClips();
+      if (healed !== original) {
+        throw new Error(`split then heal must return the original clip exactly.\n  was:  ${original}\n  now:  ${healed}`);
+      }
+
+      // A gap is a silence somebody put there on purpose, so adjacency has to
+      // be exact: split, pull the left clip's edge in, and healing must refuse
+      // rather than quietly closing the hole.
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
+          .querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 31, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 31, clientX: x - 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 31, clientX: x - 16, clientY: y }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      await menu('heal-clip-btn');
+      await new Promise((r) => setTimeout(r, 250));
+      if (await clipCount() !== 2) {
+        throw new Error('healing across a gap must refuse — the silence between two clips is deliberate');
+      }
+      const spoken = await cdp.evaluate(`document.getElementById('a11y-status').textContent`);
+      if (!/nothing to heal/i.test(spoken)) {
+        throw new Error(`a refused heal has to say so rather than do nothing silently, announced: "${spoken}"`);
+      }
+
+      // Edited apart, the boundary decides whose copy survives on each side —
+      // and healing must not change what is heard or drawn.
+      await fresh();
+      await sixHitsOnRhythm();
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
+      // Erase inside the *right* clip's range, not the left's. In the left's,
+      // that clip's material happens to coincide with the correct answer, so
+      // "take the whole left clip" and "take each side's own" produce the same
+      // result and the boundary rule goes untested — which is exactly how a
+      // first version of this step passed against a build that ignored the
+      // boundary entirely. Column 4 belongs to the right clip, whose copy is
+      // current there while the left clip's hidden copy is stale.
+      await cdp.evaluate(`(() => {
+        const hits = [...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')];
+        hits.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        hits[4].click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      const beforeHeal = await drawnCols();
+      const draftBeforeHeal = await rawDraft();
+      await menu('heal-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 1`);
+      const afterHeal = await drawnCols();
+      if (afterHeal !== beforeHeal) {
+        throw new Error(`healing must not change what is drawn.\n  before: ${beforeHeal}\n  after:  ${afterHeal}`);
+      }
+      await settledChange(draftBeforeHeal);
+      const merged = JSON.parse(await savedClips());
+      if (JSON.stringify(merged[0].notes) !== JSON.stringify([0, 1, 2, 3, 5])) {
+        throw new Error(`each side's own copy should survive on its own side of the boundary, got ${JSON.stringify(merged)}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
