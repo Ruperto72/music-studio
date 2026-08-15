@@ -694,6 +694,23 @@
   /* Sub-eighth grid guides for the current resolution (1/16, triplets, …),
      drawn above the eighth cells but below notes. */
   .subgrid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 1; }
+  /* The window a track's part lives in — see the Clips section in the script.
+     It draws *behind* everything else in the lane (below .subgrid's z-index 1)
+     and takes no pointer events at all: it is a read-only view of where a clip
+     begins and ends, and the lane's own click handler has to go on resolving a
+     placement from raw coordinates as if the block were not there. The edges
+     are drawn harder than the body on purpose — they are what splitting and
+     trimming will grab, so they are the part worth being able to see exactly.
+     The top cap is an inset shadow rather than a child element, since a clip
+     is already one div per clip per track in the render this file's own
+     performance notes call the bottleneck. */
+  .clip {
+    position: absolute; top: 0; z-index: 0; pointer-events: none;
+    background: rgba(255,255,255,0.022);
+    border-left: 1px solid rgba(255,255,255,0.24);
+    border-right: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 2px 0 0 rgba(255,255,255,0.14);
+  }
   .cell {
     border-right: 1px solid var(--grid); border-bottom: 1px solid rgba(255,255,255,0.02);
   }
@@ -2861,6 +2878,10 @@ const clipsOf = (track) => state.tracks[track] || (state.tracks[track] = [makeCl
 // has until trimming exists to give it a real edge.
 const clipHolds = (clip, item) =>
   item.start >= clip.offset && (clip.len == null || item.start < clip.offset + clip.len);
+// Where the window closes on the timeline. A null `len` means "unbounded",
+// which is what a clip covering a whole track has until trimming exists to
+// give it a real edge — so it ends where the song does.
+const clipEnd = (clip) => (clip.len == null ? COLS : clip.start + clip.len);
 const toAbsolute = (clip, item) => clip.start + (item.start - clip.offset);
 // The one read path. Returns the track's items positioned in absolute columns,
 // which is the coordinate every caller outside this section works in.
@@ -5456,6 +5477,30 @@ function laneCoords(e, rollEl, rowH, midiTop) {
 
 // Vertical guide lines at the current grid resolution, layered above the eighth
 // cells but below notes. Skipped at 1/8 (the eighth cell borders already mark it).
+// One block per clip, behind the part it holds. Both lane renderers call this
+// rather than each drawing its own: a clip means the same thing on a tonal and
+// on a rhythm track, and these two grids have already drifted apart once over
+// something that should have been shared — which is why a `.track` row states
+// its own data-kind instead of being told apart by a control it happens to
+// have.
+//
+// Deliberately aria-hidden for now. Every track currently holds exactly one
+// clip spanning the whole song, so the block says nothing a screen reader
+// cannot already get from the notes themselves, and giving it role="group"
+// would be a lie: the notes are its *siblings* in the DOM, not its children.
+// Phase 3 (split) is when a clip starts carrying real information — where one
+// part ends and the next begins — and that is the phase that owes it a label,
+// most likely on the lane's own aria-label as a clip count rather than here.
+function addClipBlocks(rollEl, track, heightPx) {
+  for (const clip of clipsOf(track)) {
+    const div = el('div', 'clip');
+    div.style.left = (clip.start * colPx) + 'px';
+    div.style.width = Math.max(2, (clipEnd(clip) - clip.start) * colPx) + 'px';
+    div.style.height = heightPx + 'px';
+    div.setAttribute('aria-hidden', 'true');
+    rollEl.appendChild(div);
+  }
+}
 function addSubgrid(rollEl, heightPx) {
   if (Math.abs(state.grid - 1) < EPS) return;
   const sub = el('div', 'subgrid');
@@ -5566,6 +5611,7 @@ function renderPitchTrack(track) {
       rollEl.appendChild(cell);
     }
   }
+  addClipBlocks(rollEl, track, pitchCount * ROW_H);
   addSubgrid(rollEl, pitchCount * ROW_H);
   // Placement/marquee are handled at the lane level so a click anywhere resolves
   // to a snapped (possibly sub-eighth) column, not just a whole-cell index.
@@ -5679,6 +5725,7 @@ function renderRhythmTrack(track) {
       rollEl.appendChild(cell);
     }
   });
+  addClipBlocks(rollEl, track, RHYTHM_ROWS.length * RHY_H);
   addSubgrid(rollEl, RHYTHM_ROWS.length * RHY_H);
   rollEl.addEventListener('click', (e) => {
     if (state.tool !== 'pen') return;

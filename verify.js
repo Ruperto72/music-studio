@@ -5750,6 +5750,101 @@ async function main() {
       }
     });
 
+    step('Clips: every track draws its clip as a block, and the block does not eat the lane', async () => {
+      await fresh();
+      // Phase 2 of the clip model (TODO.md): the block is a read-only view of
+      // where a clip begins and ends. Every track currently holds exactly one
+      // clip spanning the song, so the assertion is one block per lane at the
+      // full width — a second block would mean clipsOf() invented one, and a
+      // short one would mean clipEnd() lost the unbounded case.
+      const blocks = await cdp.evaluate(`JSON.stringify(
+        [...document.querySelectorAll('.track[data-kind] .lane')].map(l => ({
+          kind: l.closest('.track').dataset.kind,
+          clips: l.querySelectorAll('.clip').length,
+          // offsetWidth, not style.width: a .lane is a CSS grid sized by its
+          // template columns and carries no inline width to read.
+          spans: [...l.querySelectorAll('.clip')].map(c =>
+            Math.round(parseFloat(c.style.width) / l.offsetWidth * 100)),
+        })))`);
+      const rows = JSON.parse(blocks);
+      if (rows.length < 5) throw new Error(`expected the starter layout's lanes, got ${rows.length}`);
+      // Assert the count and the values, not a property over the list: .every()
+      // is true of an empty list, so "all blocks are full width" would pass on
+      // a build that drew no blocks at all.
+      const wrong = rows.filter(r => r.clips !== 1);
+      if (wrong.length) throw new Error(`every lane should draw exactly one clip block, got ${JSON.stringify(rows)}`);
+      const short = rows.filter(r => r.spans[0] < 99);
+      if (short.length) throw new Error(`an unbounded clip should span the whole lane, got ${JSON.stringify(rows)}`);
+
+      // The part that actually matters. The block covers the entire lane, so
+      // if it took pointer events every placement in the app would land on it
+      // instead of on the grid.
+      //
+      // Asked through elementFromPoint rather than by dispatching a click:
+      // a synthetic MouseEvent aimed at .lane is delivered to that element's
+      // listener directly, with no hit-testing on the way, so it lands exactly
+      // the same whether the block swallows pointer events or not. That first
+      // version of this assertion passed against a build with pointer-events
+      // deliberately removed — a step aimed at code it never reaches, which is
+      // the failure mode this file's own notes call out. elementFromPoint does
+      // the real hit test.
+      const onTop = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        // Into view first. The rhythm track is the fifth row, ~1170px down,
+        // and the headless viewport is 600px tall — elementFromPoint takes
+        // *viewport* coordinates, so without this it is asked about a point
+        // below the fold and answers with nothing at all. That is how the
+        // first version of this assertion passed against a build with
+        // pointer-events deliberately removed: it was not testing a wrong
+        // thing, it was testing nothing.
+        lane.closest('.track').scrollIntoView({ block: 'center' });
+        const r = lane.getBoundingClientRect();
+        // Down the middle of the lane, not near its top edge: the toolbar is
+        // sticky and covers the first ~100px of the scrollport, so a point at
+        // r.top + 8 hits the toolbar and answers the wrong question — which is
+        // the second way this one assertion managed to test nothing.
+        const stack = document.elementsFromPoint(r.left + 4 * 16 + 4, r.top + r.height / 2);
+        return JSON.stringify(stack.slice(0, 4).map(e => e.className || e.tagName));
+      })()`);
+      const stack = JSON.parse(onTop);
+      // Both guards are load-bearing, and both are here because the assertion
+      // silently passed without them: an empty stack (point off-viewport) and
+      // a stack that never reaches the lane (point over the toolbar) each read
+      // as "the block did not take the click" while proving nothing at all.
+      if (!stack.length) throw new Error('the hit test found nothing — the point was off-viewport, so this proves nothing');
+      if (!stack.some(c => /\blane\b/.test(c))) {
+        throw new Error(`the hit test never reached the lane, so it proves nothing: ${onTop}`);
+      }
+      if (/\bclip\b/.test(stack[0])) {
+        throw new Error(`the clip block must not take pointer events — a point over the lane hit '${stack[0]}' (stack ${onTop})`);
+      }
+      // ...and the lane still resolves a placement at the clicked column.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+          clientX: r.left + 4 * 16 + 4, clientY: r.top + 8 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 1`);
+      const at = await cdp.evaluate(
+        `parseFloat(document.querySelector('.track[data-kind="rhythm"] .lane .hit').style.left) / 16`);
+      if (Math.abs(at - 4) > 1e-6) {
+        throw new Error(`a click over the clip block should still place at the clicked column 4, landed at ${at}`);
+      }
+      // And it must sit behind the notes, or a part would be drawn over by its
+      // own container.
+      const order = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const z = (sel) => getComputedStyle(lane.querySelector(sel)).zIndex;
+        return JSON.stringify({ clip: z('.clip'), hit: z('.hit') });
+      })()`);
+      const { clip, hit } = JSON.parse(order);
+      if (!(Number(clip) < Number(hit))) {
+        throw new Error(`the clip block must draw behind the part it holds, got ${order}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
