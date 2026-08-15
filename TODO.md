@@ -120,7 +120,8 @@ hur roligt det vore att bygga.
      passet **slutar**, inte när det börjar: ett klipp öppnat vid
      inspelningsstart hade trängt undan resten av spåret innan en enda not
      spelats.
-  **Kvar:** radsignaturen (8).
+  **Kvar:** radsignaturen (8) — se prestandaposten nedan, som nu bär två
+  mätningar till och ett fjärde villkor som inte stod där förut.
   Den ursprungliga tvåstegsvägen — "billig modell först, riktig modell sen" —
   blev aldrig aktuell: `offset` visade sig vara det enda som skilde dem, och
   det fältet togs bort av skälen ovan, så det fanns ingen billig etapp att
@@ -280,6 +281,28 @@ hur roligt det vore att bygga.
   **Se även klipp-posten ovan.** Signaturen är hela svårigheten här, och ett
   klipp är en bättre enhet för den än en platt notlista — `{start, len,
   source}` i stället för "varje not i spåret".
+  **Läget efter att klipp byggts** (fas 1–7), med två mätningar och ett fjärde
+  villkor som inte stod här förut:
+  - *Villkoret om en stabil svit är kontrollerat, inte antaget.* Det steg som
+    föll oregelbundet en gång under klipparbetet (`seeking takes back`) kördes
+    tio gånger i rad efteråt: 10/10 gröna. Baslinjen håller, så ett nytt
+    oregelbundet fel går att tillskriva ändringen.
+  - *Klipplagret kostade ingenting per render.* 60,8 / 126,9 / 245,9 ms vid
+    5 / 12 / 24 spår, mot 61 / 122 / 247 innan klippen fanns. Blocken, deras
+    två trimkanter och greppbandet är en `div` till per klipp och rad, och
+    syns inte i mätningen — samma resultat som effekterna gav, av samma skäl.
+  - **Fjärde villkoret: signaturen måste ändras när ett objekts *identitet*
+    ändras, inte bara dess värden.** En rads lyssnare sluter om själva not-
+    och hit-objekten, och undo/låtladdning byter ut dem mot värdelika kopior
+    (`restoreSnapshot()` tilldelar `state.tracks` rakt från parsad JSON). En
+    värdehärledd signatur läser det som oförändrat, raden återanvänds, och
+    dess lyssnare pekar på objekt som inte längre finns i låten. Inget kastar;
+    klick slutar bara nå fram. Det är en *kandidat* till de tre orelaterade
+    steg som började falla oregelbundet förra gången — inte en fastställd
+    orsak. Det som gör det hanterbart nu är att klipparbetet gav notlistorna
+    **en enda skrivväg** (`setTrackNotes()`), så en revisionsräknare där plus
+    de få ställen som byter ut `state.tracks` i sin helhet täcker identitet
+    fullständigt. Det gick inte när förra försöket gjordes.
   Byggs klipp någon gång bör det här försöket göras i samma omgång, inte
   före och inte efter.
 

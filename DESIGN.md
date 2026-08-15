@@ -1324,6 +1324,34 @@ draws still forces a rebuild — and a suite that is stable across repeated runs
 tagging the row element to detect a rebuild does not work: a reused row is the
 same element, which is the entire point.
 
+**A fourth requirement, found while building clips and not previously written
+down: the signature has to change when an item's *identity* changes, not only
+when its values do.** A row's listeners close over the actual note and hit
+objects — `state.selected` holds the object, `state.multiSelected` is a Set of
+them, `removeHit()` filters on `h !== hit`. Undo and song loading replace those
+objects wholesale with equal-valued ones (`restoreSnapshot()` assigns
+`state.tracks` straight from parsed JSON), so a value-derived signature reads as
+unchanged, the row is reused, and its listeners go on pointing at objects that
+are no longer in the song. Nothing throws; clicks simply stop reaching the
+state. That is a candidate mechanism for the three unrelated steps that began
+failing intermittently on the reverted attempt — the master EQ knob, step-entry
+Backspace and the mobile song list all sit downstream of stale handlers — though
+it was never established and is offered as a lead rather than a conclusion.
+
+What makes it tractable now is that the clip work gave the note lists a single
+write path. Every mutation goes through `setTrackNotes()` (see the Clips
+section in `index.html`), so a per-track revision counter bumped there, plus the
+handful of places that replace `state.tracks` as a whole, covers identity
+completely — which was not true when the attempt was made and every call site
+wrote to the array directly.
+
+**Measured again after clips landed, on the same one-liner below:** 60.8 ms at
+5 tracks, 126.9 at 12, 245.9 at 24 — against 61 / 122 / 247 before the clip
+layer existed. The blocks, their two trim edges and the move grip are one more
+`div` each per clip per row and cost nothing a render can feel, which is the
+same result effects gave, and for the same reason: it is the layout, not the
+node count.
+
 `verify.js`'s "off-screen rows keep their real height" step exists to keep
 whatever does it honest.
 
