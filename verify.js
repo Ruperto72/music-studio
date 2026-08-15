@@ -39,6 +39,41 @@ const ONLY = onlyArg !== -1 ? (process.argv[onlyArg + 1] || '').toLowerCase() : 
 const SERVER_PORT = process.env.VERIFY_PORT || 8099;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 
+// A saved song stores a track's part as *clips* rather than a flat note list
+// (see the Clips section in index.html): each clip is a window onto its own
+// notes, whose starts are relative to the clip's content origin. Anything
+// asserting on a saved song therefore has to flatten that the way the app's
+// own trackNotes() does — read `song.tracks[id][0]` directly and you get a
+// clip object where you meant a note, which does not throw, it just silently
+// compares the wrong thing. That is exactly how ten steps in this suite failed
+// at once with `{"start":0,"len":null}` in their message: not one of them had
+// found a bug, they had all read a clip as a note.
+//
+// Takes both shapes on purpose. A v2 file (and any hand-written one) still
+// holds a flat list, and `applySongData()` still loads it, so the audit below
+// must keep accepting it too.
+function savedNotesOf(song, id) {
+  const part = ((song && song.tracks) || {})[id] || [];
+  // Note the empty-array trap CLAUDE.md warns about: [].every() is true, so an
+  // empty part would read as "already clips" and flatten to nothing rather
+  // than to itself. Length first.
+  if (!part.length || !part.every((c) => c && Array.isArray(c.notes))) return part;
+  const out = [];
+  // Notes carry timeline columns, so a window shows an item when the item's
+  // own start falls inside it — no translation. See the Clips section in
+  // index.html for why the `offset` this used to apply was removed.
+  for (const c of part) {
+    for (const n of c.notes) {
+      if (n.start >= c.start && (c.len == null || n.start < c.start + c.len)) out.push(n);
+    }
+  }
+  return out;
+}
+// The same function, installed on the page once per document so the browser-
+// side assertions can call it too. One definition, two sides — the alternative
+// was pasting the flattening into seventeen evaluate() strings.
+const SAVED_NOTES_INSTALL = `window.__savedNotes = ${String(savedNotesOf)};`;
+
 // ---------------------------------------------------------------------------
 // Bundled-song audit. The first of two checks in this file that never open a
 // browser: it reads songs/*.json and asks whether index.html would accept
@@ -135,7 +170,7 @@ function auditBundledSongs(repoRoot) {
 
     for (const id of Object.keys(song.tracks || {})) {
       if (!ids.includes(id)) { add(`tracks["${id}"] is not in trackList — its notes/hits are dropped on load`); continue; }
-      const seq = song.tracks[id] || [];
+      const seq = savedNotesOf(song, id);
       if (isRhythm(id)) {
         const unknown = [...new Set(seq.filter((h) => !RHYTHM_ROWS.includes(h.type)).map((h) => h.type))];
         if (unknown.length) add(`${id}: hit(s) on an unknown drum: ${unknown.join(', ')}`);
@@ -443,6 +478,9 @@ async function main() {
     });
     cdp.on('Page.javascriptDialogOpening', () => { cdp.send('Page.handleJavaScriptDialog', { accept: true }); });
     await cdp.send('Page.setBypassCSP', { enabled: true });
+    // Survives every goto()/fresh(), so a step never has to remember to
+    // install it — see SAVED_NOTES_INSTALL for why the assertions need it.
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SAVED_NOTES_INSTALL });
 
     async function goto(url) {
       const loaded = new Promise((resolve) => cdp.on('Page.loadEventFired', resolve));
@@ -2000,14 +2038,14 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
-        return (d.tracks[id] || [])[0] || null;
+        return window.__savedNotes(d, id)[0] || null;
       })()`);
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind !== 'rhythm').id;
-        const n = (d.tracks[id] || [])[0];
+        const n = window.__savedNotes(d, id)[0];
         return n && Math.abs(n.pan + 0.7) < 1e-6;
       })()`, 4000);
 
@@ -2067,7 +2105,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find((t) => t.kind === 'rhythm').id;
-        const h = (d.tracks[id] || [])[0];
+        const h = window.__savedNotes(d, id)[0];
         return h && Math.abs(h.pan - 0.6) < 1e-6 && !('vel' in h);
       })()`, 4000);
     });
@@ -2107,7 +2145,7 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
+        return window.__savedNotes(d, id).map((n) => ({ start: n.start, len: n.len, freq: n.freq }));
       })()`);
 
       // Plain Play with a track armed means "listen", not "type into the song":
@@ -2215,7 +2253,7 @@ async function main() {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === ${JSON.stringify(name)}) || {}).id;
-        return (d.tracks[id] || []).map((n) => ({ start: n.start, len: n.len, freq: n.freq, type: n.type }))
+        return window.__savedNotes(d, id).map((n) => ({ start: n.start, len: n.len, freq: n.freq, type: n.type }))
           .sort((a, b) => a.start - b.start || (a.freq || 0) - (b.freq || 0));
       })()`);
       const playheadLeft = () => cdp.evaluate(`document.querySelector('.playhead').style.left`);
@@ -3992,7 +4030,7 @@ async function main() {
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].map(n => n.vel ?? 1).sort();
+        return window.__savedNotes(d, id).map(n => n.vel ?? 1).sort();
       })()`);
       if (!saved || !saved.some((v) => v < 0.5)) {
         throw new Error(`dragging a head should store a quieter velocity, song has ${JSON.stringify(saved)}`);
@@ -4062,7 +4100,7 @@ async function main() {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].filter(n => n.pan != null).length;
+        return window.__savedNotes(d, id).filter(n => n.pan != null).length;
       })()`);
       if (!wrote) throw new Error('dragging on the Pan lane should store a pan, not a velocity');
       await goto(APP_URL);
@@ -4151,7 +4189,7 @@ async function main() {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        return d.tracks[id].map(n => n.start).sort((a, b) => a - b);
+        return window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b);
       })()`);
       // Total distance from the grid. `grid` is 1 (an eighth) on a fresh page.
       const err = (list) => list.reduce((sum, st) => sum + Math.abs(st - Math.round(st)), 0);
@@ -4223,7 +4261,7 @@ async function main() {
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
         const seen = new Set(); let dupes = 0;
-        for (const n of d.tracks[id]) {
+        for (const n of window.__savedNotes(d, id)) {
           const key = n.start + '@' + n.freq;
           if (seen.has(key)) dupes++;
           seen.add(key);
@@ -4447,7 +4485,7 @@ async function main() {
       // after the last message and finding yesterday's copy.
       const savedItems = async (expected) => {
         const id = await armed();
-        const read = `((JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).tracks || {})[${JSON.stringify(id)}] || []`;
+        const read = `window.__savedNotes(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}, ${JSON.stringify(id)})`;
         await waitFor(`(${read}).length === ${expected}`);
         return cdp.evaluate(read);
       };
@@ -4638,7 +4676,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        const h = d.tracks[id][0];
+        const h = window.__savedNotes(d, id)[0];
         return h && Math.abs(h.vel - 0.45) < 1e-6;
       })()`, 4000);
 
@@ -5139,8 +5177,8 @@ async function main() {
         const d = JSON.parse(localStorage.getItem(k));
         const ids = d.trackList.filter(t => t.kind !== 'rhythm').map(t => t.id);
         return {
-          notes: (d.tracks[ids[0]] || []).length,
-          copyNotes: (d.tracks[ids[1]] || []).length,
+          notes: window.__savedNotes(d, ids[0]).length,
+          copyNotes: window.__savedNotes(d, ids[1]).length,
           send: (d.fxSend || {})[ids[1]],
         };
       })()`);
@@ -5164,8 +5202,8 @@ async function main() {
       const diverged = `(() => {
         const s = ${savedTracks};
         if (!s) return false;
-        const a = (s.d.tracks[s.ids[0]] || []).map(n => n.freq).sort().join(',');
-        const b = (s.d.tracks[s.ids[1]] || []).map(n => n.freq).sort().join(',');
+        const a = window.__savedNotes(s.d, s.ids[0]).map(n => n.freq).sort().join(',');
+        const b = window.__savedNotes(s.d, s.ids[1]).map(n => n.freq).sort().join(',');
         return a !== b;
       })()`;
       await waitFor(diverged, 6000).catch(() => {
@@ -5337,7 +5375,7 @@ async function main() {
         if (!k) return [];
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []);
+        return window.__savedNotes(d, id);
       })()`);
 
       await cdp.evaluate(`document.getElementById('record-btn').click()`);
@@ -5353,7 +5391,7 @@ async function main() {
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find((t) => t.name === 'Bass') || {}).id;
-        return (d.tracks[id] || []).length === 1;
+        return window.__savedNotes(d, id).length === 1;
       })()`, 6000);
       const lapOne = (await bassNotes()).map((n) => n.freq);
 
@@ -5431,14 +5469,14 @@ async function main() {
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        return (d.tracks[id] || []).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
+        return window.__savedNotes(d, id).map(h => ({ start: h.start, type: h.type, vel: h.vel }));
       })()`);
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
-        return (d.tracks[id] || []).length > 8;
+        return window.__savedNotes(d, id).length > 8;
       })()`, 6000);
       const before = await hits();
 
@@ -5710,6 +5748,843 @@ async function main() {
         throw new Error(
           `after seeking into an empty stretch the output should be silent, ` +
           `but it is still playing what was scheduled before the seek (level ${after} vs ${sounding} before)`);
+      }
+    });
+
+    step('Clips: every track draws its clip as a block, and the block does not eat the lane', async () => {
+      await fresh();
+      // Phase 2 of the clip model (TODO.md): the block is a read-only view of
+      // where a clip begins and ends. Every track currently holds exactly one
+      // clip spanning the song, so the assertion is one block per lane at the
+      // full width — a second block would mean clipsOf() invented one, and a
+      // short one would mean clipEnd() lost the unbounded case.
+      const blocks = await cdp.evaluate(`JSON.stringify(
+        [...document.querySelectorAll('.track[data-kind] .lane')].map(l => ({
+          kind: l.closest('.track').dataset.kind,
+          clips: l.querySelectorAll('.clip').length,
+          // offsetWidth, not style.width: a .lane is a CSS grid sized by its
+          // template columns and carries no inline width to read.
+          spans: [...l.querySelectorAll('.clip')].map(c =>
+            Math.round(parseFloat(c.style.width) / l.offsetWidth * 100)),
+        })))`);
+      const rows = JSON.parse(blocks);
+      if (rows.length < 5) throw new Error(`expected the starter layout's lanes, got ${rows.length}`);
+      // Assert the count and the values, not a property over the list: .every()
+      // is true of an empty list, so "all blocks are full width" would pass on
+      // a build that drew no blocks at all.
+      const wrong = rows.filter(r => r.clips !== 1);
+      if (wrong.length) throw new Error(`every lane should draw exactly one clip block, got ${JSON.stringify(rows)}`);
+      const short = rows.filter(r => r.spans[0] < 99);
+      if (short.length) throw new Error(`an unbounded clip should span the whole lane, got ${JSON.stringify(rows)}`);
+
+      // The part that actually matters. The block covers the entire lane, so
+      // if it took pointer events every placement in the app would land on it
+      // instead of on the grid.
+      //
+      // Asked through elementFromPoint rather than by dispatching a click:
+      // a synthetic MouseEvent aimed at .lane is delivered to that element's
+      // listener directly, with no hit-testing on the way, so it lands exactly
+      // the same whether the block swallows pointer events or not. That first
+      // version of this assertion passed against a build with pointer-events
+      // deliberately removed — a step aimed at code it never reaches, which is
+      // the failure mode this file's own notes call out. elementFromPoint does
+      // the real hit test.
+      const onTop = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        // Into view first. The rhythm track is the fifth row, ~1170px down,
+        // and the headless viewport is 600px tall — elementFromPoint takes
+        // *viewport* coordinates, so without this it is asked about a point
+        // below the fold and answers with nothing at all. That is how the
+        // first version of this assertion passed against a build with
+        // pointer-events deliberately removed: it was not testing a wrong
+        // thing, it was testing nothing.
+        lane.closest('.track').scrollIntoView({ block: 'center' });
+        const r = lane.getBoundingClientRect();
+        // Down the middle of the lane, not near its top edge: the toolbar is
+        // sticky and covers the first ~100px of the scrollport, so a point at
+        // r.top + 8 hits the toolbar and answers the wrong question — which is
+        // the second way this one assertion managed to test nothing.
+        const stack = document.elementsFromPoint(r.left + 4 * 16 + 4, r.top + r.height / 2);
+        return JSON.stringify(stack.slice(0, 4).map(e => e.className || e.tagName));
+      })()`);
+      const stack = JSON.parse(onTop);
+      // Both guards are load-bearing, and both are here because the assertion
+      // silently passed without them: an empty stack (point off-viewport) and
+      // a stack that never reaches the lane (point over the toolbar) each read
+      // as "the block did not take the click" while proving nothing at all.
+      if (!stack.length) throw new Error('the hit test found nothing — the point was off-viewport, so this proves nothing');
+      if (!stack.some(c => /\blane\b/.test(c))) {
+        throw new Error(`the hit test never reached the lane, so it proves nothing: ${onTop}`);
+      }
+      if (/\bclip\b/.test(stack[0])) {
+        throw new Error(`the clip block must not take pointer events — a point over the lane hit '${stack[0]}' (stack ${onTop})`);
+      }
+      // ...and the lane still resolves a placement at the clicked column.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+          clientX: r.left + 4 * 16 + 4, clientY: r.top + 8 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 1`);
+      const at = await cdp.evaluate(
+        `parseFloat(document.querySelector('.track[data-kind="rhythm"] .lane .hit').style.left) / 16`);
+      if (Math.abs(at - 4) > 1e-6) {
+        throw new Error(`a click over the clip block should still place at the clicked column 4, landed at ${at}`);
+      }
+      // And it must sit behind the notes, or a part would be drawn over by its
+      // own container.
+      const order = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const z = (sel) => getComputedStyle(lane.querySelector(sel)).zIndex;
+        return JSON.stringify({ clip: z('.clip'), hit: z('.hit') });
+      })()`);
+      const { clip, hit } = JSON.parse(order);
+      if (!(Number(clip) < Number(hit))) {
+        throw new Error(`the clip block must draw behind the part it holds, got ${order}`);
+      }
+    });
+
+    step('Clips: splitting cuts the window in two and keeps the whole part on both sides', async () => {
+      await fresh();
+      // Phase 3. The interesting claim is not that two blocks appear — it is
+      // that a split is a *window* operation: each half keeps the entire
+      // content and merely shows its own part of it. That is what makes the
+      // trim in phase 4 able to give material back, so it is asserted here
+      // rather than left until the feature that depends on it.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Six hits, one per column from 0..5 — re-querying the lane each time,
+      // since placing one re-renders and replaces the element.
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      // Activate the rhythm track and put the playhead in the middle of them.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      // autosave() is debounced, so wait for the draft to carry the split
+      // rather than reading it the instant the DOM shows two blocks.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && (d.tracks[t.id] || []).length === 2;
+      })()`);
+
+      // The saved song is the honest place to look: what the windows show
+      // must be unchanged (all six hits, same columns), while each clip must
+      // still be holding all six in its own content.
+      const shape = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        const clips = d.tracks[id];
+        return JSON.stringify({
+          clips: clips.map(c => ({ start: c.start, len: c.len, held: c.notes.length })),
+          sameSource: new Set(clips.map(c => c.source)).size === 1,
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const s = JSON.parse(shape);
+      if (s.clips.length !== 2) throw new Error(`a split should leave two clips, got ${shape}`);
+      // Windows meet exactly at the cut, and the right half's offset has moved
+      // into the content by as much as the left half is long.
+      const [l, r] = s.clips;
+      if (!(l.start === 0 && l.len === 3)) throw new Error(`left window wrong: ${shape}`);
+      if (!(r.start === 3)) throw new Error(`right window wrong: ${shape}`);
+      if (!s.sameSource) throw new Error(`both halves came from one clip and must share its source: ${shape}`);
+      // The claim that matters: neither half threw material away.
+      if (!(l.held === 6 && r.held === 6)) {
+        throw new Error(`each half must keep the whole part so a trim can give it back, got ${shape}`);
+      }
+      // ...and yet nothing changed about what is heard or drawn.
+      if (JSON.stringify(s.visible) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`splitting must not change what the windows show, got ${shape}`);
+      }
+      const drawn = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
+      if (drawn !== 6) throw new Error(`splitting must not change the drawn part, got ${drawn} hits`);
+    });
+
+    step('Clips: an edit after a split keeps what the other window hides', async () => {
+      await fresh();
+      // The trap phase 1's setTrackNotes() walked straight into: `items` comes
+      // from trackNotes(), which returns only what the windows *show*, so
+      // emptying every clip before refiling would silently drop everything
+      // they hide. With one unbounded clip nothing was hidden and it could not
+      // bite; the moment a split creates a second window it destroys exactly
+      // the material trimming is supposed to be able to give back.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+
+      // Now edit: erase one visible hit, which routes through setTrackNotes().
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      // Picking the tool re-renders and replaces the hit elements, so query
+      // them after it — and use .click(), the pattern the other erase steps
+      // use, rather than a hand-built MouseEvent.
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`(() => {
+        const hits = [...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')];
+        hits.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        hits[0].click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && window.__savedNotes(d, t.id).length === 5;
+      })()`);
+
+      const after = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify({
+          held: d.tracks[id].map(c => c.notes.length),
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const a = JSON.parse(after);
+      if (JSON.stringify(a.visible) !== JSON.stringify([1, 2, 3, 4, 5])) {
+        throw new Error(`erasing one visible hit should leave the other five, got ${after}`);
+      }
+      // The right clip hides columns 0-2 and must still be holding them: it
+      // was not edited, so an edit on its neighbour must not have cost it
+      // anything. Five in the left (it lost the erased one), six in the right.
+      if (JSON.stringify(a.held) !== JSON.stringify([5, 6])) {
+        throw new Error(`an edit must only replace what a window shows, not what it hides, got ${after}`);
+      }
+    });
+
+    step('Clips: trimming an edge hides material without destroying it, and pulling it back returns it', async () => {
+      await fresh();
+      // Phase 4, and the whole reason the clip model exists. A trim must move
+      // the *window*: what it hides has to stop drawing and stop sounding, the
+      // material has to survive in the file, and dragging the edge back out
+      // has to bring exactly it back. Anything less is "a group of notes you
+      // can drag" wearing this feature's name.
+      const sixHits = async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          for (let i = 0; i < 6; i++) {
+            const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+            const r = lane.getBoundingClientRect();
+            lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+              clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+          }
+        })()`);
+        await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      };
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      // Drags the right edge of the first clip by `cols` columns (negative
+      // pulls it in, positive pushes it back out).
+      const dragEnd = async (cols, pointerId) => cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
+          .querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: ${pointerId}, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+      })()`);
+
+      await sixHits();
+      // A lone clip covering the whole track offers no edges: there is nothing
+      // to reveal by trimming it and its edges are the song's own.
+      const edgesBefore = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-edge').length`);
+      if (edgesBefore !== 0) throw new Error(`a single whole-track clip should offer no trim edges, got ${edgesBefore}`);
+
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      if (JSON.parse(await drawnCols()).length !== 6) throw new Error('the split itself should change nothing that is drawn');
+
+      // Pull the left clip's right edge in by two columns.
+      await dragEnd(-2, 9);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 4`);
+      const hidden = JSON.parse(await drawnCols());
+      if (JSON.stringify(hidden) !== JSON.stringify([0, 3, 4, 5])) {
+        throw new Error(`trimming should hide exactly the items past the new edge, drawn ${JSON.stringify(hidden)}`);
+      }
+      // The material must still be in the file — that is the difference
+      // between hiding and deleting, and it is invisible from the DOM.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && (d.tracks[t.id] || []).length === 2 && d.tracks[t.id][0].len === 1;
+      })()`);
+      const kept = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify({
+          held: d.tracks[id].map(c => c.notes.length),
+          visible: window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b),
+        });
+      })()`);
+      const k = JSON.parse(kept);
+      if (JSON.stringify(k.held) !== JSON.stringify([6, 6])) {
+        throw new Error(`a trim must hide material, not delete it — the clips hold ${kept}`);
+      }
+      if (JSON.stringify(k.visible) !== JSON.stringify([0, 3, 4, 5])) {
+        throw new Error(`what sounds must match what is drawn, got ${kept}`);
+      }
+
+      // ...and the edge back out returns exactly what it hid.
+      await dragEnd(2, 11);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+      const back = JSON.parse(await drawnCols());
+      if (JSON.stringify(back) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`pulling the edge back out must return what it hid, drawn ${JSON.stringify(back)}`);
+      }
+
+      // Clips do not overlap on a track, so an edge stops at its neighbour.
+      // Asserted with a drag far past it, because the two drags above stay
+      // inside the clip's own room and never reach the clamp at all — a first
+      // version of this step left the rule uncovered without looking like it.
+      await dragEnd(10, 13);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2;
+      })()`);
+      const clamped = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({ start: c.start, len: c.len })));
+      })()`);
+      const [first, second] = JSON.parse(clamped);
+      if (first.start + first.len > second.start) {
+        throw new Error(`an edge must stop at its neighbour rather than overlap it, got ${clamped}`);
+      }
+      // Nothing doubled: an overlap would have drawn the same column twice.
+      const afterClamp = JSON.parse(await drawnCols());
+      if (JSON.stringify(afterClamp) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`clamping at the neighbour must leave the part as it was, drawn ${JSON.stringify(afterClamp)}`);
+      }
+    });
+
+    step('Clips: moving one takes its material with it, hidden material included', async () => {
+      await fresh();
+      // Phase 5. The claim worth asserting is not that the block slides — it is
+      // that what the window *hides* slides by the same amount. That is what
+      // keeps window and contents in the same relationship, so a trim after a
+      // move still reveals what sat beyond that edge rather than whatever now
+      // happens to lie at those columns. It is invisible from the DOM, so the
+      // saved song is where it has to be checked.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 6; i++) {
+          const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+
+      const gripsBefore = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-grip').length`);
+      if (gripsBefore !== 0) throw new Error(`a lone whole-track clip has nowhere to move, so it offers no grip; got ${gripsBefore}`);
+
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      await cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[3].getBoundingClientRect();
+        cells[3].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+
+      const dragGrip = async (which, cols, pointerId) => cdp.evaluate(`(() => {
+        const grip = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[${which}]
+          .querySelector('.clip-grip');
+        const r = grip.getBoundingClientRect();
+        const x = r.left + 10, y = r.top + 3;
+        grip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: ${pointerId}, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
+      })()`);
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      const savedClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({
+          start: c.start, len: c.len, notes: c.notes.map(n => n.start).sort((a, b) => a - b) })));
+      })()`);
+
+      // Move the right clip four columns later.
+      await dragGrip(1, 4, 21);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2 && d.tracks[t.id][1].start === 7;
+      })()`);
+      const drawn = JSON.parse(await drawnCols());
+      if (JSON.stringify(drawn) !== JSON.stringify([0, 1, 2, 7, 8, 9])) {
+        throw new Error(`the moved clip's part should sit four columns later, drawn ${JSON.stringify(drawn)}`);
+      }
+      const moved = JSON.parse(await savedClips());
+      if (moved[0].start !== 0 || JSON.stringify(moved[0].notes) !== JSON.stringify([0, 1, 2, 3, 4, 5])) {
+        throw new Error(`moving one clip must not disturb its neighbour, got ${JSON.stringify(moved)}`);
+      }
+      // The assertion this step exists for: every item the moved clip holds
+      // shifted by four, not only the three its window was showing.
+      if (JSON.stringify(moved[1].notes) !== JSON.stringify([4, 5, 6, 7, 8, 9])) {
+        throw new Error(`hidden material must move with its clip, got ${JSON.stringify(moved)}`);
+      }
+
+      // And the relationship survived: trimming the moved clip's left edge
+      // back out reveals what used to sit before it, at its new place.
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
+          .querySelector('.clip-edge.start');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 23, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 23, clientX: x - 3 * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 23, clientX: x - 3 * 16, clientY: y }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 9`);
+      // Wait for the *trim* to reach the draft before the next drag reads it.
+      // Without this the clamp check below waited on `start !== 4` while the
+      // draft still said 7 from the move — true on the previous state, so it
+      // returned instantly and the assertion ran against a stale song in both
+      // the real and the broken build. It passed either way, proving nothing.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === 2 && d.tracks[t.id][1].start === 4;
+      })()`);
+      const revealed = JSON.parse(await drawnCols());
+      if (JSON.stringify(revealed) !== JSON.stringify([0, 1, 2, 4, 5, 6, 7, 8, 9])) {
+        throw new Error(`trimming the moved clip open should reveal its own carried material, drawn ${JSON.stringify(revealed)}`);
+      }
+
+      // Clips do not overlap: dragged hard left, the moved clip stops against
+      // its neighbour instead of sliding through it.
+      await dragGrip(1, -20, 25);
+      // Wait for the drag to have *settled* rather than for the clamped value
+      // itself: waiting for the right answer turns a real failure into a bare
+      // timeout message that names no symptom.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id][1].start !== 4;
+      })()`);
+      const clamped = JSON.parse(await savedClips());
+      if (clamped[1].start < clamped[0].start + clamped[0].len) {
+        throw new Error(`a moved clip must stop at its neighbour rather than slide through it, got ${JSON.stringify(clamped)}`);
+      }
+    });
+
+    step('Clips: healing is split run backwards, and refuses across a gap', async () => {
+      await fresh();
+      // Phase 6. The strong claim is the round trip: split then heal has to
+      // give back the original clip exactly — window, source and material —
+      // or the two operations are not inverses and every later edit inherits
+      // whatever they disagreed about.
+      const sixHitsOnRhythm = async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          for (let i = 0; i < 6; i++) {
+            const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+            const r = lane.getBoundingClientRect();
+            lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+              clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+          }
+        })()`);
+        await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
+        await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
+      };
+      const seekTo = (col) => cdp.evaluate(`(() => {
+        const cells = [...document.querySelectorAll('.ruler-cell')];
+        const r = cells[${col}].getBoundingClientRect();
+        cells[${col}].dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+        window.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 }));
+      })()`);
+      const menu = (id) => cdp.evaluate(
+        `document.getElementById('file-menu-toggle').click(); document.getElementById('${id}').click()`);
+      const clipCount = () => cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length`);
+      const drawnCols = () => cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
+           .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
+      const savedClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return JSON.stringify(d.tracks[id].map(c => ({
+          start: c.start, len: c.len, source: c.source,
+          notes: c.notes.map(n => n.start).sort((a, b) => a - b) })));
+      })()`);
+      // Waits for the draft to *change* from a snapshot taken before the
+      // action, rather than for a particular value. Waiting for a value is
+      // how this step first went wrong: "one clip" was true of the state
+      // before the split as well, so the wait returned instantly and the
+      // assertion read a song two operations out of date — and waiting for
+      // the *right* value instead would turn every real failure into a bare
+      // timeout naming no symptom.
+      const settledChange = async (prev) => {
+        await waitFor(`(() => {
+          const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+          if (!k) return false;
+          return localStorage.getItem(k) !== ${JSON.stringify(prev)};
+        })()`);
+      };
+      const rawDraft = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return k ? localStorage.getItem(k) : '';
+      })()`);
+      const settled = (n) => waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && d.tracks[t.id].length === ${n};
+      })()`);
+
+      await sixHitsOnRhythm();
+      // Wait for the six hits to reach the draft, not merely for "one clip" —
+      // that was true at boot too, so the baseline could otherwise be captured
+      // from an empty song and the round-trip comparison below would be
+      // between two different things.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
+        return !!t && window.__savedNotes(d, t.id).length === 6;
+      })()`);
+      const original = await savedClips();
+
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await settled(2);
+      await menu('heal-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 1`);
+      await settled(1);
+      const healed = await savedClips();
+      if (healed !== original) {
+        throw new Error(`split then heal must return the original clip exactly.\n  was:  ${original}\n  now:  ${healed}`);
+      }
+
+      // A gap is a silence somebody put there on purpose, so adjacency has to
+      // be exact: split, pull the left clip's edge in, and healing must refuse
+      // rather than quietly closing the hole.
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await cdp.evaluate(`(() => {
+        const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
+          .querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 31, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 31, clientX: x - 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 31, clientX: x - 16, clientY: y }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      await menu('heal-clip-btn');
+      await new Promise((r) => setTimeout(r, 250));
+      if (await clipCount() !== 2) {
+        throw new Error('healing across a gap must refuse — the silence between two clips is deliberate');
+      }
+      const spoken = await cdp.evaluate(`document.getElementById('a11y-status').textContent`);
+      if (!/nothing to heal/i.test(spoken)) {
+        throw new Error(`a refused heal has to say so rather than do nothing silently, announced: "${spoken}"`);
+      }
+
+      // Edited apart, the boundary decides whose copy survives on each side —
+      // and healing must not change what is heard or drawn.
+      await fresh();
+      await sixHitsOnRhythm();
+      await seekTo(3);
+      await menu('split-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
+      // Erase inside the *right* clip's range, not the left's. In the left's,
+      // that clip's material happens to coincide with the correct answer, so
+      // "take the whole left clip" and "take each side's own" produce the same
+      // result and the boundary rule goes untested — which is exactly how a
+      // first version of this step passed against a build that ignored the
+      // boundary entirely. Column 4 belongs to the right clip, whose copy is
+      // current there while the left clip's hidden copy is stale.
+      await cdp.evaluate(`(() => {
+        const hits = [...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')];
+        hits.sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        hits[4].click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
+      const beforeHeal = await drawnCols();
+      const draftBeforeHeal = await rawDraft();
+      await menu('heal-clip-btn');
+      await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 1`);
+      const afterHeal = await drawnCols();
+      if (afterHeal !== beforeHeal) {
+        throw new Error(`healing must not change what is drawn.\n  before: ${beforeHeal}\n  after:  ${afterHeal}`);
+      }
+      await settledChange(draftBeforeHeal);
+      const merged = JSON.parse(await savedClips());
+      if (JSON.stringify(merged[0].notes) !== JSON.stringify([0, 1, 2, 3, 5])) {
+        throw new Error(`each side's own copy should survive on its own side of the boundary, got ${JSON.stringify(merged)}`);
+      }
+    });
+
+    step('Clips: a recorded take becomes its own clip, and takes the ground it lands on', async () => {
+      await fresh();
+      // Phase 7, on the Pro Tools reading: a pass becomes a clip of its own,
+      // and where it lands on occupied ground the old clips get out of the way
+      // rather than sounding underneath it.
+      // Put real material on the track first. It gives the take occupied
+      // ground to land on — which is the case worth testing — and it is also
+      // what puts a draft in localStorage at all: a freshly loaded page has
+      // not autosaved, so reading the baseline before any edit finds nothing.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 8; i++) {
+          const t = [...document.querySelectorAll('.track')].find(t => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+          const lane = t.querySelector('.lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + 4 + i * 16, clientY: r.top + 40 }));
+        }
+      })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const t = d && d.trackList && d.trackList.find(t => t.name === 'Bass');
+        return !!t && window.__savedNotes(d, t.id).length === 8;
+      })()`);
+
+      const armBass = `(() => {
+        const t = [...document.querySelectorAll('.track')].find((t) => (t.querySelector('.th-name') || {}).textContent === 'Bass');
+        [...t.querySelectorAll('.th-btns button')].find((b) => b.textContent === 'R').click();
+      })()`;
+      await cdp.evaluate(armBass);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const key = (code, type) => cdp.evaluate(
+        `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: ${JSON.stringify(code)}, bubbles: true }))`);
+      const bassClips = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Bass') || {}).id;
+        return JSON.stringify((d.tracks[id] || []).map(c => ({
+          start: c.start, len: c.len, source: c.source, held: c.notes.length })));
+      })()`);
+      const rawDraft = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return k ? localStorage.getItem(k) : '';
+      })()`);
+      const recordPass = async (play, atCol = null) => {
+        if (atCol == null) await cdp.evaluate(`document.getElementById('rtz').click()`);
+        else await cdp.evaluate(`(() => {
+          const cells = [...document.querySelectorAll('.ruler-cell')];
+          const cell = cells[${atCol}];
+          const r = cell.getBoundingClientRect();
+          cell.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, pointerId: 41, clientX: r.left + 1, clientY: r.top + 6 }));
+          window.dispatchEvent(new PointerEvent('pointerup', {
+            bubbles: true, pointerId: 41, clientX: r.left + 1, clientY: r.top + 6 }));
+        })()`);
+        await cdp.evaluate(`document.getElementById('record-btn').click()`);
+        await waitFor(`document.body.classList.contains('counting-in')`, 3000);
+        await waitFor(`document.body.classList.contains('playing')`, 8000);
+        if (play) {
+          for (const code of ['KeyZ', 'KeyX', 'KeyC']) {
+            await key(code, 'keydown');
+            await new Promise((r) => setTimeout(r, 240));
+            await key(code, 'keyup');
+            await new Promise((r) => setTimeout(r, 60));
+          }
+        } else {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        await cdp.evaluate(`document.getElementById('stop').click()`);
+        await new Promise((r) => setTimeout(r, 600));
+      };
+
+      // A pass that captured nothing must not claim any timeline. This is why
+      // a take is gathered when the pass *ends*: a clip opened on hitting
+      // record would have shoved the rest of the track aside before a single
+      // note was played.
+      const before = JSON.parse(await bassClips());
+      const priorSources = new Set(before.map(c => c.source));
+      await recordPass(false);
+      const afterSilence = JSON.parse(await bassClips());
+      if (JSON.stringify(afterSilence) !== JSON.stringify(before)) {
+        throw new Error(`recording nothing must leave the track alone.\n  was: ${JSON.stringify(before)}\n  now: ${JSON.stringify(afterSilence)}`);
+      }
+
+      // A real pass becomes a clip of its own, with its own source.
+      const draftBeforeTake = await rawDraft();
+      await recordPass(true);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeTake)};
+      })()`);
+      const afterTake = JSON.parse(await bassClips());
+      // A take is identified by its *source*, not by holding material: the
+      // displaced remnant of what was there holds its own eight notes too, so
+      // "the clip with notes in it" matches both. A first version of this
+      // assertion used exactly that and reported the correct behaviour as a
+      // failure.
+      const takes = afterTake.filter(c => !priorSources.has(c.source));
+      if (takes.length !== 1) {
+        throw new Error(`the pass should have become exactly one new clip, got ${JSON.stringify(afterTake)}`);
+      }
+      if (afterTake.length < 2) {
+        throw new Error(`the take should sit beside what was there, not replace the track, got ${JSON.stringify(afterTake)}`);
+      }
+      const take = takes[0];
+      if (take.held !== 3) {
+        throw new Error(`the take's clip should hold exactly what the pass captured, got ${JSON.stringify(take)}`);
+      }
+      if (take.len == null || take.len <= 0) {
+        throw new Error(`a take's clip must have real bounds, got ${JSON.stringify(take)}`);
+      }
+      // What it landed on kept its material — displaced, not deleted.
+      const remnant = afterTake.filter(c => priorSources.has(c.source));
+      if (!remnant.length || !remnant.some(c => c.held === 8)) {
+        throw new Error(`the material the take landed on should be moved aside, not thrown away, got ${JSON.stringify(afterTake)}`);
+      }
+
+      // Clips never overlap on a track — the invariant every phase shares.
+      const noOverlap = (list, label) => {
+        const sorted = [...list].sort((a, b) => a.start - b.start);
+        for (let i = 0; i < sorted.length - 1; i++) {
+          const end = sorted[i].len == null ? Infinity : sorted[i].start + sorted[i].len;
+          if (end > sorted[i + 1].start) {
+            throw new Error(`${label}: clips must not overlap, got ${JSON.stringify(sorted)}`);
+          }
+        }
+      };
+      noOverlap(afterTake, 'after one take');
+
+      // A second pass over the same ground displaces the first rather than
+      // layering under it. Nothing may still be covering the new take.
+      const draftBeforeSecond = await rawDraft();
+      await recordPass(true);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeSecond)};
+      })()`);
+      const afterSecond = JSON.parse(await bassClips());
+      noOverlap(afterSecond, 'after two takes');
+      const known = new Set([...priorSources, take.source]);
+      const second = afterSecond.filter(c => !known.has(c.source));
+      if (second.length !== 1) {
+        throw new Error(`the second pass is its own clip, not the first one grown, got ${JSON.stringify(afterSecond)}`);
+      }
+      // Whatever is left of the first take must be out of the second's way —
+      // taking the ground is the whole point of the Pro Tools reading.
+      const firstLeft = afterSecond.filter(c => c.source === take.source);
+      const s2 = second[0], s2end = s2.len == null ? Infinity : s2.start + s2.len;
+      for (const c of firstLeft) {
+        const e = c.len == null ? Infinity : c.start + c.len;
+        if (c.start < s2end && e > s2.start) {
+          throw new Error(`the earlier take must give up the ground, got ${JSON.stringify(afterSecond)}`);
+        }
+      }
+
+      // A take landing in the *middle* of a clip splits it around itself.
+      // Both passes above started at column 0, so they only ever trimmed a
+      // clip's start — the branch that splits, and the one that trims a
+      // clip's end, went unexercised and an injection into them proved
+      // nothing. Punching in partway covers them.
+      const draftBeforeThird = await rawDraft();
+      const midSources = new Set(afterSecond.map(c => c.source));
+      await recordPass(true, 12);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeThird)};
+      })()`);
+      const afterThird = JSON.parse(await bassClips());
+      noOverlap(afterThird, 'after a punch-in');
+      const third = afterThird.filter(c => !midSources.has(c.source));
+      if (third.length !== 1) {
+        throw new Error(`a punched-in pass is one new clip, got ${JSON.stringify(afterThird)}`);
+      }
+      const t3 = third[0];
+      const before3 = afterThird.filter(c => midSources.has(c.source) && c.start < t3.start);
+      const after3 = afterThird.filter(c => midSources.has(c.source) && c.start >= t3.start + t3.len);
+      if (!before3.length || !after3.length) {
+        throw new Error(`a clip the take lands inside is split around it, leaving material either side, got ${JSON.stringify(afterThird)}`);
       }
     });
 
