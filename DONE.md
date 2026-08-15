@@ -288,12 +288,19 @@ ett facit.
 
   | spår | före | efter |
   |---|---|---|
-  | 5 | 60,8 ms | 25,3 ms |
-  | 12 | 126,9 ms | 21,2 ms |
-  | 24 | 245,9 ms | 20,7 ms |
+  | 5 | 60,8 ms | 30,9 ms |
+  | 12 | 126,9 ms | 29,7 ms |
+  | 24 | 245,9 ms | 28,6 ms |
 
   Ungefär platt med spårantalet, eftersom bara raden som ändrats byggs.
-  Siffrorna matchar de 272 → 21 ms `DESIGN.md` redan hade för samma design.
+  **Siffrorna stod först som 20,7 ms och var fel.** Den korrigering som
+  stoppade radraderingen (se granskningsposten nedan) lät markören stå kvar på
+  raden som skulle bort, så varje *återanvänd* rad efter den blev insatt före
+  den — och att sätta in en redan inkopplad nod flyttar den, alltså kopplar om
+  den. Vinsten var borta i tre timmar och sviten var grön hela tiden: jag
+  verifierade korrektheten efter den fixen och mätte aldrig om. Att släppa
+  noderna som ska bort *före* jämförelsen är vad som får markören att landa på
+  nästa behållna rad.
   **Idén var aldrig tveksam** — två tidigare försök återställdes för att
   signaturen måste namnge varje indata en rad ritar och en glömd betyder en
   rad som tyst slutar uppdateras. Två saker löser det här.
