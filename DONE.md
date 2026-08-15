@@ -238,6 +238,99 @@ ett facit.
   och VU-mätaren tappar post-FX). Standardvärden är helt neutrala (0dB,
   ratio 1:1) så gamla låtar utan dessa fält låter exakt som förut.
 
+- [x] **Klipp (clips) — en inspelning är ett objekt på tidslinjen.** Förut
+  löstes en tagning upp i lösnoter i samma ögonblick den landade; vill man
+  flytta den markerade man den med marquee, och den grupperingen fanns tills
+  man klickade någon annanstans. Nu är ett klipp ett **fönster** in i sitt
+  material — `{ start, len, source, notes }` — så en not ljuder bara innanför
+  fönstret och trim *döljer* i stället för att radera. Split (`splitClipAt`)
+  och heal (`healClipsAt`) är exakta inverser: varje halva bidrar med den del
+  dess fönster styrde, så split-följt-av-heal ger tillbaka ursprungsklippet
+  exakt. Trim och flytt är kant- respektive greppdrag på blocket; inspelning
+  blir ett eget klipp som tar marken den landar på (Pro Tools-varianten),
+  där det undanträngda trimmas eller splittas runt tagningen.
+  **`offset` skrevs in i planen och togs bort när den skulle fungera.** Den
+  ursprungliga skissen hade nottider relativa innehållets origo och
+  uppspelning på `clip.start + (note.start - clip.offset)`. Fältet var både
+  onödigt och skadligt. Onödigt: allt det fanns till för — icke-destruktiv
+  trim, split, flytt, slip inuti ett fast fönster — blir identiskt när noterna
+  bär tidslinjekolumner och flytt skriver om dem, vilket är exakt vad ett
+  gruppdrag redan gör mot samma objekt. Skadligt: översättning vid läsning
+  betyder att man lämnar ut *kopior*, och appen identifierar en not med
+  objektet självt (`state.selected` håller det, `multiSelected` är en mängd av
+  dem, `removeHit()` filtrerar på `h !== hit`, varje drag muterar `n.start` på
+  plats). Mot kopior matchade inget av det: **att radera en hit efter en split
+  gjorde ingenting alls, helt tyst.** Hittat genom att proba den körande
+  appen, inte ur det fallerande steget, som bara sa att en väntan tagit slut.
+  **En latent bugg som fas 1 släppte och fas 3 avslöjade:** `setTrackNotes()`
+  tömde varje klipp innan omfördelning, men dess indata kommer från
+  `trackNotes()`, som returnerar vad fönstren *visar*. Med ett fönster dolde
+  ingenting något, så den kunde inte bita; första redigeringen efter en trim
+  hade kastat exakt det material trimmen ska kunna ge tillbaka.
+  **Formatet gick 2 → 3.** En v2-fil laddar genom `toClips()` som ett obundet
+  klipp och beter sig exakt som förut, så medföljande låtar, `js/song-data.js`
+  och allt lokalt sparat är orört; `auditBundledSongs()` tar båda formerna.
+  **Om verifieringen:** tio nya steg, och **sju av injektionskontrollerna
+  visade att steget var fel snarare än appen** — var och en passerade mot
+  trasig kod innan den rättades. De återkommande formerna: en händelse
+  levererad utan träffprövning, en punkt utanför vyporten, en punkt under den
+  sticky toolbaren, injektioner riktade mot grenar scenariot aldrig nådde,
+  och — tre gånger — en väntan som var sann om det *föregående* läget, så
+  assertionen kördes mot ett inaktuellt utkast i båda byggena. Den sista är
+  nu löst strukturellt: vänta på att utkastet **ändras** från en ögonblicks-
+  bild tagen före åtgärden, aldrig på ett värde som kan ha varit sant förut.
+
+- [x] **Radåteranvändning — renderingen slutade bygga om spår som inte
+  ändrats.** En render tömde `#tracks` och byggde varje rad: **245,9 ms vid 24
+  spår**, mot de 300 ms `SCHEDULE_AHEAD_SEC` ger schemaläggaren att placera
+  nästa ljudchunk. Ett drag över en stor låt kunde alltså svälta uppspelningen,
+  vilket är det enda som inte får hända. Nu:
+
+  | spår | före | efter |
+  |---|---|---|
+  | 5 | 60,8 ms | 25,3 ms |
+  | 12 | 126,9 ms | 21,2 ms |
+  | 24 | 245,9 ms | 20,7 ms |
+
+  Ungefär platt med spårantalet, eftersom bara raden som ändrats byggs.
+  Siffrorna matchar de 272 → 21 ms `DESIGN.md` redan hade för samma design.
+  **Idén var aldrig tveksam** — två tidigare försök återställdes för att
+  signaturen måste namnge varje indata en rad ritar och en glömd betyder en
+  rad som tyst slutar uppdateras. Två saker löser det här.
+  *Identitet, inte bara värden.* Undo och låtladdning byter ut not-objekten mot
+  värdelika kopior, så en värdehärledd signatur läser det som oförändrat och
+  den återanvända radens lyssnare pekar på objekt som inte längre finns i
+  låten. `serialOf()` ger varje objekt ett stabilt nummer ur en `WeakMap`.
+  *En granskning som mäter uppräkningen i stället för att lita på den.* Med
+  `window.__rowAudit` byggs varje återanvänd rad ändå och jämförs mot den
+  behållna; en avvikelse blir ett konsolfel, och sviten underkänner varje steg
+  som loggar ett. Flaggan är på för hela sviten, så alla 86 steg är ett långt
+  test av om signaturen är komplett — mot varje interaktion stegen utför, inte
+  mot de indata den som skrev den råkade tänka på.
+  **Den betalade sig på första fulla körningen:** tre verkliga luckor
+  (tonhöjdsfönstret, `inspectorOwner`, `stripFocusKey`) plus en korrekt
+  skillnad som skulle normaliseras bort. Tonhöjdsluckan var dessutom orsaken
+  till körningens enda stegunderkännelse — *"Chord buttons at the pitch
+  ceiling"* såg två noter på samma tonhöjd, för att en återanvänd rad
+  positionerade dem mot ett inaktuellt fönster. Utan granskningen hade det
+  varit ett obegripligt fel i ett orelaterat steg, vilket är precis det som
+  gjorde förra försöket obedömbart.
+  **Två saker skrivs medvetet inte om av granskningen:** VU-maskens bredd
+  skrivs av mätarloopen och `.dragging` av pekhanteraren — båda utanför
+  `render()`, och det som skrivs utanför render är inte renders att
+  reproducera. Lägg bara till i den listan för tillstånd med samma egenskap,
+  aldrig för att tysta en verklig avvikelse.
+  **Uteslutet under vägen:** att granskningen skulle kosta något mätbart. En
+  körning nådde 36 av 86 steg innan sin timeout och den uppenbara misstänkta
+  var granskningen, som bygger varje återanvänd rad en gång till. Mätt per
+  steg, med och utan: 5/5 s, 6/6 s, 21/20 s, 8/8 s. Föräldralösa server- och
+  webbläsarprocesser från den dödade körningen kollades också och fanns inte.
+  Orsaken förblev okänd och var sannolikt containern — men eftersom att gissa
+  vidare utan data är vad som fällde förra försöket skriver varje verify-steg
+  nu ut sin egen tid. Summa stegtid i den gröna körningen: **197,2 s**, och
+  det långsammaste steget 17,4 s.
+  Tog också bort `laneRolls`, som skrevs på två ställen och lästes på noll.
+
 ## Kreativa genvägar (efterfrågat)
 
 Önskemålet var inte en funktion utan ett tillstånd: *det ska vara lätt att
