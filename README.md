@@ -33,6 +33,13 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   the bottom of the inspector column, and both ask before acting: next to
   Mute/Solo/arm in the track header they were two small unlabelled buttons away
   from three you press constantly
+- **Clips** — a track's part lives in windows onto its notes rather than in a
+  flat list, so trimming an edge *hides* material instead of deleting it and
+  pulling the edge back out returns the same notes. Split at the playhead, heal
+  two halves back together, or drag a clip along the timeline with everything it
+  holds. Every track starts as one clip covering the song, labelled with the bars
+  it spans; its grip and trim edges appear under the **Grab** tool, the same rule
+  a note's own resize handle follows
 - **Three drum kits** — each rhythm track picks whether those ten pieces are
   synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
   snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on

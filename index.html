@@ -705,10 +705,23 @@
     border-right: 1px solid rgba(255,255,255,0.12);
     box-shadow: inset 0 2px 0 0 rgba(255,255,255,0.14);
   }
+  /* What the block says about itself: the bars it covers. Without it a clip
+     spanning a whole track is indistinguishable from the lane, which is how
+     the feature managed to be invisible on a song nobody had split yet. Only
+     drawn where addClipBlocks() found room for it — no attribute, no
+     pseudo-element — and it never takes pointer events, so it cannot cost a
+     placement click. */
+  .clip[data-label]::before {
+    content: attr(data-label);
+    position: absolute; top: 8px; left: 5px;
+    font-size: 8px; font-weight: 700; letter-spacing: 0.6px;
+    color: rgba(255,255,255,0.30); pointer-events: none; white-space: nowrap;
+  }
   /* The edges take pointer events; the body deliberately does not. That split
      is what lets a clip be trimmed without the block swallowing every
      placement click in the lane it covers — which is the property the phase-2
-     verify step pins down. */
+     verify step pins down. Both handles are built only under the Grab tool
+     (addClipBlocks), the same rule a note's own resize handle follows. */
   .clip-edge {
     position: absolute; top: 0; bottom: 0; width: 7px; pointer-events: auto;
     cursor: ew-resize; z-index: 5;
@@ -1180,6 +1193,36 @@
         <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. That is how a drum part or a riff actually gets built — one piece at a time over a bar you can hear. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in, and a key held through the seam becomes a note that runs to the end of the loop rather than a stab.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level: a soft hit is darker, the way a real drum struck gently gives you less of the sharp top end, so a ghost note sits behind the beat instead of just being a quiet copy of the accent. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
+      </ul>
+
+      <h3>Clips</h3>
+      <p>
+        A track's part is held in one or more <b>clips</b>. A clip is not the notes — it is a
+        <b>window</b> onto them, and that difference is the whole point: an item sounds only while it
+        falls inside the window, so pulling an edge in <i>hides</i> material rather than deleting it,
+        and pulling the edge back out brings the very same notes back. Every track starts as a single
+        clip covering the whole song; the faint block behind each lane is it, labelled with the bars
+        it covers (<b>bar 1–8</b>).
+      </p>
+      <ul>
+        <li><b>Split clip at playhead</b> (in the menu) cuts the active track's clip in two where the
+          playhead sits. Nothing moves and nothing is lost — you now have two windows onto the same
+          material, which is what lets you trim or move one half without touching the other.
+          <b>Heal clips at playhead</b> is that run backwards, joining two halves of one clip back
+          into a single window. It only joins halves that came from the same clip and actually meet,
+          so it can't silently weld two unrelated parts together.</li>
+        <li>With the <span class="help-ico" data-glyph="grab"></span><b>Grab</b> tool a clip grows
+          handles: the strip along its <b>top edge</b> moves the whole clip along the timeline, and
+          its <b>left and right edges</b> trim it. They appear under Grab only — the same rule a
+          note already follows, since a clip covers its whole stretch of lane and permanently
+          grabbable edges would eat the placement clicks the pen needs.</li>
+        <li><b>Moving a clip takes everything it holds</b>, hidden material included — so a part you
+          trimmed and then shifted still has its full take underneath, exactly where it was relative
+          to the rest.</li>
+        <li>A <b>recorded take lands as its own clip</b>, and clears the ground it falls on the way a
+          DAW does: whatever was there is trimmed back or split around it rather than left sounding
+          underneath. Since trimming hides, that material is still there if you move the take away
+          again.</li>
       </ul>
 
       <h3>Selecting several notes</h3>
@@ -5807,19 +5850,39 @@ function laneCoords(e, rollEl, rowH, midiTop) {
 // Phase 3 (split) is when a clip starts carrying real information — where one
 // part ends and the next begins — and that is the phase that owes it a label,
 // most likely on the lane's own aria-label as a clip count rather than here.
+// The bar range a clip covers, which is the thing that changes when you trim or
+// move it — so it is what the block says about itself.
+function clipLabel(clip) {
+  const per = eighthsPerBar();
+  const first = Math.floor(clip.start / per) + 1;
+  const last = Math.max(first, Math.ceil(clipEnd(clip) / per));
+  return first === last ? `bar ${first}` : `bar ${first}–${last}`;
+}
 function addClipBlocks(rollEl, track, heightPx) {
   const clips = clipsOf(track);
-  clips.forEach((clip, i) => {
+  clips.forEach((clip) => {
     const div = el('div', 'clip');
+    const widthPx = Math.max(2, (clipEnd(clip) - clip.start) * colPx);
     div.style.left = (clip.start * colPx) + 'px';
-    div.style.width = Math.max(2, (clipEnd(clip) - clip.start) * colPx) + 'px';
+    div.style.width = widthPx + 'px';
     div.style.height = heightPx + 'px';
     div.setAttribute('aria-hidden', 'true');
-    // Edges are grabbable, the body is not — see the .clip-edge rule. Only
-    // worth offering where there is more than one window: a lone clip covering
-    // the whole track has nothing to reveal by being trimmed and everything to
-    // lose, and its edges sit exactly where the song does.
-    if (clips.length > 1) {
+    // Only labelled where there is room to read it. The label is a ::before, so
+    // a narrow clip would have to clip it — and `.clip` cannot take
+    // overflow:hidden, since its edge handles deliberately sit 3px outside the
+    // box. No attribute, no pseudo-element (see the `.clip[data-label]` rule).
+    if (widthPx > 64) div.dataset.label = clipLabel(clip);
+    // Handles are a Grab-tool thing, the same rule a note already follows: it
+    // moves only under Grab (see the note's own pointerdown) and its resize
+    // handle is not even built otherwise (renderPitchTrack). Clip handles used
+    // to be live under every tool, which is what made them expensive enough to
+    // need hiding on a lone clip — a whole-track grip is a 7px band across the
+    // top of the lane, and a semitone row is 11px, so under the pen it would
+    // have eaten most of the highest pitch on every track. Gated here instead,
+    // they cost nothing under the pen and every clip can have them, including
+    // the one a fresh song starts with. `state.tool` is already an input to
+    // trackRowSignature(), so switching tools does rebuild the row.
+    if (state.tool === 'grab') {
       for (const which of ['start', 'end']) {
         const h = el('div', 'clip-edge ' + which);
         h.addEventListener('pointerdown', (e) => startClipTrim(e, track, clip, which));
