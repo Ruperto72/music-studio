@@ -759,6 +759,25 @@ async function main() {
         for (let i = 0; i < ${times}; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
       })()`);
     }
+    // Clicks Duplicate/Remove in the inspector's Track section
+    // (buildTrackActionsSection), which renders for whichever track owns the
+    // column. Both ask before acting, and this run's
+    // Page.javascriptDialogOpening handler accepts every dialog — so declining
+    // has to be a window.confirm stub rather than a different reply to the real
+    // one. Set on every call, not only when declining, or a step that declines
+    // once leaves the next click answering "no" too. A goto()/fresh() puts the
+    // real confirm back.
+    async function clickTrackAction(label, answer = true) {
+      const clicked = await cdp.evaluate(`(() => {
+        window.confirm = () => ${answer};
+        const btn = [...document.querySelectorAll('.inspector .th-strip-actions button')]
+          .find(b => b.textContent.includes(${JSON.stringify(label)}));
+        if (!btn) return false;
+        btn.click();
+        return true;
+      })()`);
+      if (!clicked) throw new Error(`no "${label}" button in the inspector's Track section`);
+    }
     async function knobText(sectionKey, fieldLabel) {
       return cdp.evaluate(`[...document.querySelector('.th-strip-section[data-key="${sectionKey}"]').querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-val').textContent`);
@@ -5169,9 +5188,10 @@ async function main() {
       // something to carry beyond the notes.
       await addFxEffect('Delay');
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
-      const firstTrack = `document.querySelectorAll('.track[data-kind="pitch"]')[0]`;
       const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
-      await cdp.evaluate(`(${firstTrack}).querySelector('.th-dup').click()`);
+      // addFxEffect() left the strip pointed at this same track, so its Track
+      // section is the one on screen.
+      await clickTrackAction('Duplicate track');
       await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
       // Directly below the original, not appended at the end.
       const names = await cdp.evaluate(`[...document.querySelectorAll('.track .th-name')].map(n => n.textContent)`);
@@ -5227,6 +5247,64 @@ async function main() {
       await waitFor(diverged, 6000).catch(() => {
         throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
       });
+    });
+
+    step('Track actions: Duplicate/Remove sit in the inspector, and a declined confirm changes nothing', async () => {
+      await fresh();
+      // Gone from the track header. They used to be two 22px squares one along
+      // from Mute/Solo/Arm, which is what made them so easy to hit by mistake;
+      // that row is the three toggles and nothing else now.
+      const headerBtns = await cdp.evaluate(
+        `[...document.querySelectorAll('.track')[1].querySelectorAll('.th-btns button')].map(b => b.textContent)`);
+      if (headerBtns.join('') !== 'MSR') {
+        throw new Error(`the track header's button row should be Mute/Solo/Arm only, got ${JSON.stringify(headerBtns)}`);
+      }
+      // This browser's window is 750px, where .inspector is a bottom sheet that
+      // stays shut until a chip is tapped. The strip is what this step is
+      // about, so widen past the 760px breakpoint — and click a track
+      // afterwards, since nothing re-renders the inspector on a resize alone.
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 1200, height: 900, deviceScaleFactor: 1, mobile: false,
+      });
+      try {
+        // mousedown, not click: the header activates its track on mousedown
+        // (buildHeader), so element.click() alone never reaches it.
+        await cdp.evaluate(`document.querySelectorAll('.track')[1].querySelector('.th-top')`
+          + `.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+        await waitFor(`!!document.querySelector('.inspector .th-strip-actions')`);
+        // Both in the strip, named rather than left as a bare mark.
+        const labels = await cdp.evaluate(
+          `[...document.querySelectorAll('.inspector .th-strip-actions button')].map(b => b.textContent.replace(/^[^A-Za-z]+/, ''))`);
+        if (labels.join('|') !== 'Duplicate track|Remove track') {
+          throw new Error(`unexpected Track section in the inspector: ${JSON.stringify(labels)}`);
+        }
+        // Saying no leaves the song alone — the whole point of asking. Both
+        // buttons, since removeTrack() used to skip the question entirely for a
+        // track with no notes in it, which is what a fresh page is made of.
+        const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+        const name = await cdp.evaluate(`document.querySelectorAll('.track')[1].querySelector('.th-name').textContent`);
+        await clickTrackAction('Duplicate track', false);
+        await clickTrackAction('Remove track', false);
+        const after = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+        if (after !== before) throw new Error(`a declined confirm still changed the track list: ${before} -> ${after}`);
+        // And saying yes still does the thing. Duplicate first, then Remove the
+        // copy: duplicateTrack() activates it, so the strip is already the
+        // copy's — which both covers the accepted path on each button and
+        // leaves the song the way this step found it.
+        await clickTrackAction('Duplicate track');
+        await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
+        const trackNames = `[...document.querySelectorAll('.track .th-name')].map(n => n.textContent)`;
+        if (!await cdp.evaluate(`${trackNames}.includes(${JSON.stringify(name + ' copy')})`)) {
+          throw new Error(`an accepted Duplicate added no copy of "${name}": ${JSON.stringify(await cdp.evaluate(trackNames))}`);
+        }
+        await clickTrackAction('Remove track');
+        await waitFor(`document.querySelectorAll('.track').length === ${before}`);
+        if (await cdp.evaluate(`${trackNames}.includes(${JSON.stringify(name + ' copy')})`)) {
+          throw new Error(`"${name} copy" is still in the track list after an accepted Remove`);
+        }
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
     });
 
     step('Transpose: scale steps move inside the key, semitones do not, and Fit repairs a take', async () => {
