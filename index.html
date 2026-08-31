@@ -1851,8 +1851,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
 const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'noise', 'ringmod', 'fm']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
+const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'sawtri', 'sync', 'noise', 'ringmod', 'fm']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', sawtri: 'Saw+Tri', sync: 'Hard sync', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
 
 // ---------- Icon glyphs ----------
 // One table of tiny inline-SVG shapes, so the same concept looks the same
@@ -1886,6 +1886,17 @@ const GLYPHS = {
   pwm:      ['M1 9 H3 V3 H5 V9 H9 V3 H13 V9 H16 V3 H22 V9 H23'],
   // Sine's positive half only, with the negative half flat on the zero line.
   halfsine: ['M1 6 q2.75 -5.5 5.5 0 h5.5 q2.75 -5.5 5.5 0 h5.5'],
+  // Saw+Tri is a sawtooth with bites taken out of it — the bitwise AND drops
+  // the ramp to zero wherever the triangle's bits do not line up. Drawing a
+  // clean ramp would make it a second `sawtooth` glyph; the gaps are the whole
+  // difference between the two sounds, so they are what the icon shows.
+  sawtri:   ['M1 9 L4 5 V9 L7 4 V9 M9 9 L12 5 V9 L15 3.5 V9 M17 9 L20 5.5 V9 L23 4 V9'],
+  // Hard sync: a fast ramp cut off mid-cycle, again and again, by a slower one.
+  // The tall strokes are where the reset lands — they are on an even spacing
+  // the ramp itself does not share, which is the visual form of "one oscillator
+  // interrupting another" rather than of any single wave.
+  sync:     ['M1 9 L5 3 V9 L9 4.5 V9 L13 3 V9 L17 4.5 V9 L21 3 V9 L23 7',
+             'M5 2 V10', 'M13 2 V10', 'M21 2 V10'],
   // Not a repeating shape at all. The first attempt used even spacing and even
   // amplitudes, which at 35px read as another "WWW" and was hard to tell from
   // the FM glyph two buttons along; the spacing and the excursions are both
@@ -9644,8 +9655,15 @@ function buildMasterBus(c) {
   masterFXNodes = buildMasterFXChain(c, duckGain, crushBus);
   applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   const crushReady = ensureCrusher(c, crushBus, c.destination); // last stage before the speakers — see ensureCrusher()
+  // The hard-sync voice is a worklet too, and unlike an insert a *source*
+  // cannot be bypassed while it loads — bypassing a source is silence. So the
+  // module is loaded with the bus and the promise joins the one
+  // renderSongToWav() already awaits, or an offline render would quietly fall
+  // back to sawtooth for the whole song. Live playback falls back for the
+  // handful of notes scheduled before it resolves; see createVoiceSource().
+  const syncReady = ensureHardSync(c);
   createGlobalFxBuses();
-  return crushReady;
+  return Promise.all([crushReady, syncReady]);
 }
 // Builds one track's full channel chain — gain (fader) -> compressor ->
 // bitcrush? -> tremolo -> panner (connected to masterGain) + the three FX
@@ -9983,6 +10001,29 @@ let nesTriWave = null;
 function getNesTriWave() {
   if (!nesTriWave) nesTriWave = dftToPeriodicWave(NES_TRIANGLE_SAMPLES);
   return nesTriWave;
+}
+// The SID's combined waveforms come from the chip ANDing its waveform
+// generators together *bitwise*, which is why they sound gappy and quiet rather
+// than like a blend of the two. This computes that AND rather than inventing a
+// spectrum that resembles it: a 12-bit sawtooth against a 12-bit triangle, one
+// period, handed to the same DFT the NES triangle uses.
+//
+// Not bit-exact to a 6581 — the real tables are analog artefacts that differ
+// between individual chips, and reproducing them means shipping reverse-
+// engineered data per chip revision. This is the mechanism rather than the
+// artefact, so the character comes out without the table.
+let sawTriWave = null;
+function getSawTriWave() {
+  if (sawTriWave) return sawTriWave;
+  const n = 256, samples = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = i / n;
+    const saw = Math.floor(p * 4096) & 4095;
+    const tri = Math.floor((p < 0.5 ? p * 2 : (1 - p) * 2) * 4095) & 4095;
+    samples[i] = (saw & tri) / 2047.5 - 1;
+  }
+  sawTriWave = dftToPeriodicWave(samples);
+  return sawTriWave;
 }
 let crushCurve = null;
 function bitcrushCurve() {
@@ -10353,6 +10394,7 @@ function setOscWave(osc, oscType, duty) {
   if (oscType === 'fm' || oscType === 'sine') osc.type = 'sine';
   else if (oscType === 'square' && duty) osc.setPeriodicWave(pulseWave(duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
+  else if (oscType === 'sawtri') osc.setPeriodicWave(getSawTriWave());
   else if (oscType === 'halfsine') osc.setPeriodicWave(getHalfSineWave());
   // Ring modulation's carrier is a triangle, the way the SID's is; the
   // modulator that multiplies it is built in createVoiceSource().
@@ -10431,6 +10473,8 @@ const PWM_WIDTH = 0.25;    // +/- around the centre, so 25%..75%
 // the midpoint of the two — measured worst-case peak lands about 1dB over the
 // other nine, close enough that no waveform stands out either way.
 const PWM_LEVEL = 0.75;
+// Hard sync's own level trim — see createHardSyncSource() for the measurement.
+const SYNC_LEVEL = 0.7;
 function createPwmSource(freq, sweepLfo) {
   const osc = ctx.createOscillator();
   osc.type = 'sawtooth';
@@ -10495,7 +10539,74 @@ function createPwmSource(freq, sweepLfo) {
 // `out` is what connects onward, and is not always the node being pitched —
 // ring modulation multiplies the carrier by a second oscillator, so its output
 // is the gain node doing the multiplying.
+// Whether the hard-sync worklet is loaded *for the current context*. A context
+// is torn down and rebuilt on every stop, so this is keyed on the context
+// itself rather than a bare boolean that would go stale across a rebuild.
+let hardSyncCtx = null;
+let hardSyncPending = null;
+function ensureHardSync(c) {
+  if (!c.audioWorklet) return Promise.resolve();
+  hardSyncPending = c.audioWorklet.addModule('js/hardsync-processor.js')
+    .then(() => { hardSyncCtx = c; })
+    .catch(() => { /* module failed to load — createVoiceSource falls back */ });
+  return hardSyncPending;
+}
+// Whether waiting for that module is worth delaying playback for. The fallback
+// on its own is not enough, and the first version of this shipped believing it
+// was: a chunk is SCHEDULE_LOOKAHEAD_BARS long, so a module resolving a few
+// milliseconds after Play still leaves eight bars — around sixteen seconds —
+// already committed to the graph as sawtooth. That is not "a handful of notes",
+// it is most of a short song, and it is inaudible as a bug because a sawtooth
+// is a perfectly ordinary sound.
+//
+// Only a song that actually uses the voice pays the wait, and only for the
+// first context, since the module is cached afterwards. Recording needs nothing
+// here: its bar of count-in is far longer than the load.
+const usesHardSync = () => PITCH_TRACKS.some((id) => state.waveform[id] === 'sync');
+// A hard-synced voice: `frequency` is the heard pitch (the oscillator doing the
+// resetting), so bend, vibrato and arpeggio reach it through the same `pitch`
+// the other voices expose, and `toPitch` stays the identity because the param
+// is in Hz like an oscillator's own.
+//
+// `ratio` is where the timbre lives, and it reuses the FM ratio the track
+// already has — the same borrowing ring modulation does for its modulator, and
+// documented there for the same reason: it is "a fixed multiple of the note's
+// frequency", which is exactly what sync's second oscillator needs. Sweeping
+// that ratio across a note is what makes the classic C64 lead rather than a
+// static metallic tone, and is the obvious next step; it needs somewhere to put
+// a per-track sweep rate, which is a UI decision rather than an audio one.
+function createHardSyncSource(freq, fm) {
+  const node = new AudioWorkletNode(ctx, 'hardsync-processor', { numberOfInputs: 0, outputChannelCount: [1] });
+  node.parameters.get('ratio').value = fm?.ratio ?? DEFAULT_FM.ratio;
+  const gate = node.parameters.get('gate');
+  // A raw phase ramp runs the full +-1, where the band-limited oscillators the
+  // other voices use come out lower — measured, this landed 2.2 dB above Square
+  // and outside the level band the suite holds every waveform to. Trimmed here
+  // rather than in the processor so the two waveform level constants sit
+  // together; see PWM_LEVEL, which exists for the same reason.
+  const level = ctx.createGain();
+  level.gain.value = SYNC_LEVEL;
+  node.connect(level);
+  return {
+    out: level,
+    pitch: node.parameters.get('frequency'),
+    toPitch: (hz) => hz,
+    detune: node.parameters.get('detune'),
+    // start/stop are the gate, because an AudioWorkletNode has neither. The
+    // processor resets both phases on the rising edge and retires itself on the
+    // falling one, so a note begins at a known phase and the node is collected
+    // when it ends rather than running silently for the page's lifetime.
+    start: (t) => gate.setValueAtTime(1, t),
+    stop: (t) => gate.setValueAtTime(0, t),
+  };
+}
 function createVoiceSource(oscType, duty, freq, fm, sweepLfo) {
+  // Falls back for the notes scheduled before the module resolves, and on a
+  // browser without AudioWorklet at all. Sawtooth is what a hard-synced voice
+  // is before anything resets it, so the fallback is the same voice with the
+  // sync missing rather than a different instrument.
+  if (oscType === 'sync' && hardSyncCtx === ctx) return createHardSyncSource(freq, fm);
+  if (oscType === 'sync') oscType = 'sawtooth';
   if (oscType === 'noise') {
     const src = ctx.createBufferSource();
     src.buffer = ensureNoiseWaveBuffer();
@@ -11807,9 +11918,10 @@ metronomeBtn.addEventListener('click', () => {
 });
 syncMetronomeUI();
 
-document.getElementById('play').addEventListener('click', () => {
+document.getElementById('play').addEventListener('click', async () => {
   ensureCtx();
   if (ctx.state === 'suspended') ctx.resume();
+  if (hardSyncPending && usesHardSync()) await hardSyncPending;
   document.body.classList.add('playing');
   startPlaybackFrom(state.playhead);
 });
