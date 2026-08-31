@@ -2516,6 +2516,21 @@ const hzToSlider = (hz) => Math.log(hz / FILTER_MIN_HZ) / Math.log(FILTER_MAX_HZ
 // in "modulation index" units (0..1 slider mapped to a few hundred Hz swing,
 // see addFmModulator).
 const DEFAULT_FM = { ratio: 2, depth: 0 };
+// Seconds per arpeggio step. The SID's is one video frame — 0.02 on PAL, which
+// is why a C64 "chord" shimmers rather than trembles — but the app's own value
+// is 0.03 and has been since arpeggio existed, so that stays the default. A
+// track that never sets this serialises without the key and sounds exactly as
+// it did; only a track that opts in gets the faster lattice.
+const DEFAULT_ARP_STEP = 0.03;
+const ARP_STEP_MIN = 1 / 60, ARP_STEP_MAX = 1 / 8;
+// How fast the hard-sync voice sweeps its ratio, in Hz. 0 is off, and off is
+// the default: the voice shipped measured and verified at a fixed ratio, and a
+// sweep changes both its spectrum and its peak. Sweeping is what turns a
+// metallic timbre into the classic C64 lead, so it is a control rather than a
+// constant — see createHardSyncSource().
+const DEFAULT_SYNC = { sweep: 0 };
+const SYNC_SWEEP_MAX = 12;   // Hz
+const SYNC_SWEEP_DEPTH = 0.6; // of the ratio, either side
 
 // Per-track continuous send to the three shared FX buses (see createGlobalFxBuses()
 // below) — state.fxSend[track] absent -> this. 0 = silent/no-op, same "neutral
@@ -3101,6 +3116,8 @@ const state = {
   adsr: BOOT.adsr,           // id -> { attack, decay, sustain, release } (tonal tracks only) — see DEFAULT_ADSR
   filter: {},                // id -> { cutoff, q, envAmount } (tonal tracks only) — see DEFAULT_FILTER
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
+  arpRate: {},               // id -> seconds per arpeggio step (tonal tracks only) — see DEFAULT_ARP_STEP
+  sync: {},                  // id -> { sweep } (tonal tracks only, waveform === 'sync') — see DEFAULT_SYNC
   fxSend: {},                // id -> { delay, chorus, reverb } (0..1 each, any track kind) — see DEFAULT_FX_SEND
   comp: {},                  // id -> { threshold, ratio, attack, release } (any track kind) — see DEFAULT_TRACK_COMP
   crush: {},                 // id -> { amount } (0..1, any track kind) — see DEFAULT_TRACK_CRUSH
@@ -3147,7 +3164,7 @@ const state = {
 // The seeded maps (tracks/gains/waveform/pan/mute/solo) are deliberately not
 // in the list: those get one entry per track with a real default, so they are
 // rebuilt from the track list rather than cleared.
-const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'kit'];
+const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'arpRate', 'sync', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'kit'];
 const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k] = {}; };
 
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
@@ -3228,6 +3245,21 @@ function applySavedMix(data) {
   if (data.duty && typeof data.duty === 'object') {
     for (const ch of PITCH_TRACKS) {
       if (DUTY_VALUES.includes(data.duty[ch])) state.duty[ch] = data.duty[ch];
+    }
+  }
+  // Arpeggio step is a bare number too, so it needs its own line for the same
+  // reason duty does. Clamped to the range the slider offers rather than
+  // trusted: a hand-edited 0 would divide the note into steps forever.
+  if (data.arpRate && typeof data.arpRate === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const v = data.arpRate[ch];
+      if (typeof v === 'number' && v >= ARP_STEP_MIN && v <= ARP_STEP_MAX) state.arpRate[ch] = v;
+    }
+  }
+  if (data.sync && typeof data.sync === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const v = data.sync[ch] && data.sync[ch].sweep;
+      if (typeof v === 'number' && v >= 0 && v <= SYNC_SWEEP_MAX) state.sync[ch] = { sweep: v };
     }
   }
   // The seven FX panel effects (EQ, Compressor, Bitcrush, Tremolo, and the
@@ -3639,6 +3671,11 @@ function getAdsr(track) { return state.adsr[track] || DEFAULT_ADSR; }
 function getFilterState(track) { return state.filter[track] || DEFAULT_FILTER; }
 function setFilterState(track, patch) { state.filter[track] = { ...getFilterState(track), ...patch }; }
 function getFmState(track) { return state.fm[track] || DEFAULT_FM; }
+// Absent means DEFAULT_ARP_STEP, the rule every sparse per-track map follows.
+function getArpStep(track) { return state.arpRate[track] || DEFAULT_ARP_STEP; }
+function setArpStep(track, v) { if (v == null) delete state.arpRate[track]; else state.arpRate[track] = v; }
+function getSyncState(track) { return state.sync[track] || DEFAULT_SYNC; }
+function setSyncState(track, patch) { state.sync[track] = { ...getSyncState(track), ...patch }; }
 function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
 function getFxSend(track) { return state.fxSend[track] || DEFAULT_FX_SEND; }
 function setFxSend(track, patch) { state.fxSend[track] = { ...getFxSend(track), ...patch }; }
@@ -5084,11 +5121,12 @@ function renderAdsrRow(track) {
   // Ring modulation uses the same Ratio as FM (a modulator at a multiple of the
   // note's frequency), so it gets the slider too — but not Depth, which has no
   // meaning there: the multiplication is always full.
-  if (state.waveform[track] === 'fm' || state.waveform[track] === 'ringmod') {
+  if (state.waveform[track] === 'fm' || state.waveform[track] === 'ringmod' || state.waveform[track] === 'sync') {
     lane.appendChild(el('span', 'adsr-divider'));
     const modGroup = el('div', 'mfx-group');
     const modGroupCap = el('span', 'mfx-cap');
-    modGroupCap.textContent = state.waveform[track] === 'fm' ? 'FM' : 'Ring';
+    modGroupCap.textContent = state.waveform[track] === 'fm' ? 'FM'
+      : state.waveform[track] === 'sync' ? 'Sync' : 'Ring';
     modGroup.appendChild(modGroupCap);
 
     const fmState = getFmState(track);
@@ -5126,7 +5164,66 @@ function renderAdsrRow(track) {
     });
     depthField.append(depthCap, depthSlider, depthVal);
     modGroup.appendChild(depthField);
+    // Sweep belongs to hard sync alone: FM has Depth for the same job and ring
+    // modulation has neither, since its multiplication is always full.
+    if (state.waveform[track] === 'sync') {
+      const sweepField = el('div', 'adsr-field');
+      const sweepCap = el('span', 'adsr-label'); sweepCap.textContent = 'Sweep';
+      const sweepSlider = document.createElement('input');
+      sweepSlider.type = 'range'; sweepSlider.min = 0; sweepSlider.max = SYNC_SWEEP_MAX; sweepSlider.step = 0.5;
+      sweepSlider.value = getSyncState(track).sweep;
+      sweepSlider.style.accentColor = trackColor(track);
+      sweepSlider.title = 'How fast the sync ratio sweeps, in Hz. 0 holds it still.';
+      const sweepVal = el('span', 'adsr-val');
+      const showSweep = (v) => { sweepVal.textContent = v > 0 ? v.toFixed(1) + ' Hz' : 'off'; };
+      showSweep(getSyncState(track).sweep);
+      sweepSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+      sweepSlider.addEventListener('input', () => {
+        const sweep = parseFloat(sweepSlider.value);
+        showSweep(sweep);
+        setSyncState(track, { sweep });
+        autosave();
+      });
+      sweepField.append(sweepCap, sweepSlider, sweepVal);
+      modGroup.appendChild(sweepField);
+    }
     lane.appendChild(modGroup);
+  }
+
+  // Arpeggio speed applies whatever the waveform is — a note carries the
+  // intervals, the track decides how fast they are walked — so unlike Duty and
+  // the modulator group above this one is not conditional. The slider is in Hz
+  // because that is how the trait is thought about (the SID walks one step per
+  // video frame, 50 Hz on PAL); the stored value stays in seconds, which is
+  // what the scheduler uses, so no rounding creeps in between the two.
+  {
+    lane.appendChild(el('span', 'adsr-divider'));
+    const arpGroup = el('div', 'mfx-group');
+    const arpGroupCap = el('span', 'mfx-cap'); arpGroupCap.textContent = 'Arpeggio';
+    arpGroup.appendChild(arpGroupCap);
+    const arpField = el('div', 'adsr-field');
+    const arpCap = el('span', 'adsr-label'); arpCap.textContent = 'Speed';
+    const arpSlider = document.createElement('input');
+    arpSlider.type = 'range'; arpSlider.min = 8; arpSlider.max = 60; arpSlider.step = 1;
+    arpSlider.value = Math.round(1 / getArpStep(track));
+    arpSlider.style.accentColor = trackColor(track);
+    arpSlider.title = 'Steps per second for a note\u2019s arpeggio. The SID walks one per video frame — 50 Hz.';
+    const arpVal = el('span', 'adsr-val');
+    const showArp = (hz) => { arpVal.textContent = hz + ' Hz'; };
+    showArp(Math.round(1 / getArpStep(track)));
+    arpSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+    arpSlider.addEventListener('input', () => {
+      const hz = parseFloat(arpSlider.value);
+      showArp(hz);
+      // Back to the app's own constant at the default position rather than
+      // 1/33, so a track that is dragged there and left is byte-identical to
+      // one that was never touched — the sparse-map rule holds either way.
+      setArpStep(track, hz === Math.round(1 / DEFAULT_ARP_STEP) ? null : 1 / hz);
+      autosave();
+    });
+    arpField.append(arpCap, arpSlider, arpVal);
+    arpGroup.appendChild(arpField);
+    lane.appendChild(arpGroup);
   }
 
   row.append(header, gutter, lane);
@@ -10373,7 +10470,7 @@ function voiceGainFor(note, destGain, startAt, dur) {
 // parameters (adsr, filter, fm, vib, and duty would have been the sixth),
 // which is how an argument ends up one slot off; now they take a single
 // `voice` and a new per-track setting is a field rather than another slot.
-const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null, pwmLfo: null };
+const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null, pwmLfo: null, arpStep: DEFAULT_ARP_STEP, sync: DEFAULT_SYNC };
 function getTrackVoice(track) {
   return {
     adsr: getAdsr(track), filter: getFilterState(track), fm: getFmState(track),
@@ -10381,6 +10478,7 @@ function getTrackVoice(track) {
     // The free-running sweep shared by every `pwm` note on this track. Absent
     // (a track with no channel yet) falls back to a note-local LFO.
     pwmLfo: chanPwmLfo[track] || null,
+    arpStep: getArpStep(track), sync: getSyncState(track),
   };
 }
 // The note's own pulse width wins over the track's default; `null` on the note
@@ -10575,10 +10673,29 @@ const usesHardSync = () => PITCH_TRACKS.some((id) => state.waveform[id] === 'syn
 // that ratio across a note is what makes the classic C64 lead rather than a
 // static metallic tone, and is the obvious next step; it needs somewhere to put
 // a per-track sweep rate, which is a UI decision rather than an audio one.
-function createHardSyncSource(freq, fm) {
+function createHardSyncSource(freq, fm, sync) {
   const node = new AudioWorkletNode(ctx, 'hardsync-processor', { numberOfInputs: 0, outputChannelCount: [1] });
-  node.parameters.get('ratio').value = fm?.ratio ?? DEFAULT_FM.ratio;
+  const ratio = fm?.ratio ?? DEFAULT_FM.ratio;
+  node.parameters.get('ratio').value = ratio;
   const gate = node.parameters.get('gate');
+  // Sweeping the ratio is what makes the classic C64 lead rather than one
+  // metallic tone: the reset point walks through the second oscillator's cycle
+  // and the formant moves with it.
+  //
+  // Note-local, and deliberately *not* the shared channel LFO `pwm` uses. There
+  // the sweep is a property of the instrument and has to carry across notes, or
+  // a run of eighths all start at the same duty and come out as a plain square.
+  // Here the sweep is a property of the *gesture* — a sync lead sweeps within
+  // each note — so starting at the same phase every time is the point rather
+  // than the bug.
+  let lfo = null;
+  if (sync && sync.sweep > 0) {
+    lfo = ctx.createOscillator();
+    lfo.frequency.value = sync.sweep;
+    const depth = ctx.createGain();
+    depth.gain.value = ratio * SYNC_SWEEP_DEPTH;
+    lfo.connect(depth).connect(node.parameters.get('ratio'));
+  }
   // A raw phase ramp runs the full +-1, where the band-limited oscillators the
   // other voices use come out lower — measured, this landed 2.2 dB above Square
   // and outside the level band the suite holds every waveform to. Trimmed here
@@ -10596,16 +10713,16 @@ function createHardSyncSource(freq, fm) {
     // processor resets both phases on the rising edge and retires itself on the
     // falling one, so a note begins at a known phase and the node is collected
     // when it ends rather than running silently for the page's lifetime.
-    start: (t) => gate.setValueAtTime(1, t),
-    stop: (t) => gate.setValueAtTime(0, t),
+    start: (t) => { gate.setValueAtTime(1, t); if (lfo) lfo.start(t); },
+    stop: (t) => { gate.setValueAtTime(0, t); if (lfo) lfo.stop(t); },
   };
 }
-function createVoiceSource(oscType, duty, freq, fm, sweepLfo) {
+function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync) {
   // Falls back for the notes scheduled before the module resolves, and on a
   // browser without AudioWorklet at all. Sawtooth is what a hard-synced voice
   // is before anything resets it, so the fallback is the same voice with the
   // sync missing rather than a different instrument.
-  if (oscType === 'sync' && hardSyncCtx === ctx) return createHardSyncSource(freq, fm);
+  if (oscType === 'sync' && hardSyncCtx === ctx) return createHardSyncSource(freq, fm, sync);
   if (oscType === 'sync') oscType = 'sawtooth';
   if (oscType === 'noise') {
     const src = ctx.createBufferSource();
@@ -10645,13 +10762,13 @@ function createVoiceSource(oscType, duty, freq, fm, sweepLfo) {
 }
 function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOICE) {
   const duty = effectiveDuty(note, voice);
-  const src = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo);
+  const src = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
 
   let chorus = null;
   if (note.arp && note.arp.length) {
     const freqs = [note.freq, ...note.arp.map(semi => note.freq * Math.pow(2, semi / 12))];
-    const stepSec = 0.03;
+    const stepSec = voice.arpStep || DEFAULT_ARP_STEP;
     let t = startAt, i = 0;
     while (t < startAt + dur) { src.pitch.setValueAtTime(src.toPitch(freqs[i % freqs.length]), t); t += stepSec; i++; }
   } else {
@@ -10664,7 +10781,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOI
     addTrackVibrato(src, note.freq, startAt, startAt + dur, voice.vib);
     if (oscType === 'fm') addFmModulator(src, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + dur);
     if (note.chorus) {
-      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo);
+      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync);
       src.detune.value = 8;
       chorus.detune.value = -8;
       chorus.pitch.setValueAtTime(chorus.toPitch(note.freq), startAt);
@@ -10691,7 +10808,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   // This used to hand-write the wave selection a fourth time — and read
   // note.duty directly, so the track's Duty default never reached a portamento
   // note. Everything goes through createVoiceSource()/effectiveDuty() now.
-  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm, voice.pwmLfo);
+  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm, voice.pwmLfo, voice.sync);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
   src.pitch.setValueAtTime(src.toPitch(note.freq), startAt);
   const glideStart = startAt + dur * 0.6;
