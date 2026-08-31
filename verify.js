@@ -3983,6 +3983,33 @@ async function main() {
             const b = g.querySelector('.pkey.black').getBoundingClientRect().width;
             return b < w;
           })(),
+          // A black key is short, and the rest of its row is the white bed it
+          // lies on — not the gutter's own dark background, which made the row
+          // read as a hole. Measured by sampling the painted colour just
+          // inside the row's right edge and comparing it with the same point
+          // on a white key: asking for the ::after's own style would pass on a
+          // bed that is present but mispositioned, which is exactly the bug
+          // that shipped first (a 1px border left it landing short).
+          bed: (() => {
+            const wk = g.querySelector('.pkey.white');
+            const bk = g.querySelector('.pkey.black');
+            const w = wk.getBoundingClientRect(), b = bk.getBoundingClientRect();
+            const bed = getComputedStyle(bk, '::after');
+            // Colour *and* geometry. elementFromPoint cannot see a pseudo-
+            // element — it answers with the host, so sampling the painted
+            // pixel reported the black key's own colour and the check failed
+            // against correct code. Reading the ::after's own style is the
+            // only way to see it, and reading only its colour would pass a bed
+            // that exists but lands short of the row, which is the bug that
+            // shipped first.
+            return {
+              colour: bed.backgroundColor,
+              whiteColour: getComputedStyle(wk).backgroundColor,
+              // Where its right edge falls, against where a white key's does.
+              endsAt: Math.round(b.left + parseFloat(bed.left) + parseFloat(bed.width)),
+              rowEndsAt: Math.round(w.right),
+            };
+          })(),
           // Only C is labelled, with its octave.
           octaves: [...g.querySelectorAll('.koct')].map(o => o.textContent),
         };
@@ -3992,6 +4019,16 @@ async function main() {
       }
       if (keys.unlabelled) throw new Error(`${keys.unlabelled} keys carry no accessible name`);
       if (!keys.blackNarrower) throw new Error('black keys must be shorter than white ones');
+      if (keys.bed.colour !== keys.bed.whiteColour) {
+        throw new Error(
+          `the rest of a black key\u2019s row is the white bed it lies on, so it must be a white key\u2019s ` +
+          `own colour, not the gutter\u2019s: ${JSON.stringify(keys.bed)}`);
+      }
+      if (Math.abs(keys.bed.endsAt - keys.bed.rowEndsAt) > 1) {
+        throw new Error(
+          `the bed must reach the row\u2019s right edge — short of it, the gutter shows through exactly where ` +
+          `the dark slice was being removed from: ${JSON.stringify(keys.bed)}`);
+      }
       if (!keys.octaves.length) throw new Error('C should be labelled with its octave');
       // Note names are gone from a tonal gutter — that was the ask.
       const stillNamed = await cdp.evaluate(
