@@ -7472,6 +7472,76 @@ async function main() {
       if (s.hits !== 0) throw new Error(`the kit is empty on purpose; drums are stolen from the voices: ${shape}`);
     });
 
+    step('Inventio: Bach\'s material is complete and the bass is derived from it', async () => {
+      // This one is a cover, so the assertion that matters is that the notes
+      // are still the ones Bach wrote. A song file is easy to edit and a loader
+      // is easy to make lossy, and either would leave the piece playing along
+      // quite happily with a bar missing. The counts come from the encoding the
+      // arrangement was built from, so they pin the material itself.
+      await fresh();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`(() => {
+        const row = Array.from(document.querySelectorAll('.song-item'))
+          .find(r => r.querySelector('.song-title')?.textContent === 'Inventio');
+        if (!row) throw new Error('Inventio is not offered in the Songs list');
+        row.querySelector('button').click();
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Inventio'`);
+
+      const raw = await cdp.evaluate(`JSON.stringify((() => {
+        const tracks = [...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')].map(t => ({
+          name: t.querySelector('.th-name').textContent,
+          labels: [...t.querySelectorAll('.lane .note')].map(e => e.getAttribute('aria-label')),
+        }));
+        return {
+          counts: Object.fromEntries(tracks.map(t => [t.name, t.labels.length])),
+          hits: document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length,
+          bass: (tracks.find(t => t.name === 'Bass') || { labels: [] }).labels,
+          lower: (tracks.find(t => t.name === 'Lower') || { labels: [] }).labels,
+        };
+      })())`);
+      const got = JSON.parse(raw);
+
+      const want = { Upper: 301, Lower: 263, Bass: 92 };
+      for (const [name, n] of Object.entries(want)) {
+        if (got.counts[name] !== n) {
+          throw new Error(`${name} should carry ${n} notes, found ${got.counts[name]}: ${JSON.stringify(got.counts)}`);
+        }
+      }
+      if (got.hits !== 0) throw new Error(`three voices and no kit — the bass carries the kick: ${got.hits} hits`);
+
+      // The kick is a pitch envelope on a note that is also carrying the
+      // harmony, so it lands on beats 1 and 3 and nowhere else. Counted rather
+      // than tested with `every`, which is true of an empty list.
+      const onBeat = (label, odd) => {
+        const m = label.match(/beat (\d+)/);
+        return m && (Number(m[1]) % 2 === 1) === odd;
+      };
+      const kicks = got.bass.filter(l => onBeat(l, true));
+      const offs = got.bass.filter(l => onBeat(l, false));
+      if (kicks.length !== 47 || offs.length !== 45) {
+        throw new Error(`bass should be 47 notes on beats 1/3 and 45 on 2/4, got ${kicks.length}/${offs.length}`);
+      }
+      const missing = kicks.filter(l => !l.includes('bend')).length;
+      const stray = offs.filter(l => l.includes('bend')).length;
+      if (missing || stray) {
+        throw new Error(`the kick bend belongs on beats 1 and 3 only: ${missing} missing, ${stray} on a weak beat`);
+      }
+
+      // And it has to actually be a bass. The third voice is the lower staff
+      // moved down an octave, so if the octave placement were ever dropped it
+      // would double that staff at pitch and simply sound thin, with every
+      // count above still correct.
+      const octave = (l) => Number(l.match(/^[A-G]#?(-?\d+)/)[1]);
+      const bassLow = Math.min(...got.bass.map(octave));
+      const lowerLow = Math.min(...got.lower.map(octave));
+      if (!(bassLow < lowerLow)) {
+        throw new Error(`the bass should sit below the staff it comes from: bass octave ${bassLow}, lower ${lowerLow}`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

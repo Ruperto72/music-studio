@@ -53,5 +53,10 @@
     "file": "three-voices.json",
     "name": "Three Voices",
     "desc": "Rasterline under the SID's actual constraint: same key, tempo, progression and melody, but three tonal channels and no drum kit, because that is what a 6581 has. Every voice does double duty — the lead puts the chord down and picks it back up in its own rests, the bass drops an octave and cuts short for a kick, and a single pitched noise channel is both hat and snare. Meant to be A/B'd against Rasterline: the music is identical, so what you hear is the budget."
+  },
+  {
+    "file": "inventio.json",
+    "name": "Inventio",
+    "desc": "J.S. Bach's Invention No. 13 in A minor, BWV 784, arranged for three SID voices. An invention has two voices of equal weight in the middle of the keyboard and no bass at all, so the third voice is built from Bach's own lower line: the note it is sounding on each beat, moved into the bass register and given the octave-drop kick a chip uses instead of a drum. Every pitch here is Bach's — nothing harmonic was invented, which is what keeps the counterpoint from being second-guessed. Notes taken from the Humdrum kern encoding of the Bach-Gesellschaft edition by David Huron and Craig Stuart Sapp, rather than transcribed from memory: a cover of a known piece may be many things, but not nearly right."
   }
 ]
