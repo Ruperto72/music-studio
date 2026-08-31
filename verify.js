@@ -3433,8 +3433,12 @@ async function main() {
       // static "Meter" caption reuses the same class and is present in the
       // DOM (just display:none) on every fresh page load.
       const caps = await cdp.evaluate(`[...document.querySelectorAll('.adsr-lane-el .mfx-cap')].map(c => c.textContent)`);
-      if (caps.join('|') !== 'Envelope|Filter|Duty') {
-        throw new Error(`expected Envelope/Filter/Duty group captions (starter Lead track is square), got ${JSON.stringify(caps)}`);
+      // Arpeggio is last and unconditional: the other three groups are there
+      // because the starter Lead track is square (Duty) and every tonal track
+      // has an envelope and a filter, but a note's arpeggio speed applies
+      // whatever the waveform is, so it does not come and go with the picker.
+      if (caps.join('|') !== 'Envelope|Filter|Duty|Arpeggio') {
+        throw new Error(`expected Envelope/Filter/Duty/Arpeggio group captions (starter Lead track is square), got ${JSON.stringify(caps)}`);
       }
       const labels = await cdp.evaluate(`[...document.querySelectorAll('.adsr-label span')].map(s => s.textContent)`);
       const expected = ['Attack', 'Decay', 'Sustain', 'Release', 'Cutoff', 'Resonance', 'Env Amount'];
@@ -7197,6 +7201,159 @@ async function main() {
           'the fallback has become permanent, which is silent: it just plays a sawtooth');
       });
       await cdp.evaluate(`document.getElementById('stop').click()`);
+    });
+
+    step('SID rates: arpeggio speed and the sync sweep reach the audio and the file', async () => {
+      await fresh();
+      // Both are per-track voice settings in SPARSE_TRACK_MAPS, so the rule
+      // that matters is the one every entry there follows: absent means the
+      // default, and a track that never touched them serialises without the
+      // keys and sounds exactly as it did before they existed.
+      const openEnv = () => cdp.evaluate(`(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      const saved = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return '{}';
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return JSON.stringify({ arpRate: (d.arpRate || {})[id] ?? null, sync: (d.sync || {})[id] ?? null });
+      })()`);
+      const slider = (label) => `[...document.querySelectorAll('.adsr-lane-el .adsr-field')]
+        .find(f => f.querySelector('.adsr-label').textContent === ${JSON.stringify(label)})
+        .querySelector('input[type=range]')`;
+
+      await openEnv();
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+
+      // Untouched: neither key is in the file at all.
+      // Loose equality on purpose: a page nobody has edited has not autosaved
+      // at all, so both read as undefined rather than null. Both mean absent,
+      // which is what this asserts.
+      const clean = JSON.parse(await saved());
+      if (clean.arpRate != null || clean.sync != null) {
+        throw new Error(`an untouched track must carry neither key — absent is the default: ${JSON.stringify(clean)}`);
+      }
+
+      // Arpeggio speed is there whatever the waveform is.
+      await cdp.evaluate(`(() => { const s = ${slider('Speed')}; s.value = 50;
+        s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return Math.abs(((d.arpRate || {})[id] || 0) - 0.02) < 1e-9;
+      })()`);
+      // Dragged back to the default position it clears rather than storing
+      // 1/33, so a track put back is byte-identical to one never touched.
+      await cdp.evaluate(`(() => { const s = ${slider('Speed')}; s.value = 33;
+        s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return (d.arpRate || {})[id] == null;
+      })()`);
+
+      // Sweep belongs to hard sync alone. Checked on an **FM** track, not the
+      // square one it starts as: the field sits inside the modulator group,
+      // which a square track does not build at all, so asking there tests a
+      // guard that is already false for another reason — an injection making
+      // Sweep unconditional passed against exactly that version of this check.
+      const pickWave = async (re) => {
+        await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+        await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+        await cdp.evaluate(`(() => {
+          [...document.querySelectorAll('#floating-layer [role="option"]')]
+            .find(o => ${re}.test(o.textContent)).click();
+        })()`);
+      };
+      const hasField = (label) => cdp.evaluate(
+        `[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === ${JSON.stringify(label)})`);
+      await pickWave('/^FM$/');
+      await waitFor(`[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === 'Depth')`);
+      if (await hasField('Sweep')) throw new Error('Sweep should not be offered on an FM track — it has Depth for that job');
+
+      await pickWave('/hard sync/i');
+      await waitFor(`[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === 'Sweep')`);
+      // Ratio comes with it: hard sync borrows the same modulator ratio FM and
+      // ring modulation use, so the control follows the waveform.
+      const hasRatio = await cdp.evaluate(
+        `[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === 'Ratio')`);
+      if (!hasRatio) throw new Error('a hard-sync track should offer the Ratio it actually uses');
+
+      await cdp.evaluate(`(() => { const s = ${slider('Sweep')}; s.value = 6;
+        s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return ((d.sync || {})[id] || {}).sweep === 6;
+      })()`);
+
+      // And the speed reaches the *scheduler*, not just the file. An arpeggio
+      // is scheduled as one setValueAtTime per step across the note, so the
+      // count of those events is the rate made observable — twice the steps at
+      // twice the speed. Asserted because a version of this step that only
+      // checked the stored number passed against a scheduler still reading the
+      // hardcoded constant.
+      // A note, at the very start so it sounds inside the window below, with an
+      // arpeggio on it — without one the scheduler takes its other branch and
+      // sets the pitch exactly once however fast the setting says to walk.
+      await cdp.evaluate(`(() => {
+        document.querySelector('[data-tool="pen"]').click();
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 2, clientY: r.top + 40 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length === 1`);
+
+      await cdp.evaluate(`(() => {
+        window.__pitchEvents = 0;
+        const real = AudioParam.prototype.setValueAtTime;
+        AudioParam.prototype.setValueAtTime = function (...a) { window.__pitchEvents++; return real.apply(this, a); };
+      })()`);
+      const stepsAt = async (hz) => {
+        await cdp.evaluate(`(() => { const s = ${slider('Speed')}; s.value = ${hz};
+          s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+        await new Promise((r) => setTimeout(r, 150));
+        await cdp.evaluate(`window.__pitchEvents = 0; document.getElementById('play').click()`);
+        await waitFor(`document.body.classList.contains('playing')`, 8000);
+        await new Promise((r) => setTimeout(r, 500));
+        const n = await cdp.evaluate(`window.__pitchEvents`);
+        await cdp.evaluate(`document.getElementById('stop').click()`);
+        await new Promise((r) => setTimeout(r, 250));
+        return n;
+      };
+      // Baseline first, with no arpeggio on the note: the counter sees every
+      // setValueAtTime, and the envelope and filter schedule the same handful
+      // whatever the arpeggio does. Subtracting it is what turns the reading
+      // into "steps the arpeggio scheduled" — comparing the raw totals damps a
+      // fivefold difference into less than double and reads as a failure.
+      const base = await stepsAt(33);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .lane .note').click()`);
+      await openPalette('arp');
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-arp]').click()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        const n = window.__savedNotes(d, id)[0];
+        return !!(n && n.arp && n.arp.length);
+      })()`);
+      const slow = await stepsAt(10);
+      const fast = await stepsAt(50);
+      const slowSteps = slow - base, fastSteps = fast - base;
+      if (!(slowSteps > 0 && fastSteps > slowSteps * 3)) {
+        throw new Error(
+          `the arpeggio speed must reach the scheduler, not just the file — ` +
+          `baseline ${base} events, 10 Hz ${slow} (${slowSteps} stepped), 50 Hz ${fast} (${fastSteps} stepped)`);
+      }
     });
 
     for (const s of steps) await s();
