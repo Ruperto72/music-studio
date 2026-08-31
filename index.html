@@ -602,7 +602,26 @@
      background is nearly the same colour. Short, like the real thing. */
   .gutter .pkey.black {
     background: #1b1b21; color: #8d8d99; width: 64%;
-    border-bottom: 1px solid #000; border-right: 1px solid #3a3a44;
+    border-bottom: 1px solid #000;
+    /* The key's right edge is an inset shadow rather than a border so it takes
+       no space. A border sits outside the padding box, and the white bed below
+       is positioned and sized in percentages *of that box* — so a 1px border
+       left the bed landing about 1.6px short of the row and put a dark slice
+       back exactly where it was being removed from. */
+    box-shadow: inset -1px 0 0 #3a3a44;
+  }
+  /* The rest of a black key's row is the white bed the key sits on, not a gap.
+     On a real keyboard a black key lies *over* the white keys, so what you see
+     to the right of it is white — leaving the gutter's own dark background
+     there made the row read as a hole rather than as a shorter key.
+     56.25% is 36/64: the black key is 64% of the row, so the remainder is 36%
+     of the row and this element is measured against the key's width, not the
+     row's. Carries the white key's own bottom border so the horizontal rules
+     line up straight across the column. */
+  .gutter .pkey.black::after {
+    content: ''; position: absolute; left: 100%; top: 0; bottom: 0;
+    width: 56.25%;
+    background: #d9d9de; border-bottom: 1px solid #a9a9b2;
   }
   .gutter .pkey.white:hover { background: #ecedf2; }
   .gutter .pkey.black:hover { background: #2b2b34; }
