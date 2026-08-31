@@ -43,5 +43,10 @@
     "file": "rust-foundry.json",
     "name": "Rust Foundry",
     "desc": "Industrial metal at 140 BPM — a downtuned E-phrygian chug riff double-tracked hard left and right, a ring-modulated machine drone, an FM alarm lead and two kits. Built around how hard things are hit and where they sit: ghost snares against a full backbeat, hats accented on the beat, tom fills that walk across the stereo field, and scrap percussion clanking off-grid. Bitcrush as distortion, a mid-scooped master, parallel compression and kick-triggered ducking."
+  },
+  {
+    "file": "rasterline.json",
+    "name": "Rasterline",
+    "desc": "A 132 BPM C64 pastiche in A minor, written to exercise the SID voices rather than to hide them. A saw+triangle bass jumps octaves instead of sweeping a filter; the chord voice is one held note per bar carrying its whole triad, arpeggiated at 50 Hz so it reads as a chord rather than a fast melody; and the lead is hard sync with its ratio swept, entering at bar 9 once the ostinato has established itself. Sixteen bars of i-VI-III-VII, which is a progression precisely because a SID has three voices and the chord has to be implied."
   }
 ]

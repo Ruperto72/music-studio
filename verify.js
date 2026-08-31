@@ -7356,6 +7356,56 @@ async function main() {
       }
     });
 
+    step('Rasterline: the bundled song carries the SID voices through a load', async () => {
+      // The bundled-song audit is static — it reads the file and asks whether
+      // every field is one the loader would accept. It cannot know whether the
+      // loader then *uses* them. This is the round trip: a song on disk whose
+      // lead is `sync` with a sweep, whose bass is `sawtri` and whose chord
+      // voice sets arpRate, loaded through the Songs menu and played until the
+      // worklet either appears or does not.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `(() => {
+          window.__w = [];
+          const R = window.AudioWorkletNode;
+          if (!R) return;
+          window.AudioWorkletNode = function (c, n, o) { window.__w.push(n); return new R(c, n, o); };
+          window.AudioWorkletNode.prototype = R.prototype;
+        })();`,
+      });
+      await fresh();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`(() => {
+        const row = Array.from(document.querySelectorAll('.song-item'))
+          .find(r => r.querySelector('.song-title')?.textContent === 'Rasterline');
+        if (!row) throw new Error('Rasterline is not offered in the Songs list');
+        row.querySelector('button').click();
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Rasterline'`);
+
+      const waves = await cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.th-osc-trigger')].map(t => t.textContent.replace(/[^A-Za-z+ ]/g, '').trim()))`);
+      const w = JSON.parse(waves);
+      for (const want of ['Saw+Tri', 'Hard sync']) {
+        if (!w.some(x => x === want)) throw new Error(`the song should load a ${want} track, got ${waves}`);
+      }
+
+      // The lead enters at bar 5 on purpose — inside the first scheduling
+      // chunk — so a few seconds of playback is enough to reach it. A lead
+      // starting after the chunk would leave this assertion measuring silence
+      // and passing for the wrong reason, which is how the song was written
+      // the first time.
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await waitFor(`(window.__w || []).includes('hardsync-processor')`, 12000).catch(() => {
+        throw new Error(
+          'the song played without the hard-sync worklet — its lead fell back to a sawtooth, ' +
+          'so either the waveform did not survive the load or the module did not arrive in time');
+      });
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
