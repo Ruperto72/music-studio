@@ -7443,6 +7443,35 @@ async function main() {
       await cdp.evaluate(`document.getElementById('stop').click()`);
     });
 
+    step('Three Voices: the song keeps to three channels and an empty kit', async () => {
+      // The constraint *is* the song. A drum kit added later, or a fourth
+      // tonal track, would leave it loading and sounding fine while quietly
+      // ceasing to be the thing it exists to demonstrate — which is the sort
+      // of change nothing else here would notice.
+      await fresh();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`(() => {
+        const row = Array.from(document.querySelectorAll('.song-item'))
+          .find(r => r.querySelector('.song-title')?.textContent === 'Three Voices');
+        if (!row) throw new Error('Three Voices is not offered in the Songs list');
+        row.querySelector('button').click();
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Three Voices'`);
+
+      const shape = await cdp.evaluate(`JSON.stringify({
+        tonal: document.querySelectorAll('#tracks > .track[data-kind="pitch"]').length,
+        hits: document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length,
+        sounding: [...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')]
+          .filter(t => t.querySelectorAll('.lane .note').length > 0).length,
+      })`);
+      const s = JSON.parse(shape);
+      if (s.tonal !== 3) throw new Error(`a 6581 has three voices, so the song has three tonal tracks: ${shape}`);
+      if (s.sounding !== 3) throw new Error(`all three voices should carry material — that is the point: ${shape}`);
+      if (s.hits !== 0) throw new Error(`the kit is empty on purpose; drums are stolen from the voices: ${shape}`);
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

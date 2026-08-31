@@ -48,5 +48,10 @@
     "file": "rasterline.json",
     "name": "Rasterline",
     "desc": "A 132 BPM C64 pastiche in A minor, written to exercise the SID voices rather than to hide them. A saw+triangle bass jumps octaves instead of sweeping a filter; the chord voice is one held note per bar carrying its whole triad, arpeggiated at 50 Hz so it reads as a chord rather than a fast melody; and the lead is hard sync with its ratio swept, entering at bar 9 once the ostinato has established itself. Sixteen bars of i-VI-III-VII, which is a progression precisely because a SID has three voices and the chord has to be implied."
+  },
+  {
+    "file": "three-voices.json",
+    "name": "Three Voices",
+    "desc": "Rasterline under the SID's actual constraint: same key, tempo, progression and melody, but three tonal channels and no drum kit, because that is what a 6581 has. Every voice does double duty — the lead puts the chord down and picks it back up in its own rests, the bass drops an octave and cuts short for a kick, and a single pitched noise channel is both hat and snare. Meant to be A/B'd against Rasterline: the music is identical, so what you hear is the budget."
   }
 ]
