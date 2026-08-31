@@ -1498,7 +1498,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('.th-osc-trigger').click()`);
       await waitFor(`!!document.querySelector('.th-osc-menu')`);
       const menuCount = await cdp.evaluate(`document.querySelectorAll('.th-osc-menu button').length`);
-      if (menuCount !== 10) throw new Error(`expected 10 waveform options in the menu, got ${menuCount}`);
+      if (menuCount !== 12) throw new Error(`expected 12 waveform options in the menu, got ${menuCount}`);
       const switched = await cdp.evaluate(`(() => {
         [...document.querySelectorAll('.th-osc-menu button')].find(b => b.textContent.trim() === 'Saw').click();
         return document.querySelector('.th-osc-trigger').querySelector('span:not(.th-osc-caret)').textContent;
@@ -2567,7 +2567,7 @@ async function main() {
       }
     });
 
-    step('Waveforms: all ten build a distinct sound, none is off in level, and PWM sweeps', async () => {
+    step('Waveforms: all twelve build a distinct sound, none is off in level, and PWM sweeps', async () => {
       await fresh();
       // The DOM can only show that ten buttons exist. What matters is that each
       // one produces different audio — a waveform that silently fell through to
@@ -2646,7 +2646,7 @@ async function main() {
       const optionValues = await cdp.evaluate(
         `[...document.querySelectorAll('.th-osc-menu button')].map(b => b.dataset.value)`);
       await cdp.evaluate(`document.querySelector('.th-osc-trigger').click()`); // close it back up
-      if (optionValues.length !== 10) throw new Error(`expected 10 waveform options, got ${optionValues.length}`);
+      if (optionValues.length !== 12) throw new Error(`expected 12 waveform options, got ${optionValues.length}`);
 
       const results = {};
       const delayMods = {};
@@ -2695,7 +2695,7 @@ async function main() {
       }
 
       const names = Object.keys(results);
-      if (names.length !== 10) throw new Error(`rendered ${names.length} waveforms, expected 10`);
+      if (names.length !== 12) throw new Error(`rendered ${names.length} waveforms, expected 12`);
       const silent = names.filter((n) => results[n].peak <= 0.001);
       if (silent.length) throw new Error(`waveform(s) produced no sound: ${JSON.stringify(silent)}`);
       // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
@@ -6965,6 +6965,62 @@ async function main() {
       if (afterNudge !== beforeNudge) {
         throw new Error(`arrow keys must not move material a closed window is hiding.\n  before: ${beforeNudge}\n  after:  ${afterNudge}`);
       }
+    });
+
+    step('Hard sync: live playback uses the worklet, not the sawtooth fallback', async () => {
+      // The offline render awaits the worklet module (renderSongToWav's
+      // Promise.all), so the Waveforms step above already proves the processor
+      // works — a fallback there would make `sync` hash identically to
+      // `sawtooth` and fail its distinctness check.
+      //
+      // Live playback does not await. The fallback is deliberate and has to
+      // stay (a source cannot be bypassed while it loads the way an insert
+      // can), but a fallback that becomes permanent — a renamed file, a bad
+      // path, a service worker that never cached it — would be inaudible as a
+      // bug: the track would simply play a sawtooth forever. So this asks the
+      // live graph directly.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+          (() => {
+            window.__worklets = [];
+            const Real = window.AudioWorkletNode;
+            if (!Real) return;
+            window.AudioWorkletNode = function (ctx, name, opts) {
+              window.__worklets.push(name);
+              return new Real(ctx, name, opts);
+            };
+            window.AudioWorkletNode.prototype = Real.prototype;
+          })();
+        `,
+      });
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Put the Lead track on Hard sync through the picker the user uses.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`(() => {
+        const opt = [...document.querySelectorAll('#floating-layer [role="option"]')]
+          .find(o => /hard sync/i.test(o.textContent));
+        if (!opt) throw new Error('no Hard sync option in the waveform picker');
+        opt.click();
+      })()`);
+      await new Promise((r) => setTimeout(r, 200));
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 8, clientY: r.top + 40 }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length === 1`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      // The module load is a promise; give it a moment, then look for a note
+      // that actually used it.
+      await waitFor(`(window.__worklets || []).includes('hardsync-processor')`, 6000).catch(() => {
+        throw new Error(
+          'a Hard sync track played without ever constructing the hardsync worklet — ' +
+          'the fallback has become permanent, which is silent: it just plays a sawtooth');
+      });
+      await cdp.evaluate(`document.getElementById('stop').click()`);
     });
 
     for (const s of steps) await s();
