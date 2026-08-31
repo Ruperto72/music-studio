@@ -27,9 +27,19 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - **Add / rename / remove / reorder** tonal tracks, plus one or more **rhythm**
   tracks sharing a fixed 10-piece palette (kick, snare, rim, hi-hat, open hat,
   shaker, tom, clap, crash, ride)
-- **Duplicate a track** (⧉ in its header) — the part *and* the whole voice,
-  copied below it. "Try this line on another instrument" is a two-second move
-  rather than a selection, a new track and a paste
+- **Duplicate a track** — the part *and* the whole voice, copied below it. "Try
+  this line on another instrument" is a two-second move rather than a selection,
+  a new track and a paste. It lives with **Remove track** in the *Track* box at
+  the bottom of the inspector column, and both ask before acting: next to
+  Mute/Solo/arm in the track header they were two small unlabelled buttons away
+  from three you press constantly
+- **Clips** — a track's part lives in windows onto its notes rather than in a
+  flat list, so trimming an edge *hides* material instead of deleting it and
+  pulling the edge back out returns the same notes. Split at the playhead, heal
+  two halves back together, or drag a clip along the timeline with everything it
+  holds. Every track starts as one clip covering the song, labelled with the bars
+  it spans; its grip and trim edges appear under the **Grab** tool, the same rule
+  a note's own resize handle follows
 - **Three drum kits** — each rhythm track picks whether those ten pieces are
   synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
   snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on

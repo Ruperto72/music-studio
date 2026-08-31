@@ -352,13 +352,13 @@
   .th-reorder button:hover:not(:disabled) { border-color: #55555f; }
   .th-reorder button:disabled { opacity: 0.25; cursor: default; }
   /* Collapsed: keep just name/M/S plus the live VU bar, hide everything else
-     (waveform, automation/envelope tools, volume/pan sliders, remove button)
+     (waveform, automation/envelope tools, volume/pan sliders, FX chips)
      and the whole grid lane for that track — a slim strip so many tracks fit
      on screen at once (the full lane/gutter aren't even built when collapsed,
      see renderPitchTrack/renderRhythmTrack — a small canvas thumbnail of the
      note layout, renderCollapsedOverview(), stands in for it instead). */
   .track.collapsed .th-osc-section, .track.collapsed .th-tools,
-  .track.collapsed .th-output-section, .track.collapsed .th-remove, .track.collapsed .th-dup,
+  .track.collapsed .th-output-section,
   .track.collapsed .th-fx-panel { display: none; }
   .collapsed-overview { flex: 0 0 auto; align-self: center; background: #0c0c10; border-radius: 2px; }
   .th-name {
@@ -472,11 +472,6 @@
   .th-btns button.m.on, .th-btns button.s.on {
     background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
   }
-  .th-btns button.x { color: #d88; font-size: 10px; }
-  /* Duplicate sits beside Remove and shares its shape, but it is additive —
-     so it takes the neutral ink rather than the warning red. */
-  .th-btns button.x.th-dup { color: var(--muted); }
-  .th-btns button.x.th-dup:hover { background: #2a2a33; color: var(--ink); border-color: #55555f; }
   /* Armed is red rather than the green M/S use: it is the one state where
      typing does something destructive, so it should not look like the others. */
   .th-btns button.r.on { background: #6a1620; color: #ffb3bd; border-color: #c2283c; }
@@ -493,7 +488,6 @@
     background: #7a4fd1; color: #fff; border-color: #5c3aa8; box-shadow: 0 0 6px rgba(122,79,209,0.4);
   }
   .th-tool-btn.icon { flex: 0 0 22px; font-size: 11px; }
-  .th-btns button.x:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
   .th-vol input[type=range] { flex: 1; min-width: 0; cursor: pointer; accent-color: #888; }
   .th-vol .vol-val { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -711,10 +705,23 @@
     border-right: 1px solid rgba(255,255,255,0.12);
     box-shadow: inset 0 2px 0 0 rgba(255,255,255,0.14);
   }
+  /* What the block says about itself: the bars it covers. Without it a clip
+     spanning a whole track is indistinguishable from the lane, which is how
+     the feature managed to be invisible on a song nobody had split yet. Only
+     drawn where addClipBlocks() found room for it — no attribute, no
+     pseudo-element — and it never takes pointer events, so it cannot cost a
+     placement click. */
+  .clip[data-label]::before {
+    content: attr(data-label);
+    position: absolute; top: 8px; left: 5px;
+    font-size: 8px; font-weight: 700; letter-spacing: 0.6px;
+    color: rgba(255,255,255,0.30); pointer-events: none; white-space: nowrap;
+  }
   /* The edges take pointer events; the body deliberately does not. That split
      is what lets a clip be trimmed without the block swallowing every
      placement click in the lane it covers — which is the property the phase-2
-     verify step pins down. */
+     verify step pins down. Both handles are built only under the Grab tool
+     (addClipBlocks), the same rule a note's own resize handle follows. */
   .clip-edge {
     position: absolute; top: 0; bottom: 0; width: 7px; pointer-events: auto;
     cursor: ew-resize; z-index: 5;
@@ -916,6 +923,19 @@
   }
   .th-strip-add button:hover { border-color: #6a6a76; color: var(--ink); border-style: solid; }
   .th-strip-add button .glyph { width: 16px; height: 8px; }
+  /* Duplicate/Remove. Full-width rows with their names spelled out, at the
+     bottom of the strip, well past the knobs — the opposite of the 22px
+     unlabelled square each of them used to be in the track header. */
+  .th-strip-actions { display: flex; flex-direction: column; gap: 4px; }
+  .th-strip-actions button {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    background: #1a1a20; color: var(--muted); border: 1px solid #33333c; border-radius: 5px;
+    font-size: 10px; font-weight: 700; padding: 5px 8px; cursor: pointer; text-align: left;
+  }
+  .th-strip-actions button:hover { background: #2a2a33; color: var(--ink); border-color: #55555f; }
+  .th-strip-actions button .th-strip-action-mark { font-size: 11px; width: 12px; flex: 0 0 auto; text-align: center; }
+  .th-strip-actions button.danger { color: #d88; }
+  .th-strip-actions button.danger:hover { background: #3a1414; color: #ff9a9a; border-color: #a33; }
   .insp-head { display: flex; align-items: center; gap: 8px; }
   .insp-badge { font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: 4px; color: #04140a; }
   .insp-note {
@@ -1141,16 +1161,16 @@
       <h3>Tracks &amp; channel strips</h3>
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
-        <li>Each track's <b>channel strip</b> (left) starts with its name, <b>M</b>ute / <b>S</b>olo, record-arm and remove, then three labelled sections: <b>Osc</b> (the waveform — or "Kit" for rhythm — plus the Auto/Env/Preset buttons), <b>Inserts</b> (the effect chips, see below) and <b>Output</b> (volume, pan and a level meter).</li>
-        <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; the <b>✕</b> on a strip removes that track (the last remaining Rhythm lane can't be removed). Added tracks export into the game too.</li>
-        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, remove) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
+        <li>Each track's <b>channel strip</b> (left) starts with its name and <b>M</b>ute / <b>S</b>olo / record-arm, then three labelled sections: <b>Osc</b> (the waveform — or "Kit" for rhythm — plus the Auto/Env/Preset buttons), <b>Inserts</b> (the effect chips, see below) and <b>Output</b> (volume, pan and a level meter).</li>
+        <li><span class="help-ico" data-glyph="addTrack"></span><b>Add track</b> / <span class="help-ico" data-glyph="addDrums"></span><b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; <b>Duplicate track</b> and <b>Remove track</b> are in the <b>Track</b> box at the bottom of the inspector column, for whichever track is active (the last remaining Rhythm lane has no Remove). Added tracks export into the game too.</li>
+        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, the effect chips) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>A tonal track's left edge is a <b>piano keyboard</b> rather than a column of note names — white and black keys, with only C labelled, by its octave. <b>Press a key to hear it</b>, and drag down the keys to glissando; it sounds through the track's own instrument, so what you hear is what writing a note there would give you. A rhythm track keeps its ten piece names, since a drum has no pitch to show.</li>
         <li>The <span class="help-ico" data-glyph="velocity"></span><b>Vel</b> button opens a <b>note lane</b> under the track: one stem per note or hit, with a diamond head you can drag. The dropdown in its header picks which value it shows — <b>Velocity</b>, <b>Pan</b>, or <b>Bend</b> on a tonal track. Pan and bend are signed, so they grow from a centre line rather than from the floor: a stem reads as an offset from neutral, not as a quantity. The grid already dims a quiet item, but <i>which of these is loudest</i> is a comparison, and heights compare far better than shades of one colour. Works on rhythm tracks too — that is where accents matter most. Dragging a head to the top removes the velocity again rather than storing 100%, so a part you never touched saves exactly as it did before.</li>
         <li>The <span class="help-ico" data-glyph="automation"></span><b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <span class="help-ico" data-glyph="envelope"></span><b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. The sweep belongs to the track and runs continuously, so a run of short notes each picks it up where the last one left off instead of all starting at the same width — a single note can still override it from the inspector. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <span class="help-ico" data-glyph="preset"></span><b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
         <li>The <span class="help-ico" data-glyph="scale"></span><b>Chords</b> button (tonal tracks) writes a built-in <b>chord progression</b> into that track — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp, or a 12-bar blues — one chord per bar, from the playhead's bar to the end of the song, exactly like <b>Patterns</b> does for drums. The chords come from the song's <b>Key</b>: a progression is stored as scale <i>degrees</i>, so the same one is major or minor depending on the scale you picked. Change the key and insert it again to hear it somewhere else entirely. <b>▶</b> auditions it in the current key on that track's own sound before you commit.</li>
-        <li><b>⧉</b> next to <b>✕</b> duplicates a track: a copy of the part <i>and</i> the whole voice — waveform, envelope, filter, inserts, sends, kit — placed directly below it. It's the quickest way to try the same line on another instrument, and the two parts are independent afterwards, so editing one doesn't touch the other.</li>
+        <li>The <b>Track</b> box at the bottom of the inspector column holds the two things you do to a track as a whole. <b>Duplicate track</b> makes a copy of the part <i>and</i> the whole voice — waveform, envelope, filter, inserts, sends, kit — directly below it; it's the quickest way to try the same line on another instrument, and the two parts are independent afterwards, so editing one doesn't touch the other. <b>Remove track</b> deletes it and its part. <b>Both ask first</b>, and they sit down here rather than up in the track header on purpose: next to Mute/Solo/arm they were two small buttons away from three you press all the time, which is a bad place to keep a decision you can't take back with a mis-click.</li>
         <li>A rhythm track has a <span class="help-ico" data-glyph="drums"></span><b>Kit</b> picker in its header — the same picker a tonal track uses for its waveform, in the same spot, each kit drawing the shape of its own decay: <b>Retro</b> (the tight, dry 8-bit kit — the default, and what every existing song keeps), <b>80s</b> (a big gated snare, long crash, wide clap — the drum machine sound) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). It is the same ten pieces throughout — the same rows, the same patterns, the same hits — synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, and the choice is saved with the song. Changing it auditions the snare, the piece a kit is easiest to judge by.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one <b>chip</b> per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are not there: click a chip and the <b>inspector column</b> on the right shows that track's whole chain, every effect at once. (With nothing selected it shows it anyway — that column is the mixing surface.) <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects are continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends — a track-wide effect level, separate from the per-note Echo/Chorus/Reverb toggles in the note inspector — plus a 3-band <b>EQ</b>, a <b>Compressor</b> (threshold/ratio/attack/release, same controls as the master compressor), a <b>Bitcrush</b> knob (lo-fi downsampler, independent of the per-note Crush toggle) and a <b>Tremolo</b> (Rate/Depth — amplitude wobble, 0% depth is off). Tonal tracks also get a <b>Vibrato</b> (Rate/Depth in cents, 100&nbsp;=&nbsp;a semitone) — pitch wobble on every note of the track, adding to the per-note Vibrato toggle rather than replacing it. Rhythm tracks don't offer it: it works by bending each note's oscillator, and a drum hit has none.</li>
         <li>The <span class="help-ico" data-glyph="drums"></span><b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back: an accented groove rather than a flat machine pulse. Each pattern also has a <b>fill</b> bar, used on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> (or turn fills off to get the same bar throughout), and the bar after a fill opens with a crash. The kit is also spread across the stereo field as it goes in — hi-hat and ride to the right, shaker, toms and crash to the left, kick and snare centred, so a pattern sounds like a kit in a room instead of ten sounds in one spot; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar, exactly as they will be inserted, so you can hear both first. A pattern may bring a setting of its own along: <b>Swing/Shuffle</b> nudges the Swing slider, <b>Funk</b> switches the grid to 1/16 because that's where its ghost notes sit, and <b>Trap</b> to 1/16 T so its 16ths and its triplet roll are both readable.</li>
@@ -1173,6 +1193,36 @@
         <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. That is how a drum part or a riff actually gets built — one piece at a time over a bar you can hear. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in, and a key held through the seam becomes a note that runs to the end of the loop rather than a stab.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step, so you can type a part out at your own pace instead of playing it in time. Keys pressed together land as a chord on one column and the playhead moves once. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there (&ldquo;bar 2 beat 3, C4, E4&rdquo; / &ldquo;empty&rdquo;), so you can find your way around a part without seeing it — this is how you compose without a mouse at all.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) — how hard it's struck, which is what turns a mechanical drum pattern into one with accents — and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level: a soft hit is darker, the way a real drum struck gently gives you less of the sharp top end, so a ghost note sits behind the beat instead of just being a quiet copy of the accent. Quieter notes and hits are drawn dimmer, so the accents are visible in the grid too. Notes have the same <b>Pan</b> slider: it places that one note or hit in the stereo field on top of whatever the track's own pan is doing, and double-clicking re-centres it. Panning the kit piece by piece — hi-hat off to one side, toms spread — is what stops a drum part sitting in a single spot.</li>
+      </ul>
+
+      <h3>Clips</h3>
+      <p>
+        A track's part is held in one or more <b>clips</b>. A clip is not the notes — it is a
+        <b>window</b> onto them, and that difference is the whole point: an item sounds only while it
+        falls inside the window, so pulling an edge in <i>hides</i> material rather than deleting it,
+        and pulling the edge back out brings the very same notes back. Every track starts as a single
+        clip covering the whole song; the faint block behind each lane is it, labelled with the bars
+        it covers (<b>bar 1–8</b>).
+      </p>
+      <ul>
+        <li><b>Split clip at playhead</b> (in the menu) cuts the active track's clip in two where the
+          playhead sits. Nothing moves and nothing is lost — you now have two windows onto the same
+          material, which is what lets you trim or move one half without touching the other.
+          <b>Heal clips at playhead</b> is that run backwards, joining two halves of one clip back
+          into a single window. It only joins halves that came from the same clip and actually meet,
+          so it can't silently weld two unrelated parts together.</li>
+        <li>With the <span class="help-ico" data-glyph="grab"></span><b>Grab</b> tool a clip grows
+          handles: the strip along its <b>top edge</b> moves the whole clip along the timeline, and
+          its <b>left and right edges</b> trim it. They appear under Grab only — the same rule a
+          note already follows, since a clip covers its whole stretch of lane and permanently
+          grabbable edges would eat the placement clicks the pen needs.</li>
+        <li><b>Moving a clip takes everything it holds</b>, hidden material included — so a part you
+          trimmed and then shifted still has its full take underneath, exactly where it was relative
+          to the rest.</li>
+        <li>A <b>recorded take lands as its own clip</b>, and clears the ground it falls on the way a
+          DAW does: whatever was there is trimmed back or split around it rather than left sounding
+          underneath. Since trimming hides, that material is still there if you move the take away
+          again.</li>
       </ul>
 
       <h3>Selecting several notes</h3>
@@ -4298,6 +4348,10 @@ function addTrack() {
 function duplicateTrack(track) {
   const src = trackOf(track);
   if (!src) return;
+  // Asked even though a copy is harmless to undo: an unwanted one arrives with
+  // a full part and voice under a name one word from the original's, which is
+  // an easy thing to keep editing for a while before noticing.
+  if (!confirm(`Duplicate "${src.name}"? A copy of its part and voice is added below it.`)) return;
   const id = nextTrackId();
   const desc = { ...src, id, name: src.name + ' copy' };
   state.trackList.splice(state.trackList.indexOf(src) + 1, 0, desc);
@@ -4374,7 +4428,11 @@ function removeTrack(id) {
   const t = trackOf(id);
   if (!t || !canRemoveTrack(id)) return;
   const n = (trackNotes(id) || []).length;
-  if (n && !confirm(`Remove "${t.name}" and its ${n} note${n === 1 ? '' : 's'}?`)) return;
+  // Asked unconditionally. It used to skip the question for an empty track,
+  // which is exactly the track you are most likely to be removing by accident:
+  // one you just added and have not played into yet.
+  const what = n ? ` and its ${n} note${n === 1 ? '' : 's'}` : ', which is empty';
+  if (!confirm(`Remove "${t.name}"${what}?`)) return;
   state.trackList = state.trackList.filter(x => x.id !== id);
   for (const map of [state.tracks, state.gains, state.waveform, state.pan, state.mute, state.solo, ...SPARSE_TRACK_MAPS.map(k => state[k])]) delete map[id];
   for (const nodes of [chanGain, chanPan, chanAnalyser, chanComp, chanCrush, chanTremolo, trackDelaySend, trackChorusSend, trackReverbSend]) {
@@ -5476,7 +5534,7 @@ function buildHeader(track) {
   collapseBtn.title = collapsed ? 'Expand this track' : 'Collapse this track';
   collapseBtn.setAttribute('aria-expanded', String(!collapsed));
   collapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTrackCollapsed(track); });
-  // Name + Mute/Solo (+ Remove) share the top row — these are what stays
+  // Name + Mute/Solo/Arm share the top row — these are what stays
   // visible in the collapsed view. The waveform picker gets its own row below
   // (hidden while collapsed) since cramming it in here too was what caused
   // this row to overflow the header's fixed width.
@@ -5512,22 +5570,11 @@ function buildHeader(track) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); setRecTrack(armed ? null : track); });
     btns.append(btn);
   }
-  {
-    // Beside Remove rather than in a menu: duplicating and removing are the
-    // same kind of decision about this track, and the one you reach for while
-    // trying something out should be the one closest to hand.
-    const dup = el('button', 'x th-dup'); dup.textContent = '⧉';
-    dup.title = 'Duplicate this track — a copy of the part and the whole voice, below this one';
-    dup.setAttribute('aria-label', `Duplicate ${trackOf(track)?.name || track}`);
-    dup.addEventListener('click', (e) => { e.stopPropagation(); duplicateTrack(track); });
-    btns.append(dup);
-  }
-  if (canRemoveTrack(track)) {
-    const rm = el('button', 'x th-remove'); rm.textContent = '✕'; rm.title = 'Remove this track';
-    rm.setAttribute('aria-label', `Remove ${trackOf(track)?.name || track}`); // "✕" repeated per track says nothing on its own
-    rm.addEventListener('click', (e) => { e.stopPropagation(); removeTrack(track); });
-    btns.append(rm);
-  }
+  // Duplicate and Remove used to sit here, one button along from Mute/Solo/Arm
+  // — three toggles you press all the time, then two irreversible decisions at
+  // the same size in the same row. They live in the inspector column now
+  // (buildTrackActionsSection), which is also where they stopped being hidden
+  // by collapsing the track.
   {
     // Reorder is always within-kind: a tonal track's neighbors can only ever
     // be tonal, a rhythm track's only ever rhythm (see moveTrack()) — so the
@@ -5814,19 +5861,39 @@ function laneCoords(e, rollEl, rowH, midiTop) {
 // Phase 3 (split) is when a clip starts carrying real information — where one
 // part ends and the next begins — and that is the phase that owes it a label,
 // most likely on the lane's own aria-label as a clip count rather than here.
+// The bar range a clip covers, which is the thing that changes when you trim or
+// move it — so it is what the block says about itself.
+function clipLabel(clip) {
+  const per = eighthsPerBar();
+  const first = Math.floor(clip.start / per) + 1;
+  const last = Math.max(first, Math.ceil(clipEnd(clip) / per));
+  return first === last ? `bar ${first}` : `bar ${first}–${last}`;
+}
 function addClipBlocks(rollEl, track, heightPx) {
   const clips = clipsOf(track);
-  clips.forEach((clip, i) => {
+  clips.forEach((clip) => {
     const div = el('div', 'clip');
+    const widthPx = Math.max(2, (clipEnd(clip) - clip.start) * colPx);
     div.style.left = (clip.start * colPx) + 'px';
-    div.style.width = Math.max(2, (clipEnd(clip) - clip.start) * colPx) + 'px';
+    div.style.width = widthPx + 'px';
     div.style.height = heightPx + 'px';
     div.setAttribute('aria-hidden', 'true');
-    // Edges are grabbable, the body is not — see the .clip-edge rule. Only
-    // worth offering where there is more than one window: a lone clip covering
-    // the whole track has nothing to reveal by being trimmed and everything to
-    // lose, and its edges sit exactly where the song does.
-    if (clips.length > 1) {
+    // Only labelled where there is room to read it. The label is a ::before, so
+    // a narrow clip would have to clip it — and `.clip` cannot take
+    // overflow:hidden, since its edge handles deliberately sit 3px outside the
+    // box. No attribute, no pseudo-element (see the `.clip[data-label]` rule).
+    if (widthPx > 64) div.dataset.label = clipLabel(clip);
+    // Handles are a Grab-tool thing, the same rule a note already follows: it
+    // moves only under Grab (see the note's own pointerdown) and its resize
+    // handle is not even built otherwise (renderPitchTrack). Clip handles used
+    // to be live under every tool, which is what made them expensive enough to
+    // need hiding on a lone clip — a whole-track grip is a 7px band across the
+    // top of the lane, and a semitone row is 11px, so under the pen it would
+    // have eaten most of the highest pitch on every track. Gated here instead,
+    // they cost nothing under the pen and every clip can have them, including
+    // the one a fresh song starts with. `state.tool` is already an input to
+    // trackRowSignature(), so switching tools does rebuild the row.
+    if (state.tool === 'grab') {
       for (const which of ['start', 'end']) {
         const h = el('div', 'clip-edge ' + which);
         h.addEventListener('pointerdown', (e) => startClipTrim(e, track, clip, which));
@@ -7390,6 +7457,44 @@ function renderMasterStrip() {
   // bottom bar — it is a live readout, not a setting.
   scrollStripFocusIntoView();
 }
+// Duplicate and Remove. Deliberately last in the strip and deliberately not in
+// the track header: there they were two 22px squares in the same row as
+// Mute/Solo/Arm, so the gesture for "let me hear this without the bass" and the
+// gesture for "delete the bass" differed by one button's width. Both ask before
+// acting — the question lives in duplicateTrack()/removeTrack() themselves, so a
+// second way in cannot arrive without it.
+function buildTrackActionsSection(track) {
+  // Deliberately not `.th-strip-section[data-track]`, which is the shape of an
+  // *effect* section — anything looking for one by track id (the strip's own
+  // bypass/remove plumbing, verify.js) would find this instead, and the first
+  // match on a track with no effects yet would be a section with no knobs in it.
+  const sec = el('div', 'th-strip-actions insp-panel');
+  const cap = el('div', 'th-strip-add-cap'); cap.textContent = 'Track';
+  sec.appendChild(cap);
+  const name = trackName(track);
+  const addBtn = (cls, mark, label, title, onClick) => {
+    const btn = el('button', cls); btn.type = 'button';
+    const markEl = el('span', 'th-strip-action-mark');
+    markEl.textContent = mark;
+    markEl.setAttribute('aria-hidden', 'true'); // the label beside it is the name
+    const text = document.createElement('span'); text.textContent = label;
+    btn.append(markEl, text);
+    btn.title = title;
+    btn.setAttribute('aria-label', `${label} — ${name}`);
+    btn.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    sec.appendChild(btn);
+  };
+  addBtn('', '⧉', 'Duplicate track',
+    'Duplicate this track — a copy of the part and the whole voice, below this one',
+    () => duplicateTrack(track));
+  // Same rule the header button followed: the last rhythm track has no Remove
+  // at all, rather than one that asks and then declines.
+  if (canRemoveTrack(track)) {
+    addBtn('danger', '✕', 'Remove track', 'Remove this track and its part',
+      () => removeTrack(track));
+  }
+  return sec;
+}
 function renderTrackStrip(track) {
   inspector.className = 'inspector';
   inspector.innerHTML = '';
@@ -7434,6 +7539,8 @@ function renderTrackStrip(track) {
     }
     inspector.appendChild(add);
   }
+
+  inspector.appendChild(buildTrackActionsSection(track));
 
   scrollStripFocusIntoView();
 }

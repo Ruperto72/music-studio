@@ -759,6 +759,35 @@ async function main() {
         for (let i = 0; i < ${times}; i++) dial.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
       })()`);
     }
+    // Clicks Duplicate/Remove in the inspector's Track section
+    // (buildTrackActionsSection), which renders for whichever track owns the
+    // column. Both ask before acting, and this run's
+    // Page.javascriptDialogOpening handler accepts every dialog — so declining
+    // has to be a window.confirm stub rather than a different reply to the real
+    // one. Set on every call, not only when declining, or a step that declines
+    // once leaves the next click answering "no" too. A goto()/fresh() puts the
+    // real confirm back.
+    async function clickTrackAction(label, answer = true) {
+      const clicked = await cdp.evaluate(`(() => {
+        window.confirm = () => ${answer};
+        const btn = [...document.querySelectorAll('.inspector .th-strip-actions button')]
+          .find(b => b.textContent.includes(${JSON.stringify(label)}));
+        if (!btn) return false;
+        btn.click();
+        return true;
+      })()`);
+      if (!clicked) throw new Error(`no "${label}" button in the inspector's Track section`);
+    }
+    // A clip's grip and trim edges are built only under the Grab tool
+    // (addClipBlocks), the same rule a note's own resize handle follows — so
+    // every step that reaches for one has to be holding Grab first. Waits for a
+    // handle to actually be in the DOM rather than for the click to return:
+    // the tool change goes through render(), and a querySelector racing it
+    // reads null and throws somewhere far less obvious than here.
+    async function grabTool() {
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await waitFor(`!!document.querySelector('.lane .clip-grip')`);
+    }
     async function knobText(sectionKey, fieldLabel) {
       return cdp.evaluate(`[...document.querySelector('.th-strip-section[data-key="${sectionKey}"]').querySelectorAll('.th-knob')]` +
         `.find(k => k.querySelector('.th-knob-label').textContent === ${JSON.stringify(fieldLabel)}).querySelector('.th-knob-val').textContent`);
@@ -5169,9 +5198,10 @@ async function main() {
       // something to carry beyond the notes.
       await addFxEffect('Delay');
       await stepKnob('sendDelay', 'Delay', 'ArrowUp', 25);
-      const firstTrack = `document.querySelectorAll('.track[data-kind="pitch"]')[0]`;
       const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
-      await cdp.evaluate(`(${firstTrack}).querySelector('.th-dup').click()`);
+      // addFxEffect() left the strip pointed at this same track, so its Track
+      // section is the one on screen.
+      await clickTrackAction('Duplicate track');
       await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
       // Directly below the original, not appended at the end.
       const names = await cdp.evaluate(`[...document.querySelectorAll('.track .th-name')].map(n => n.textContent)`);
@@ -5227,6 +5257,64 @@ async function main() {
       await waitFor(diverged, 6000).catch(() => {
         throw new Error('nudging a note in the copy also moved the original — the parts are shared, not copied');
       });
+    });
+
+    step('Track actions: Duplicate/Remove sit in the inspector, and a declined confirm changes nothing', async () => {
+      await fresh();
+      // Gone from the track header. They used to be two 22px squares one along
+      // from Mute/Solo/Arm, which is what made them so easy to hit by mistake;
+      // that row is the three toggles and nothing else now.
+      const headerBtns = await cdp.evaluate(
+        `[...document.querySelectorAll('.track')[1].querySelectorAll('.th-btns button')].map(b => b.textContent)`);
+      if (headerBtns.join('') !== 'MSR') {
+        throw new Error(`the track header's button row should be Mute/Solo/Arm only, got ${JSON.stringify(headerBtns)}`);
+      }
+      // This browser's window is 750px, where .inspector is a bottom sheet that
+      // stays shut until a chip is tapped. The strip is what this step is
+      // about, so widen past the 760px breakpoint — and click a track
+      // afterwards, since nothing re-renders the inspector on a resize alone.
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 1200, height: 900, deviceScaleFactor: 1, mobile: false,
+      });
+      try {
+        // mousedown, not click: the header activates its track on mousedown
+        // (buildHeader), so element.click() alone never reaches it.
+        await cdp.evaluate(`document.querySelectorAll('.track')[1].querySelector('.th-top')`
+          + `.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+        await waitFor(`!!document.querySelector('.inspector .th-strip-actions')`);
+        // Both in the strip, named rather than left as a bare mark.
+        const labels = await cdp.evaluate(
+          `[...document.querySelectorAll('.inspector .th-strip-actions button')].map(b => b.textContent.replace(/^[^A-Za-z]+/, ''))`);
+        if (labels.join('|') !== 'Duplicate track|Remove track') {
+          throw new Error(`unexpected Track section in the inspector: ${JSON.stringify(labels)}`);
+        }
+        // Saying no leaves the song alone — the whole point of asking. Both
+        // buttons, since removeTrack() used to skip the question entirely for a
+        // track with no notes in it, which is what a fresh page is made of.
+        const before = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+        const name = await cdp.evaluate(`document.querySelectorAll('.track')[1].querySelector('.th-name').textContent`);
+        await clickTrackAction('Duplicate track', false);
+        await clickTrackAction('Remove track', false);
+        const after = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+        if (after !== before) throw new Error(`a declined confirm still changed the track list: ${before} -> ${after}`);
+        // And saying yes still does the thing. Duplicate first, then Remove the
+        // copy: duplicateTrack() activates it, so the strip is already the
+        // copy's — which both covers the accepted path on each button and
+        // leaves the song the way this step found it.
+        await clickTrackAction('Duplicate track');
+        await waitFor(`document.querySelectorAll('.track').length === ${before} + 1`);
+        const trackNames = `[...document.querySelectorAll('.track .th-name')].map(n => n.textContent)`;
+        if (!await cdp.evaluate(`${trackNames}.includes(${JSON.stringify(name + ' copy')})`)) {
+          throw new Error(`an accepted Duplicate added no copy of "${name}": ${JSON.stringify(await cdp.evaluate(trackNames))}`);
+        }
+        await clickTrackAction('Remove track');
+        await waitFor(`document.querySelectorAll('.track').length === ${before}`);
+        if (await cdp.evaluate(`${trackNames}.includes(${JSON.stringify(name + ' copy')})`)) {
+          throw new Error(`"${name} copy" is still in the track list after an accepted Remove`);
+        }
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
     });
 
     step('Transpose: scale steps move inside the key, semitones do not, and Fit repairs a take', async () => {
@@ -5864,6 +5952,61 @@ async function main() {
       }
     });
 
+    step('Clips: the block names the bars it covers, on every lane, under every tool', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.track[data-kind="rhythm"] .lane .clip')`);
+      // Without a label a clip spanning its whole lane is indistinguishable
+      // from the lane, which is how the feature managed to be invisible on a
+      // song nobody had split yet. Every lane, not just the one this file
+      // usually pokes: a label built on one code path and not another is the
+      // shape of bug that reads as "clips only work on drums".
+      const labels = JSON.parse(await cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track .lane .clip')].map(c => c.dataset.label || ''))`));
+      if (labels.length < 5) throw new Error(`expected one clip per lane, got ${JSON.stringify(labels)}`);
+      const bad = labels.filter(l => !/^bar 1–\d+$/.test(l));
+      if (bad.length) throw new Error(`every clip should name its bar range, got ${JSON.stringify(labels)}`);
+      // Drawn, not merely stored. The label is a ::before keyed on
+      // [data-label], so an attribute nothing styles would satisfy the check
+      // above while showing the user nothing at all.
+      const shown = await cdp.evaluate(`(() => {
+        const c = document.querySelector('.track[data-kind="rhythm"] .lane .clip');
+        const s = getComputedStyle(c, '::before');
+        return JSON.stringify({ content: s.content, display: s.display });
+      })()`);
+      if (!shown.includes('bar 1') || shown.includes('"display":"none"')) {
+        throw new Error(`the label must actually render, got ${shown}`);
+      }
+      // It is decoration on an aria-hidden block, so it must not be the only
+      // place the pen can no longer reach: the label takes no pointer events.
+      const events = await cdp.evaluate(
+        `getComputedStyle(document.querySelector('.track[data-kind="rhythm"] .lane .clip'), '::before').pointerEvents`);
+      if (events !== 'none') throw new Error(`the clip label must not take pointer events, got ${events}`);
+      // The tool decides the handles, never the label. Under the pen a clip has
+      // none at all — that is what keeps a whole-track grip, a 7px band, from
+      // eating most of the 11px top semitone row on every lane in the song.
+      const handleCount = `JSON.stringify({
+        edges: document.querySelectorAll('.track .lane .clip-edge').length,
+        grips: document.querySelectorAll('.track .lane .clip-grip').length,
+      })`;
+      const underPen = await cdp.evaluate(handleCount);
+      if (underPen !== JSON.stringify({ edges: 0, grips: 0 })) {
+        throw new Error(`the pen tool should build no clip handles, got ${underPen}`);
+      }
+      // Under Grab every clip has them, lone whole-track clips included — which
+      // is the point: the feature is reachable on a song nobody has split.
+      await grabTool();
+      const underGrab = await cdp.evaluate(handleCount);
+      if (underGrab !== JSON.stringify({ edges: labels.length * 2, grips: labels.length })) {
+        throw new Error(`Grab should give each of the ${labels.length} clips two edges and a grip, got ${underGrab}`);
+      }
+      // ...and the naming is untouched by any of that.
+      const afterGrab = JSON.parse(await cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track .lane .clip')].map(c => c.dataset.label || ''))`));
+      if (JSON.stringify(afterGrab) !== JSON.stringify(labels)) {
+        throw new Error(`the tool must not change what a clip is called, ${JSON.stringify(labels)} -> ${JSON.stringify(afterGrab)}`);
+      }
+    });
+
     step('Clips: splitting cuts the window in two and keeps the whole part on both sides', async () => {
       await fresh();
       // Phase 3. The interesting claim is not that two blocks appear — it is
@@ -6036,7 +6179,9 @@ async function main() {
            .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
       // Drags the right edge of the first clip by `cols` columns (negative
       // pulls it in, positive pushes it back out).
-      const dragEnd = async (cols, pointerId) => cdp.evaluate(`(() => {
+      const dragEnd = async (cols, pointerId) => {
+        await grabTool();
+        return cdp.evaluate(`(() => {
         const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
           .querySelector('.clip-edge.end');
         const r = edge.getBoundingClientRect();
@@ -6045,13 +6190,27 @@ async function main() {
         window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
         window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
       })()`);
+      };
 
       await sixHits();
-      // A lone clip covering the whole track offers no edges: there is nothing
-      // to reveal by trimming it and its edges are the song's own.
-      const edgesBefore = await cdp.evaluate(
-        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-edge').length`);
-      if (edgesBefore !== 0) throw new Error(`a single whole-track clip should offer no trim edges, got ${edgesBefore}`);
+      // The tool decides, not the clip count. sixHits() leaves the pen active,
+      // and under the pen a clip has no handles at all — which is what keeps a
+      // whole-track grip from eating the top 7px of an 11px semitone row on
+      // every track in the song.
+      const underPen = await cdp.evaluate(
+        `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-edge, .track[data-kind="rhythm"] .lane .clip-grip').length`);
+      if (underPen !== 0) throw new Error(`the pen tool should build no clip handles, got ${underPen}`);
+      // Under Grab it has them, lone whole-track clip and all — that is what
+      // makes the feature visible on a song nobody has split yet.
+      await grabTool();
+      const underGrab = await cdp.evaluate(`JSON.stringify({
+        clips: document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length,
+        edges: document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-edge').length,
+        grips: document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-grip').length,
+      })`);
+      if (underGrab !== JSON.stringify({ clips: 1, edges: 2, grips: 1 })) {
+        throw new Error(`a lone whole-track clip should carry both edges and a grip under Grab, got ${underGrab}`);
+      }
 
       await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
       await cdp.evaluate(`(() => {
@@ -6156,9 +6315,11 @@ async function main() {
       })()`);
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 6`);
 
-      const gripsBefore = await cdp.evaluate(
+      // Under the pen there is no grip to grab — see the trim step for the rule
+      // and why the top of the lane depends on it.
+      const gripsUnderPen = await cdp.evaluate(
         `document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip-grip').length`);
-      if (gripsBefore !== 0) throw new Error(`a lone whole-track clip has nowhere to move, so it offers no grip; got ${gripsBefore}`);
+      if (gripsUnderPen !== 0) throw new Error(`the pen tool should build no clip grip, got ${gripsUnderPen}`);
 
       await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .th-name').click()`);
       await cdp.evaluate(`(() => {
@@ -6173,7 +6334,9 @@ async function main() {
       await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
 
-      const dragGrip = async (which, cols, pointerId) => cdp.evaluate(`(() => {
+      const dragGrip = async (which, cols, pointerId) => {
+        await grabTool();
+        return cdp.evaluate(`(() => {
         const grip = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[${which}]
           .querySelector('.clip-grip');
         const r = grip.getBoundingClientRect();
@@ -6182,6 +6345,7 @@ async function main() {
         window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
         window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: ${pointerId}, clientX: x + ${cols} * 16, clientY: y }));
       })()`);
+      };
       const drawnCols = () => cdp.evaluate(
         `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
            .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
@@ -6218,6 +6382,7 @@ async function main() {
 
       // And the relationship survived: trimming the moved clip's left edge
       // back out reveals what used to sit before it, at its new place.
+      await grabTool();
       await cdp.evaluate(`(() => {
         const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
           .querySelector('.clip-edge.start');
@@ -6363,6 +6528,7 @@ async function main() {
       await seekTo(3);
       await menu('split-clip-btn');
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
+      await grabTool();
       await cdp.evaluate(`(() => {
         const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[0]
           .querySelector('.clip-edge.end');
@@ -6863,6 +7029,7 @@ async function main() {
                           document.getElementById('split-clip-btn').click()`);
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip').length === 2`);
       // Open a gap by pulling the second clip's start to the right.
+      await grabTool();
       await cdp.evaluate(`(() => {
         const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
           .querySelector('.clip-edge.start');
@@ -6924,6 +7091,7 @@ async function main() {
         hits[hits.length - 1].click();
       })()`);
       await waitFor(`!!document.querySelector('.track[data-kind="rhythm"] .lane .hit.selected')`);
+      await grabTool();
       await cdp.evaluate(`(() => {
         const edge = document.querySelectorAll('.track[data-kind="rhythm"] .lane .clip')[1]
           .querySelector('.clip-edge.end');
