@@ -7040,6 +7040,14 @@ async function main() {
         window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 51, clientX: x + 2 * 16, clientY: y }));
       })()`);
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 4`);
+      // Back to the pen. grabTool() leaves the tool held, and the lane's click
+      // handler returns early under anything but Pen — so without this the
+      // placement below silently does nothing and the step reports the bug it
+      // is meant to catch. Handing the tool back was missed when clip handles
+      // were gated on Grab, because this is the one clip step that drags a
+      // handle *and* then places something.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await new Promise((r) => setTimeout(r, 150));
       const before = await cdp.evaluate(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length`);
       // Place a hit inside the gap, on a drum row nothing else uses.
       await cdp.evaluate(`(() => {
