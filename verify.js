@@ -7867,6 +7867,55 @@ async function main() {
       }
     });
 
+    step('The Bach set: each arrangement keeps the shape its own piece demanded', async () => {
+      // Four pieces off one generator, and the things most likely to break
+      // silently are the two the metre decides. A triple metre has no half-bar,
+      // so its kick lands on the downbeat alone; 12/8 has a dotted-quarter beat,
+      // so its bass pumps four to the bar and not twelve — get that wrong and it
+      // is a machine gun that still loads, still plays and still passes a count.
+      // The sinfonia is the opposite case: three real voices, so its lowest line
+      // is Bach's own and carries no kick bend anywhere.
+      const want = [
+        { song: 'Canone', ts: '3/4', tracks: { Upper: 297, Lower: 301, Bass: 95 }, bends: 31 },
+        { song: 'Dodici', ts: '12/8', tracks: { Upper: 358, Lower: 327, Bass: 76 }, bends: 35 },
+        { song: 'Sinfonia Quarta', ts: '4/4', tracks: { Upper: 179, Middle: 176, Lower: 196 }, bends: 0 },
+      ];
+      for (const w of want) {
+        await fresh();
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+        await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+        await cdp.evaluate(`(() => {
+          const row = Array.from(document.querySelectorAll('.song-item'))
+            .find(r => r.querySelector('.song-title')?.textContent === ${JSON.stringify(w.song)});
+          if (!row) throw new Error('not offered in the Songs list: ' + ${JSON.stringify(w.song)});
+          row.querySelector('button').click();
+        })()`);
+        await waitFor(`document.querySelector('#song-name-display').textContent === ${JSON.stringify(w.song)}`);
+
+        const raw = await cdp.evaluate(`JSON.stringify((() => {
+          const rows = [...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')];
+          const labels = rows.flatMap(t => [...t.querySelectorAll('.lane .note')].map(e => e.getAttribute('aria-label')));
+          return {
+            counts: Object.fromEntries(rows.map(t => [t.querySelector('.th-name').textContent, t.querySelectorAll('.lane .note').length])),
+            bends: labels.filter(l => l.includes('bend')).length,
+            hits: document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length,
+            ts: document.querySelector('#time-sig').value,
+          };
+        })())`);
+        const got = JSON.parse(raw);
+        if (got.ts !== w.ts) throw new Error(`${w.song}: metre should load as ${w.ts}, got ${got.ts}`);
+        for (const [name, n] of Object.entries(w.tracks)) {
+          if (got.counts[name] !== n) throw new Error(`${w.song}: ${name} should carry ${n} notes, got ${got.counts[name]}: ${JSON.stringify(got.counts)}`);
+        }
+        if (Object.keys(got.counts).length !== Object.keys(w.tracks).length) {
+          throw new Error(`${w.song}: three tonal voices is the budget: ${JSON.stringify(got.counts)}`);
+        }
+        if (got.bends !== w.bends) throw new Error(`${w.song}: expected ${w.bends} kick bends, got ${got.bends}`);
+        if (got.hits !== 0) throw new Error(`${w.song}: the kit is empty in every one of these: ${got.hits} hits`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
