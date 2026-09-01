@@ -58,5 +58,10 @@
     "file": "inventio.json",
     "name": "Inventio",
     "desc": "J.S. Bach's Invention No. 13 in A minor, BWV 784, arranged for three SID voices. An invention has two voices of equal weight in the middle of the keyboard and no bass at all, so the third voice is built from Bach's own lower line: the note it is sounding on each beat, moved into the bass register and given the octave-drop kick a chip uses instead of a drum. Every pitch here is Bach's — nothing harmonic was invented, which is what keeps the counterpoint from being second-guessed. Notes taken from the Humdrum kern encoding of the Bach-Gesellschaft edition by David Huron and Craig Stuart Sapp, rather than transcribed from memory: a cover of a known piece may be many things, but not nearly right."
+  },
+  {
+    "file": "vertical-blank.json",
+    "name": "Vertical Blank",
+    "desc": "An original 128 BPM piece in D minor, named after the interrupt the whole thing hangs off: the chord voice is a narrow 25% pulse arpeggiated at 50 Hz — one step per PAL vertical blank — so a triad costs one channel instead of three. A saw+triangle bass runs unbroken sixteenths, alternating root and octave rather than sweeping a filter, and the lead is swept PWM with vibrato on anything long enough to hold. i-III-VI-VII for the theme, with a major dominant in the B section for the harmonic-minor lift. Four voices, one more than a 6581: the classic trick was to multiplex drums and bass through a single channel a raster apart, and this engine picks its waveform per track rather than per note, so the drums get their own. Percussion is one pitched noise channel and is deliberately monophonic — a real voice cannot play a kick and a hat at once. Written to be A/B'd against a real SID: it is an idiom, not a cover, so what you are comparing is the synthesis."
   }
 ]
