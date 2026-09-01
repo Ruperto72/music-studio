@@ -7916,6 +7916,58 @@ async function main() {
       }
     });
 
+    step('Air: four parts reach three channels, with the inner two sharing one', async () => {
+      // The Air is in four parts and a 6581 has three channels, so Violin II
+      // and the viola share the third: one note carrying an arpeggio that
+      // alternates between their two pitches. Flatten that and the song still
+      // loads, still plays, and still passes every note count — it just quietly
+      // stops carrying the inner harmony, which is the entire arrangement.
+      const air = JSON.parse(fs.readFileSync(path.join(__dirname, 'songs', 'air.json'), 'utf8'));
+      const arped = air.tracks.inner.filter((n) => n.arp && n.arp.length);
+      if (arped.length !== 260) throw new Error(`the inner voice should carry 260 arpeggiated segments, has ${arped.length}`);
+      // Violin II and the viola sit more than an octave apart in places, and an
+      // arpeggio alternating across nineteen semitones fifty times a second is
+      // a warble rather than a chord, so the step is folded into one octave.
+      const widest = Math.max(...arped.flatMap((n) => n.arp));
+      if (widest > 11) throw new Error(`arpeggio steps are folded into an octave; widest is ${widest} semitones`);
+      if (air.arpRate.inner !== 0.02) throw new Error(`the inner voice arpeggiates once per video frame: ${air.arpRate.inner}`);
+      // Doubling the note values is what lets the melody's thirty-seconds land
+      // on the lattice at all; halve it back and 26 of them shift by ~69ms.
+      const MICRO = 1 / 6;
+      const offLattice = Object.values(air.tracks).flat()
+        .filter((n) => Math.abs(n.start / MICRO - Math.round(n.start / MICRO)) > 1e-9).length;
+      if (offLattice) throw new Error(`${offLattice} note start(s) sit off the app's lattice`);
+
+      await fresh();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+      await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+      await cdp.evaluate(`(() => {
+        const row = Array.from(document.querySelectorAll('.song-item'))
+          .find(r => r.querySelector('.song-title')?.textContent === 'Air');
+        if (!row) throw new Error('Air is not offered in the Songs list');
+        row.querySelector('button').click();
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Air'`);
+
+      const raw = await cdp.evaluate(`JSON.stringify((() => {
+        const rows = [...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')];
+        return {
+          counts: Object.fromEntries(rows.map(t => [t.querySelector('.th-name').textContent, t.querySelectorAll('.lane .note').length])),
+          arpeggio: [...document.querySelectorAll('#tracks .lane .note')].filter(e => (e.getAttribute('aria-label') || '').includes('arpeggio')).length,
+          hits: document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length,
+        };
+      })())`);
+      const got = JSON.parse(raw);
+      const want = { 'Violin I': 286, 'Inner (II + Viola)': 348, Continuo: 283 };
+      for (const [name, n] of Object.entries(want)) {
+        if (got.counts[name] !== n) throw new Error(`${name} should carry ${n} notes, got ${got.counts[name]}: ${JSON.stringify(got.counts)}`);
+      }
+      if (Object.keys(got.counts).length !== 3) throw new Error(`three channels is the budget: ${JSON.stringify(got.counts)}`);
+      if (got.arpeggio !== 260) throw new Error(`the grid should show 260 arpeggiated notes, shows ${got.arpeggio}`);
+      if (got.hits !== 0) throw new Error(`no kit: the Air has no percussion to steal a voice for: ${got.hits} hits`);
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();
