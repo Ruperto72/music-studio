@@ -66,17 +66,17 @@
       "kind": "rhythm"
     }
   ],
-  "waveform": {
-    "lead": "pwm",
-    "counter": "sawtri",
-    "bass": "square",
-    "rhythm": "kit"
-  },
   "gains": {
     "lead": 1,
     "counter": 0.9,
     "bass": 1,
     "rhythm": 1
+  },
+  "waveform": {
+    "lead": "pwm",
+    "counter": "sawtri",
+    "bass": "square",
+    "rhythm": "kit"
   },
   "pan": {
     "lead": 0.22,
@@ -96,7 +96,6 @@
     "bass": false,
     "rhythm": false
   },
-  "masterVol": 0.5,
   "tracks": {
     "lead": [
       {
@@ -3412,9 +3411,6 @@
     ],
     "rhythm": []
   },
-  "duty": {
-    "bass": 0.25
-  },
   "adsr": {
     "lead": {
       "attack": 0.01,
@@ -3453,5 +3449,9 @@
       "chorus": 0,
       "reverb": 0.1
     }
-  }
+  },
+  "duty": {
+    "bass": 0.25
+  },
+  "masterVol": 0.5
 }
