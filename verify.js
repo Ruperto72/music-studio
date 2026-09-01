@@ -4034,10 +4034,18 @@ async function main() {
       const stillNamed = await cdp.evaluate(
         `document.querySelectorAll('.track[data-kind="pitch"] .gutter .glabel').length`);
       if (stillNamed) throw new Error(`the note-name labels should be gone, found ${stillNamed}`);
-      // ...but the rhythm gutter still names its ten pieces.
-      const drumNames = await cdp.evaluate(
-        `document.querySelectorAll('.track[data-kind="rhythm"] .gutter .glabel').length`);
-      if (drumNames < 10) throw new Error(`the rhythm gutter still needs its labels, found ${drumNames}`);
+      // ...but the rhythm gutter still names its ten pieces — a drum has no
+      // pitch to draw a key for. The names live on `.dkey` now that pressing
+      // one plays that piece (see the Rhythm gutter step, which owns the rest
+      // of that control's contract); what matters here is only the contrast
+      // with the line above, so this asserts the names are still *written*
+      // rather than re-checking the button.
+      const drumNames = JSON.parse(await cdp.evaluate(
+        `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .gutter .dkey')]
+          .map(d => d.textContent.trim()))`));
+      if (drumNames.length < 10 || drumNames.some((n) => !n)) {
+        throw new Error(`the rhythm gutter still needs its piece names, got ${JSON.stringify(drumNames)}`);
+      }
 
       // Pressing a key must reach the audio graph at *that pitch* — a count of
       // oscillators is not enough, since building a channel makes some of its
@@ -4591,11 +4599,25 @@ async function main() {
       // A rhythm track takes the same messages through the General MIDI map,
       // and a note that maps to no kit piece is dropped rather than folded
       // onto the nearest one.
-      // The kit is the last track in the list, and the only one whose lane has
-      // drum rows — picked from the DOM rather than from `state`.
-      // Picked from the DOM rather than from `state`: a rhythm track is the one
-      // whose gutter carries the kit's own row labels (.glabel.rhy).
-      await cdp.evaluate(`document.querySelector('.track:has(.glabel.rhy) .th-btns button.r').click()`);
+      // Picked from the DOM rather than from `state`, and by the row's own
+      // data-kind rather than by a control that happens to be on a rhythm
+      // track: this used to look for the gutter's `.glabel.rhy` labels, which
+      // stopped existing the day those labels became playable `.dkey` buttons.
+      // That is the second time a step keyed on "has the thing only a rhythm
+      // track has" broke on an unrelated change — a `.track` row states its
+      // kind precisely so nothing has to infer it.
+      // Named rather than clicked blind: when the old selector stopped
+      // matching, this step died on `null.click` and said nothing about which
+      // track it had failed to find — which is most of what made it look like
+      // an app bug rather than a stale selector.
+      const armRhythm = `(() => {
+        const row = document.querySelector('.track[data-kind="rhythm"]');
+        if (!row) throw new Error('no .track[data-kind="rhythm"] — a rhythm row must state its kind');
+        const r = row.querySelector('.th-btns button.r');
+        if (!r) throw new Error('the rhythm track has no arm button');
+        r.click();
+      })()`;
+      await cdp.evaluate(armRhythm);
       await waitFor(`document.querySelectorAll('.track-header .th-btns button.r.on').length === 1`);
       await cdp.evaluate(`window.__midi([0x99, 38, 64]); window.__midi([0x89, 38, 0]);`);  // GM snare
       await cdp.evaluate(`window.__midi([0x99, 21, 100]); window.__midi([0x89, 21, 0]);`); // maps to nothing
@@ -4628,7 +4650,16 @@ async function main() {
           AudioContext.prototype.createBiquadFilter = function () {
             const f = origBq.call(this);
             const td = Object.getOwnPropertyDescriptor(BiquadFilterNode.prototype, 'type');
-            const fd = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            // Chain through whatever is already on this param, falling back to
+            // the prototype — never straight to the prototype. More than one
+            // step installs a biquad recorder, they all run on every new
+            // document, and a defineProperty that ignores the descriptor
+            // already there *replaces* it: the later recorder works and every
+            // earlier one silently stops filling its array. That is exactly
+            // how this one went quiet and took the Drum kits step down with a
+            // verdict about the app.
+            const fd = Object.getOwnPropertyDescriptor(f.frequency, 'value')
+              || Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
             let isLow = false;
             try {
               Object.defineProperty(f, 'type', {
@@ -4791,7 +4822,11 @@ async function main() {
           const orig = AudioContext.prototype.createBiquadFilter;
           AudioContext.prototype.createBiquadFilter = function () {
             const f = orig.call(this);
-            const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            // Chain, don't replace — see the same note on the velocity step's
+            // recorder. This wrapper runs *outside* that one, so the param it
+            // is handed already carries that step's accessor.
+            const d = Object.getOwnPropertyDescriptor(f.frequency, 'value')
+              || Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
             try {
               Object.defineProperty(f.frequency, 'value', {
                 get() { return d.get.call(this); },
@@ -4910,10 +4945,37 @@ async function main() {
     step('Drum kits: the rhythm track picks one, and it changes the sound', async () => {
       // A kit is parameters the ten schedulers read, so the check is that
       // choosing one moves numbers that actually reach the audio graph — and
-      // that the song remembers it. Reuses the biquad recorder the velocity
-      // step installs: kits differ in filter frequencies, which is what it
-      // already records — so this step has to run *after* that one, which is
-      // why it sits here rather than beside the other rhythm checks.
+      // that the song remembers it. Kits differ in their filter frequencies,
+      // so recording those fingerprints which kit a hit came from.
+      //
+      // Installs its own recorder rather than borrowing the velocity step's
+      // `__bqFreqs`, which is what it used to do. That made the step mean
+      // nothing under --only (the array was never filled, so it failed against
+      // perfectly good code) and left it hostage to a step three hundred lines
+      // away: when a *third* recorder was added between the two, this one's
+      // array went quiet and the failure read as "auditioning a hit builds no
+      // filters", i.e. as a bug in the app. Same rule as fresh() — a step run
+      // alone has to mean what it means in the suite.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `(() => {
+          window.__drumFreqs = [];
+          const orig = AudioContext.prototype.createBiquadFilter;
+          AudioContext.prototype.createBiquadFilter = function () {
+            const f = orig.call(this);
+            // Chain through what is already there — see the velocity step.
+            const d = Object.getOwnPropertyDescriptor(f.frequency, 'value')
+              || Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            try {
+              Object.defineProperty(f.frequency, 'value', {
+                get() { return d.get.call(this); },
+                set(v) { window.__drumFreqs.push(Math.round(v)); d.set.call(this, v); },
+                configurable: true,
+              });
+            } catch {}
+            return f;
+          };
+        })()`,
+      });
       await goto(APP_URL);
       await waitFor(`!!(${RHYTHM_LANE})`);
       // The rhythm track's trigger is the *last* .th-osc-trigger — rhythm
@@ -4998,12 +5060,12 @@ async function main() {
       await waitFor(`document.querySelectorAll('.hit').length === 1`);
 
       const auditionAndRecord = async () => {
-        await cdp.evaluate(`window.__bqFreqs = []`);
+        await cdp.evaluate(`window.__drumFreqs = []`);
         await cdp.evaluate(`document.querySelector('.hit').click()`);
         await new Promise((r) => setTimeout(r, 350));
         const hits = await cdp.evaluate(`document.querySelectorAll('.hit').length`);
         if (hits !== 1) throw new Error(`auditioning should leave the hit alone, saw ${hits}`);
-        return cdp.evaluate(`window.__bqFreqs.slice()`);
+        return cdp.evaluate(`window.__drumFreqs.slice()`);
       };
       const before = await auditionAndRecord();
       if (!before.length) throw new Error('auditioning a hit should build filters to record');

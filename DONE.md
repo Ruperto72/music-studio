@@ -1813,6 +1813,47 @@ med pan per not på plats är asymmetrierna i den här listan slut.
 
 ## Kvalitet
 
+- [x] **Tre röda verify-steg, tre olika orsaker — och bara en av dem den
+  uppenbara.** Alla tre uppstod när rytmspårets gutter-etiketter blev spelbara
+  `.dkey`-knappar, men bara den första handlade om just det.
+  1. *Keyboard gutter* letade efter `.glabel` i rytmspårets gutter. Rakt av en
+     inaktuell selektor; namnen finns kvar, de sitter på knappen nu.
+  2. *MIDI input* plockade rytmspåret med `.track:has(.glabel.rhy)` och fick
+     `null`. Det är **andra gången** ett steg som gissar sig till spårets sort
+     ur en kontroll som råkar sitta där går sönder av en orelaterad ändring —
+     första gången var arton ställen som läste "har en vågformstrigger", vilket
+     är hela skälet till att en `.track`-rad numera säger `data-kind` om sig
+     själv. Nu läser steget den, och namnger dessutom vad den letade efter:
+     felet var `null.click`, som inte säger vilket spår som saknades, och det
+     var mest det som fick en trasig selektor att se ut som en appbugg.
+  3. *Drum kits* var inte alls vad felmeddelandet sade ("auditioning a hit
+     should build filters to record" — alltså: appen bygger inga filter). Två
+     steg installerade var sin biquad-inspelare via
+     `Page.addScriptToEvaluateOnNewDocument`, och båda gjorde
+     `Object.defineProperty(f.frequency, 'value', …)` mot **prototypens**
+     descriptor. Den som körs sist *ersätter* den andra i stället för att
+     kedjas efter den, så den tidigare inspelaren tystnar utan ett ljud.
+     Varför just den kombinationen: nya-dokument-skript gäller bara framtida
+     laddningar, så velocity-steget (som registrerar först och kör före) hade
+     sin inspelare i fred, medan *Drum kits* kör efter att gutter-steget
+     registrerat sin och därför fick en död array. Två åtgärder: varje
+     inspelare kedjar nu genom `Object.getOwnPropertyDescriptor(f.frequency,
+     'value')` med prototypen som reserv, och *Drum kits* installerar sin egen
+     i stället för att låna velocity-stegets — det senare gjorde dessutom att
+     steget var meningslöst under `--only` (arrayen fylldes aldrig, så det föll
+     mot fullt frisk kod), vilket är samma koppling mellan steg som `fresh()`
+     tog bort överallt annars.
+  **Om injektionerna:** fyra kördes, en i taget. Den första var riktad mot
+  `getTrackKit()` och steget förblev grönt — inte ett svagt steg, utan en
+  injektion mot kod steget aldrig når: schemaläggarna får sitt kit-id genom
+  `getTrackKitId()`, och `getTrackKit()` används bara av UI:t. Omriktad dit
+  fångades den, liksom en mot `scheduleDrum()`s `kitId` (som bara rör ljudet
+  och lämnar etiketten rätt) — vilket är det som visar att den nya inspelaren
+  mäter samma sak som den gamla.
+  Kedjningen i sig fälls inte av något steg i dag: med tre inspelare igång är
+  den nyaste ytterst och skulle fungera även utan den. Den är där för nästa
+  inspelare, inte för den här.
+
 - [x] **Fyra Web Audio-antaganden kontrollerade mot specen i stället för mot
   minnet.** Tre ställen i koden ser ut som godtyckliga fudge-faktorer och är
   det inte, och en fjärde egenskap är hela skälet till att en LFO får lämnas
