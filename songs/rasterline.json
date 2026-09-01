@@ -5,8 +5,8 @@
   "cols": 128,
   "grid": 0.5,
   "timeSig": {
-    "beats": 4,
-    "unit": 4
+    "num": 4,
+    "den": 4
   },
   "key": 9,
   "scale": "minor",
@@ -50,17 +50,17 @@
       "kind": "rhythm"
     }
   ],
-  "waveform": {
-    "bass": "sawtri",
-    "arp": "pwm",
-    "lead": "sync",
-    "rhythm": "kit"
-  },
   "gains": {
     "bass": 1,
     "arp": 0.7,
     "lead": 0.85,
     "rhythm": 1.1
+  },
+  "waveform": {
+    "bass": "sawtri",
+    "arp": "pwm",
+    "lead": "sync",
+    "rhythm": "kit"
   },
   "pan": {
     "bass": 0,
@@ -80,7 +80,6 @@
     "lead": false,
     "rhythm": false
   },
-  "masterVol": 0.45,
   "tracks": {
     "bass": [
       {
@@ -2252,20 +2251,6 @@
       }
     ]
   },
-  "arpRate": {
-    "arp": 0.02
-  },
-  "sync": {
-    "lead": {
-      "sweep": 5
-    }
-  },
-  "fm": {
-    "lead": {
-      "ratio": 3,
-      "depth": 0
-    }
-  },
   "adsr": {
     "bass": {
       "attack": 0.005,
@@ -2293,6 +2278,20 @@
       "envAmount": 0.35
     }
   },
+  "fm": {
+    "lead": {
+      "ratio": 3,
+      "depth": 0
+    }
+  },
+  "arpRate": {
+    "arp": 0.02
+  },
+  "sync": {
+    "lead": {
+      "sweep": 5
+    }
+  },
   "fxSend": {
     "lead": {
       "delay": 0.22,
@@ -2307,5 +2306,6 @@
   },
   "kit": {
     "rhythm": "eighties"
-  }
+  },
+  "masterVol": 0.45
 }

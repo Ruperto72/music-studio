@@ -94,7 +94,6 @@
     "rhythm": 0,
     "perc": 0.15
   },
-  "masterVol": 0.38,
   "mute": {},
   "solo": {},
   "tracks": {
@@ -8203,6 +8202,7 @@
       "depth": 0.15
     }
   },
+  "masterVol": 0.38,
   "masterEQ": {
     "low": 1.5,
     "mid": 0,
