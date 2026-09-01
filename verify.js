@@ -6940,6 +6940,97 @@ async function main() {
       }
     });
 
+    step('Clips: a block is drawn in its own track\'s colour, as a wash rather than the colour', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.track[data-kind] .lane .clip')`);
+      // One track, one colour (TODO.md, the Pro Tools reading). The claim is
+      // not "the block is coloured" but "it is coloured *the same as its own
+      // track*", so every row is compared against the one place that colour
+      // already shows in text: the track's name in its header, which
+      // renderTracks() paints from trackColor(). A block reading its colour
+      // from anywhere else — the active track, the first track, the grey
+      // trackColor() falls back to — passes any check that only asks whether
+      // it is coloured at all.
+      const rows = JSON.parse(await cdp.evaluate(`JSON.stringify(
+        [...document.querySelectorAll('.track[data-kind]')].map(row => {
+          const clip = row.querySelector('.lane .clip');
+          const name = row.querySelector('.th-name');
+          const cs = clip && getComputedStyle(clip);
+          return {
+            track: name ? name.textContent : '',
+            ink: name ? getComputedStyle(name).color : '',
+            label: clip ? clip.dataset.label || '' : '',
+            body: cs ? cs.backgroundColor : '',
+            edge: cs ? cs.borderLeftColor : '',
+            cap: cs ? cs.boxShadow : '',
+            text: clip ? getComputedStyle(clip, '::before').color : '',
+          };
+        }))`));
+      if (rows.length < 5) throw new Error(`expected the starter layout's lanes, got ${rows.length}`);
+      // A computed colour to {rgb, a}. Two spellings have to come out the same:
+      // an inline `#rrggbb` computes to `rgb(47, 243, 255)`, while a color-mix()
+      // computes to `color(srgb 0.184314 0.952941 1 / 0.07)` — 0..1 floats in a
+      // different function — so comparing the strings would report every track
+      // as mismatched no matter what the colours were. Channels are rounded to
+      // 0..255 on both paths and compared there.
+      //
+      // color-mix(in srgb, C n%, transparent) resolves to C's own channels at
+      // alpha n/100: the mix is with a fully transparent black, so
+      // un-premultiplying gives C back exactly. That is what makes "the same
+      // colour as the name, at a fraction of its alpha" an exact comparison
+      // rather than an eyeballed one.
+      const rgba = (s) => {
+        const srgb = /^color\(srgb ([^)]+)\)/.exec(s || '');
+        const legacy = /^rgba?\(([^)]+)\)/.exec(s || '');
+        if (!srgb && !legacy) return null;
+        const p = (srgb ? srgb[1] : legacy[1]).split(/[\s,/]+/).filter(Boolean).map(parseFloat);
+        const scale = srgb ? 255 : 1;
+        return { rgb: p.slice(0, 3).map(v => Math.round(v * scale)).join(','), a: p.length > 3 ? p[3] : 1 };
+      };
+      for (const r of rows) {
+        const ink = rgba(r.ink), body = rgba(r.body), edge = rgba(r.edge), text = rgba(r.text);
+        if (!ink || !body) throw new Error(`could not read the colours of ${JSON.stringify(r)}`);
+        if (!r.label) throw new Error(`expected a labelled whole-song clip on ${r.track}, got ${JSON.stringify(r)}`);
+        for (const [what, got] of [['body', body], ['edge', edge], ['label', text]]) {
+          if (!got || got.rgb !== ink.rgb) {
+            throw new Error(`the clip ${what} on ${r.track} should be that track's own colour ${r.ink}, got ${JSON.stringify(r)}`);
+          }
+        }
+        // A wash, not the colour. The notes sitting on top of the block already
+        // carry this hue at full strength, so a body anywhere near it would
+        // compete with its own contents — which is the whole design question
+        // the TODO entry said had to be settled before colouring anything.
+        if (!(body.a > 0.02 && body.a < 0.15)) {
+          throw new Error(`the clip body must stay a wash of ${r.ink}, got alpha ${body.a} on ${r.track}`);
+        }
+        // And the edges stay drawn harder than the body, the rule that was
+        // already true in white: they are what trimming and splitting grab.
+        if (!(edge.a > body.a * 2)) {
+          throw new Error(`the clip edge should read harder than its body, got ${edge.a} vs ${body.a} on ${r.track}`);
+        }
+        if (!(text.a > body.a * 2)) {
+          throw new Error(`the clip label should read harder than its body, got ${text.a} vs ${body.a} on ${r.track}`);
+        }
+        // The top cap is an inset shadow rather than a child element, so it is
+        // the one piece of the block a colour change can silently miss.
+        const cap = rgba(r.cap);
+        if (!cap || cap.rgb !== ink.rgb) {
+          throw new Error(`the clip's top cap should follow the track's colour, got ${r.cap} on ${r.track}`);
+        }
+      }
+      // The premise the loop above rests on, asserted rather than assumed: if
+      // the starter tracks ever came out one colour, every per-row equality
+      // check would still pass while the lanes showed a single wash and the
+      // feature did nothing. Same trap as .every() on an empty list — check the
+      // values are there before checking a property of them.
+      const inks = new Set(rows.map(r => r.ink));
+      const bodies = new Set(rows.map(r => r.body));
+      if (inks.size < 3) throw new Error(`expected the starter tracks to differ in colour, got ${[...inks]}`);
+      if (bodies.size !== inks.size) {
+        throw new Error(`each distinct track colour should give a distinct wash, got ${[...bodies]} for ${[...inks]}`);
+      }
+    });
+
     step('Row reuse: untouched rows are kept, and everything a row draws still rebuilds it', async () => {
       await fresh();
       // The step DESIGN.md B.4 demands before the row-reuse work can be

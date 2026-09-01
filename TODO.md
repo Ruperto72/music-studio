@@ -7,27 +7,6 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
-## Önskat
-
-- [ ] **Färgsätt klippen, ett spår en färg** (som i Pro Tools). Varje klipp i
-  samma spår ritas i spårets färg, så att man ser vilket spår ett klipp hör
-  till utan att läsa sig till det ur positionen. Färgen finns redan —
-  `trackColor()` används av noterna, av spårnamnet och av headerns vänsterkant
-  — så det här är att låta klippet ärva något som finns, inte att hitta på en
-  ny färgskala.
-  **Designfrågan som måste avgöras först:** klippblocket ritas medvetet
-  *bakom* noterna och nästan osynligt (`background: rgba(255,255,255,0.022)`,
-  `z-index: 0`), och noterna bär redan spårets färg i full styrka. Ett klipp i
-  samma färg skulle alltså konkurrera med sitt eget innehåll — det måste bli
-  en *tvätt* av spårfärgen, inte spårfärgen, och den nivån går bara att avgöra
-  mot en riktig låt med flera spår ovanpå varandra. Samma sak gäller
-  `.clip[data-label]::before`, etiketten med taktomfånget: den ligger på
-  `rgba(255,255,255,0.30)` i dag och bör antagligen följa med.
-  Notera också vad färgen *inte* löser: två klipp i samma spår får per
-  definition samma färg, så det som skiljer dem åt är fortfarande kanten och
-  taktetiketten. Det är avsikten, men det betyder att färg inte ersätter något
-  av det som redan finns där.
-
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes

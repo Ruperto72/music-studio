@@ -280,6 +280,58 @@ ett facit.
   nu löst strukturellt: vänta på att utkastet **ändras** från en ögonblicks-
   bild tagen före åtgärden, aldrig på ett värde som kan ha varit sant förut.
 
+- [x] **Färgsatta klipp — ett spår, en färg.** Klippblocket ritas nu i sitt
+  eget spårs färg: samma färg som spårnamnet, noterna och stripen i headerns
+  vänsterkant, alla ur `trackColor()`. Ingen ny färgskala, bara ett block som
+  ärver något som redan fanns.
+  **Nivån var hela frågan, och den gick bara att avgöra genom att titta.**
+  Noterna ovanpå blocket bär samma färg i full styrka, så ett klipp i samma
+  styrka konkurrerar med sitt eget innehåll. Skjutet mot `Rust Foundry` (sju
+  spår staplade, riktiga inserts) vid 5/7/9/14/20 % kroppsstyrka: **14 % och
+  uppåt** gör körfältet till ett färgat kort och äter pianorullens egen
+  svart/vit-radskuggning, **5 %** lämnar bärnsten och lila läsbara som brunt
+  och grått. **7 %** landade rätt — spårets identitet är omedelbar, noterna
+  dominerar fortfarande. Kanterna (60 %/30 %), takkapseln (45 %) och
+  taktetiketten (60 %) följde med; de får ligga hårdare eftersom de är
+  linjer och text, inte yta.
+  **Färgerna är högre satta än de vita de ersätter** (kroppen gick från
+  `rgba(255,255,255,0.022)` till 7 %) — en mättad kulör vid en given alfa
+  läser dimmare än vitt gör vid samma alfa, så en ren översättning av
+  siffrorna hade gett ett osynligt block.
+  **Handtagens hovring lämnades vit med flit.** `.clip-edge:hover` och
+  `.clip-grip:hover` svarar på "pekaren har tag i den här", vilket är samma
+  fråga på varje spår och förtjänar samma svar. Identitet är vad blocket är
+  till för; återkoppling är något annat.
+  **En variabel per körfält, inte fyra inline-färger per klipp.**
+  `addClipBlocks()` sätter `--clip-color` på `rollEl`, och `.clip`-reglerna
+  ärver den — nivåerna stannar i stilmallen bredvid alla andra visuella
+  konstanter, och ett spår med ett dussin klipp skriver den en gång.
+  `color-mix(in srgb, var(--clip-color) N%, transparent)` löser upp till
+  färgens egna kanaler vid alfa N/100 (blandningen sker med genomskinligt
+  svart), vilket är vad som gör verify-steget till en **exakt** jämförelse mot
+  spårnamnets färg i stället för en ögonmätning.
+  **En fälla värd att skriva ned:** de vita värdena står kvar som rad före
+  varje `color-mix`-rad, samma reservmönster som spelarens `vh`/`dvh`-par —
+  men det räddar bara en motor utan `color-mix`. Saknas `--clip-color` blir
+  deklarationen ogiltig *vid beräkning*, och då faller den inte tillbaka på
+  raden ovanför utan på `unset`: genomskinlig bakgrund och `currentColor`-
+  kanter. Därför finns ett förval på `:root` (samma grå som `trackColor()`
+  faller tillbaka på) — och det ligger där snarare än på `.clip`, eftersom en
+  egenskap satt på elementet självt slår den ärvda och varenda klipp hade
+  blivit grått.
+  **Verifieringen** jämför varje körfälts klippfärg mot dess eget spårnamn,
+  kropp, kanter, kapsel och etikett var för sig, och kräver att kroppen
+  stannar under 15 % alfa medan kanten och etiketten ligger minst dubbelt så
+  hårt. Fyra injektioner kördes en i taget: borttagen `--clip-color` per
+  körfält (alla klipp grå), kroppen uppskruvad till 90 %, etiketten kvar i
+  vitt, kapseln kvar i vitt — alla fyra fångade. Chrome beräknar `color-mix`
+  till `color(srgb …)` med 0..1-flyttal medan en inline-hex blir `rgb(…)`, så
+  steget normaliserar båda till 0..255 innan det jämför; att jämföra
+  strängarna rakt av rapporterade varje spår som fel oavsett färg.
+  **Vad färgen inte löser**, som `TODO.md` sade från början: två klipp i samma
+  spår får per definition samma färg, så det som skiljer dem åt är fortfarande
+  kanten mellan dem och taktetiketten.
+
 - [x] **Radåteranvändning — renderingen slutade bygga om spår som inte
   ändrats.** En render tömde `#tracks` och byggde varje rad: **245,9 ms vid 24
   spår**, mot de 300 ms `SCHEDULE_AHEAD_SEC` ger schemaläggaren att placera

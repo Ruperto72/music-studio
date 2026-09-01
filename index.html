@@ -22,6 +22,15 @@
     --rhythm: #39ff6a;
     --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --grid: #2a2a30; --bar: #45454f;
     --strip: #131316; --strip2: #0c0c0f; --ink: #e8e8ee; --muted: #9a9aa6;
+    /* The colour a clip block is washed in. Overridden per lane by
+       addClipBlocks() with that track's own colour; this is the same grey
+       trackColor() falls back to, and it is here rather than on `.clip`
+       because a custom property set on the element itself would beat the
+       inherited one and every clip would come out grey. Without any default a
+       missing --clip-color would not fall back to the white values under the
+       color-mix ones — an invalid var() makes the whole declaration compute to
+       `unset`, which is a transparent background and currentColor borders. */
+    --clip-color: #8a8a94;
     /* "This one owns the inspector column" — worn by an active track header
        and by the master channel's cells. One concept, so one pair of values;
        they used to be the same two literals written out in both rules. */
@@ -736,30 +745,56 @@
      The top cap is an inset shadow rather than a child element, since a clip
      is already one div per clip per track in the render this file's own
      performance notes call the bottleneck. */
+  /* A clip is drawn in its own track's colour — one track, one colour, the way
+     a Pro Tools session reads. `--clip-color` is set once per lane in
+     addClipBlocks(); the white values below are what an engine without
+     color-mix() falls back to, the same pattern the player's vh/dvh pair uses.
+     The levels are a *wash*, not the colour: the notes on top of it already
+     carry the track's colour at full strength, so a block in the same strength
+     would compete with its own contents. They are higher than the white ones
+     they replace because a saturated hue at a given alpha reads dimmer than
+     white does at the same alpha — shot against Rust Foundry's seven stacked
+     tracks at 5/7/9/14/20% rather than picked in the abstract: 14% and up turns
+     a lane into a coloured card and swallows the piano roll's own black/white
+     row shading, 5% leaves amber and purple reading as brown and grey.
+     See DONE.md. */
   .clip {
     position: absolute; top: 0; z-index: 0; pointer-events: none;
     background: rgba(255,255,255,0.022);
+    background: color-mix(in srgb, var(--clip-color) 7%, transparent);
     border-left: 1px solid rgba(255,255,255,0.24);
+    border-left-color: color-mix(in srgb, var(--clip-color) 60%, transparent);
     border-right: 1px solid rgba(255,255,255,0.12);
+    border-right-color: color-mix(in srgb, var(--clip-color) 30%, transparent);
     box-shadow: inset 0 2px 0 0 rgba(255,255,255,0.14);
+    box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--clip-color) 45%, transparent);
   }
   /* What the block says about itself: the bars it covers. Without it a clip
      spanning a whole track is indistinguishable from the lane, which is how
      the feature managed to be invisible on a song nobody had split yet. Only
      drawn where addClipBlocks() found room for it — no attribute, no
      pseudo-element — and it never takes pointer events, so it cannot cost a
-     placement click. */
+     placement click. It follows the block into the track's colour: it names
+     *this* clip, so it reads as part of the block rather than as a caption
+     floating over the lane. Kept well below the notes' full strength for the
+     same reason the body is — it sits behind them. */
   .clip[data-label]::before {
     content: attr(data-label);
     position: absolute; top: 8px; left: 5px;
     font-size: 8px; font-weight: 700; letter-spacing: 0.6px;
-    color: rgba(255,255,255,0.30); pointer-events: none; white-space: nowrap;
+    color: rgba(255,255,255,0.30);
+    color: color-mix(in srgb, var(--clip-color) 60%, transparent);
+    pointer-events: none; white-space: nowrap;
   }
   /* The edges take pointer events; the body deliberately does not. That split
      is what lets a clip be trimmed without the block swallowing every
      placement click in the lane it covers — which is the property the phase-2
      verify step pins down. Both handles are built only under the Grab tool
-     (addClipBlocks), the same rule a note's own resize handle follows. */
+     (addClipBlocks), the same rule a note's own resize handle follows.
+     Their hover/drag highlight stays white while the block itself took the
+     track's colour: it answers "the pointer has this", which is the same
+     question on every track and deserves the same answer. Identity is what the
+     block is for. */
   .clip-edge {
     position: absolute; top: 0; bottom: 0; width: 7px; pointer-events: auto;
     cursor: ew-resize; z-index: 5;
@@ -1241,6 +1276,14 @@
         and pulling the edge back out brings the very same notes back. Every track starts as a single
         clip covering the whole song; the faint block behind each lane is it, labelled with the bars
         it covers (<b>bar 1–8</b>).
+      </p>
+      <p>
+        Each block is washed in <b>its own track's colour</b> — the same colour as that track's name,
+        its notes and the stripe down the side of its header — so a clip says which part it belongs to
+        without your having to work it out from where it sits. It stays a wash rather than the colour
+        itself, because the notes lying on top of it are already that colour at full strength. Two
+        clips on the same track are the same colour by definition; what tells <i>them</i> apart is
+        still the edge between them and the bar label.
       </p>
       <ul>
         <li><b>Split clip at playhead</b> (in the menu) cuts the active track's clip in two where the
@@ -6040,6 +6083,14 @@ function clipLabel(clip) {
 }
 function addClipBlocks(rollEl, track, heightPx) {
   const clips = clipsOf(track);
+  // One custom property on the lane rather than four inline colours per clip:
+  // a track's clips are all the same colour by definition (that is the whole
+  // point of colouring them), the levels stay in the stylesheet beside every
+  // other visual constant, and a track with a dozen clips writes it once. The
+  // `.clip` rules inherit it from here. The colour is *not* re-read anywhere
+  // else — trackColor() stays the one source, as it is for the notes, the
+  // track name and the header's left edge.
+  rollEl.style.setProperty('--clip-color', trackColor(track));
   clips.forEach((clip) => {
     const div = el('div', 'clip');
     const widthPx = Math.max(2, (clipEnd(clip) - clip.start) * colPx);

@@ -39,7 +39,9 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   two halves back together, or drag a clip along the timeline with everything it
   holds. Every track starts as one clip covering the song, labelled with the bars
   it spans; its grip and trim edges appear under the **Grab** tool, the same rule
-  a note's own resize handle follows
+  a note's own resize handle follows. Each block is washed in **its own track's
+  colour** — the colour that track's name and notes already carry — so a clip
+  says which part it belongs to without your reading it off the position
 - **Three drum kits** — each rhythm track picks whether those ten pieces are
   synthesised as **Retro** (tight and dry, the 8-bit default), **80s** (gated
   snare, long crash, wide clap) or **Acoustic-ish** (lower kick, more skin on
