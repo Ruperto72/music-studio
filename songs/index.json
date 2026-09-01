@@ -78,5 +78,10 @@
     "file": "sinfonia-4.json",
     "name": "Sinfonia Quarta",
     "desc": "J.S. Bach's Sinfonia No. 4 in D minor, BWV 790, for three SID voices — and the one arrangement here that required no invention at all. A sinfonia already has three real voices, so they map straight onto the three channels with nothing left over: no derived bass, no percussion, not even a stolen kick, because the kick trick destroys the note it lands on and that is acceptable on a line I derived but vandalism on a line Bach wrote. Same key area and metre as Inventio, so an A/B between them is about voice structure and nothing else."
+  },
+  {
+    "file": "air.json",
+    "name": "Air",
+    "desc": "J.S. Bach's Air from the third orchestral suite, BWV 1068, for three SID voices — the real voice-stealing problem. The Air is in four parts and a 6581 has three channels, so Violin II and the viola share the third: one note carrying an arpeggio that alternates between their two pitches fifty times a second, which is exactly what a chip's arpeggio is for. Both pitches are Bach's; only the alternation is the chip's. In D major, read off the notes rather than the title — 'on the G String' is Wilhelmj's violin transposition to C, and this is the orchestral original. Note values are doubled so the melody's thirty-seconds land exactly on the app's lattice, which means the bar counter reads two for every written bar; the markers give the written numbers back."
   }
 ]
