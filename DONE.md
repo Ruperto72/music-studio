@@ -1813,6 +1813,34 @@ med pan per not på plats är asymmetrierna i den här listan slut.
 
 ## Kvalitet
 
+- [x] **Appen har en egen version, `APP_VERSION`.** Den fanns inte förut —
+  ingen `package.json`, inget `version` i manifestet, ingen sträng i
+  `index.html`. Nu en konstant, visad på Help-dialogens sista rad, ifylld av
+  samma boot-pass som fyller glyferna så att strängen bara står skriven på ett
+  ställe.
+  **Varför den behövs:** appen installeras som PWA och uppdaterar sig i
+  bakgrunden, så "ladda om och se" är inte ett sätt att ta reda på vad man
+  kör. Det är den enda fråga en versionssträng här faktiskt svarar på.
+  **Startvärdet är ett antagande, inte ett fynd:** repot hade ingen version
+  att räkna upp, så den utbyggda, driftsatta appen räknas som 1.0.0 och
+  patchbumpen landar på **1.0.1**. En rad att ändra om ett annat startvärde
+  vore ärligare.
+  **Tre andra tal i repot ser ut som versioner och är det inte**, och inget av
+  dem kopplades till det här: en låtfils `version` (2/3) är *formatet* laddaren
+  läser och går upp när en sparad låts form ändras; `sw.js`s `CACHE_NAME` är en
+  cache-buster som måste ändras varje gång en precachad fil gör det, alltså
+  långt oftare än en release; och manifestet bär ingen version alls, eftersom
+  Web App Manifest-specen inte har någon sådan medlem och ett påhittat fält
+  vore ett fält ingen läser. Att binda ihop dem hade knutit ett releasenummer
+  till scheman som inte är releaseschemat.
+  Verify-steget hämtar `APP_VERSION` ur källan i stället för att skriva av den
+  (samma regel som `auditBundledSongs()`), öppnar Help via menyn — en version
+  ingen kan nå är ingen version — och kräver dessutom att låtformatets version
+  *inte* är samma tal, eftersom jämförelsen annars skulle passera om de två
+  någon gång slogs ihop. Tre injektioner, en i taget: boot-passet borttaget
+  (dashen står kvar), en literal inskriven i markupen (driver isär från
+  konstanten), och ett värde som inte är tredelat. Alla tre fångade.
+
 - [x] **Tre röda verify-steg, tre olika orsaker — och bara en av dem den
   uppenbara.** Alla tre uppstod när rytmspårets gutter-etiketter blev spelbara
   `.dkey`-knappar, men bara den första handlade om just det.

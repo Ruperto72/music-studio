@@ -1417,6 +1417,51 @@ async function main() {
       }
     });
 
+    step('Version: the Help dialog names the build, from the one place it is written', async () => {
+      await fresh();
+      // Extracted from the source rather than retyped, the same rule
+      // auditBundledSongs() follows: a literal here would have to be edited on
+      // every release and would silently start comparing a version against
+      // itself-from-last-time. Failing to extract throws, since an audit with
+      // nothing to compare against passes everything.
+      const src = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+      const declared = src.match(/const APP_VERSION = '([^']+)';/);
+      if (!declared) throw new Error('could not read APP_VERSION out of index.html — this check would pass vacuously');
+      if (!/^\d+\.\d+\.\d+$/.test(declared[1])) {
+        throw new Error(`APP_VERSION should be a three-part version, got "${declared[1]}"`);
+      }
+      // Opened through the real menu: a version nobody can reach is not a
+      // version. The dialog is a <dialog>, so its contents are in the DOM
+      // whether or not it is open — reading them without opening it would pass
+      // against a Help button that does nothing.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('help-btn').click()`);
+      await waitFor(`document.getElementById('help-dialog').open === true`);
+      const shown = await cdp.evaluate(`(() => {
+        const v = document.getElementById('help-version');
+        if (!v) return JSON.stringify({ missing: true });
+        return JSON.stringify({ text: v.textContent.trim(), visible: !!v.getClientRects().length });
+      })()`);
+      const seen = JSON.parse(shown);
+      if (seen.missing) throw new Error('the Help dialog has no #help-version to fill');
+      if (!seen.visible) throw new Error(`the version is in the DOM but not on screen: ${shown}`);
+      // The placeholder in the markup is an em dash. Comparing against
+      // APP_VERSION catches both halves at once: a boot pass that never ran
+      // leaves the dash, and a literal typed into the HTML drifts from the
+      // constant the moment one of them is bumped.
+      if (seen.text !== declared[1]) {
+        throw new Error(`the Help dialog should show APP_VERSION ${declared[1]}, shows "${seen.text}"`);
+      }
+      // A song file's `version` is a different number with a different job —
+      // the format the loader reads. If the two ever became the same value the
+      // check above would still pass, so assert they are not wired together.
+      const songVersion = await cdp.evaluate(
+        `(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).version`);
+      if (String(songVersion) === declared[1]) {
+        throw new Error(`the song format version and the app version must stay separate, both are ${songVersion}`);
+      }
+    });
+
     step('Interface icons: drawn from GLYPHS, no emoji, and every control still named', async () => {
       await fresh();
       // The point of replacing the emoji was one visual language, so the check

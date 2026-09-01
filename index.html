@@ -1424,6 +1424,14 @@
         to the start of the song or the end of this track's part — and every move is spoken with the position
         <i>and</i> what is already there, so you can survey a song you can't see.
       </p>
+
+      <h3>Version</h3>
+      <p>
+        Web Audio Studio <b id="help-version">—</b>. Worth knowing because the app installs as a
+        PWA and updates itself in the background, so what you are running is not always what you
+        last loaded. This is the app's own version and not the version of a saved song, which is a
+        separate number the file carries so older songs keep opening.
+      </p>
     </div>
   </dialog>
 
@@ -1826,6 +1834,22 @@
 
 <script type="module">
 import { TEMPO_BPM } from './js/song-data.js';
+
+// The app's own version, and the only place it is written down. It answers one
+// question the user cannot otherwise answer: *which build am I looking at?* —
+// which matters here precisely because the service worker updates the page
+// behind their back, so "reload and see" is not a way to find out. Shown in
+// the Help dialog's last line by the same boot pass that fills the glyphs.
+//
+// **Not the same number as three others in this repo, on purpose.** A song
+// file's `version` (2/3) is the *format* the loader reads, and goes up only
+// when the shape of a saved song changes; `sw.js`'s CACHE_NAME is a cache
+// buster that has to change whenever a precached file does, which is far more
+// often than a release; and the manifest carries no version at all, since the
+// Web App Manifest spec has no such member and inventing one would be a field
+// nothing reads. Wiring any of them to this string would tie a release number
+// to a schedule that is not a release schedule.
+const APP_VERSION = '1.0.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -8133,6 +8157,11 @@ for (const elWithGlyph of document.querySelectorAll('[data-glyph]')) {
 }
 
 // ---------- Help dialog ----------
+// The version is written into the markup rather than left as a literal there,
+// so APP_VERSION stays the one place it is spelled out — the same rule the
+// glyph pass above follows, and for the same reason: a second copy is a copy
+// that will disagree.
+document.getElementById('help-version').textContent = APP_VERSION;
 const helpDialog = document.getElementById('help-dialog');
 document.getElementById('help-btn').addEventListener('click', () => helpDialog.showModal());
 document.getElementById('help-close').addEventListener('click', () => helpDialog.close());
