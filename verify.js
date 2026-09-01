@@ -4780,6 +4780,133 @@ async function main() {
       }
     });
 
+    step('Rhythm gutter: the piece names are keys that play their own kit', async () => {
+      // A kit is a table of frequencies its ten schedulers read, so the list
+      // of filter frequencies one press produces fingerprints which kit it
+      // came from. Installed here rather than borrowed from the velocity
+      // step's recorder, so this step still means what it means under --only.
+      await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+        source: `(() => {
+          window.__kitFreqs = [];
+          const orig = AudioContext.prototype.createBiquadFilter;
+          AudioContext.prototype.createBiquadFilter = function () {
+            const f = orig.call(this);
+            const d = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value');
+            try {
+              Object.defineProperty(f.frequency, 'value', {
+                get() { return d.get.call(this); },
+                set(v) { window.__kitFreqs.push(Math.round(v)); d.set.call(this, v); },
+                configurable: true,
+              });
+            } catch {}
+            return f;
+          };
+        })()`,
+      });
+      // The default headless viewport is 756px, which is *under* the 760px
+      // player-mode breakpoint: the whole editor is hidden there, so every
+      // element in it reports zero client rects and the kit menu never places
+      // (renderFloatingLayer() checks exactly that). The DOM assertions below
+      // would still have passed, because a hidden element is a present one —
+      // the vacuous pass this suite exists to prevent. Hence both the width
+      // and the guard right after the load.
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: 1200, height: 900, deviceScaleFactor: 1, mobile: false,
+      });
+      try {
+        await runGutterChecks();
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
+
+      async function runGutterChecks() {
+      await fresh();
+      if (await cdp.evaluate(`document.body.classList.contains('player-mode')`)) {
+        throw new Error('the editor is in player mode — every assertion here would pass against a hidden editor');
+      }
+
+      const CELLS = `[...document.querySelectorAll('.track[data-kind="rhythm"] .gutter .dkey')]`;
+      // Count first: `every` over an empty list is true, so a gutter that
+      // built no buttons at all would pass every assertion below it.
+      const g = JSON.parse(await cdp.evaluate(`JSON.stringify({
+        count: ${CELLS}.length,
+        tags: [...new Set(${CELLS}.map(c => c.tagName))],
+        drums: ${CELLS}.map(c => c.dataset.drum),
+        labels: ${CELLS}.map(c => c.getAttribute('aria-label') || ''),
+        tabbable: ${CELLS}.filter(c => c.tabIndex !== -1).length,
+      })`));
+      if (g.count !== 10) throw new Error(`expected the ten kit pieces in the gutter, got ${g.count}`);
+      if (JSON.stringify(g.tags) !== '["BUTTON"]') {
+        throw new Error(`a piece name has to be a control, not a label: ${JSON.stringify(g.tags)}`);
+      }
+      // The gutter has to stay in step with the lane's rows, which are drawn
+      // in RHYTHM_ROWS order — a gutter off by one names every piece wrong.
+      const rows = ['kick', 'snare', 'rim', 'hihat', 'openhat', 'shaker', 'tom', 'clap', 'crash', 'ride'];
+      if (JSON.stringify(g.drums) !== JSON.stringify(rows)) {
+        throw new Error(`gutter is out of step with the lane rows: ${JSON.stringify(g.drums)}`);
+      }
+      if (g.labels.length !== 10 || g.labels.some((l) => !/play on/.test(l))) {
+        throw new Error(`every piece needs a name saying what pressing it does: ${JSON.stringify(g.labels)}`);
+      }
+      // -1 on purpose: ten Tab stops per rhythm track would swamp the note
+      // roving tabindex, the same trade buildKeyCell() makes for semitones.
+      if (g.tabbable) throw new Error(`${g.tabbable} drum cell(s) joined the tab order`);
+
+      // pointerdown rather than click — that is what lets a drag down the
+      // column play each piece in turn, the way dragging the keys glissandos.
+      const pressSnare = `(() => {
+        const c = ${CELLS}[1];
+        c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, buttons: 1 }));
+        c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      })()`;
+
+      // Put the track on a non-default kit, or both readings below would come
+      // out as retro and the comparison could not tell them apart.
+      // The rhythm track's picker is found by its section caption rather than
+      // by the class, which the waveform picker shares — see the kit step.
+      await cdp.evaluate(`[...document.querySelectorAll('.track-header')]
+        .filter(h => /^Kit$/.test(h.querySelector('.th-osc-section > .th-section-label')?.textContent.trim() || ''))[0]
+        .querySelector('.th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer .th-osc-menu [data-value="eighties"]')`);
+      await cdp.evaluate(`document.querySelector('#floating-layer .th-osc-menu [data-value="eighties"]').click()`);
+      // Make the rhythm track the active one for the first reading. Without
+      // this the step passes against the bug it is aimed at: a fresh page
+      // already has a *tonal* track active, so both readings would resolve the
+      // same wrong kit and match each other. The two readings have to differ
+      // in exactly the value the old code read.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .track-header')
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`document.querySelector('.track.active')?.dataset.kind === 'rhythm'`);
+      // Warm-up: the first sound builds the channel chain, whose own filters
+      // would otherwise land in the first fingerprint and not the second.
+      await cdp.evaluate(pressSnare);
+      await new Promise((r) => setTimeout(r, 350));
+
+      await cdp.evaluate(`window.__kitFreqs = []`);
+      await cdp.evaluate(pressSnare);
+      await new Promise((r) => setTimeout(r, 350));
+      const active = await cdp.evaluate(`window.__kitFreqs.slice()`);
+      if (!active.length) throw new Error('pointerdown on a piece name scheduled nothing');
+
+      // The kit has to come from the track whose gutter was pressed, not from
+      // whatever is active: previewHit() used to read state.activeTrack, and
+      // these cells deliberately do not activate their own track. A tonal
+      // track has no kit entry, so under the old code this second press would
+      // fall back to retro and the two fingerprints would diverge.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .track-header')
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await waitFor(`document.querySelector('.track.active')?.dataset.kind === 'pitch'`);
+      await cdp.evaluate(`window.__kitFreqs = []`);
+      await cdp.evaluate(pressSnare);
+      await new Promise((r) => setTimeout(r, 350));
+      const tonalActive = await cdp.evaluate(`window.__kitFreqs.slice()`);
+      if (JSON.stringify(tonalActive) !== JSON.stringify(active)) {
+        throw new Error('the gutter auditioned a different kit once a tonal track was active — '
+          + `it is reading the active track, not its own: ${JSON.stringify(active)} vs ${JSON.stringify(tonalActive)}`);
+      }
+      }
+    });
+
     step('Drum kits: the rhythm track picks one, and it changes the sound', async () => {
       // A kit is parameters the ten schedulers read, so the check is that
       // choosing one moves numbers that actually reach the audio graph — and

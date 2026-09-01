@@ -579,7 +579,6 @@
     border-bottom: 1px solid rgba(255,255,255,0.03);
   }
   .gutter .glabel.c { color: #b7b7c4; }
-  .gutter .glabel.rhy { font-size: 10px; color: #a7a7b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* A tonal track's gutter is a keyboard rather than a column of note names.
      Every semitone gets an equal row here (that is what a piano roll is), so
@@ -633,6 +632,26 @@
      drawn in, so a sounding key and the notes it writes read as one thing. */
   .gutter .pkey.down { filter: brightness(1.35); }
   .gutter .pkey .koct { padding-left: 4px; opacity: 0.75; font-weight: 700; }
+
+  /* A rhythm track's gutter cell is a button for the same reason a key is —
+     it plays the piece it names — but it deliberately keeps the plain look
+     the gutter's labels already had. The column should not change appearance
+     just because it became playable; only the hover and the held state say it
+     is a control. */
+  .gutter .dkey {
+    display: flex; align-items: center; justify-content: flex-end;
+    font-size: 10px; color: #a7a7b3; background: none;
+    padding: 0 5px 0 0; margin: 0; border: 0; border-radius: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    width: 100%; height: 100%; min-width: 0; cursor: pointer;
+    font-family: inherit; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gutter .dkey:hover { background: rgba(255,255,255,0.06); color: #d5d5dd; }
+  /* Held: the app's own accent, the same one an open picker uses, rather than
+     the track colour painted on inline — see buildDrumCell() for why a held
+     key must not leave an attribute behind on a row that gets reused. */
+  .gutter .dkey.down { background: #7a4fd1; color: #fff; }
 
   /* Automation lane — an extra full-width row under a track, shown while its
      AUTO panel is toggled open (see renderAutomationRow()). Reuses .track/
@@ -4826,7 +4845,7 @@ function setAdsr(track, patch) {
 // it has to tell them apart are named once here rather than branched inline.
 const itemAriaLabel = (track, item) => (isRhythm(track) ? hitAriaLabel(item) : noteAriaLabel(item));
 const previewItem = (track, item) => {
-  if (isRhythm(track)) previewHit(item.type, hitVel(item), hitPan(item));
+  if (isRhythm(track)) previewHit(track, item.type, hitVel(item), hitPan(item));
   else previewNote(track, item);
 };
 const VEL_H = 76;
@@ -5631,7 +5650,7 @@ function buildFloatingKitMenu(track) {
       setTrackKit(track, id);
       oscPickerOpen = null;
       // Audition the change on the piece most people judge a kit by.
-      previewHit('snare', 1, 0);
+      previewHit(track, 'snare', 1, 0);
       autosave();
       render();
     });
@@ -5931,11 +5950,45 @@ function buildKeyCell(track, midi, isBlack, isC) {
   k.addEventListener('pointercancel', release);
   return k;
 }
-function buildGutterCell(text, cls, title) {
-  const g = el('div', 'glabel' + (cls ? ' ' + cls : ''));
-  g.textContent = text;
-  if (title) g.title = title;
-  return g;
+// A rhythm track's gutter names its ten pieces instead of drawing a keyboard —
+// a drum has no pitch to draw — but a name is still the control you press to
+// hear that piece, so it is a button carrying the piano key's own contract
+// rather than a label: pointerdown rather than click, so dragging down the
+// column plays each piece in turn the way dragging the keys glissandos.
+// Auditions with the track named explicitly, because this deliberately does
+// not activate the track (see the stopPropagation below) and two rhythm tracks
+// can sit on different kits.
+function buildDrumCell(track, type) {
+  const d = el('button', 'dkey');
+  d.type = 'button';
+  // One Tab stop per piece per rhythm track would swamp the note roving
+  // tabindex, exactly as one per semitone would — the same trade buildKeyCell()
+  // makes. Auditioning from the keyboard already exists: arm the track and use
+  // REC_KEY_DRUMS (see stepEntryActive()).
+  d.tabIndex = -1;
+  d.dataset.drum = type; // the piece itself, rather than something parsed back out of the label
+  d.textContent = RHYTHM_LABELS[type] || type;
+  d.title = RHYTHM_TITLES[type] || RHYTHM_LABELS[type] || type;
+  d.setAttribute('aria-label', (RHYTHM_LABELS[type] || type) + ' — play on ' + trackName(track));
+  // Held state is a class and nothing else — no inline style. buildKeyCell()
+  // paints the track's own colour on instead, which leaves a `style` attribute
+  // on a row renderTracks() may reuse; being held is transient UI state that
+  // trackRowSignature() neither tracks nor should, so the reused row and a
+  // freshly built one stop matching and the row audit calls it stale. A class
+  // the stylesheet answers costs nothing to take back off.
+  const press = (e) => {
+    e.preventDefault(); // don't start a text selection while dragging the column
+    e.stopPropagation();
+    d.classList.add('down');
+    previewHit(track, type, 1, 0);
+  };
+  const release = () => d.classList.remove('down');
+  d.addEventListener('pointerdown', press);
+  d.addEventListener('pointerenter', (e) => { if (e.buttons & 1) press(e); });
+  d.addEventListener('pointerup', release);
+  d.addEventListener('pointerleave', release);
+  d.addEventListener('pointercancel', release);
+  return d;
 }
 
 // Resolve a pointer event inside a lane to a snapped column (eighths, possibly
@@ -6407,7 +6460,7 @@ function renderRhythmTrack(track) {
 
   const gutter = el('div', 'gutter');
   gutter.style.gridTemplateRows = `repeat(${RHYTHM_ROWS.length}, ${RHY_H}px)`;
-  for (const type of RHYTHM_ROWS) gutter.appendChild(buildGutterCell(RHYTHM_LABELS[type], 'rhy', RHYTHM_TITLES[type]));
+  for (const type of RHYTHM_ROWS) gutter.appendChild(buildDrumCell(track, type));
   row.appendChild(gutter);
 
   const rollEl = el('div', 'lane');
@@ -6848,7 +6901,7 @@ function onRhythmCellClick(track, row, col) {
   setTrackNotes(track, hits);
   state.selected = { track, item: hit }; // so the new hit's Velocity is editable straight away
   state.multiSelected.clear();
-  previewHit(hit.type, hitVel(hit), hitPan(hit));
+  previewHit(track, hit.type, hitVel(hit), hitPan(hit));
   render();
 }
 function removeHit(track, hit) { setTrackNotes(track, trackNotes(track).filter(h => h !== hit)); render(); }
@@ -7064,7 +7117,7 @@ function selectItemForKeyboard(track, item) {
 function selectItem(track, item) {
   state.selected = { track, item };
   state.multiSelected.clear();
-  if (isRhythm(track)) previewHit(item.type, hitVel(item), hitPan(item)); else previewNote(track, item);
+  previewItem(track, item);
   render();
 }
 function deleteItem(track, item) {
@@ -7985,7 +8038,7 @@ function renderHitInspector(track, hit) {
     // Otherwise dragging a slider to the top and back would leave `vel: 1` in
     // the saved file, which reads as "someone set this" when nobody did.
     if (v >= 1) delete hit.vel; else hit.vel = v;
-    previewHit(hit.type, v, hitPan(hit)); // audition at the new level, like the tonal slider does
+    previewHit(track, hit.type, v, hitPan(hit)); // audition at the new level, like the tonal slider does
     render(); autosave();
   });
   field.append(label, input, val);
@@ -8005,7 +8058,7 @@ function renderHitInspector(track, hit) {
   const writeHitPan = (v) => {
     if (v === 0) delete hit.pan; else hit.pan = v;
     panVal.textContent = panLabel(v);
-    previewHit(hit.type, hitVel(hit), v);
+    previewHit(track, hit.type, hitVel(hit), v);
     render(); autosave();
   };
   panInput.addEventListener('input', () => { panVal.textContent = panLabel(parseFloat(panInput.value)); });
@@ -9965,14 +10018,17 @@ function previewNote(track, note) {
   } catch { /* audio unavailable */ }
 }
 // The click-to-hear preview. It auditions through previewGain rather than the
-// channel, so it takes the kit from the active track — which is the rhythm
-// track whose hit was clicked in every path that reaches here.
-function previewHit(type, vel, pan) {
+// channel, so the kit has to be named rather than inferred: `track` is the
+// rhythm track the piece belongs to, *not* state.activeTrack. That used to be
+// the same thing, but the gutter's drum cells audition without activating
+// their track (buildDrumCell(), the way a piano key does), and two rhythm
+// tracks can sit on different kits.
+function previewHit(track, type, vel, pan) {
   try {
     ensureCtx();
     if (ctx.state === 'suspended') ctx.resume();
     const at = ctx.currentTime + 0.005;
-    scheduleDrum(type, at, previewGain, vel, pan, getTrackKitId(state.activeTrack));
+    scheduleDrum(type, at, previewGain, vel, pan, getTrackKitId(track));
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
