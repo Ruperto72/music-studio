@@ -1417,6 +1417,51 @@ async function main() {
       }
     });
 
+    step('Version: the Help dialog names the build, from the one place it is written', async () => {
+      await fresh();
+      // Extracted from the source rather than retyped, the same rule
+      // auditBundledSongs() follows: a literal here would have to be edited on
+      // every release and would silently start comparing a version against
+      // itself-from-last-time. Failing to extract throws, since an audit with
+      // nothing to compare against passes everything.
+      const src = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+      const declared = src.match(/const APP_VERSION = '([^']+)';/);
+      if (!declared) throw new Error('could not read APP_VERSION out of index.html — this check would pass vacuously');
+      if (!/^\d+\.\d+\.\d+$/.test(declared[1])) {
+        throw new Error(`APP_VERSION should be a three-part version, got "${declared[1]}"`);
+      }
+      // Opened through the real menu: a version nobody can reach is not a
+      // version. The dialog is a <dialog>, so its contents are in the DOM
+      // whether or not it is open — reading them without opening it would pass
+      // against a Help button that does nothing.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('help-btn').click()`);
+      await waitFor(`document.getElementById('help-dialog').open === true`);
+      const shown = await cdp.evaluate(`(() => {
+        const v = document.getElementById('help-version');
+        if (!v) return JSON.stringify({ missing: true });
+        return JSON.stringify({ text: v.textContent.trim(), visible: !!v.getClientRects().length });
+      })()`);
+      const seen = JSON.parse(shown);
+      if (seen.missing) throw new Error('the Help dialog has no #help-version to fill');
+      if (!seen.visible) throw new Error(`the version is in the DOM but not on screen: ${shown}`);
+      // The placeholder in the markup is an em dash. Comparing against
+      // APP_VERSION catches both halves at once: a boot pass that never ran
+      // leaves the dash, and a literal typed into the HTML drifts from the
+      // constant the moment one of them is bumped.
+      if (seen.text !== declared[1]) {
+        throw new Error(`the Help dialog should show APP_VERSION ${declared[1]}, shows "${seen.text}"`);
+      }
+      // A song file's `version` is a different number with a different job —
+      // the format the loader reads. If the two ever became the same value the
+      // check above would still pass, so assert they are not wired together.
+      const songVersion = await cdp.evaluate(
+        `(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).version`);
+      if (String(songVersion) === declared[1]) {
+        throw new Error(`the song format version and the app version must stay separate, both are ${songVersion}`);
+      }
+    });
+
     step('Interface icons: drawn from GLYPHS, no emoji, and every control still named', async () => {
       await fresh();
       // The point of replacing the emoji was one visual language, so the check
@@ -7819,6 +7864,55 @@ async function main() {
       const lowerLow = Math.min(...got.lower.map(octave));
       if (!(bassLow < lowerLow)) {
         throw new Error(`the bass should sit below the staff it comes from: bass octave ${bassLow}, lower ${lowerLow}`);
+      }
+    });
+
+    step('The Bach set: each arrangement keeps the shape its own piece demanded', async () => {
+      // Four pieces off one generator, and the things most likely to break
+      // silently are the two the metre decides. A triple metre has no half-bar,
+      // so its kick lands on the downbeat alone; 12/8 has a dotted-quarter beat,
+      // so its bass pumps four to the bar and not twelve — get that wrong and it
+      // is a machine gun that still loads, still plays and still passes a count.
+      // The sinfonia is the opposite case: three real voices, so its lowest line
+      // is Bach's own and carries no kick bend anywhere.
+      const want = [
+        { song: 'Canone', ts: '3/4', tracks: { Upper: 297, Lower: 301, Bass: 95 }, bends: 31 },
+        { song: 'Dodici', ts: '12/8', tracks: { Upper: 358, Lower: 327, Bass: 76 }, bends: 35 },
+        { song: 'Sinfonia Quarta', ts: '4/4', tracks: { Upper: 179, Middle: 176, Lower: 196 }, bends: 0 },
+      ];
+      for (const w of want) {
+        await fresh();
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Songs')).click()`);
+        await waitFor(`document.querySelectorAll('.song-item').length > 0`);
+        await cdp.evaluate(`(() => {
+          const row = Array.from(document.querySelectorAll('.song-item'))
+            .find(r => r.querySelector('.song-title')?.textContent === ${JSON.stringify(w.song)});
+          if (!row) throw new Error('not offered in the Songs list: ' + ${JSON.stringify(w.song)});
+          row.querySelector('button').click();
+        })()`);
+        await waitFor(`document.querySelector('#song-name-display').textContent === ${JSON.stringify(w.song)}`);
+
+        const raw = await cdp.evaluate(`JSON.stringify((() => {
+          const rows = [...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')];
+          const labels = rows.flatMap(t => [...t.querySelectorAll('.lane .note')].map(e => e.getAttribute('aria-label')));
+          return {
+            counts: Object.fromEntries(rows.map(t => [t.querySelector('.th-name').textContent, t.querySelectorAll('.lane .note').length])),
+            bends: labels.filter(l => l.includes('bend')).length,
+            hits: document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length,
+            ts: document.querySelector('#time-sig').value,
+          };
+        })())`);
+        const got = JSON.parse(raw);
+        if (got.ts !== w.ts) throw new Error(`${w.song}: metre should load as ${w.ts}, got ${got.ts}`);
+        for (const [name, n] of Object.entries(w.tracks)) {
+          if (got.counts[name] !== n) throw new Error(`${w.song}: ${name} should carry ${n} notes, got ${got.counts[name]}: ${JSON.stringify(got.counts)}`);
+        }
+        if (Object.keys(got.counts).length !== Object.keys(w.tracks).length) {
+          throw new Error(`${w.song}: three tonal voices is the budget: ${JSON.stringify(got.counts)}`);
+        }
+        if (got.bends !== w.bends) throw new Error(`${w.song}: expected ${w.bends} kick bends, got ${got.bends}`);
+        if (got.hits !== 0) throw new Error(`${w.song}: the kit is empty in every one of these: ${got.hits} hits`);
       }
     });
 
