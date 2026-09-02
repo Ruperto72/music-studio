@@ -75,7 +75,7 @@
     }
   ],
   "gains": {
-    "lead": 0.55,
+    "lead": 0.7,
     "inner": 0.8,
     "bass": 1,
     "rhythm": 1
@@ -6480,7 +6480,7 @@
   "eq": {},
   "activeFx": {},
   "kit": {},
-  "masterVol": 0.56,
+  "masterVol": 0.34,
   "masterEQ": {
     "low": 0,
     "mid": 0,
