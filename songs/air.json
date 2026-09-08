@@ -6477,10 +6477,32 @@
   "duty": {
     "bass": 0.25
   },
-  "eq": {},
-  "activeFx": {},
+  "eq": {
+    "bass": {
+      "low": 10.5,
+      "mid": -5,
+      "high": -7.5
+    },
+    "inner": {
+      "low": 9,
+      "mid": 0,
+      "high": -6
+    }
+  },
+  "activeFx": {
+    "bass": {
+      "eq": {
+        "bypassed": false
+      }
+    },
+    "inner": {
+      "eq": {
+        "bypassed": false
+      }
+    }
+  },
   "kit": {},
-  "masterVol": 0.34,
+  "masterVol": 0.12,
   "masterEQ": {
     "low": 0,
     "mid": 0,
