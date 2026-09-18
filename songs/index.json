@@ -83,5 +83,10 @@
     "file": "air.json",
     "name": "Air",
     "desc": "J.S. Bach's Air from the third orchestral suite, BWV 1068, for three SID voices — the real voice-stealing problem. The Air is in four parts and a 6581 has three channels, so Violin II and the viola share the third: one note carrying an arpeggio that alternates between their two pitches fifty times a second, which is exactly what a chip's arpeggio is for. Both pitches are Bach's; only the alternation is the chip's. In D major, read off the notes rather than the title — 'on the G String' is Wilhelmj's violin transposition to C, and this is the orchestral original. Note values are doubled so the melody's thirty-seconds land exactly on the app's lattice, which means the bar counter reads two for every written bar; the markers give the written numbers back."
+  },
+  {
+    "file": "derelict-watch.json",
+    "name": "Derelict Watch",
+    "desc": "A slow 80s-style lobby loop at 76 BPM in D minor, inspired by Alien 3 (NES) — a driving syncopated bass, a swinging pwm lead that arcs to a peak over Bb before winding back down, and a wide reverb-soaked pad underneath. Sixteen bars over a circular Dm-C-Bb-C progression with a kick/snare eighties-kit backbeat, built to loop with no ending, only a return."
   }
 ]
