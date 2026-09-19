@@ -1,0 +1,147 @@
+{
+  "version": 2,
+  "songName": "Retro SFX Bank",
+  "tempo": 100,
+  "cols": 112,
+  "grid": 1,
+  "timeSig": {
+    "num": 4,
+    "den": 4
+  },
+  "markers": [
+    { "col": 0, "name": "Laser" },
+    { "col": 16, "name": "Explosion" },
+    { "col": 32, "name": "Engine" },
+    { "col": 48, "name": "Powerup" },
+    { "col": 64, "name": "Shield Hit" },
+    { "col": 80, "name": "Alarm" },
+    { "col": 96, "name": "Teleport" },
+    { "col": 112, "name": "End" }
+  ],
+  "trackList": [
+    { "id": "laser", "name": "Laser", "color": "#ff4f6d", "kind": "tone" },
+    { "id": "explosion", "name": "Explosion", "color": "#ff9f43", "kind": "tone" },
+    { "id": "engine", "name": "Engine", "color": "#6c8cff", "kind": "tone" },
+    { "id": "powerup", "name": "Powerup", "color": "#ffe66d", "kind": "tone" },
+    { "id": "shieldhit", "name": "Shield Hit", "color": "#4fe3ff", "kind": "tone" },
+    { "id": "alarm", "name": "Alarm", "color": "#ff3df0", "kind": "tone" },
+    { "id": "teleport", "name": "Teleport", "color": "#b26cff", "kind": "tone" },
+    { "id": "rhythm", "name": "Impact", "color": "#6fe89a", "kind": "rhythm" }
+  ],
+  "gains": {
+    "laser": 0.75,
+    "explosion": 0.85,
+    "engine": 0.55,
+    "powerup": 0.7,
+    "shieldhit": 0.75,
+    "alarm": 0.7,
+    "teleport": 0.7,
+    "rhythm": 0.8
+  },
+  "waveform": {
+    "laser": "square",
+    "explosion": "noise",
+    "engine": "sawtooth",
+    "powerup": "square",
+    "shieldhit": "ringmod",
+    "alarm": "square",
+    "teleport": "fm",
+    "rhythm": "kit"
+  },
+  "pan": {
+    "laser": 0,
+    "explosion": 0,
+    "engine": 0,
+    "powerup": 0,
+    "shieldhit": 0,
+    "alarm": 0,
+    "teleport": 0,
+    "rhythm": 0
+  },
+  "mute": {
+    "laser": false,
+    "explosion": false,
+    "engine": false,
+    "powerup": false,
+    "shieldhit": false,
+    "alarm": false,
+    "teleport": false,
+    "rhythm": false
+  },
+  "solo": {
+    "laser": false,
+    "explosion": false,
+    "engine": false,
+    "powerup": false,
+    "shieldhit": false,
+    "alarm": false,
+    "teleport": false,
+    "rhythm": false
+  },
+  "tracks": {
+    "laser": [
+      { "start": 0, "len": 1, "freq": 1600, "vel": 0.85, "bend": 200 },
+      { "start": 3, "len": 1, "freq": 1500, "vel": 0.8, "bend": 180 },
+      { "start": 6, "len": 1, "freq": 1700, "vel": 0.85, "bend": 220 }
+    ],
+    "explosion": [
+      { "start": 16, "len": 8, "freq": 80, "vel": 0.95 }
+    ],
+    "engine": [
+      { "start": 32, "len": 16, "freq": 55, "vel": 0.55 }
+    ],
+    "powerup": [
+      { "start": 48, "len": 0.9, "freq": 523.25, "vel": 0.7 },
+      { "start": 49, "len": 0.9, "freq": 659.26, "vel": 0.75 },
+      { "start": 50, "len": 0.9, "freq": 783.99, "vel": 0.8 },
+      { "start": 51, "len": 0.9, "freq": 1046.5, "vel": 0.9 }
+    ],
+    "shieldhit": [
+      { "start": 64, "len": 1.5, "freq": 300, "vel": 0.9, "crush": true },
+      { "start": 65, "len": 1, "freq": 220, "vel": 0.6, "crush": true }
+    ],
+    "alarm": [
+      { "start": 80, "len": 2, "freq": 500, "vel": 0.75, "bend": 800 },
+      { "start": 82, "len": 2, "freq": 800, "vel": 0.75, "bend": 500 },
+      { "start": 84, "len": 2, "freq": 500, "vel": 0.75, "bend": 800 },
+      { "start": 86, "len": 2, "freq": 800, "vel": 0.75, "bend": 500 }
+    ],
+    "teleport": [
+      { "start": 96, "len": 6, "freq": 220, "vel": 0.8, "bend": 2000, "chorus": true }
+    ],
+    "rhythm": [
+      { "start": 16, "type": "crash", "vel": 0.8 }
+    ]
+  },
+  "adsr": {
+    "laser": { "attack": 0.001, "decay": 0.12, "sustain": 0, "release": 0.05 },
+    "explosion": { "attack": 0.001, "decay": 1.4, "sustain": 0.05, "release": 0.6 },
+    "engine": { "attack": 0.4, "decay": 0.3, "sustain": 0.85, "release": 0.6 },
+    "powerup": { "attack": 0.001, "decay": 0.09, "sustain": 0.05, "release": 0.05 },
+    "shieldhit": { "attack": 0.001, "decay": 0.25, "sustain": 0, "release": 0.1 },
+    "alarm": { "attack": 0.02, "decay": 0.05, "sustain": 0.85, "release": 0.05 },
+    "teleport": { "attack": 0.02, "decay": 0.6, "sustain": 0.25, "release": 0.5 }
+  },
+  "filter": {
+    "explosion": { "cutoff": 3500, "q": 0.8, "envAmount": -0.9 },
+    "engine": { "cutoff": 900, "q": 1, "envAmount": 0.15 }
+  },
+  "fm": {
+    "teleport": { "ratio": 3.5, "depth": 0.6 }
+  },
+  "tremolo": {
+    "engine": { "rate": 7, "depth": 0.18 }
+  },
+  "duty": {
+    "powerup": 0.25,
+    "alarm": 0.125
+  },
+  "fxSend": {
+    "explosion": { "delay": 0, "chorus": 0, "reverb": 0.25 },
+    "engine": { "delay": 0, "chorus": 0, "reverb": 0.15 },
+    "shieldhit": { "delay": 0, "chorus": 0, "reverb": 0.15 },
+    "teleport": { "delay": 0, "chorus": 0.3, "reverb": 0.35 }
+  },
+  "masterVol": 0.5,
+  "swing": 0
+}
