@@ -7354,7 +7354,7 @@ function pasteClipboard() {
   if (clipIsRhythm) {
     const pasted = [];
     for (const it of clipboard.items) {
-      const hit = { start: quant(Math.max(0, Math.min(COLS - state.grid, it.start + anchor))), type: it.type };
+      const hit = { ...it, start: quant(Math.max(0, Math.min(COLS - state.grid, it.start + anchor))) };
       // Keyed on the column alone this dropped every row but one of a copied
       // kick+hi-hat stack, and then cleared the other rows of the landing
       // columns as well.
