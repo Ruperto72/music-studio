@@ -1376,6 +1376,152 @@ async function main() {
       }
     });
 
+    step('Paste keeps a copied group\'s velocity and pan, not just its notes', async () => {
+      await fresh();
+      // Two notes on the Lead track, one given a quieter velocity and a pan
+      // through the note inspector before the pair is copied as a group.
+      // pasteClipboard()'s rhythm branch used to rebuild each pasted hit as a
+      // bare {start, type}, silently dropping vel/pan even though
+      // copySelection() had already copied them onto the clipboard — this
+      // covers both track kinds so that regression (and its tonal-note
+      // sibling, which the paste code already handled correctly) stay caught.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+        const r = lane.getBoundingClientRect();
+        for (const x of [40, 120]) {
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + x, clientY: r.top + 40 }));
+        }
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length === 2`);
+      // Select the earlier note alone to reach its inspector and give it a
+      // non-default velocity and pan. Plain click only selects while the pen
+      // tool is active (see the note click handler), so the pen tool stays on.
+      await cdp.evaluate(`(() => {
+        const notes = [...document.querySelectorAll('.track[data-kind="pitch"] .lane .note')]
+          .sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        notes[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      })()`);
+      await waitFor(`document.querySelectorAll('#inspector .insp-field input[type=range]').length >= 2`);
+      await cdp.evaluate(`(() => {
+        const [vel, pan] = document.querySelectorAll('#inspector .insp-field input[type=range]');
+        vel.value = 0.4; vel.dispatchEvent(new Event('input', { bubbles: true })); vel.dispatchEvent(new Event('change', { bubbles: true }));
+        pan.value = 0.6; pan.dispatchEvent(new Event('input', { bubbles: true })); pan.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      // Multi-select both notes and copy the group.
+      await cdp.evaluate(`(() => {
+        const notes = [...document.querySelectorAll('.track[data-kind="pitch"] .lane .note')]
+          .sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left));
+        notes[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        notes[1].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+      })()`);
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note.multi-selected').length === 2`);
+      const beforePasteLefts = await cdp.evaluate(`[...document.querySelectorAll('.track[data-kind="pitch"] .lane .note')]
+        .map((n) => parseFloat(n.style.left))`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 150));
+
+      // Move the playhead well past both notes, then paste.
+      await cdp.evaluate(`(() => {
+        const t = document.querySelector('.timeline');
+        const rect = t.getBoundingClientRect();
+        t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 30, clientX: rect.left + 600, clientY: rect.top + 5 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 30, clientX: rect.left + 600, clientY: rect.top + 5 }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }))`);
+      // Read straight off the DOM rather than the (debounced, and never fired
+      // by paste itself) autosave draft: velocity is drawn as opacity
+      // (renderPitchTrack) and pan is in the note's own aria-label. Identify
+      // the pasted pair by which columns are new, rather than assuming they
+      // land to the right of both originals — the playhead click's column
+      // depends on colPx/LANE_ORIGIN, which this step doesn't know.
+      await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .lane .note').length === 4`);
+      const domNotes = await cdp.evaluate(`[...document.querySelectorAll('.track[data-kind="pitch"] .lane .note')]
+        .map((n) => ({ left: parseFloat(n.style.left), opacity: parseFloat(n.style.opacity), label: n.getAttribute('aria-label') }))`);
+      const beforeSet = new Set(beforePasteLefts);
+      const pastedNotes = domNotes.filter((n) => !beforeSet.has(n.left));
+      if (pastedNotes.length !== 2) {
+        throw new Error(`expected exactly two pasted notes: ${JSON.stringify({ domNotes, beforePasteLefts })}`);
+      }
+      if (!pastedNotes.some((n) => n.opacity < 0.95)) {
+        throw new Error(`pasting a group should keep a copied note's velocity, got ${JSON.stringify(pastedNotes)}`);
+      }
+      if (!pastedNotes.some((n) => / pan /.test(n.label))) {
+        throw new Error(`pasting a group should keep a copied note's pan, got ${JSON.stringify(pastedNotes)}`);
+      }
+
+      // Same regression, on rhythm hits: a fresh rhythm track (the song's own
+      // kit lane could already hold hundreds of hits) with two stacked hits,
+      // one given a non-default velocity and pan through its inspector.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add rhythm track')).click()`);
+      await new Promise((r) => setTimeout(r, 350));
+      const rLane = `document.querySelector('.track.active .lane')`;
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      for (const y of [8, 25]) {
+        await cdp.evaluate(`{
+          const l = ${rLane};
+          const rect = l.getBoundingClientRect();
+          l.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + 200, clientY: rect.top + ${y} }));
+        }`);
+        await new Promise((r) => setTimeout(r, 180));
+      }
+      await waitFor(`${rLane}.querySelectorAll('.hit').length === 2`);
+      // Plain click only selects while the pen tool is active, same as notes.
+      await cdp.evaluate(`${rLane}.querySelector('.hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+      await waitFor(`document.querySelectorAll('#inspector .insp-field input[type=range]').length >= 2`);
+      await cdp.evaluate(`(() => {
+        const [vel, pan] = document.querySelectorAll('#inspector .insp-field input[type=range]');
+        vel.value = 0.4; vel.dispatchEvent(new Event('input', { bubbles: true })); vel.dispatchEvent(new Event('change', { bubbles: true }));
+        pan.value = 0.6; pan.dispatchEvent(new Event('input', { bubbles: true })); pan.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 200));
+      // The marquee drag below needs the grab tool.
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await cdp.evaluate(`{
+        const l = ${rLane};
+        const rect = l.getBoundingClientRect();
+        const o = { bubbles: true, pointerId: 31, clientY: rect.top + 40 };
+        l.dispatchEvent(new PointerEvent('pointerdown', { ...o, clientX: rect.left + 180 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { ...o, clientX: rect.left + 230 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { ...o, clientX: rect.left + 230 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 250));
+      await waitFor(`${rLane}.querySelectorAll('.hit.multi-selected').length === 2`);
+      const beforePasteHitLefts = await cdp.evaluate(`[...${rLane}.querySelectorAll('.hit')].map((h) => parseFloat(h.style.left))`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`{
+        const t = document.querySelector('.timeline');
+        const rect = t.getBoundingClientRect();
+        t.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 32, clientX: rect.left + 600, clientY: rect.top + 5 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 32, clientX: rect.left + 600, clientY: rect.top + 5 }));
+      }`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }))`);
+      // hitAriaLabel() carries both velocity and pan as text, so the DOM alone
+      // is enough here too — no need to wait on the autosave draft. Identify
+      // the pasted pair by which columns are new (see the note-paste block
+      // above for why "the last two by position" isn't safe to assume).
+      await waitFor(`${rLane}.querySelectorAll('.hit').length === 4`);
+      const domHits = await cdp.evaluate(`[...${rLane}.querySelectorAll('.hit')]
+        .map((h) => ({ left: parseFloat(h.style.left), label: h.getAttribute('aria-label') }))`);
+      const beforeHitSet = new Set(beforePasteHitLefts);
+      const pastedHits = domHits.filter((h) => !beforeHitSet.has(h.left));
+      if (pastedHits.length !== 2) {
+        throw new Error(`expected exactly two pasted hits: ${JSON.stringify({ domHits, beforePasteHitLefts })}`);
+      }
+      if (!pastedHits.some((h) => /velocity/.test(h.label))) {
+        throw new Error(`pasting a group should keep a copied hit's velocity, got ${JSON.stringify(pastedHits)}`);
+      }
+      if (!pastedHits.some((h) => / pan /.test(h.label))) {
+        throw new Error(`pasting a group should keep a copied hit's pan, got ${JSON.stringify(pastedHits)}`);
+      }
+    });
+
     step('Adding a track does not carry the previous track\'s selection into it', async () => {
       await fresh();
       // state.multiSelected is scoped to the active track, but addTrack() set
