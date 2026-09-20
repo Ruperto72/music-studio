@@ -2039,6 +2039,11 @@ const GLYPHS = {
   // controls. A curve stays legible at any size.
   eq:       ['M1 9.5 C5 9.5 6 1.5 12 1.5 C18 1.5 19 9.5 23 9.5'],
   comp:     ['M1 2 L23 5', 'M1 10 L23 7'],                                // dynamic range squeezed into a wedge
+  // A vowel's spectral envelope: three resonant peaks (F1/F2/F3) of
+  // decreasing height, not one smooth curve like `eq` above — a formant
+  // filter is three narrow bandpasses, so the icon is what that actually
+  // looks like rather than another generic response-curve glyph.
+  formant:  ['M1 10 Q3 10 4 2 Q5 10 8 10 Q10 10 11 5 Q12 10 15 10 Q17 10 18 7 Q19 10 23 10'],
   parcomp:  ['M1 3 h7 c4 0 4 3 8 3 h7', 'M1 9 h7 c4 0 4 -3 8 -3'],         // two paths — dry and compressed — blended into one
   // Envelope stages, drawn as one consistent family so they read together:
   // steeper/shallower rises and falls, ending at different heights.
@@ -2695,6 +2700,47 @@ const dutyLabel = (v) => (v * 100).toFixed(v === 0.125 ? 1 : 0) + '%';
 // rather than the raw one — the usual console order.
 const DEFAULT_TRACK_EQ = { low: 0, mid: 0, high: 0 }; // dB, shelving/peaking gain
 
+// Per-track formant filter insert (state.formant[track] absent -> this) —
+// the last insert in the channel chain (see createChanFormant()). Unlike the
+// EQ/Comp/Crush/Tremolo above, this doesn't shape a signal already close to
+// what it started as; it rebuilds the tone almost entirely from three narrow
+// bandpass filters at vowel-like resonance frequencies, the classic way to
+// put an organic, vocal-tract or wind-instrument-body character on a
+// subtractive-synth tone that otherwise reads as a flat wave. amount: 0
+// leaves the dry signal untouched (the usual "neutral by default" contract) —
+// vowel only matters once amount is turned up.
+//
+// Frequencies are the Peterson & Barney five-vowel reference chart (adult
+// voice, F1/F2/F3 in Hz) — a table exactly like DRUM_KITS or RHYTHM_PATTERNS:
+// a new vowel is one row, not a new formula. `vowel` (0..1) scans across it;
+// formantAt() below blends the two neighbours nearest a fractional position
+// so the resonances glide continuously, the way a real vocal tract's do,
+// rather than snapping between five fixed settings.
+const FORMANT_VOWELS = [
+  { name: 'AH', f1: 730, f2: 1090, f3: 2440 }, // "father"
+  { name: 'EH', f1: 530, f2: 1840, f3: 2480 }, // "bed"
+  { name: 'EE', f1: 270, f2: 2290, f3: 3010 }, // "beet"
+  { name: 'OH', f1: 570, f2: 840, f3: 2410 },  // "boat"
+  { name: 'OO', f1: 300, f2: 870, f3: 2240 },  // "boot"
+];
+function formantAt(vowel) {
+  const n = FORMANT_VOWELS.length;
+  const pos = vowel * (n - 1);
+  const i = Math.min(Math.floor(pos), n - 2);
+  const frac = pos - i;
+  const a = FORMANT_VOWELS[i], b = FORMANT_VOWELS[i + 1];
+  return {
+    f1: a.f1 + (b.f1 - a.f1) * frac,
+    f2: a.f2 + (b.f2 - a.f2) * frac,
+    f3: a.f3 + (b.f3 - a.f3) * frac,
+  };
+}
+// The knob's readout: the nearest of the five named vowels rather than a bare
+// percentage, since "43%" says nothing about what the filter is doing and
+// "AH" does.
+const formantVowelLabel = (vowel) => FORMANT_VOWELS[Math.round(vowel * (FORMANT_VOWELS.length - 1))].name;
+const DEFAULT_FORMANT = { vowel: 0, amount: 0 };
+
 // Master-bus tone shaping, applied after the mix (state.masterEQ/masterComp,
 // song-global rather than per-track — see getMasterEQ()/getMasterComp()).
 // Defaults are chosen to be fully transparent (0dB EQ; ratio 1:1 means the
@@ -3236,6 +3282,7 @@ const state = {
   vibrato: {},               // id -> { rate, depth } (tonal tracks only) — see DEFAULT_VIBRATO
   duty: BOOT.duty,           // id -> pulse width (tonal tracks on the `square` waveform); absent = plain 50% square
   eq: {},                    // id -> { low, mid, high } dB (any track kind) — see DEFAULT_TRACK_EQ
+  formant: {},               // id -> { vowel, amount } (any track kind) — see DEFAULT_FORMANT
   activeFx: {},              // id -> { [effectKey]: { bypassed } } — which TRACK_FX_REGISTRY
                               // entries the FX panel shows as insert chips, and whether each is
                               // muted without losing its dialled-in value; see visibleFxFor()/
@@ -3275,7 +3322,7 @@ const state = {
 // The seeded maps (tracks/gains/waveform/pan/mute/solo) are deliberately not
 // in the list: those get one entry per track with a real default, so they are
 // rebuilt from the track list rather than cleared.
-const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'arpRate', 'sync', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'kit'];
+const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'arpRate', 'sync', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'formant', 'activeFx', 'kit'];
 const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k] = {}; };
 
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
@@ -3807,12 +3854,15 @@ function setTrackVibrato(track, patch) { state.vibrato[track] = { ...getTrackVib
 function applyTrackVibrato() { /* takes effect on the next scheduled note */ }
 function getTrackEq(track) { return state.eq[track] || DEFAULT_TRACK_EQ; }
 function setTrackEq(track, patch) { state.eq[track] = { ...getTrackEq(track), ...patch }; }
+function getTrackFormant(track) { return state.formant[track] || DEFAULT_FORMANT; }
+function setTrackFormant(track, patch) { state.formant[track] = { ...getTrackFormant(track), ...patch }; }
 const pctFormat = (v) => Math.round(v * 100) + '%';
 // Same rendering as the master EQ's own knobs (see MASTER_FX_REGISTRY's
 // 'eq' entry), so the two EQ panels don't show the same unit two different ways.
 const dbFormat = (v) => v.toFixed(1) + 'dB';
-// Single source of truth for the FX panel's five per-track effects
-// (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo) — one entry per
+// Single source of truth for the FX panel's per-track effects
+// (Delay/Chorus/Reverb send, EQ, Compressor, Bitcrush, Tremolo, Vibrato,
+// Formant) — one entry per
 // state.* slice, in the order the panel renders them (a divider goes
 // between each group). Drives both applySavedMix()'s load/validate logic
 // and buildFxPanel()'s rendering, so adding a parameter to an existing
@@ -3886,6 +3936,19 @@ const TRACK_FX_REGISTRY = [
     ],
   },
   {
+    // The last insert in the chain (see createChanFormant()) — three parallel
+    // bandpass filters at vowel-formant frequencies, summed and blended in
+    // against the dry signal. Amount 0 is the usual no-op; Vowel only matters
+    // once Amount is turned up, the same relationship Tremolo's Rate has to
+    // its Depth.
+    key: 'formant', label: 'Formant', icon: 'formant',
+    get: getTrackFormant, set: setTrackFormant, apply: applyTrackFormant,
+    fields: [
+      { param: 'vowel', label: 'Vowel', title: 'Scans across five vowel formants (AH-EH-EE-OH-OO)', min: 0, max: 1, step: 0.02, format: formantVowelLabel, clamp: true },
+      { param: 'amount', label: 'Amount', title: 'Blend of the formant-filtered signal against the dry one — 0% = off', min: 0, max: 1, step: 0.02, format: pctFormat, clamp: true },
+    ],
+  },
+  {
     // The three sends below register as separate insert chips — a real mixer
     // picks Delay/Chorus/Reverb independently — but all three still read and
     // write one shared state.fxSend[track] object via
@@ -3949,6 +4012,7 @@ const FX_FIELD_DEFAULTS = {
   crush: DEFAULT_TRACK_CRUSH,
   tremolo: DEFAULT_TREMOLO,
   vibrato: DEFAULT_VIBRATO,
+  formant: DEFAULT_FORMANT,
   sendDelay: { delay: DEFAULT_FX_SEND.delay },
   sendChorus: { chorus: DEFAULT_FX_SEND.chorus },
   sendReverb: { reverb: DEFAULT_FX_SEND.reverb },
@@ -4097,6 +4161,7 @@ const effectiveTrackComp = (id) => fxEffective(id, 'comp', getTrackComp, DEFAULT
 const effectiveTrackCrush = (id) => fxEffective(id, 'crush', getTrackCrush, DEFAULT_TRACK_CRUSH);
 const effectiveTrackTremolo = (id) => fxEffective(id, 'tremolo', getTrackTremolo, DEFAULT_TREMOLO);
 const effectiveTrackVibrato = (id) => fxEffective(id, 'vibrato', getTrackVibrato, DEFAULT_VIBRATO);
+const effectiveTrackFormant = (id) => fxEffective(id, 'formant', getTrackFormant, DEFAULT_FORMANT);
 // The three sends bypass independently (sendDelay/sendChorus/sendReverb are
 // separate chips on one shared state.fxSend[track] object), so this can't
 // delegate to the single-key fxEffective() above — it merges per field.
@@ -4591,6 +4656,11 @@ function removeTrack(id) {
   if (chanEq[id]) {
     for (const band of Object.values(chanEq[id])) { try { band.disconnect(); } catch { /* already gone */ } }
     delete chanEq[id];
+  }
+  // Same reason: chanFormant[id] is a { dry, wet, f1, f2, f3, out } object.
+  if (chanFormant[id]) {
+    for (const node of Object.values(chanFormant[id])) { try { node.disconnect(); } catch { /* already gone */ } }
+    delete chanFormant[id];
   }
   // chanTremoloLfo[id] is a running OscillatorNode, not covered by the
   // disconnect loop above — dropping the reference alone would leave it
@@ -9645,10 +9715,15 @@ const voiceInChannel = new Map(); // voice-in GainNode -> that channel's chanGai
 let chanPan = {};    // id -> StereoPannerNode
 let chanAnalyser = {}; // id -> AnalyserNode (VU)
 let chanEq = {}; // id -> { low, mid, high } BiquadFilterNodes, the first insert: chanGain[id] -> chanEq[id].low -> .mid -> .high -> chanComp[id]
-let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanEq[id] -> chanComp[id] -> chanCrush[id]? -> chanTremolo[id] -> chanPan[id]/chanAnalyser[id]/the FX sends
+let chanComp = {}; // id -> DynamicsCompressorNode, inserted chanEq[id] -> chanComp[id] -> chanCrush[id]? -> chanTremolo[id] -> chanFormant[id] -> chanPan[id]/chanAnalyser[id]/the FX sends
 let chanCrush = {}; // id -> AudioWorkletNode (downsample-processor) once loaded, inserted chanComp[id] -> chanCrush[id] -> chanTremolo[id] — see ensureTrackCrusher()
-let chanTremolo = {}; // id -> GainNode, the last insert before chanPan[id]/chanAnalyser[id]/the FX sends — see createChanTremolo()
+let chanTremolo = {}; // id -> GainNode, inserted chanCrush[id]? -> chanTremolo[id] -> chanFormant[id] — see createChanTremolo()
 let chanTremoloLfo = {}, chanTremoloLfoGain = {}; // id -> OscillatorNode/GainNode driving chanTremolo[id].gain
+// id -> { dry, wet, f1, f2, f3, out } — a plain object rather than one node,
+// the same reason chanEq[id] is: several internal nodes need their own
+// cleanup in removeTrack(). `out` is the last insert before chanPan[id]/
+// chanAnalyser[id]/the FX sends — see createChanFormant().
+let chanFormant = {};
 // id -> a free-running OscillatorNode at PWM_RATE, started with the channel and
 // never restarted. Notes on a `pwm` track scale it by their own period and feed
 // it into their pulse-width delay, so the sweep runs continuously across the
@@ -9656,9 +9731,9 @@ let chanTremoloLfo = {}, chanTremoloLfoGain = {}; // id -> OscillatorNode/GainNo
 // notes sound like a fixed 50% duty — the whole point of PWM is the movement).
 // It is only read, never heard directly, so it costs nothing on other tracks.
 let chanPwmLfo = {};
-let trackDelaySend = {};  // id -> GainNode, chanTremolo[id] -> shared delay bus (see createTrackFxSends())
-let trackChorusSend = {}; // id -> GainNode, chanTremolo[id] -> shared chorus bus
-let trackReverbSend = {}; // id -> GainNode, chanTremolo[id] -> shared reverb bus
+let trackDelaySend = {};  // id -> GainNode, chanFormant[id].out -> shared delay bus (see createTrackFxSends())
+let trackChorusSend = {}; // id -> GainNode, chanFormant[id].out -> shared chorus bus
+let trackReverbSend = {}; // id -> GainNode, chanFormant[id].out -> shared reverb bus
 let masterAnalyser = null;
 let spectrumAnalyser = null; // wider fftSize, post-FX — drives the spectrum canvas
 let lufsShelf = null, lufsHighpass = null, lufsAnalyser = null; // K-weighting chain — see computeLufs()
@@ -9848,6 +9923,40 @@ function createChanTremolo(id) {
   chanTremoloLfo[id].connect(chanTremoloLfoGain[id]).connect(chanTremolo[id].gain);
   chanTremoloLfo[id].start();
 }
+// Per-track formant filter: three parallel bandpass filters at vowel-formant
+// frequencies (see FORMANT_VOWELS/formantAt()), summed into `wet` and blended
+// against the untouched `dry` path — a real dry/wet split rather than one
+// signal reshaped in place, since amount 0 has to mean "the filters aren't
+// there" and a bandpass bank narrow enough to sound like a vowel removes far
+// too much for a single shared signal to fade between filtered and not.
+// `out` is both nodes' common destination and the fixed anchor everything
+// downstream (chanPan[id]/chanAnalyser[id]/createTrackFxSends()) connects
+// from — the same role chanTremolo[id] played before this was appended after
+// it. A plain object rather than one node, like chanEq[id], so
+// removeTrack() can disconnect every part of it explicitly. Takes its input
+// from chanTremolo[id] directly (so createChanTremolo() must have run
+// first, same ordering requirement createChanComp() has on createChanEq()),
+// rather than through an explicit inputNode/outputNode pair the way
+// ensureTrackCrusher() does — there's no async worklet load to bypass here.
+function createChanFormant(id) {
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 10;
+  const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 10;
+  const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 10;
+  const out = ctx.createGain();
+  chanTremolo[id].connect(dry);
+  chanTremolo[id].connect(f1); chanTremolo[id].connect(f2); chanTremolo[id].connect(f3);
+  dry.connect(out);
+  f1.connect(wet); f2.connect(wet); f3.connect(wet);
+  wet.connect(out);
+  const fx = effectiveTrackFormant(id);
+  const freqs = formantAt(fx.vowel);
+  f1.frequency.value = freqs.f1; f2.frequency.value = freqs.f2; f3.frequency.value = freqs.f3;
+  dry.gain.value = 1 - fx.amount;
+  wet.gain.value = fx.amount;
+  chanFormant[id] = { dry, wet, f1, f2, f3, out };
+}
 // The pulse-width sweep every `pwm` note on this track shares. Unlike the
 // tremolo LFO above this one is connected to nothing here — notes reach for it
 // themselves via getTrackVoice(), each scaling it into its own period — so it
@@ -9886,21 +9995,21 @@ function ensureTrackCrusher(id, c, inputNode, outputNode) {
     chanCrush[id] = node;
   }).catch(() => { /* module failed to load — stays bypassed */ });
 }
-// Per-track taps into the three buses above, from chanTremolo[id] — the last
-// insert in the chain (compressor -> bitcrush -> tremolo) — rather than
-// chanGain[id] directly. Called once per channel, right after chanTremolo[id]
-// exists, from buildChannelChain() below.
+// Per-track taps into the three buses above, from chanFormant[id].out — the
+// last insert in the chain (compressor -> bitcrush -> tremolo -> formant) —
+// rather than chanGain[id] directly. Called once per channel, right after
+// chanFormant[id] exists, from buildChannelChain() below.
 function createTrackFxSends(id) {
   const s = effectiveFxSend(id);
   trackDelaySend[id] = ctx.createGain();
   trackDelaySend[id].gain.value = s.delay;
-  chanTremolo[id].connect(trackDelaySend[id]).connect(fxDelayBus);
+  chanFormant[id].out.connect(trackDelaySend[id]).connect(fxDelayBus);
   trackChorusSend[id] = ctx.createGain();
   trackChorusSend[id].gain.value = s.chorus;
-  chanTremolo[id].connect(trackChorusSend[id]).connect(fxChorusBus);
+  chanFormant[id].out.connect(trackChorusSend[id]).connect(fxChorusBus);
   trackReverbSend[id] = ctx.createGain();
   trackReverbSend[id].gain.value = s.reverb;
-  chanTremolo[id].connect(trackReverbSend[id]).connect(fxReverbBus);
+  chanFormant[id].out.connect(trackReverbSend[id]).connect(fxReverbBus);
 }
 
 // Builds the song-global part of the audio graph on a fresh context: the
@@ -9931,8 +10040,8 @@ function buildMasterBus(c) {
   return Promise.all([crushReady, syncReady]);
 }
 // Builds one track's full channel chain — gain (fader) -> compressor ->
-// bitcrush? -> tremolo -> panner (connected to masterGain) + the three FX
-// sends, plus an optional VU-meter analyser tapped off the same
+// bitcrush? -> tremolo -> formant -> panner (connected to masterGain) + the
+// three FX sends, plus an optional VU-meter analyser tapped off the same
 // post-insert-chain point as the sends/panner. Shared by ensureCtx() and
 // ensureChannelNodes() (live playback, `withAnalyser: true`) and
 // renderSongToWav() (offline export, `withAnalyser: false` — no meter to
@@ -9951,11 +10060,12 @@ function buildChannelChain(c, id, withAnalyser) {
   createChanTremolo(id);
   createChanPwmLfo(id);
   const crushReady = ensureTrackCrusher(id, c, chanComp[id], chanTremolo[id]);
-  chanTremolo[id].connect(chanPan[id]);
+  createChanFormant(id);
+  chanFormant[id].out.connect(chanPan[id]);
   if (withAnalyser) {
     chanAnalyser[id] = c.createAnalyser();
     chanAnalyser[id].fftSize = 256;
-    chanTremolo[id].connect(chanAnalyser[id]);
+    chanFormant[id].out.connect(chanAnalyser[id]);
   }
   createTrackFxSends(id);
   return crushReady;
@@ -10175,6 +10285,18 @@ function applyTrackTremolo() {
     chanTremoloLfo[ch].frequency.value = t.rate;
   }
 }
+function applyTrackFormant() {
+  for (const ch of ALL_TRACKS) {
+    if (!chanFormant[ch]) continue;
+    const fx = effectiveTrackFormant(ch);
+    const freqs = formantAt(fx.vowel);
+    chanFormant[ch].f1.frequency.value = freqs.f1;
+    chanFormant[ch].f2.frequency.value = freqs.f2;
+    chanFormant[ch].f3.frequency.value = freqs.f3;
+    chanFormant[ch].dry.gain.value = 1 - fx.amount;
+    chanFormant[ch].wet.gain.value = fx.amount;
+  }
+}
 
 // Schedule an automation curve's points as native AudioParam ramps for the
 // chunk [fromCol, toCol) starting at startAt — called once per playback chunk
@@ -10355,6 +10477,30 @@ function mulberry32(seed) {
 // so a song with no crash would get a different reverb. Arbitrary but fixed
 // seeds; changing one changes that sound.
 const noiseRandom = (seed) => mulberry32(seed);
+// Two things a plain decaying noise burst does not have, and a real room
+// always does, both added to the impulse rather than replacing it:
+//
+// Early reflections — a handful of discrete, separated taps in the first
+// REVERB_EARLY_TIME seconds, before the diffuse tail below has built up any
+// density. This is what actually reads as "a room" of some size and shape;
+// the diffuse tail alone, however it is shaped, is indistinguishable from a
+// plain decaying noise burst, because a burst has no early arrivals for the
+// ear to individually locate.
+//
+// Frequency-dependent decay — a real tail loses its high end faster than its
+// low end (air absorption and most surfaces both attenuate treble more than
+// bass), so it darkens as it decays. The old tail was the same broadband
+// noise the whole way down, which is what read as artificial regardless of
+// how its amplitude envelope was shaped. A one-pole lowpass baked into the
+// buffer at generation time, its cutoff falling from REVERB_BRIGHT_HZ to
+// REVERB_DARK_HZ over the tail's length, gets that without a filter node in
+// the live graph — the convolver still carries the whole effect.
+const REVERB_EARLY_COUNT = 14;    // discrete taps per channel
+const REVERB_EARLY_TIME = 0.07;   // seconds — window they land in
+const REVERB_EARLY_DECAY = 0.025; // seconds — how fast a later tap is quieter
+const REVERB_EARLY_LEVEL = 0.9;   // convolver normalization absorbs the exact level
+const REVERB_BRIGHT_HZ = 12000;   // lowpass cutoff at the top of the tail
+const REVERB_DARK_HZ = 1200;      // and at the bottom
 let reverbImpulse = null;
 function ensureReverbImpulse() {
   if (!reverbImpulse) {
@@ -10362,12 +10508,26 @@ function ensureReverbImpulse() {
     reverbImpulse = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       // A separate stream per channel, so the two stay decorrelated (one
-      // stream read twice would give an identical, mono-sounding tail).
+      // stream read twice would give an identical, mono-sounding tail). Early
+      // reflections draw from their own stream rather than the tail's, so
+      // adding or resizing one component doesn't shift the other's sequence.
       const rnd = noiseRandom(0x5EED + ch);
       const data = reverbImpulse.getChannelData(ch);
+      let lp = 0;
       for (let i = 0; i < len; i++) {
         const t = i / len;
-        data[i] = (rnd() * 2 - 1) * Math.pow(1 - t, 2.5);
+        const cutoff = REVERB_BRIGHT_HZ * Math.pow(REVERB_DARK_HZ / REVERB_BRIGHT_HZ, t);
+        const a = 1 - Math.exp((-2 * Math.PI * cutoff) / ctx.sampleRate);
+        const x = (rnd() * 2 - 1) * Math.pow(1 - t, 2.5);
+        lp += a * (x - lp);
+        data[i] = lp;
+      }
+      const erRnd = noiseRandom(0xE271 + ch);
+      for (let n = 0; n < REVERB_EARLY_COUNT; n++) {
+        const time = erRnd() * REVERB_EARLY_TIME;
+        const idx = Math.min(len - 1, Math.floor(time * ctx.sampleRate));
+        const amp = REVERB_EARLY_LEVEL * Math.exp(-time / REVERB_EARLY_DECAY) * (erRnd() < 0.5 ? -1 : 1);
+        data[idx] += amp;
       }
     }
   }

@@ -107,9 +107,9 @@ function auditBundledSongs(repoRoot) {
   // table. Grouped by dataKey (falls back to key) since the three send
   // entries all share state.fxSend/data.fxSend — see applySavedMix()'s
   // matching group-by in index.html. EFFECT_KEYS/TONAL_ONLY_EFFECTS keep the
-  // ungrouped per-entry list (8 keys) for validating activeFx's own
+  // ungrouped per-entry list (9 keys) for validating activeFx's own
   // effect-key references below, which is a level below what `registry`
-  // (grouped by storage, 6 keys after the split) can answer.
+  // (grouped by storage, 7 keys after the split) can answer.
   const registry = {};
   const EFFECT_KEYS = [];
   const TONAL_ONLY_EFFECTS = [];
@@ -132,7 +132,7 @@ function auditBundledSongs(repoRoot) {
       if (f && key) registry[key].push({ param: f[1], min: +f[2], max: +f[3], optional: /optional: true/.test(line) });
     }
     if (!Object.keys(registry).length) throw new Error('read no effects out of TRACK_FX_REGISTRY');
-    if (EFFECT_KEYS.length !== 8) throw new Error(`expected 8 TRACK_FX_REGISTRY entries, read ${EFFECT_KEYS.length}: ${EFFECT_KEYS.join(',')}`);
+    if (EFFECT_KEYS.length !== 9) throw new Error(`expected 9 TRACK_FX_REGISTRY entries, read ${EFFECT_KEYS.length}: ${EFFECT_KEYS.join(',')}`);
   }
 
   const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty'];
@@ -1759,13 +1759,16 @@ async function main() {
       // FX panel: every TRACK_FX_REGISTRY entry is offered, in the fixed
       // registry order, each with a glyphed chip; adding all of them opens
       // all their popovers (any number can be open at once), so the total
-      // knob count across all of them is the same 13/15 the old always-shown
-      // slider grid asserted. An earlier step may already have opened this
-      // panel, in which case clicking the button would close it.
+      // knob count across all of them is just the sum of every entry's own
+      // field count (15 on a rhythm track, 17 on a tonal one once Vibrato's
+      // two join in) — asserted below so a field silently added to or
+      // dropped from the registry doesn't pass unnoticed. An earlier step
+      // may already have opened this panel, in which case clicking the
+      // button would close it.
       await waitFor(`!!document.querySelector('.th-fx-panel')`);
       const panelSel = `document.querySelector('.th-fx-panel')`;
       const tonal = await cdp.evaluate(`(${panelSel}).closest('.track').dataset.kind === 'pitch'`);
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 9; i++) {
         const added = await cdp.evaluate(`(() => {
           const addBtn = (${panelSel}).querySelector('.th-fx-add-btn');
           if (!addBtn) return false;
@@ -1792,12 +1795,12 @@ async function main() {
           fits: panel.scrollWidth <= panel.closest('.track-header').clientWidth,
         };
       })()`);
-      const wantFx = ['EQ', 'Comp', 'Bitcrush', 'Tremolo', 'Delay', 'Chorus', 'Reverb'].concat(tonal ? ['Vibrato'] : []);
+      const wantFx = ['EQ', 'Comp', 'Bitcrush', 'Tremolo', 'Formant', 'Delay', 'Chorus', 'Reverb'].concat(tonal ? ['Vibrato'] : []);
       if (fx.labels.join('|') !== wantFx.join('|')) {
         throw new Error(`unexpected FX chips on a ${tonal ? 'tonal' : 'rhythm'} track: ${JSON.stringify(fx.labels)}`);
       }
       if (!fx.drawn) throw new Error('every FX chip needs a glyph');
-      const wantKnobs = tonal ? 15 : 13;
+      const wantKnobs = tonal ? 17 : 15;
       if (fx.knobs !== wantKnobs) throw new Error(`expected ${wantKnobs} FX knobs across every open popover, got ${fx.knobs}`);
       if (!fx.fits) throw new Error('the FX panel overflows the track header');
       // Leave this track's panel clean for later steps that assume a fresh one.
@@ -3497,7 +3500,7 @@ async function main() {
       // entries at different keys holding the same art still fails.
       await goto(APP_URL);
       await waitFor(`document.querySelectorAll('.track').length === 5`);
-      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
+      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Formant', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
       const dupes = await cdp.evaluate(`(() => {
         const chips = [...document.querySelectorAll('.track')[0].querySelectorAll('.th-fx-chip')];
         const seen = new Map();
@@ -3510,7 +3513,7 @@ async function main() {
         }
         return { dupes: out, n: chips.length };
       })()`);
-      if (dupes.n !== 7) throw new Error(`expected seven chips, got ${dupes.n}`);
+      if (dupes.n !== 8) throw new Error(`expected eight chips, got ${dupes.n}`);
       if (dupes.dupes.length) throw new Error(`every chip needs its own glyph: ${JSON.stringify(dupes.dupes)}`);
 
       // Master's five groups are icon+label rather than icon-only, but two
@@ -3530,19 +3533,19 @@ async function main() {
 
     step('Track header: the chip row stays compact with every effect in use', async () => {
       // The whole point of moving editing into the strip: a chip is a letter
-      // and an icon, so seven of them wrap onto two short lines instead of
-      // six long ones (152px of every track header before this).
+      // and an icon, so eight of them wrap onto two-three short lines instead
+      // of long ones (152px of every track header before this).
       await goto(APP_URL);
       await waitFor(`document.querySelectorAll('.track').length === 5`);
-      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
+      for (const label of ['EQ', 'Comp', 'Bitcrush', 'Formant', 'Delay', 'Chorus', 'Reverb', 'Vibrato']) await addFxEffect(label);
       const row = await cdp.evaluate(`(() => {
         const r = document.querySelectorAll('.track')[0].querySelector('.th-fx-chip-row');
         const chips = [...r.querySelectorAll('.th-fx-chip')];
         return { h: Math.round(r.getBoundingClientRect().height), n: chips.length,
                  widest: Math.round(Math.max(...chips.map(c => c.getBoundingClientRect().width))) };
       })()`);
-      if (row.n !== 7) throw new Error(`expected seven chips, got ${row.n}`);
-      if (row.h > 70) throw new Error(`seven chips should fit in ~two lines, the row is ${row.h}px tall`);
+      if (row.n !== 8) throw new Error(`expected eight chips, got ${row.n}`);
+      if (row.h > 100) throw new Error(`eight chips should fit in ~three lines, the row is ${row.h}px tall`);
       if (row.widest > 60) throw new Error(`a chip should be a letter and an icon, the widest is ${row.widest}px`);
     });
 
