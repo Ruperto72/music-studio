@@ -1956,8 +1956,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
 const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'sawtri', 'sync', 'noise', 'ringmod', 'fm']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', sawtri: 'Saw+Tri', sync: 'Hard sync', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
+const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'sawtri', 'sync', 'pluck', 'noise', 'ringmod', 'fm']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', sawtri: 'Saw+Tri', sync: 'Hard sync', pluck: 'Pluck', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
 
 // ---------- Icon glyphs ----------
 // One table of tiny inline-SVG shapes, so the same concept looks the same
@@ -2002,6 +2002,12 @@ const GLYPHS = {
   // interrupting another" rather than of any single wave.
   sync:     ['M1 9 L5 3 V9 L9 4.5 V9 L13 3 V9 L17 4.5 V9 L21 3 V9 L23 7',
              'M5 2 V10', 'M13 2 V10', 'M21 2 V10'],
+  // Not a periodic wave at all: a sharp pluck transient followed by a
+  // decaying oscillation settling to silence, since that shape — attack then
+  // damping, not a repeating cycle — is what a Karplus-Strong string actually
+  // is. Distinct from `sine`'s constant-amplitude repeat and from `fm`'s
+  // compressing-but-undamped period.
+  pluck:    ['M1 6 L2 1 L3 9 L4 6 Q6 2.3 8 6 Q10 4 12 6 Q14 5 16 6 Q18 5.6 20 6 H23'],
   // Not a repeating shape at all. The first attempt used even spacing and even
   // amplitudes, which at 35px read as another "WWW" and was hard to tell from
   // the FM glyph two buttons along; the spacing and the excursions are both
@@ -9272,6 +9278,16 @@ const BUILTIN_PRESETS = [
     fm: { ratio: 2, depth: 0 },
   },
   {
+    name: 'Upright bass',
+    // The pluck's own decay does most of the work; the envelope just needs to
+    // stay out of its way; a gentle filter closes it down further so a fast
+    // bassline doesn't stack too many still-ringing notes into a smear.
+    waveform: 'pluck', duty: null,
+    adsr: { attack: 0, decay: 0.4, sustain: 0.5, release: 0.3 },
+    filter: { cutoff: 2200, q: 0.707, envAmount: 0.15 },
+    fm: { ratio: 2, depth: 0 },
+  },
+  {
     name: 'Chip lead',
     // The house sound, as a row like the rest — so "back to what it was" is a
     // click rather than a hunt through the panels.
@@ -10778,6 +10794,121 @@ function createPwmSource(freq, sweepLfo) {
   };
 }
 
+// Karplus-Strong plucked string: a short noise burst excites a delay line
+// closed on itself through a damping lowpass and a feedback gain, so the loop
+// rings at the delay's own period (freq = 1/delayTime) rather than at a
+// waveform an oscillator draws. Every other waveform here is a repeating
+// shape; this is the one that instead physically models an event exciting a
+// resonator, which is why strings and plucked basses read as an instrument
+// rather than a wave — see DESIGN doc discussion in CLAUDE.md's synthesis
+// section for the tradeoff against a real sample.
+//
+// A real string rings longer at low pitches for the same per-trip loss
+// (fewer round trips per second), which is physically honest but unusable in
+// a sequencer: derived that way, a 55Hz note rings for over twenty seconds
+// and drowns whatever plays after it. PLUCK_DECAY_TIME instead fixes how long
+// every note rings regardless of pitch, and the per-note feedback gain is
+// solved backwards from that target — a deliberate trade of realism for a
+// predictable, playable note, the same kind of compromise PWM's duty-doesn't-
+// track-bend already makes.
+const PLUCK_MIN_FREQ = 20;      // floor for the delay-length math, not a track limit
+const PLUCK_MAX_DELAY = 0.08;   // seconds — covers down past the lowest reachable note (55Hz)
+const PLUCK_DECAY_TIME = 1.6;   // seconds to ring down to -60dB, independent of pitch
+const PLUCK_DAMP_HZ = 3000;     // in-loop lowpass: purely timbral, the "twang settling dull" character
+const PLUCK_LEVEL = 0.35;       // levelled against the other waveforms — see verify.js's band check
+// The per-note feedback gain that reaches -60dB after PLUCK_DECAY_TIME
+// seconds at this frequency: solve feedback^(time/period) = 0.001 for feedback.
+const pluckFeedback = (freq) => Math.exp(Math.log(0.001) / (PLUCK_DECAY_TIME * freq));
+function createPluckSource(freq) {
+  const f = Math.max(freq, PLUCK_MIN_FREQ);
+  const period = 1 / f;
+
+  // The excitation: a burst of the same broadband noise the drum kit's
+  // snare/hihat/shaker already use (ensureNoiseBuffer(), 0.1s, seeded), gated
+  // down to a short pick-like transient rather than played at full length.
+  // Scaled to the note's own period rather than a fixed duration: a fixed
+  // ~15ms burst is one pluck at a low bass note's pitch but several cycles'
+  // worth of continuous excitation at a higher one, which drives the loop the
+  // way a sustained tone would rather than a single pluck — measured, that
+  // built up peaks nearly 9dB over every other waveform even after the loop's
+  // overall level was brought into line on RMS alone.
+  const exciteAttack = Math.min(period * 0.3, 0.004);
+  const exciteRelease = Math.min(period * 0.7, 0.01);
+  const burst = ctx.createBufferSource();
+  burst.buffer = ensureNoiseBuffer();
+  const burstGain = ctx.createGain();
+  burstGain.gain.value = 0;
+  burst.connect(burstGain);
+
+  const sum = ctx.createGain();
+  const delay = ctx.createDelay(PLUCK_MAX_DELAY);
+  delay.delayTime.value = period;
+  const damping = ctx.createBiquadFilter();
+  damping.type = 'lowpass';
+  damping.frequency.value = PLUCK_DAMP_HZ;
+  const feedback = ctx.createGain();
+  feedback.gain.value = pluckFeedback(f);
+
+  burstGain.connect(sum);
+  sum.connect(delay);
+  delay.connect(damping);
+  damping.connect(feedback);
+  feedback.connect(sum);
+
+  // A pluck's whole point is a loud onset over a quiet decay — a high crest
+  // factor by nature, unlike every other waveform here, which repeats the
+  // same cycle for as long as the note lasts, and levelling that onset down
+  // to match a sustained tone's peak would flatten the exact shape that makes
+  // it read as a plucked string rather than a hum. Both a DynamicsCompressor
+  // (envelope follower reacting over tens of milliseconds — longer than this
+  // loop's own period at a bass pitch, so it re-triggered on the ringing
+  // itself) and a static per-sample clip curve (the elevated amplitude lasts
+  // a sizeable fraction of the decay, not one spike, so a knee low enough to
+  // touch the peak crushed the tail too) ended up quieting the whole note by
+  // 15+dB rather than shaving the transient — see verify.js's own wider peak
+  // band for `pluck` and why.
+  const out = ctx.createGain();
+  out.gain.value = PLUCK_LEVEL;
+  damping.connect(out);
+
+  // A delay line's pitch has no native exponential-detune combination the
+  // way an oscillator's `frequency`/`detune` pair does (that multiply is
+  // built into the browser's oscillator; delayTime is just a plain seconds
+  // value with nothing else to combine it with). scheduleTone()'s chorus
+  // path sets `detune.value` unconditionally, so this stands in as a real,
+  // settable AudioParam that simply isn't wired to anything — chorus still
+  // thickens the loop's own two independent noise excitations, it just
+  // doesn't detune them apart.
+  const detuneNode = ctx.createGain();
+
+  return {
+    out, pitch: delay.delayTime, toPitch: (hz) => 1 / Math.max(hz, PLUCK_MIN_FREQ), detune: detuneNode.gain,
+    start: (t) => {
+      burst.start(t);
+      burstGain.gain.setValueAtTime(0, t);
+      burstGain.gain.linearRampToValueAtTime(1, t + exciteAttack);
+      burstGain.gain.linearRampToValueAtTime(0, t + exciteAttack + exciteRelease);
+      // The loop rings on its own after the burst — cleaned up on `ended`
+      // below, not here, since the ring outlasts the excitation by design.
+      burst.stop(t + PLUCK_DECAY_TIME + 0.3);
+    },
+    // The note's own `dur` is deliberately not used to cut the ring short:
+    // the downstream per-note ADSR/release already shapes what the ear hears
+    // by the time the note is meant to end, the same way a real bass note
+    // keeps resonating after the string is released. This only tears the
+    // *loop's own nodes* down once that ring has actually decayed away —
+    // `ended` fires in real time when `burst.stop()` above is reached, unlike
+    // `stop(t)` itself, which runs at schedule time (see the PWM sweep's own
+    // tap-off for the same distinction and the leak that came from getting
+    // it backwards).
+    stop: () => {
+      burst.addEventListener('ended', () => {
+        try { sum.disconnect(); delay.disconnect(); damping.disconnect(); feedback.disconnect(); burstGain.disconnect(); out.disconnect(); detuneNode.disconnect(); }
+        catch { /* already gone */ }
+      });
+    },
+  };
+}
 // Builds a note's sound source. Oscillators carry pitch in Hz on `frequency`;
 // the noise source is a looping buffer whose `playbackRate` sets how often the
 // loop repeats, so its pitch parameter is in a different unit entirely.
@@ -10889,6 +11020,7 @@ function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync) {
     };
   }
   if (oscType === 'pwm') return createPwmSource(freq, sweepLfo);
+  if (oscType === 'pluck') return createPluckSource(freq);
   const osc = ctx.createOscillator();
   setOscWave(osc, oscType, duty);
   if (oscType !== 'ringmod') {
