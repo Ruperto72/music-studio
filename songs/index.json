@@ -93,5 +93,10 @@
     "file": "space-sfx.json",
     "name": "Retro SFX Bank",
     "desc": "A sound-effect bank for a retro space shooter, not a song — one 8-bit sci-fi effect per track, played back to back so each can be previewed and reused on its own: a three-shot laser (square wave with a fast pitch-bend swoop), a filtered-noise explosion with a synced crash accent, a sawtooth engine drone with tremolo, a four-note powerup arpeggio, a ring-modulated bitcrushed shield hit, a bending-square alarm klaxon, and an FM teleport warp with chorus."
+  },
+  {
+    "file": "vowel-and-string.json",
+    "name": "Vowel & String",
+    "desc": "An 8-bar A minor sketch built to demonstrate what a purely synthesised engine can still do for realism, not to hide it: the bass is Karplus-Strong `pluck`, a delay line excited by noise rather than an oscillator, so each root note actually rings and decays like a string instead of holding a static tone. The chord pad is a plain sawtooth run through the new per-track Formant filter (three bandpass resonances scanning toward AH), which is what turns it from a buzz into something closer to a held voice or breath tone. Both are sent through the reverb bus's now-earlier-reflections-plus-darkening-tail impulse response, over a simple kick/snare/hihat groove on the acoustic kit — a demo, so it loops its one i-VI-III-VII phrase rather than developing anywhere."
   }
 ]
