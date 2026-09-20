@@ -8086,7 +8086,12 @@ async function main() {
       // loads, still plays, and still passes every note count — it just quietly
       // stops carrying the inner harmony, which is the entire arrangement.
       const air = JSON.parse(fs.readFileSync(path.join(__dirname, 'songs', 'air.json'), 'utf8'));
-      const arped = air.tracks.inner.filter((n) => n.arp && n.arp.length);
+      // air.json's own tracks are saved as clips (one clip per track here,
+      // each wrapping a `notes` array), not the flat list this used to read
+      // directly — the same trap savedNotesOf() exists to catch. Read raw,
+      // `air.tracks.inner` is one clip object with no `.arp` of its own, so
+      // this always found zero regardless of what the song actually carries.
+      const arped = savedNotesOf(air, 'inner').filter((n) => n.arp && n.arp.length);
       if (arped.length !== 260) throw new Error(`the inner voice should carry 260 arpeggiated segments, has ${arped.length}`);
       // Violin II and the viola sit more than an octave apart in places, and an
       // arpeggio alternating across nineteen semitones fifty times a second is
@@ -8097,7 +8102,10 @@ async function main() {
       // Doubling the note values is what lets the melody's thirty-seconds land
       // on the lattice at all; halve it back and 26 of them shift by ~69ms.
       const MICRO = 1 / 6;
-      const offLattice = Object.values(air.tracks).flat()
+      // Same clip trap as above: air.json's tracks are one clip each, and a
+      // clip's own `start` (always 0 here) would satisfy this check
+      // trivially, silently checking nothing rather than the actual notes.
+      const offLattice = Object.keys(air.tracks).flatMap((id) => savedNotesOf(air, id))
         .filter((n) => Math.abs(n.start / MICRO - Math.round(n.start / MICRO)) > 1e-9).length;
       if (offLattice) throw new Error(`${offLattice} note start(s) sit off the app's lattice`);
 
