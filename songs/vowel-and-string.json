@@ -1,0 +1,687 @@
+{
+  "version": 2,
+  "songName": "Vowel & String",
+  "tempo": 96,
+  "cols": 64,
+  "grid": 0.5,
+  "timeSig": {
+    "num": 4,
+    "den": 4
+  },
+  "key": 9,
+  "scale": "minor",
+  "markers": [
+    {
+      "col": 0,
+      "name": "Am"
+    },
+    {
+      "col": 16,
+      "name": "F"
+    },
+    {
+      "col": 32,
+      "name": "C"
+    },
+    {
+      "col": 48,
+      "name": "G"
+    }
+  ],
+  "trackList": [
+    {
+      "id": "bass",
+      "name": "Pluck Bass",
+      "color": "#2ff3ff",
+      "kind": "tone"
+    },
+    {
+      "id": "pad",
+      "name": "Formant Pad",
+      "color": "#b78bff",
+      "kind": "tone"
+    },
+    {
+      "id": "rhythm",
+      "name": "Drums",
+      "color": "#39ff6a",
+      "kind": "rhythm"
+    }
+  ],
+  "gains": {
+    "bass": 1,
+    "pad": 0.7,
+    "rhythm": 0.9
+  },
+  "waveform": {
+    "bass": "pluck",
+    "pad": "sawtooth",
+    "rhythm": "kit"
+  },
+  "pan": {
+    "bass": 0,
+    "pad": 0,
+    "rhythm": 0
+  },
+  "mute": {
+    "bass": false,
+    "pad": false,
+    "rhythm": false
+  },
+  "solo": {
+    "bass": false,
+    "pad": false,
+    "rhythm": false
+  },
+  "tracks": {
+    "bass": [
+      {
+        "start": 0,
+        "len": 7,
+        "freq": 110,
+        "vel": 1
+      },
+      {
+        "start": 8,
+        "len": 7,
+        "freq": 220,
+        "vel": 0.85
+      },
+      {
+        "start": 16,
+        "len": 7,
+        "freq": 87.31,
+        "vel": 1
+      },
+      {
+        "start": 24,
+        "len": 7,
+        "freq": 174.61,
+        "vel": 0.85
+      },
+      {
+        "start": 32,
+        "len": 7,
+        "freq": 130.81,
+        "vel": 1
+      },
+      {
+        "start": 40,
+        "len": 7,
+        "freq": 261.63,
+        "vel": 0.85
+      },
+      {
+        "start": 48,
+        "len": 7,
+        "freq": 98,
+        "vel": 1
+      },
+      {
+        "start": 56,
+        "len": 7,
+        "freq": 196,
+        "vel": 0.85
+      }
+    ],
+    "pad": [
+      {
+        "start": 0,
+        "len": 15.5,
+        "freq": 220,
+        "vel": 0.7
+      },
+      {
+        "start": 0,
+        "len": 15.5,
+        "freq": 261.63,
+        "vel": 0.7
+      },
+      {
+        "start": 0,
+        "len": 15.5,
+        "freq": 329.63,
+        "vel": 0.7
+      },
+      {
+        "start": 16,
+        "len": 15.5,
+        "freq": 174.61,
+        "vel": 0.7
+      },
+      {
+        "start": 16,
+        "len": 15.5,
+        "freq": 220,
+        "vel": 0.7
+      },
+      {
+        "start": 16,
+        "len": 15.5,
+        "freq": 261.63,
+        "vel": 0.7
+      },
+      {
+        "start": 32,
+        "len": 15.5,
+        "freq": 261.63,
+        "vel": 0.7
+      },
+      {
+        "start": 32,
+        "len": 15.5,
+        "freq": 329.63,
+        "vel": 0.7
+      },
+      {
+        "start": 32,
+        "len": 15.5,
+        "freq": 392,
+        "vel": 0.7
+      },
+      {
+        "start": 48,
+        "len": 15.5,
+        "freq": 196,
+        "vel": 0.7
+      },
+      {
+        "start": 48,
+        "len": 15.5,
+        "freq": 246.94,
+        "vel": 0.7
+      },
+      {
+        "start": 48,
+        "len": 15.5,
+        "freq": 293.66,
+        "vel": 0.7
+      }
+    ],
+    "rhythm": [
+      {
+        "start": 0,
+        "type": "kick"
+      },
+      {
+        "start": 6,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 4,
+        "type": "snare"
+      },
+      {
+        "start": 0,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 1,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 2,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 3,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 4,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 5,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 6,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 7,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 8,
+        "type": "kick"
+      },
+      {
+        "start": 14,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 12,
+        "type": "snare"
+      },
+      {
+        "start": 8,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 9,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 10,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 11,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 12,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 13,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 14,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 15,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 16,
+        "type": "kick"
+      },
+      {
+        "start": 22,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 20,
+        "type": "snare"
+      },
+      {
+        "start": 16,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 17,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 18,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 19,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 20,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 21,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 22,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 23,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 24,
+        "type": "kick"
+      },
+      {
+        "start": 30,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 28,
+        "type": "snare"
+      },
+      {
+        "start": 24,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 25,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 26,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 27,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 28,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 29,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 30,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 31,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 32,
+        "type": "kick"
+      },
+      {
+        "start": 38,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 36,
+        "type": "snare"
+      },
+      {
+        "start": 32,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 33,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 34,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 35,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 36,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 37,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 38,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 39,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 40,
+        "type": "kick"
+      },
+      {
+        "start": 46,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 44,
+        "type": "snare"
+      },
+      {
+        "start": 40,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 41,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 42,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 43,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 44,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 45,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 46,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 47,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 48,
+        "type": "kick"
+      },
+      {
+        "start": 54,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 52,
+        "type": "snare"
+      },
+      {
+        "start": 48,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 49,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 50,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 51,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 52,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 53,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 54,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 55,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 56,
+        "type": "kick"
+      },
+      {
+        "start": 62,
+        "type": "kick",
+        "vel": 0.8
+      },
+      {
+        "start": 60,
+        "type": "snare"
+      },
+      {
+        "start": 56,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 57,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 58,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 59,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 60,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 61,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 62,
+        "type": "hihat",
+        "vel": 0.6
+      },
+      {
+        "start": 63,
+        "type": "hihat",
+        "vel": 0.4
+      },
+      {
+        "start": 63,
+        "type": "crash",
+        "vel": 0.7
+      }
+    ]
+  },
+  "adsr": {
+    "bass": {
+      "attack": 0,
+      "decay": 0.15,
+      "sustain": 0.5,
+      "release": 0.3
+    },
+    "pad": {
+      "attack": 0.35,
+      "decay": 0.2,
+      "sustain": 0.8,
+      "release": 0.7
+    }
+  },
+  "filter": {
+    "bass": {
+      "cutoff": 3000,
+      "q": 0.8,
+      "envAmount": 0
+    },
+    "pad": {
+      "cutoff": 4000,
+      "q": 0.707,
+      "envAmount": 0
+    }
+  },
+  "formant": {
+    "pad": {
+      "vowel": 0.15,
+      "amount": 0.85
+    }
+  },
+  "fxSend": {
+    "bass": {
+      "delay": 0,
+      "chorus": 0,
+      "reverb": 0.15
+    },
+    "pad": {
+      "delay": 0,
+      "chorus": 0,
+      "reverb": 0.4
+    },
+    "rhythm": {
+      "delay": 0,
+      "chorus": 0,
+      "reverb": 0.12
+    }
+  },
+  "kit": {
+    "rhythm": "acoustic"
+  },
+  "masterVol": 0.55,
+  "swing": 0
+}
