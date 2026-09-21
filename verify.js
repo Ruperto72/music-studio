@@ -2151,7 +2151,7 @@ async function main() {
       await loadExample('Techno');
       const after = await draft();
       const file = await cdp.evaluate(`fetch('songs/techno.json').then(r => r.json())`);
-      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx'];
+      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'harmonics'];
       for (const k of maps) {
         const got = Object.keys(after[k] || {}).sort();
         const want = Object.keys(file[k] || {}).sort();

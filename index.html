@@ -5196,6 +5196,32 @@ function startVelocityDrag(e, track, item, lane, yToValue, spec) {
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
 }
+// Harmonics quick-start: fill the 8 amplitude/phase pairs with a classic
+// waveform's own partial series, then the sliders take over from there — the
+// same "start from something recognizable" pattern the Arpeggio quick-fills
+// use. Amplitude is always >= 0 (a magnitude); a conventionally-negative
+// coefficient is expressed as phase 180 instead. Module-scope like the
+// file's other lookup tables (CHORD_PRESETS/RHYTHM_PATTERNS/DRUM_KITS)
+// rather than re-declared inside renderAdsrRow() on every render.
+const QUICKSTART_SHAPES = {
+  Sine: () => ({ amps: [1, 0, 0, 0, 0, 0, 0, 0], phases: [0, 0, 0, 0, 0, 0, 0, 0] }),
+  Saw: () => {
+    const amps = [], phases = [];
+    for (let n = 1; n <= 8; n++) { amps.push(1 / n); phases.push(n % 2 === 0 ? 180 : 0); }
+    return { amps, phases };
+  },
+  Square: () => {
+    const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
+    for (let n = 1; n <= 8; n += 2) amps[n - 1] = 1 / n;
+    return { amps, phases };
+  },
+  Triangle: () => {
+    const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
+    let sign = 1;
+    for (let n = 1; n <= 8; n += 2) { amps[n - 1] = 1 / (n * n); phases[n - 1] = sign > 0 ? 0 : 180; sign *= -1; }
+    return { amps, phases };
+  },
+};
 function renderAdsrRow(track) {
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
@@ -5208,7 +5234,7 @@ function renderAdsrRow(track) {
     : state.waveform[track] === 'square' ? 'Envelope, Filter & Duty' : 'Envelope & Filter';
   const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; delete state.fm[track]; delete state.duty[track]; render(); autosave(); });
+  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; delete state.fm[track]; delete state.duty[track]; delete state.harmonics[track]; render(); autosave(); });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
@@ -5461,30 +5487,7 @@ function renderAdsrRow(track) {
     drawPreview();
     hGroup.appendChild(canvas);
 
-    // Quick-start: fill the 8 amplitude/phase pairs with a classic waveform's
-    // own partial series, then the sliders take over from there — the same
-    // "start from something recognizable" pattern the Arpeggio quick-fills
-    // use. Amplitude is always >= 0 (a magnitude); a conventionally-negative
-    // coefficient is expressed as phase 180 instead.
-    const QUICKSTART_SHAPES = {
-      Sine: () => ({ amps: [1, 0, 0, 0, 0, 0, 0, 0], phases: [0, 0, 0, 0, 0, 0, 0, 0] }),
-      Saw: () => {
-        const amps = [], phases = [];
-        for (let n = 1; n <= 8; n++) { amps.push(1 / n); phases.push(n % 2 === 0 ? 180 : 0); }
-        return { amps, phases };
-      },
-      Square: () => {
-        const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
-        for (let n = 1; n <= 8; n += 2) amps[n - 1] = 1 / n;
-        return { amps, phases };
-      },
-      Triangle: () => {
-        const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
-        let sign = 1;
-        for (let n = 1; n <= 8; n += 2) { amps[n - 1] = 1 / (n * n); phases[n - 1] = sign > 0 ? 0 : 180; sign *= -1; }
-        return { amps, phases };
-      },
-    };
+    // Quick-start buttons below draw from the module-scope QUICKSTART_SHAPES.
     const quickRow = el('div', 'harmonics-quickstart');
     for (const [shapeName, calc] of Object.entries(QUICKSTART_SHAPES)) {
       const btn = document.createElement('button');
