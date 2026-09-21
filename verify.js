@@ -3772,6 +3772,26 @@ async function main() {
       }
       await cdp.evaluate(`document.getElementById('preset-close').click()`);
 
+      // Mutate the *live* track's harmonics to a different shape (Triangle,
+      // which — unlike Square — puts H3's phase at 180) and re-read the
+      // already-saved preset. If the preset shared array references with
+      // the live track instead of copying them by value, this would
+      // retroactively corrupt it too; a preset that still reads back as
+      // Square proves the copy actually happened.
+      await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Triangle').click()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        const h = (d.harmonics || {})[id];
+        return h && h.phases[2] === 180; // Triangle: H3 phase flips, Square's does not
+      })()`);
+      const stillSaved = await cdp.evaluate(`JSON.parse(localStorage.getItem('music-studio-instrument-presets'))['Test Square Harmonics'].harmonics`);
+      if (!stillSaved || stillSaved.amps[1] !== 0 || stillSaved.amps[2] <= 0 || stillSaved.phases[2] !== 0) {
+        throw new Error(`mutating the live track after save changed the already-saved preset too — harmonics were not copied by value: ${JSON.stringify(stillSaved)}`);
+      }
+
       // Reset the track to a plain sawtooth, then reload the preset and
       // confirm the harmonics come back.
       await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
