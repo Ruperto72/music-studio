@@ -1578,8 +1578,29 @@ async function main() {
       }
     });
 
-    step('Version: the Help dialog names the build, from the one place it is written', async () => {
+    step('Help: the menu button opens help.html in a new tab, not the in-app dialog it used to be', async () => {
       await fresh();
+      // The dialog is gone — the Help button now hands off to a separate page
+      // (window.open, not a navigation) so the editor and anything unsaved in
+      // it stay put. Stub window.open to catch the call rather than actually
+      // spawning a tab CDP would then have to juggle.
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`(() => {
+        window.__openedWith = null;
+        window.open = (url, target) => { window.__openedWith = { url, target }; return null; };
+      })()`);
+      await cdp.evaluate(`document.getElementById('help-btn').click()`);
+      const opened = await cdp.evaluate(`window.__openedWith`);
+      if (!opened || !/help\.html$/.test(opened.url) || opened.target !== '_blank') {
+        throw new Error(`Help should open help.html in a new tab, called window.open with ${JSON.stringify(opened)}`);
+      }
+      // The dialog it replaced should be fully gone, not just unopened.
+      if (await cdp.evaluate(`!!document.getElementById('help-dialog')`)) {
+        throw new Error('the old #help-dialog markup should have been removed, not just left unused');
+      }
+    });
+
+    step('Version: help.html names the build, from the one place it is written', async () => {
       // Extracted from the source rather than retyped, the same rule
       // auditBundledSongs() follows: a literal here would have to be edited on
       // every release and would silently start comparing a version against
@@ -1591,36 +1612,47 @@ async function main() {
       if (!/^\d+\.\d+\.\d+$/.test(declared[1])) {
         throw new Error(`APP_VERSION should be a three-part version, got "${declared[1]}"`);
       }
-      // Opened through the real menu: a version nobody can reach is not a
-      // version. The dialog is a <dialog>, so its contents are in the DOM
-      // whether or not it is open — reading them without opening it would pass
-      // against a Help button that does nothing.
-      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-      await cdp.evaluate(`document.getElementById('help-btn').click()`);
-      await waitFor(`document.getElementById('help-dialog').open === true`);
+      // Navigated to directly — help.html reads APP_VERSION back out of
+      // index.html itself over fetch(), so this also proves that round trip
+      // actually resolves rather than only that the placeholder is in the DOM.
+      await goto(APP_URL + '/help.html');
+      await waitFor(`document.getElementById('app-version').textContent !== '—'`, 4000);
       const shown = await cdp.evaluate(`(() => {
-        const v = document.getElementById('help-version');
-        if (!v) return JSON.stringify({ missing: true });
+        const v = document.getElementById('app-version');
         return JSON.stringify({ text: v.textContent.trim(), visible: !!v.getClientRects().length });
       })()`);
       const seen = JSON.parse(shown);
-      if (seen.missing) throw new Error('the Help dialog has no #help-version to fill');
       if (!seen.visible) throw new Error(`the version is in the DOM but not on screen: ${shown}`);
-      // The placeholder in the markup is an em dash. Comparing against
-      // APP_VERSION catches both halves at once: a boot pass that never ran
-      // leaves the dash, and a literal typed into the HTML drifts from the
-      // constant the moment one of them is bumped.
       if (seen.text !== declared[1]) {
-        throw new Error(`the Help dialog should show APP_VERSION ${declared[1]}, shows "${seen.text}"`);
+        throw new Error(`help.html should show APP_VERSION ${declared[1]}, shows "${seen.text}"`);
       }
       // A song file's `version` is a different number with a different job —
       // the format the loader reads. If the two ever became the same value the
       // check above would still pass, so assert they are not wired together.
+      await fresh();
       const songVersion = await cdp.evaluate(
         `(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).version`);
       if (String(songVersion) === declared[1]) {
         throw new Error(`the song format version and the app version must stay separate, both are ${songVersion}`);
       }
+    });
+
+    step('help.html: every reference section is present, plus the Getting Started walkthrough', async () => {
+      await goto(APP_URL + '/help.html');
+      await waitFor(`!!document.getElementById('getting-started')`);
+      const ids = ['getting-started', 'overview', 'tracks', 'tools', 'clips', 'selecting',
+        'note-effects', 'bottom-bar', 'mixing', 'transport', 'saving', 'shortcuts', 'no-mouse', 'about'];
+      const missing = await cdp.evaluate(`(${JSON.stringify(ids)}).filter(id => !document.getElementById(id))`);
+      if (missing.length) throw new Error(`help.html is missing section(s): ${JSON.stringify(missing)}`);
+      const stepCount = await cdp.evaluate(`document.querySelectorAll('.steps > li').length`);
+      if (stepCount < 4) throw new Error(`Getting Started should walk through several steps, found ${stepCount}`);
+      const shotCount = await cdp.evaluate(`document.querySelectorAll('img.shot').length`);
+      if (shotCount < 4) throw new Error(`expected several screenshots on the guide, found ${shotCount}`);
+      // Every image should have actually loaded — a bad path fails silently
+      // in the DOM (the <img> just renders broken) unlike a script error.
+      const broken = await cdp.evaluate(`[...document.querySelectorAll('img.shot')].filter(img => !img.complete || img.naturalWidth === 0).map(img => img.getAttribute('src'))`);
+      if (broken.length) throw new Error(`image(s) failed to load: ${JSON.stringify(broken)}`);
+      await fresh();
     });
 
     step('Interface icons: drawn from GLYPHS, no emoji, and every control still named', async () => {

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Audio Studio — Guide</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" sizes="32x32" href="icons/favicon-32.png" type="image/png">
+<meta name="description" content="Guide to Web Audio Studio — a browser-based synth music studio. Keep this tab open next to the editor.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#131316">
+<style>
+  :root {
+    --bg: #131316; --panel: #1c1c20; --panel2: #24242a; --ink: #e8e8ee; --muted: #9a9aa6;
+    --accent: #8fbcff; --line: #2c2c33;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); margin: 0;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  a { color: var(--accent); }
+  code {
+    background: #111; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; color: #9f9;
+  }
+  kbd {
+    background: #2a2a30; border: 1px solid #454550; border-bottom-width: 2px; border-radius: 4px;
+    padding: 1px 6px; font-family: inherit; font-size: 12px; color: var(--ink); white-space: nowrap;
+  }
+  img.shot {
+    display: block; max-width: 100%; height: auto; border-radius: 8px;
+    border: 1px solid var(--line); margin: 14px 0 6px; background: #0c0c0f;
+  }
+  figure { margin: 14px 0 22px; }
+  figcaption { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* ---- Header ---- */
+  header {
+    position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; background: linear-gradient(#1b1b20, #17171a); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 700; flex: 1; }
+  header .tip {
+    font-size: 12px; color: var(--muted); max-width: 340px; text-align: right; display: none;
+  }
+  @media (min-width: 760px) { header .tip { display: block; } }
+
+  /* ---- Layout: sticky TOC + content column ---- */
+  .layout { display: flex; align-items: flex-start; max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    display: none; position: sticky; top: 57px; flex: 0 0 220px;
+    padding: 24px 12px 24px 20px; max-height: calc(100vh - 57px); overflow-y: auto;
+  }
+  @media (min-width: 900px) { nav.toc { display: block; } }
+  nav.toc a {
+    display: block; padding: 5px 8px; border-radius: 5px; text-decoration: none;
+    color: var(--muted); font-size: 12.5px;
+  }
+  nav.toc a:hover { background: var(--panel2); color: var(--ink); }
+  nav.toc .toc-cap { font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; color: #6f6f7a; padding: 10px 8px 4px; }
+
+  main { flex: 1 1 auto; min-width: 0; padding: 24px 20px 60px; max-width: 780px; }
+
+  section { margin-bottom: 40px; scroll-margin-top: 66px; }
+  section h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--accent);
+    margin: 0 0 14px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
+  }
+  section > p { color: #c7c7d0; font-size: 13px; margin: 0 0 10px; }
+  section ul { margin: 0 0 10px; padding-left: 4px; list-style: none; }
+  section li { color: #c7c7d0; font-size: 13px; margin: 5px 0; padding-left: 16px; text-indent: -16px; }
+  section li b { color: var(--ink); }
+
+  /* ---- Getting started: numbered steps ---- */
+  .steps { counter-reset: step; margin: 0; padding: 0; list-style: none; }
+  .steps > li {
+    counter-increment: step; position: relative; padding: 0 0 0 40px; margin-bottom: 26px;
+    text-indent: 0;
+  }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px;
+    border-radius: 50%; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--accent); font-weight: 700; font-size: 13px; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .steps h3 { margin: 2px 0 4px; font-size: 14px; color: var(--ink); }
+
+  .kbd-grid { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; align-items: center; font-size: 12.5px; color: #c7c7d0; margin: 4px 0 10px; }
+  .kbd-grid > span:nth-child(odd) { text-align: right; }
+
+  footer { color: var(--muted); font-size: 11.5px; padding: 20px; text-align: center; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Web Audio Studio — Guide</h1>
+  <span class="tip">Tip: keep this tab open alongside the editor — nothing here needs the app to be loaded.</span>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Guide sections">
+    <div class="toc-cap">Getting started</div>
+    <a href="#getting-started">Five steps to a song</a>
+    <div class="toc-cap">Reference</div>
+    <a href="#overview">Overview</a>
+    <a href="#tracks">Tracks &amp; channel strips</a>
+    <a href="#tools">Tools</a>
+    <a href="#clips">Clips</a>
+    <a href="#selecting">Selecting several notes</a>
+    <a href="#note-effects">Note effects</a>
+    <a href="#bottom-bar">Bottom bar</a>
+    <a href="#mixing">Mixing</a>
+    <a href="#transport">Transport &amp; timeline</a>
+    <a href="#saving">Saving &amp; exporting</a>
+    <a href="#shortcuts">Keyboard shortcuts</a>
+    <a href="#no-mouse">Using it without a mouse</a>
+    <a href="#about">About this guide</a>
+  </nav>
+  <main>
+
+    <section id="getting-started">
+      <h2>Getting started</h2>
+      <ol class="steps">
+        <li>
+          <h3>Open or start a song</h3>
+          <p>The menu's <b>Songs…</b> loads one of the bundled examples, one of your own saved songs, or starts
+          a new one — either with the empty <b>Lead</b>/<b>Harmony</b>/<b>Bass</b>/<b>Pad</b>/<b>Rhythm</b>
+          starter tracks or a blank project (just a Rhythm track). Your own songs are saved in this browser,
+          nothing is uploaded anywhere.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/menu-open.png" alt="The file menu open, listing Songs…, Save as .json, Load .json, Export code, Export MIDI, Import MIDI and Export WAV">
+            <figcaption>The menu — Songs…, Save/Load, and every export in one place.</figcaption>
+          </figure>
+        </li>
+        <li>
+          <h3>Add and shape a track</h3>
+          <p><b>Add track</b> / <b>Add rhythm track</b> in the menu add a new lane. Pick a waveform (or a kit,
+          for rhythm) from the <b>Osc</b> picker, then open <b>Env</b> to shape its ADSR envelope and filter —
+          this is where a plain saw becomes a pad or a lead.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/envelope-panel.png" alt="A track's Env panel open, showing Attack/Decay/Sustain sliders, a filter Cutoff/Resonance/Env Amount row, and an Arpeggio Speed slider">
+            <figcaption>A track's Env panel — ADSR, filter, and (here, since the track uses Saw) an arpeggio speed control.</figcaption>
+          </figure>
+        </li>
+        <li>
+          <h3>Place notes</h3>
+          <p>With the <b>Pen</b> tool, click an empty cell in the grid to add a note or drum hit. The left edge
+          of a tonal track is a playable piano keyboard — press a key to hear it before you commit to writing
+          it. Rhythm tracks have a <b>Patterns</b> button that stamps in a whole built-in groove at once.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/patterns-dialog.png" alt="The Rhythm patterns dialog listing built-in grooves — Rock, Techno, Disco, Swing/Shuffle, Hip-Hop — each with a preview, fill preview and Insert button">
+            <figcaption>The Patterns dialog — a full built-in groove, one click, accents and a fill included.</figcaption>
+          </figure>
+        </li>
+        <li>
+          <h3>Add effects</h3>
+          <p>Click a note or hit to open it in the inspector on the right — bend, vibrato, arpeggio, echo,
+          chorus and more live there per note. A track's own effect chain (EQ, compressor, delay/chorus/reverb
+          sends, bitcrush, tremolo) shows in that same column whenever nothing is selected — click any
+          <b>Insert</b> chip on a track to see its whole chain.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note — Velocity and Pan sliders, Modulation (Vibrato/Tremolo/Portamento), Pitch (Bend/Arpeggio), Chord presets and Texture/FX (Bitcrush/Echo/Chorus/Reverb)">
+            <figcaption>A selected note in the inspector — every per-note effect in one place.</figcaption>
+          </figure>
+        </li>
+        <li>
+          <h3>Save, export and share</h3>
+          <p><b>Save as .json</b> keeps a working copy you can reload later; <b>Songs…</b> also saves to this
+          browser. When a part is finished, <b>Export code</b> hands you the <code>TRACKS</code>/
+          <code>RHYTHM_TRACKS</code> literals to paste into a game, or use <b>Export WAV</b> /
+          <b>Export MIDI</b> to take it elsewhere. This page and the editor both install as a PWA and work
+          offline — including a phone-sized player for just listening back.</p>
+          <figure>
+            <img class="shot" src="docs/img/player.png" alt="The phone player — song name, position bar, transport and a level meter">
+            <figcaption>Below 760px the editor becomes a player — for listening, not composing.</figcaption>
+          </figure>
+        </li>
+      </ol>
+    </section>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        A browser tool for composing looping tracks with synthesised instruments — everything is
+        synthesised with the Web Audio API, no audio files. Instruments are laid out as separate <b>tracks</b>
+        stacked vertically, like a music studio (Pro&nbsp;Tools style). A shared timeline at the top and the
+        red playhead run across every lane at once. The current project's name is shown in the
+        <b>Master</b> strip at the bottom (click it to rename while the strip is expanded) — the
+        <b>menu</b>'s <b>Songs…</b> loads an example, one of your own saved songs, or starts a
+        new one; your own songs are stored in this browser.
+      </p>
+      <figure>
+        <img class="shot" src="docs/img/editor.png" alt="The editor with a song loaded, tracks stacked vertically on the left and the FX inspector strip on the right">
+        <figcaption>The editor — tracks on the left, timeline and grid in the middle, inspector on the right.</figcaption>
+      </figure>
+    </section>
+
+    <section id="tracks">
+      <h2>Tracks &amp; channel strips</h2>
+      <ul>
+        <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
+        <li>Each track's <b>channel strip</b> (left) starts with its name and <b>M</b>ute / <b>S</b>olo / record-arm, then three labelled sections: <b>Osc</b> (the waveform — or "Kit" for rhythm — plus the Auto/Env/Preset buttons), <b>Inserts</b> (the effect chips, see below) and <b>Output</b> (volume, pan and a level meter).</li>
+        <li><b>Add track</b> / <b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; <b>Duplicate track</b> and <b>Remove track</b> are in the <b>Track</b> box at the bottom of the inspector column, for whichever track is active (the last remaining Rhythm lane has no Remove). Added tracks export into the game too.</li>
+        <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, the effect chips) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
+        <li>A tonal track's left edge is a <b>piano keyboard</b> rather than a column of note names — white and black keys, with only C labelled, by its octave. <b>Press a key to hear it</b>, and drag down the keys to glissando; it sounds through the track's own instrument, so what you hear is what writing a note there would give you. A rhythm track keeps its ten piece names, since a drum has no pitch to show.</li>
+        <li>The <b>Vel</b> button opens a <b>note lane</b> under the track: one stem per note or hit, with a diamond head you can drag. The dropdown in its header picks which value it shows — <b>Velocity</b>, <b>Pan</b>, or <b>Bend</b> on a tonal track. Pan and bend are signed, so they grow from a centre line rather than from the floor: a stem reads as an offset from neutral, not as a quantity. Works on rhythm tracks too — that is where accents matter most. Dragging a head to the top removes the velocity again rather than storing 100%, so a part you never touched saves exactly as it did before.</li>
+        <li>The <b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
+        <li>The <b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
+        <li>The <b>Preset</b> button saves a track's waveform, envelope, filter and FM settings as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
+        <li>The <b>Chords</b> button (tonal tracks) writes a built-in <b>chord progression</b> into that track — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp, or a 12-bar blues — one chord per bar, from the playhead's bar to the end of the song, exactly like <b>Patterns</b> does for drums. The chords come from the song's <b>Key</b>: a progression is stored as scale <i>degrees</i>, so the same one is major or minor depending on the scale you picked. <b>▶</b> auditions it in the current key on that track's own sound before you commit.</li>
+        <li>The <b>Track</b> box at the bottom of the inspector column holds the two things you do to a track as a whole. <b>Duplicate track</b> makes a copy of the part <i>and</i> the whole voice — waveform, envelope, filter, inserts, sends, kit — directly below it, independent afterwards. <b>Remove track</b> deletes it and its part. <b>Both ask first</b>.</li>
+        <li>A rhythm track has a <b>Kit</b> picker in its header, the same picker a tonal track uses for its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default), <b>80s</b> (a big gated snare, long crash, wide clap) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). Same ten pieces throughout, synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, saved with the song.</li>
+        <li>The <b>Inserts</b> section (every track, rhythm included) shows one chip per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are in the <b>inspector column</b> on the right: click a chip and the whole chain shows there, every effect at once. <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects: continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends, a 3-band <b>EQ</b>, a <b>Compressor</b>, a <b>Bitcrush</b> downsampler and a <b>Tremolo</b>. Tonal tracks also get a <b>Vibrato</b> — pitch wobble on every note of the track.</li>
+        <li>The <b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back. Each pattern also has a <b>fill</b> bar on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> — and the bar after a fill opens with a crash. The kit is spread across the stereo field as it goes in; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar.</li>
+        <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
+        <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
+      </ul>
+    </section>
+
+    <section id="tools">
+      <h2>Tools</h2>
+      <ul>
+        <li><b>Pen</b> — click an empty cell to add a note/hit. Clicking a different pitch at the same time in a tonal track adds a chord tone, rather than replacing what's already there.</li>
+        <li><b>Eraser</b> — click a note/hit to remove it (or a whole selected group).</li>
+        <li><b>Grab</b> — drag a note/hit to move it; drag its right edge to change its length.</li>
+        <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse. Recording no longer snaps as you play — a take keeps the timing you gave it, and correcting it is a separate decision you make with a strength.</li>
+        <li><b>Transpose</b> in the menu is the same idea on the <i>pitch</i> axis. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i>. <b>Fit to the scale</b> pulls everything onto the nearest scale tone. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put. The arrow keys use the same walk: with <b>Keep to scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
+        <li><b>Dynamics</b> in the menu is the third axis, with the same scope rule again. <b>Vary</b> is a random walk around each note's <i>current</i> level. <b>Accent the beat</b> plays the notes that land on a beat harder, read off the meter. Only velocity is touched.</li>
+        <li>The <b>Grid</b> menu also has <b>Free</b> — placing, dragging and resizing stop snapping and land wherever you put them (on the app's finest lattice, a sixth of an eighth). The grid still sets how long a new note is. Remembered per browser rather than saved with the song.</li>
+        <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it.</li>
+        <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
+        <li><b>Recording.</b> Click <b>R</b> on a track to arm it — one track at a time — and the letter keys become an instrument: <kbd>Z</kbd><kbd>S</kbd><kbd>X</kbd><kbd>D</kbd><kbd>C</kbd>… is the lower octave with the black keys on the row above, <kbd>Q</kbd><kbd>2</kbd><kbd>W</kbd><kbd>3</kbd>… the octave up, and <kbd>[</kbd>/<kbd>]</kbd> shift the octave. On a <i>rhythm</i> track the same row plays the kit instead: <kbd>Z</kbd> is the kick through to <kbd>/</kbd> for the ride. Press <b>Record</b> and you get one bar of count-in, then everything you play lands on the grid at the current snap resolution. The <b>Metronome</b> button clicks on every beat, accented on the downbeat — a rehearsal aid only, never in an exported WAV.</li>
+        <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in.</li>
+        <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step. Keys pressed together land as a chord on one column. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there.</li>
+        <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level — a soft hit is darker, the way a real drum struck gently gives less of the sharp top end. Quieter notes and hits are drawn dimmer.</li>
+      </ul>
+    </section>
+
+    <section id="clips">
+      <h2>Clips</h2>
+      <p>
+        A track's part is held in one or more <b>clips</b>. A clip is not the notes — it is a
+        <b>window</b> onto them: an item sounds only while it falls inside the window, so pulling an edge in
+        <i>hides</i> material rather than deleting it, and pulling the edge back out brings the very same
+        notes back. Every track starts as a single clip covering the whole song; the faint block behind each
+        lane is it, labelled with the bars it covers (<b>bar 1–8</b>).
+      </p>
+      <p>
+        Each block is washed in <b>its own track's colour</b>, so a clip says which part it belongs to without
+        your having to work it out from where it sits.
+      </p>
+      <ul>
+        <li><b>Split clip at playhead</b> (in the menu) cuts the active track's clip in two where the
+          playhead sits. Nothing moves and nothing is lost. <b>Heal clips at playhead</b> is that run
+          backwards, joining two halves of one clip back into a single window — only halves that came from
+          the same clip and actually meet.</li>
+        <li>With the <b>Grab</b> tool a clip grows handles: the strip along its <b>top edge</b> moves the
+          whole clip along the timeline, and its <b>left and right edges</b> trim it.</li>
+        <li><b>Moving a clip takes everything it holds</b>, hidden material included.</li>
+        <li>A <b>recorded take lands as its own clip</b>, and clears the ground it falls on the way a DAW
+          does: whatever was there is trimmed back or split around it rather than left sounding underneath.</li>
+      </ul>
+    </section>
+
+    <section id="selecting">
+      <h2>Selecting several notes</h2>
+      <ul>
+        <li><b>Shift+click</b> each note/hit to add or remove it from the selection (any tool).</li>
+        <li>With <b>Grab</b>, drag across empty space to marquee-select everything whose start falls in the range.</li>
+        <li>A selection moves together; <b>Delete</b> removes it; <b>Ctrl/Cmd+C&nbsp;/&nbsp;V</b> copies &amp; pastes it at the playhead.</li>
+      </ul>
+    </section>
+
+    <section id="note-effects">
+      <h2>Note effects</h2>
+      <p>
+        Select a single note to edit vibrato, tremolo, bend, duty cycle, arpeggio, portamento,
+        bitcrush, echo, chorus and reverb in the inspector on the right.
+      </p>
+      <figure>
+        <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note's Velocity/Pan, Modulation, Pitch, Chord and Texture/FX sections">
+        <figcaption>Everything a single note can carry, all in the inspector column.</figcaption>
+      </figure>
+      <p>
+        Two rows in the inspector offer the same ten chords — <b>5</b> (power chord), <b>maj</b>,
+        <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b> and
+        <b>m7</b> (hover a button for its full name). Click <b>▸ presets</b> under
+        <b>Arpeggio</b> or <b>Chord</b> to show them; they stay hidden until you ask, and each remembers
+        whether you left it open. They differ in what you get:
+      </p>
+      <ul>
+        <li><b>Arpeggio</b> keeps <i>one</i> note and sweeps it through the chord's tones in quick
+          succession — the classic chiptune way to imply a chord on a single voice. It fills in the
+          Arpeggio box, which you can then edit by hand.</li>
+        <li><b>Chord</b> adds the chord's other notes as <i>real</i>, separate notes above the
+          selected one, in the same track and at the same length. They start with no effects of
+          their own, so each can be tweaked afterwards.</li>
+      </ul>
+      <p>
+        With a <b>Key</b> set (bottom bar), the Chord row is led by two more buttons: the triad
+        and the seventh chord <i>this key</i> builds on the selected note. They're labelled by
+        <b>degree</b> — <b>ii</b>, <b>V7</b> — rather than by quality, because which chords belong
+        together is exactly what a key tells you. The quality isn't written down anywhere: it's read off
+        the scale.
+      </p>
+    </section>
+
+    <section id="bottom-bar">
+      <h2>Bottom bar (Song · Tempo · Length · Key · Grid · Master)</h2>
+      <p>
+        The strip under the tracks holds the <b>Song</b> name (click it to rename), <b>Tempo</b>,
+        <b>Length</b>, <b>Key</b> (the tonic and scale), <b>Grid</b> (the note snap resolution) and the
+        <b>Master</b> volume. The <b>▾</b> button collapses it to a slim bar to free up space (remembered
+        between sessions). <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b> appends
+        an empty bar, <b>−</b> removes the last bar (dropping any notes/hits past the new end); the length is
+        saved with your file and exported so the game loops it.
+      </p>
+    </section>
+
+    <section id="mixing">
+      <h2>Mixing</h2>
+      <ul>
+        <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live.</li>
+        <li>The <b>waveform</b> picker in the <b>Osc</b> section — click it and a list drops down with each shape drawn as itself (Square / <b>PWM</b> / Triangle / Saw / Sine / <b>Half sine</b> / <b>NES Tri</b> wavetable / <b>Noise</b> / <b>Ring</b> / <b>FM</b>) — and the <b>pan</b> slider set each track's tone and stereo placement. Double-click the pan slider to re-center it.</li>
+        <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
+        <li><b>Master</b> sets the overall preview loudness (editor only — not part of the game's audio).</li>
+        <li>The <b>level meters</b> (per track and next to Master) show live output while previewing or playing.</li>
+        <li>The <b>Master FX</b> button next to Master opens the <b>Master FX</b> panel: five chips — a 3-band <b>EQ</b>, a <b>compressor</b> with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit and a lo-fi <b>downsampler</b> — plus a live spectrum + approximate <b>LUFS</b> meter. A chip is dimmed while its effect is doing nothing.</li>
+      </ul>
+      <figure>
+        <img class="shot" src="docs/img/master.png" alt="The master bus panel in the inspector column — EQ, Compressor, parallel-comp, sidechain, downsampler, spectrum and LUFS meter">
+        <figcaption>The master bus, opened in the inspector column.</figcaption>
+      </figure>
+    </section>
+
+    <section id="transport">
+      <h2>Transport &amp; timeline</h2>
+      <ul>
+        <li>Transport: return-to-start, stop, play, and a loop on/off toggle; the LCD shows Bars&nbsp;|&nbsp;Beats and Min:Sec.</li>
+        <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
+        <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
+        <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
+        <li>The <b>Key</b> cell (bottom bar) sets the song's tonic and scale. Every row outside the scale is <b>shaded</b> in the piano roll and its key dimmed on the keyboard, and the tonic is marked. <b>Keep to scale</b> goes further and moves a note you place or drag with the mouse to the nearest pitch in the scale — it only affects the <i>mouse</i>, what you <b>play</b> is never corrected. <b>Chromatic</b> turns the whole thing off.</li>
+        <li>The <b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
+      </ul>
+    </section>
+
+    <section id="saving">
+      <h2>Saving &amp; exporting</h2>
+      <ul>
+        <li><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with the empty starter tracks or an empty project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom.</li>
+        <li><b>Save as .json</b> / <b>Load .json</b> keep a work-in-progress <code>.json</code> (name, tracks, tempo, length, meter, mix, waveforms, pan, automation, envelopes &amp; markers). Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh project with the starter tracks though, never auto-restoring that draft.</li>
+        <li><b>Export code</b> emits the <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> declarations to paste over the ones in <code>audio.js</code>.</li>
+        <li><b>Connect MIDI keyboard</b> lets you play a real keyboard into the armed track — including <b>how hard you press</b>, which becomes the note's velocity. Monitoring, recording and step entry all work the same as from the computer keyboard. Needs a browser with Web MIDI (Chrome, Edge — not Safari).</li>
+        <li><b>Export MIDI</b> / <b>Import MIDI</b> round-trip a Standard MIDI File. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
+        <li><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
+        <li><b>Fullscreen</b> toggles the browser's fullscreen mode. On Android, your browser's menu also offers <b>Add to Home screen / Install app</b> — this page is installable and works offline once loaded, same as this guide.</li>
+      </ul>
+      <figure>
+        <img class="shot" src="docs/img/help/menu-open.png" alt="The file menu open, listing every save/load/export action">
+        <figcaption>Everything above lives in this one menu.</figcaption>
+      </figure>
+    </section>
+
+    <section id="shortcuts">
+      <h2>Keyboard shortcuts</h2>
+      <div class="kbd-grid">
+        <span><kbd>Space</kbd></span><span>Play / stop</span>
+        <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span>Pen / Eraser / Grab</span>
+        <span><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>Delete the selection</span>
+        <span><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></span><span>Nudge the selection</span>
+        <span><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></span><span>Select the previous / next note in this track</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd></span><span>Select the first / last note in this track</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>C</kbd> / <kbd>V</kbd></span><span>Copy / paste</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd></span><span>Undo (notes/hits/tempo/length)</span>
+        <span><kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl/Cmd</kbd>+<kbd>Y</kbd></span><span>Redo</span>
+        <span><kbd>M</kbd></span><span>Metronome on/off (when no track is armed)</span>
+        <span><kbd>Z</kbd> <kbd>S</kbd> <kbd>X</kbd> <kbd>D</kbd> …</span><span>Play the armed track — lower octave (black keys on the row above)</span>
+        <span><kbd>Q</kbd> <kbd>2</kbd> <kbd>W</kbd> <kbd>3</kbd> …</span><span>Play the armed track — an octave up</span>
+        <span><kbd>[</kbd> <kbd>]</kbd></span><span>Octave down / up</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>Step entry (armed, stopped): move the cursor back / on a grid step</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>Step entry (armed, stopped): move to the track above / below</span>
+        <span><kbd>Home</kbd> <kbd>End</kbd></span><span>Step entry (armed, stopped): start of the song / end of this track's part</span>
+        <span><kbd>Backspace</kbd></span><span>Step entry (armed, stopped): step back and clear that step</span>
+        <span><kbd>Esc</kbd></span><span>Deselect</span>
+      </div>
+      <p style="color:var(--muted); font-size:11.5px;">Shortcuts are ignored while typing in a field.</p>
+    </section>
+
+    <section id="no-mouse">
+      <h2>Using it without a mouse</h2>
+      <p>
+        <b>Tab</b> reaches every control, and the focused one is outlined in blue. From the grid,
+        <b>Shift</b>+<b>←</b>/<b>→</b> walks through the notes of the active track and <b>Home</b>/<b>End</b>
+        jump to its first or last — each one is spoken as pitch and position ("G4, bar 1 beat 1"),
+        so the arrow keys, Delete and the inspector all become usable from the keyboard. A skip link at the
+        very top of the editor jumps straight to the grid.
+      </p>
+      <p>
+        To <i>write</i> notes rather than only edit the ones that exist, arm a track with its <b>R</b> button
+        and use step entry (above). That also gives you a cursor you can move around the grid in both
+        directions — <b>←</b>/<b>→</b> through time, <b>↑</b>/<b>↓</b> from track to track, <b>Home</b>/<b>End</b>
+        to the start of the song or the end of this track's part — and every move is spoken with the position
+        <i>and</i> what is already there, so you can survey a song you can't see.
+      </p>
+    </section>
+
+    <section id="about">
+      <h2>About this guide</h2>
+      <p>
+        Web Audio Studio <b id="app-version">—</b>. The app installs as a PWA and updates itself in the
+        background, so what you are running is not always what you last loaded — this guide is versioned the
+        same way. This is the app's own version, not the version of a saved song, which is a separate number
+        the file carries so older songs keep opening.
+      </p>
+      <p>
+        This page is a standalone file — open it in its own tab and keep it there while you work in the
+        <a href="index.html">editor</a>.
+      </p>
+    </section>
+
+  </main>
+</div>
+<footer>Web Audio Studio — <a href="index.html">back to the editor</a></footer>
+<script>
+  // The version lives in one place, index.html's APP_VERSION constant — read
+  // it from there rather than keeping a second copy here that could drift.
+  fetch('index.html').then((r) => r.text()).then((src) => {
+    const m = src.match(/const APP_VERSION = '([^']+)';/);
+    if (m) document.getElementById('app-version').textContent = m[1];
+  }).catch(() => {});
+</script>
+</body>
+</html>

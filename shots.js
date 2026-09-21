@@ -11,9 +11,10 @@
 // to a project that deliberately has none. See verify.js's header for the
 // longer argument.
 //
-// Usage: node shots.js
+// Usage: node shots.js [--only <substring>]
 //   CHROME_PATH=/path/to/chrome   override browser auto-discovery
 //   SHOTS_PORT=8097               port for the throwaway dev-server instance
+//   --only <substring>            shoot only files whose name contains this
 'use strict';
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -23,6 +24,8 @@ const { findBrowser, requireFreePort, waitForHttp, launchChrome, openPage } = re
 const SERVER_PORT = process.env.SHOTS_PORT || 8097;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const OUT_DIR = path.join(__dirname, 'docs', 'img');
+const onlyIdx = process.argv.indexOf('--only');
+const ONLY = onlyIdx >= 0 ? process.argv[onlyIdx + 1].toLowerCase() : null;
 
 // Each shot names the viewport it is framed for, so a picture is never
 // "whatever the window happened to be" — the editor one is a 16:10 desktop,
@@ -62,6 +65,53 @@ const SHOTS = [
     loadAt: { width: 1200, height: 900 },
     async setup(page) {
       await page.loadSong('Froggy Hop');
+    },
+  },
+  // ---- help.html's own shots, below docs/img/help/ rather than docs/img/
+  // directly so the README's three stay easy to tell apart from the guide's. ----
+  {
+    file: 'help/menu-open.png',
+    width: 1200, height: 800,
+    caption: 'the file menu open, showing Songs/Save/Load/Export',
+    async setup(page) {
+      await page.loadSong('Rust Foundry');
+      await page.evaluate(`document.getElementById('file-menu-toggle').click()`);
+    },
+  },
+  {
+    file: 'help/envelope-panel.png',
+    width: 1200, height: 800,
+    caption: "a track's Env panel — ADSR, filter and FM/duty",
+    async setup(page) {
+      await page.loadSong('Rust Foundry');
+      await page.evaluate(`(() => {
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await page.waitFor(`[...document.querySelectorAll('.automation-title')].some(t => t.textContent.startsWith('Envelope'))`);
+    },
+  },
+  {
+    file: 'help/patterns-dialog.png',
+    width: 1200, height: 800,
+    caption: 'the Patterns dialog, inserting a built-in groove',
+    async setup(page) {
+      await page.loadSong('Rust Foundry');
+      await page.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await page.waitFor(`document.getElementById('pattern-dialog').open`);
+    },
+  },
+  {
+    file: 'help/note-inspector.png',
+    width: 1200, height: 800,
+    caption: 'a selected note in the inspector column',
+    async setup(page) {
+      await page.loadSong('Rust Foundry');
+      await page.waitFor(`!!document.querySelector('.track .lane .note')`);
+      // Note selection is the note's own 'click' handler (under the Pen tool,
+      // which is the default) — a plain .click() fires it directly.
+      await page.evaluate(`document.querySelector('.track .lane .note').click()`);
+      await page.waitFor(`!document.querySelector('.inspector.empty')`);
     },
   },
 ];
@@ -147,7 +197,8 @@ async function main() {
     const viewport = (w, h) => cdp.send('Emulation.setDeviceMetricsOverride', {
       width: w, height: h, deviceScaleFactor: 2, mobile: w < 760,
     });
-    for (const shot of SHOTS) {
+    const toShoot = ONLY ? SHOTS.filter((s) => s.file.toLowerCase().includes(ONLY)) : SHOTS;
+    for (const shot of toShoot) {
       const setupAt = shot.loadAt || shot;
       await viewport(setupAt.width, setupAt.height);
       await cdp.send('Page.navigate', { url: APP_URL });
@@ -160,11 +211,12 @@ async function main() {
       await new Promise((r) => setTimeout(r, 400));
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       const out = path.join(OUT_DIR, shot.file);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
       fs.writeFileSync(out, Buffer.from(data, 'base64'));
       const kb = Math.round(fs.statSync(out).size / 1024);
-      console.log(`  ${shot.file.padEnd(12)} ${shot.width}x${shot.height} @2x  ${String(kb).padStart(4)} kB  — ${shot.caption}`);
+      console.log(`  ${shot.file.padEnd(20)} ${shot.width}x${shot.height} @2x  ${String(kb).padStart(4)} kB  — ${shot.caption}`);
     }
-    console.log(`\nWrote ${SHOTS.length} screenshots to docs/img/.`);
+    console.log(`\nWrote ${toShoot.length} screenshot(s) to docs/img/.`);
   } finally {
     if (cdp) cdp.close();
     if (launched) await launched.cleanup();
