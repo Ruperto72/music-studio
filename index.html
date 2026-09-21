@@ -1065,6 +1065,7 @@
     width: 100%; height: 260px; margin-top: 10px; background: #111; color: #9f9;
     font-family: monospace; font-size: 12px; border: 1px solid #444; border-radius: 6px; padding: 8px;
   }
+  #export-box-toolbar { display: flex; gap: 8px; margin-top: 10px; }
 
   /* ---------- Mobile / touch responsive ---------- */
   #more-toggle { display: none; align-items: center; font-size: 12px; font-weight: 700; padding: 8px 12px; }
@@ -1808,6 +1809,10 @@
   </div>
   <button id="insp-close" title="Close editor panel">✕ Done</button>
 
+  <div id="export-box-toolbar" style="display:none">
+    <button id="export-box-copy">Copy code</button>
+    <button id="export-box-close">✕ Close</button>
+  </div>
   <textarea id="exportBox" style="display:none" readonly></textarea>
 
   <!-- Mobile player. Composing on a phone is not a thing anyone does with
@@ -12811,9 +12816,14 @@ function exportNotesArray(seq, isRhythm, indent) {
   return `[\n${lines}\n${indent}]`;
 }
 const jsStr = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+const exportToolbar = document.getElementById('export-box-toolbar');
+function closeExportBox() {
+  document.getElementById('exportBox').style.display = 'none';
+  exportToolbar.style.display = 'none';
+}
 document.getElementById('export').addEventListener('click', () => {
   const box = document.getElementById('exportBox');
-  if (box.style.display === 'block') { box.style.display = 'none'; return; } // click again to close
+  if (box.style.display === 'block') { closeExportBox(); return; } // click again to close
   const toneBlocks = state.trackList.filter(t => t.kind === 'tone').map(t => {
     const notes = exportNotesArray(fromColumnNotes(trackNotes(t.id)), false, '  ');
     return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
@@ -12829,8 +12839,25 @@ document.getElementById('export').addEventListener('click', () => {
     `// Tempo: ${state.tempo} BPM — also update TEMPO_BPM in audio.js if it changed.\n\n` +
     `${tracksCode}\n\n${rhythmCode}`;
   box.style.display = 'block';
+  exportToolbar.style.display = 'flex';
   box.focus();
   box.select();
+});
+document.getElementById('export-box-close').addEventListener('click', closeExportBox);
+document.getElementById('export-box-copy').addEventListener('click', async () => {
+  const box = document.getElementById('exportBox');
+  const btn = document.getElementById('export-box-copy');
+  try {
+    await navigator.clipboard.writeText(box.value);
+  } catch {
+    // No Clipboard API (insecure context, or permission denied) — fall back
+    // to the same select-then-copy a user would do by hand.
+    box.focus(); box.select();
+    document.execCommand('copy');
+  }
+  const oldLabel = btn.textContent;
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = oldLabel; }, 1500);
 });
 
 // ---------- Fullscreen ----------

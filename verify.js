@@ -2284,6 +2284,43 @@ async function main() {
       }
     });
 
+    step('Export code: the box opens with working code, Copy writes it to the clipboard, and Close hides both', async () => {
+      await fresh();
+      // Granting the permission up front is what lets navigator.clipboard.write
+      // succeed with no trusted user gesture behind it; if this browser build
+      // doesn't expose the permission, the clipboard-content check below is
+      // skipped rather than failed, since the button/box assertions still hold
+      // either way.
+      await cdp.send('Browser.grantPermissions', {
+        origin: APP_URL, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'],
+      }).catch(() => {});
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        document.getElementById('export').click();
+      })()`);
+      await waitFor(`document.getElementById('exportBox').style.display === 'block'`);
+      const code = await cdp.evaluate(`document.getElementById('exportBox').value`);
+      if (!/export const TRACKS/.test(code) || !/export const RHYTHM_TRACKS/.test(code)) {
+        throw new Error(`Export code box should hold both declarations, got: ${code.slice(0, 80)}...`);
+      }
+      if (await cdp.evaluate(`document.getElementById('export-box-toolbar').style.display`) !== 'flex') {
+        throw new Error('the Copy/Close toolbar should show alongside the code box');
+      }
+      await cdp.evaluate(`document.getElementById('export-box-copy').click()`);
+      await waitFor(`document.getElementById('export-box-copy').textContent === 'Copied!'`, 2000);
+      const clipboardText = await cdp.evaluate(`navigator.clipboard.readText().catch(() => null)`);
+      if (clipboardText !== null && clipboardText !== code) {
+        throw new Error(`clipboard should hold the exported code, got: ${String(clipboardText).slice(0, 80)}...`);
+      }
+      await cdp.evaluate(`document.getElementById('export-box-close').click()`);
+      if (await cdp.evaluate(`document.getElementById('exportBox').style.display`) !== 'none') {
+        throw new Error('Close should hide the code box');
+      }
+      if (await cdp.evaluate(`document.getElementById('export-box-toolbar').style.display`) !== 'none') {
+        throw new Error('Close should hide the Copy/Close toolbar too');
+      }
+    });
+
     step('Per-note and per-hit pan reach the audio graph; centre inserts no node', async () => {
       await fresh();
       // A panned note looks identical in the DOM, so the DOM alone can't show
