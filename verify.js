@@ -3774,10 +3774,13 @@ async function main() {
 
       // Mutate the *live* track's harmonics to a different shape (Triangle,
       // which — unlike Square — puts H3's phase at 180) and re-read the
-      // already-saved preset. If the preset shared array references with
-      // the live track instead of copying them by value, this would
-      // retroactively corrupt it too; a preset that still reads back as
-      // Square proves the copy actually happened.
+      // already-saved preset. This is a regression check on the save
+      // mechanism as a whole, not a probe of the by-value copy specifically
+      // — saving goes through JSON.stringify into localStorage, which
+      // already decouples the stored preset from the live object graph, so
+      // this can't distinguish a `.slice()` copy from a shared reference.
+      // It still needs to hold: a live edit after save must not be visible
+      // in what was already written.
       await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Triangle').click()`);
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
@@ -3789,7 +3792,7 @@ async function main() {
       })()`);
       const stillSaved = await cdp.evaluate(`JSON.parse(localStorage.getItem('music-studio-instrument-presets'))['Test Square Harmonics'].harmonics`);
       if (!stillSaved || stillSaved.amps[1] !== 0 || stillSaved.amps[2] <= 0 || stillSaved.phases[2] !== 0) {
-        throw new Error(`mutating the live track after save changed the already-saved preset too — harmonics were not copied by value: ${JSON.stringify(stillSaved)}`);
+        throw new Error(`mutating the live track after save changed the already-saved preset too: ${JSON.stringify(stillSaved)}`);
       }
 
       // Reset the track to a plain sawtooth, then reload the preset and
