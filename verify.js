@@ -3728,6 +3728,89 @@ async function main() {
       })()`);
     });
 
+    step('Presets: harmonics are captured on save and reapplied on load', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Dial the Lead track into Harmonics with a non-default amplitude.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`[...document.querySelectorAll('#floating-layer [role="option"]')].find(o => /^Harmonics$/.test(o.textContent)).click()`);
+      await cdp.evaluate(`(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.harmonics-group')`);
+      await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Square').click()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        const h = (d.harmonics || {})[id];
+        return h && h.amps[2] > 0 && h.amps[1] === 0; // Square: H3 on, H2 off
+      })()`);
+
+      // Save it as a preset.
+      await cdp.evaluate(`(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn.icon')].find(b => b.title.startsWith('Instrument presets')).click();
+      })()`);
+      await waitFor(`document.getElementById('preset-dialog').open === true`);
+      await cdp.evaluate(`(() => {
+        const input = document.getElementById('preset-new-name');
+        input.value = 'Test Square Harmonics';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('preset-save').click();
+      })()`);
+      await waitFor(`(() => {
+        try { return !!JSON.parse(localStorage.getItem('music-studio-instrument-presets'))['Test Square Harmonics']; }
+        catch { return false; }
+      })()`);
+      const stored = await cdp.evaluate(`JSON.parse(localStorage.getItem('music-studio-instrument-presets'))['Test Square Harmonics'].harmonics`);
+      if (!stored || stored.amps[1] !== 0 || stored.amps[2] <= 0) {
+        throw new Error(`preset did not capture the Square harmonics: ${JSON.stringify(stored)}`);
+      }
+      await cdp.evaluate(`document.getElementById('preset-close').click()`);
+
+      // Reset the track to a plain sawtooth, then reload the preset and
+      // confirm the harmonics come back.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`[...document.querySelectorAll('#floating-layer [role="option"]')].find(o => /^Saw$/.test(o.textContent)).click()`);
+      await cdp.evaluate(`(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn.icon')].find(b => b.title.startsWith('Instrument presets')).click();
+      })()`);
+      await waitFor(`document.getElementById('preset-dialog').open === true`);
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#preset-list .song-item')].find(r => r.querySelector('.song-title').textContent === 'Test Square Harmonics');
+        row.querySelector('button').click(); // "Load"
+      })()`);
+      await waitFor(`document.getElementById('preset-dialog').open === false`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return d.waveform[id] === 'harmonics';
+      })()`);
+      const reapplied = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return (d.harmonics || {})[id];
+      })()`);
+      if (!reapplied || reapplied.amps[1] !== 0 || reapplied.amps[2] <= 0) {
+        throw new Error(`loading the preset did not restore the Square harmonics: ${JSON.stringify(reapplied)}`);
+      }
+      // Clean up the test preset so it doesn't leak into other runs' localStorage.
+      await cdp.evaluate(`(() => {
+        const p = JSON.parse(localStorage.getItem('music-studio-instrument-presets'));
+        delete p['Test Square Harmonics'];
+        localStorage.setItem('music-studio-instrument-presets', JSON.stringify(p));
+      })()`);
+    });
+
     // Selectors and gestures the five master steps below all share. Spelled
     // out once: the strip container class and the 'master' data-track
     // sentinel are the contract these steps test, so they should move in one

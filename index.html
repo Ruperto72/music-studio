@@ -9548,6 +9548,7 @@ function applyPresetToTrack(track, preset) {
   if (preset.adsr) setAdsr(track, preset.adsr);
   if (preset.filter) setFilterState(track, preset.filter);
   if (preset.fm) setFmState(track, preset.fm);
+  if (preset.harmonics) setHarmonicsState(track, preset.harmonics);
   // `in`, not truthiness: null is a real value here (a plain 50% square), and
   // presets saved before duty existed have no key at all and must not reset it.
   if ('duty' in preset) setTrackDuty(track, preset.duty);
@@ -9607,7 +9608,12 @@ document.getElementById('preset-save').addEventListener('click', () => {
   if (!name) { presetNewNameInput.focus(); return; }
   const presets = readPresets();
   if (presets[name] && !confirm(`Overwrite preset “${name}”?`)) return;
-  presets[name] = { waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) }, fm: { ...getFmState(track) }, duty: getTrackDuty(track) };
+  const hs = getHarmonicsState(track);
+  presets[name] = {
+    waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) },
+    fm: { ...getFmState(track) }, duty: getTrackDuty(track),
+    harmonics: { amps: hs.amps.slice(), phases: hs.phases.slice() },
+  };
   writePresets(presets);
   presetNewNameInput.value = '';
   renderPresetList();
