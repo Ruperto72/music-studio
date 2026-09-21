@@ -223,9 +223,11 @@ function auditBundledSongs(repoRoot) {
       const h = song.harmonics[id];
       if (!h || typeof h !== 'object') continue;
       if (!Array.isArray(h.amps) || h.amps.length !== 8) add(`harmonics["${id}"].amps should be an 8-element array — dropped on load`);
-      else if (h.amps.some((v) => typeof v !== 'number' || v < 0 || v > 1)) add(`harmonics["${id}"].amps has a value outside 0..1`);
+      else if (h.amps.some((v) => typeof v !== 'number')) add(`harmonics["${id}"].amps has a non-numeric value — dropped on load`);
+      else if (h.amps.some((v) => v < 0 || v > 1)) add(`harmonics["${id}"].amps has a value outside 0..1`);
       if (!Array.isArray(h.phases) || h.phases.length !== 8) add(`harmonics["${id}"].phases should be an 8-element array — dropped on load`);
-      else if (h.phases.some((v) => typeof v !== 'number' || v < 0 || v > 360)) add(`harmonics["${id}"].phases has a value outside 0..360`);
+      else if (h.phases.some((v) => typeof v !== 'number')) add(`harmonics["${id}"].phases has a non-numeric value — dropped on load`);
+      else if (h.phases.some((v) => v < 0 || v > 360)) add(`harmonics["${id}"].phases has a value outside 0..360`);
     }
 
     // activeFx's own shape (`{ [effectKey]: { bypassed } }`) is one level
