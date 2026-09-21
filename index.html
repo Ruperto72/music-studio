@@ -8922,17 +8922,50 @@ function currentSongData() {
     swing: state.swing,
   };
 }
+// Saves a blob via the native file-picker (Chrome/Edge) so the user can point
+// it at their own project folder, falling back to the old auto-download <a>
+// everywhere else (Firefox/Safari, or a picker call blocked for lacking a
+// real user gesture — e.g. verify.js's synthetic clicks). The shared `id`
+// is what makes Chrome remember one folder across all four save/open sites
+// below instead of a different last-used directory per file type.
+async function saveBlobAs(blob, filename, description, extensions) {
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        id: 'music-studio-project', suggestedName: filename,
+        types: [{ description, accept: { [blob.type]: extensions } }],
+      });
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+      return;
+    } catch (err) { if (err.name === 'AbortError') return; /* else fall through to the download below */ }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 document.getElementById('save-file').addEventListener('click', () => {
   const data = currentSongData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
   const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
-  const a = document.createElement('a');
-  a.href = url; a.download = slug + '.json'; a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAs(blob, slug + '.json', 'Song file', ['.json']);
 });
 const loadInput = document.getElementById('load-file-input');
-document.getElementById('load-file').addEventListener('click', () => loadInput.click());
+document.getElementById('load-file').addEventListener('click', async () => {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        id: 'music-studio-project',
+        types: [{ description: 'Song file', accept: { 'application/json': ['.json'] } }],
+      });
+      await loadSongFile(await handle.getFile());
+      return;
+    } catch (err) { if (err.name === 'AbortError') return; /* else fall through to the hidden input below */ }
+  }
+  loadInput.click(); // its permanent 'change' listener below does the loading
+});
 // Apply a loaded song (from a file, an example, or a local slot) to the editor.
 // Returns false if the data isn't a valid song.
 // `name` overrides data.songName — used when the song's name lives outside
@@ -8973,16 +9006,21 @@ function applySongData(data, name) {
   render();
   return true;
 }
-loadInput.addEventListener('change', async () => {
-  const file = loadInput.files[0];
-  loadInput.value = '';
-  if (!file) return;
+// Parses and applies a song file, shared by the native-picker path (above)
+// and the hidden-input fallback (below).
+async function loadSongFile(file) {
   let data;
   try { data = JSON.parse(await file.text()); }
   catch (err) { alert('Could not read the file: ' + err.message); return; }
   // Fall back to the filename (minus extension) if the file predates songName.
   const fallbackName = file.name.replace(/\.json$/i, '');
   if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing a rhythm track).');
+}
+loadInput.addEventListener('change', async () => {
+  const file = loadInput.files[0];
+  loadInput.value = '';
+  if (!file) return;
+  await loadSongFile(file);
 });
 
 // ---------- MIDI export ----------
@@ -9068,11 +9106,8 @@ function exportMidiBytes() {
 document.getElementById('export-midi').addEventListener('click', () => {
   const bytes = exportMidiBytes();
   const blob = new Blob([bytes], { type: 'audio/midi' });
-  const url = URL.createObjectURL(blob);
   const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
-  const a = document.createElement('a');
-  a.href = url; a.download = slug + '.mid'; a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAs(blob, slug + '.mid', 'MIDI file', ['.mid']);
 });
 
 // ---------- MIDI import ----------
@@ -9363,19 +9398,21 @@ document.getElementById('export-wav').addEventListener('click', async () => {
   // for the rest of the session.
   btn.disabled = true; btn.title = 'Rendering…';
   setGlyphLabel(btn, 'wav', 'Rendering…');
+  let blob;
   try {
     const buffer = await renderSongToWav();
-    const wavBytes = audioBufferToWav(buffer);
-    const blob = new Blob([wavBytes], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
-    const a = document.createElement('a');
-    a.href = url; a.download = slug + '.wav'; a.click();
-    URL.revokeObjectURL(url);
+    blob = new Blob([audioBufferToWav(buffer)], { type: 'audio/wav' });
   } catch (err) {
     alert('Could not render the WAV file: ' + err.message);
   } finally {
+    // Reset the busy state before prompting where to save, rather than after —
+    // the native save dialog is modal and can sit open indefinitely, and by
+    // then rendering is already done, so "Rendering…" would be stale.
     btn.disabled = false; btn.title = oldTitle; setGlyphLabel(btn, 'wav', oldLabel);
+  }
+  if (blob) {
+    const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+    await saveBlobAs(blob, slug + '.wav', 'WAV audio', ['.wav']);
   }
 });
 
