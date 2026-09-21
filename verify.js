@@ -2221,6 +2221,69 @@ async function main() {
       }
     });
 
+    step('Song I/O: harmonics survive a save, a reload and a load', async () => {
+      // Mirrors the Duty step above (a different per-track sparse map, same
+      // load path) but through the Songs dialog's save-current-as-local-song
+      // flow, not the preset system the other harmonics tests already cover
+      // — the two are different mechanisms and this feature only had
+      // coverage for one of them.
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`[...document.querySelectorAll('#floating-layer [role="option"]')].find(o => /^Harmonics$/.test(o.textContent)).click()`);
+      await cdp.evaluate(`(() => {
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.harmonics-group')`);
+      // Saw quick-start: a recognizable, non-default shape (1/n falloff,
+      // even harmonics phase-flipped) to round-trip.
+      await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Saw').click()`);
+      await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
+      const saved = await draft();
+      const leadId = (saved.trackList.find(t => t.name === 'Lead') || {}).id;
+      const before = (saved.harmonics || {})[leadId];
+      if (!before || Math.abs(before.amps[1] - 0.5) > 1e-9 || before.phases[1] !== 180) {
+        throw new Error(`the saved payload should carry the Lead track's Saw harmonics, got ${JSON.stringify(before)}`);
+      }
+
+      // Save it under a name through the Songs dialog, reload the page (so
+      // nothing survives in memory), then load it back.
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        [...document.querySelectorAll('#file-menu-panel button')].find(b => b.textContent.includes('Songs')).click();
+      })()`);
+      await waitFor(`!!document.getElementById('song-name')`);
+      await cdp.evaluate(`(() => {
+        document.getElementById('song-name').value = 'HarmonicsRoundTrip';
+        document.getElementById('song-save-local').click();
+      })()`);
+      await waitFor(`[...document.querySelectorAll('.song-item .song-title')].some(t => t.textContent === 'HarmonicsRoundTrip')`);
+      await goto(APP_URL);
+      await waitFor(`!!document.querySelector('.track')`);
+      await loadExample('HarmonicsRoundTrip');
+      await cdp.evaluate(`(() => {
+        const head = document.querySelector('.track[data-kind="pitch"] .track-header');
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.harmonics-group')`);
+      // Confirm the Env panel's own sliders show what was set, not just the
+      // underlying state — the same thing the Duty step checks through its
+      // picker's .value.
+      const ampField = (label) => `[...document.querySelectorAll('.harmonics-group .adsr-field')]
+        .find(f => f.querySelector('.adsr-label').textContent === ${JSON.stringify(label)}).querySelector('input[type=range]')`;
+      const h1Amp = await cdp.evaluate(`(${ampField('H1 Amp')}).value`);
+      const h2Amp = await cdp.evaluate(`(${ampField('H2 Amp')}).value`);
+      const h2Phase = await cdp.evaluate(`(${ampField('H2 Phase')}).value`);
+      // Cleared before the assertion so a failure still leaves the browser
+      // profile clean for the steps after this one.
+      await cdp.evaluate(`localStorage.removeItem('music-studio-songs')`);
+      if (Math.abs(parseFloat(h1Amp) - 1) > 1e-9 || Math.abs(parseFloat(h2Amp) - 0.5) > 1e-9 || parseFloat(h2Phase) !== 180) {
+        throw new Error(`the track's harmonics sliders should come back as Saw's, got H1 Amp=${h1Amp} H2 Amp=${h2Amp} H2 Phase=${h2Phase}`);
+      }
+    });
+
     step('Per-note and per-hit pan reach the audio graph; centre inserts no node', async () => {
       await fresh();
       // A panned note looks identical in the DOM, so the DOM alone can't show
