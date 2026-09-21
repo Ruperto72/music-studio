@@ -1,7 +1,7 @@
 {
   "name": "Web Audio Studio",
   "short_name": "Web Audio Studio",
-  "description": "A browser-based 8-bit chiptune music editor — compose looping tracks with the Web Audio API, no plugins.",
+  "description": "A browser-based synth-based music studio — compose looping tracks with the Web Audio API, no plugins.",
   "start_url": "./index.html",
   "scope": "./",
   "id": "./",
