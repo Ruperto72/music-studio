@@ -107,9 +107,6 @@ hur roligt det vore att bygga.
 
 ## Småsaker
 
-- [ ] **Kodexport kräver manuell copy.** `#export`-knappen fyller en
-  `<textarea id="exportBox">` och markerar texten, men det finns varken en
-  Kopiera-knapp (`navigator.clipboard`) eller nedladdning av filen direkt.
 - [ ] **Endast engelskt UI** (`<html lang="en">`) — ingen lokalisering.
 
 ## I ett annat repo

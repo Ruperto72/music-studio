@@ -1772,6 +1772,27 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   strippen ÄR kollapsad) — samma `state.songName`, två element som CSS
   redan växlade mellan, `updateSongNameUI()` uppdaterar båda. Hjälptexten
   uppdaterades på tre ställen för att peka på nya platsen.
+- [x] **Spara/exportera väljer numera mapp via webbläsarens riktiga
+  filväljare, inte alltid Downloads.** Spara fil, Export MIDI, Export WAV
+  och Läs in fil försöker `showSaveFilePicker`/`showOpenFilePicker`
+  (Chrome/Edge) innan de faller tillbaka till den gamla
+  `<a download>`/dolda `<input>`-vägen — Firefox/Safari saknar API:et helt,
+  och ett anrop utan äkta user-gesture (t.ex. `verify.js`s syntetiska klick
+  via `Runtime.evaluate`) kastar `SecurityError` och faller tillbaka
+  likadant, vilket är precis vad som gör att befintliga verify-steg
+  fortsatte fungera oförändrade. Alla fyra delar samma picker-`id`
+  (`music-studio-project`) — det är det som får webbläsaren att minnas
+  *en* mapp mellan dem i stället för en senast-använd-plats per filtyp.
+  `AbortError` (användaren ångrade sig) fångas tyst; alla andra fel faller
+  tillbaka till nedladdning i stället för att visa en alert.
+  **Kodexport fick också en Kopiera- och en Stäng-knapp**
+  (`#export-box-toolbar`) ovanför textrutan — TODO-punkten "Kodexport
+  kräver manuell copy" är därmed löst. `navigator.clipboard.writeText()`
+  med fallback till `document.execCommand('copy')` när Clipboard API
+  saknas eller nekas (t.ex. ett odokument-fokuserat headless-fönster, där
+  `readText()`/`writeText()` kastar "Document is not focused" — uppmätt i
+  verify.js:s egen körning).
+
 ## Dokumentationsskuld
 
 - [x] **Spårhuvudets redesign är ikappskriven.** PR #111 och de två
@@ -1810,6 +1831,27 @@ med pan per not på plats är asymmetrierna i den här listan slut.
     tillkom), `render()`-pipelinen hade kvar ett `fxSendOpen` som inte finns
     längre, och hjälpdialogen beskrev FX-knappen, tio vågformsknappar och en
     rad masterreglage som alla är borta.
+- [x] **Hjälpen är inte längre en modal — den är sin egen sida,
+  `help.html`.** Den gamla `<dialog id="help-dialog">` blockerade resten
+  av appen medan den var öppen, vilket gjorde den odugbar att ha uppe
+  bredvid redigeraren i en egen flik (efterfrågat). ☰-menyns Help-knapp
+  öppnar nu `help.html` via `window.open(..., '_blank')` i stället för
+  `showModal()`; dialogens hela markup och dedikerade CSS (`.help-body`,
+  `.help-ico`, `.kbd-grid`, `kbd`) är borta ur `index.html` — `.help-head`
+  fick vara kvar, den delas med Songs-/Preset-/Pattern-dialogerna.
+  Sidan bär samma innehåll, omstrukturerat bakom en sticky
+  innehållsförteckning, med en ny numrerad "Getting started"-genomgång
+  överst och sju skärmdumpar (fyra nya, riktade via en `shots.js` utökad
+  med ett `--only`-flagg, plus de tre README redan använde).
+  **Versionsnumret läses fortfarande bara på ett ställe.** `help.html` har
+  ingen egen kopia av `APP_VERSION` — den hämtar `index.html`s källkod med
+  `fetch()` och läser ut konstanten med samma regex `verify.js` redan
+  använde för sin egen kontroll, i stället för att bära ett tal som kan
+  glida isär från originalet. (Posten ovanför om `APP_VERSION` säger
+  fortfarande "Help-dialogens sista rad" — det var sant när det skrevs;
+  numera är det den här sidans sidfot.)
+  `help.html` och dess bilder ligger nu i PWA-precachen (`sw.js`), så
+  guiden fungerar offline också.
 
 ## Kvalitet
 

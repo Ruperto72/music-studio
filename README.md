@@ -1,6 +1,9 @@
 # 🎵 Web Audio Studio
 
-Try it: https://ruperto72.github.io/music-studio/
+Try it: https://ruperto72.github.io/music-studio/ — guide:
+https://ruperto72.github.io/music-studio/help.html (also reachable from the
+app's own ☰ menu; opens in its own tab so it can sit next to the editor while
+you work, and works offline once loaded)
 
 A browser-based **synth-based music studio**. Compose looping tracks the way you
 would in a small studio (Pro Tools–style stacked lanes) — everything is
@@ -182,11 +185,14 @@ visible at once. A chip is dimmed while its effect is doing nothing.</sub>
 ### Saving & exporting
 
 - **Song library** — bundled examples or your own songs saved in this browser
-- **Save file / Load file** download/upload a song as `.json`
+- **Save file / Load file** save/open a song as `.json`. In Chrome/Edge this goes through
+  the browser's own file picker rather than always dropping into Downloads — pick a
+  project folder once and Save/Load/Export MIDI/Export WAV all remember it together
+  (Firefox/Safari fall back to the old auto-download)
 - **Export / Import MIDI** move a Standard MIDI File (format 1)
 - **Export WAV** renders the whole song offline and downloads a `.wav`
 - **Export code** writes the song as `TRACKS` / `RHYTHM_TRACKS` JS literals to drop into
-  a game
+  a game, with a Copy button for the result
 - **Keyboard & screen reader**: Tab reaches every control with a visible focus
   ring, Shift+←/→ walks the notes of a track and Home/End jump to its ends,
   with each selection announced as pitch and bar/beat — and step entry (above)
@@ -269,7 +275,10 @@ node icons.js             # rewrites icons/*.png and icons/*.svg
 - **Your songs** are saved in the browser's `localStorage` — nothing is
   uploaded. Use **Songs → Save current** to store the current song under a
   name, and Load/Delete them from the same menu.
-- **Save file / Load file** in the menu download/upload a song as a `.json` file.
+- **Save file / Load file** in the menu save/open a song as a `.json` file — via
+  the browser's native file picker in Chrome/Edge (remembering one project
+  folder across Save/Load/Export MIDI/Export WAV), or a plain download
+  elsewhere.
 
 The page always starts as a fresh project with the starter tracks (Lead,
 Harmony, Bass, Pad and Rhythm, all empty); pick a song explicitly from the
@@ -318,6 +327,7 @@ in-app **Fullscreen** menu item toggles fullscreen for regular browser tabs too.
 
 ```
 index.html                  the editor (self-contained: HTML + CSS + JS + synthesis)
+help.html                   the in-depth guide — opens in its own tab, works offline too
 js/song-data.js             the demo song's note data (TRACKS, RHYTHM_TRACKS, TEMPO_BPM)
 js/downsample-processor.js  AudioWorklet behind the master and per-track bitcrush
 songs/                      example songs + index.json
@@ -331,7 +341,7 @@ verify.js                   headless-browser smoke test
 shots.js                    regenerates the screenshots in docs/img/
 icons.js                    regenerates the app icon in icons/
 cdp.js                      shared browser-driving plumbing for the three above
-docs/img/                   the screenshots this README links to
+docs/img/                   the screenshots this README (and help.html) link to
 TODO.md / DONE.md           what's left, and the journal behind what's built
 docs/                       design notes and implementation plans
 ```
