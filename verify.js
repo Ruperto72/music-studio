@@ -135,7 +135,7 @@ function auditBundledSongs(repoRoot) {
     if (EFFECT_KEYS.length !== 9) throw new Error(`expected 9 TRACK_FX_REGISTRY entries, read ${EFFECT_KEYS.length}: ${EFFECT_KEYS.join(',')}`);
   }
 
-  const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty'];
+  const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty', 'harmonics'];
   const SEEDED_MAPS = ['gains', 'waveform', 'pan', 'mute', 'solo'];
   const REQUIRED_FIELDS = {
     adsr: ['attack', 'decay', 'sustain', 'release'],
@@ -213,6 +213,19 @@ function auditBundledSongs(repoRoot) {
         }
         if (key === 'pan' && (v < -1 || v > 1)) add(`pan["${id}"] = ${v}, outside -1..1`);
       }
+    }
+
+    // harmonics' own shape (`{ amps: number[8], phases: number[8] }`) is
+    // array-valued, not the flat "id -> {param: number}" the loop above
+    // assumes — same reason activeFx below needs its own block.
+    for (const id of Object.keys(song.harmonics || {})) {
+      if (!ids.includes(id)) continue; // already reported above
+      const h = song.harmonics[id];
+      if (!h || typeof h !== 'object') continue;
+      if (!Array.isArray(h.amps) || h.amps.length !== 8) add(`harmonics["${id}"].amps should be an 8-element array — dropped on load`);
+      else if (h.amps.some((v) => typeof v !== 'number' || v < 0 || v > 1)) add(`harmonics["${id}"].amps has a value outside 0..1`);
+      if (!Array.isArray(h.phases) || h.phases.length !== 8) add(`harmonics["${id}"].phases should be an 8-element array — dropped on load`);
+      else if (h.phases.some((v) => typeof v !== 'number' || v < 0 || v > 360)) add(`harmonics["${id}"].phases has a value outside 0..360`);
     }
 
     // activeFx's own shape (`{ [effectKey]: { bypassed } }`) is one level

@@ -3439,6 +3439,22 @@ function applySavedMix(data) {
       if (typeof v === 'number' && v >= 0 && v <= SYNC_SWEEP_MAX) state.sync[ch] = { sweep: v };
     }
   }
+  // Array-shaped, unlike adsr/filter/fm/sync above (all flat "id ->
+  // {param: number}"), so it can't ride the generic TRACK_FX_REGISTRY loop
+  // below — same reason activeFx gets its own dedicated block there.
+  if (data.harmonics && typeof data.harmonics === 'object') {
+    for (const ch of PITCH_TRACKS) {
+      const h = data.harmonics[ch];
+      if (!h || typeof h !== 'object') continue;
+      const { amps, phases } = h;
+      if (!Array.isArray(amps) || amps.length !== 8 || !Array.isArray(phases) || phases.length !== 8) continue;
+      if (!amps.every((v) => typeof v === 'number') || !phases.every((v) => typeof v === 'number')) continue;
+      state.harmonics[ch] = {
+        amps: amps.map((v) => Math.max(0, Math.min(1, v))),
+        phases: phases.map((v) => ((v % 360) + 360) % 360),
+      };
+    }
+  }
   // The seven FX panel effects (EQ, Compressor, Bitcrush, Tremolo, and the
   // three sends) all live on every track kind (tonal and rhythm alike, apart
   // from Vibrato), so — unlike adsr/filter/fm above — this iterates
