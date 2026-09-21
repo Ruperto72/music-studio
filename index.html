@@ -10618,9 +10618,12 @@ function getHarmonicsWave(hs) {
   const n = hs.amps.length;
   const real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
   for (let k = 1; k <= n; k++) {
+    // Sine basis, matching the preview canvas and QUICKSTART_SHAPES:
+    // x(t) = sum(amp*sin(2*pi*k*t + phase)), so imag (the sine term) carries
+    // the amplitude at phase 0 and real (the cosine term) is 0 there.
     const a = hs.amps[k - 1], rad = hs.phases[k - 1] * Math.PI / 180;
-    real[k] = a * Math.cos(rad);
-    imag[k] = -a * Math.sin(rad); // sign convention matches dftToPeriodicWave() above
+    real[k] = a * Math.sin(rad);
+    imag[k] = a * Math.cos(rad);
   }
   const wave = ctx.createPeriodicWave(real, imag);
   harmonicsWaveCache.set(hs, wave);
