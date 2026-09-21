@@ -1616,7 +1616,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3202,15 +3202,8 @@ function applySavedMix(data) {
   // below — same reason activeFx gets its own dedicated block there.
   if (data.harmonics && typeof data.harmonics === 'object') {
     for (const ch of PITCH_TRACKS) {
-      const h = data.harmonics[ch];
-      if (!h || typeof h !== 'object') continue;
-      const { amps, phases } = h;
-      if (!Array.isArray(amps) || amps.length !== 8 || !Array.isArray(phases) || phases.length !== 8) continue;
-      if (!amps.every((v) => typeof v === 'number') || !phases.every((v) => typeof v === 'number')) continue;
-      state.harmonics[ch] = {
-        amps: amps.map((v) => Math.max(0, Math.min(1, v))),
-        phases: phases.map((v) => ((v % 360) + 360) % 360),
-      };
+      const h = validateHarmonics(data.harmonics[ch]);
+      if (h) state.harmonics[ch] = h;
     }
   }
   // The seven FX panel effects (EQ, Compressor, Bitcrush, Tremolo, and the
@@ -3629,6 +3622,23 @@ function getSyncState(track) { return state.sync[track] || DEFAULT_SYNC; }
 function setSyncState(track, patch) { state.sync[track] = { ...getSyncState(track), ...patch }; }
 function getHarmonicsState(track) { return state.harmonics[track] || DEFAULT_HARMONICS; }
 function setHarmonicsState(track, patch) { state.harmonics[track] = { ...getHarmonicsState(track), ...patch }; }
+// Shared by applySavedMix() (a loaded song) and applyPresetToTrack() (a
+// loaded instrument preset) — both are untrusted, hand-editable localStorage
+// content, so both need the same shape/type check before it reaches
+// getHarmonicsWave(), which indexes amps[k-1]/phases[k-1] assuming a valid
+// 8-element array with no check of its own. Returns null rather than a
+// partially-fixed object: a preset with wrong-shaped harmonics should be
+// rejected whole, not merged in as a guess.
+function validateHarmonics(h) {
+  if (!h || typeof h !== 'object') return null;
+  const { amps, phases } = h;
+  if (!Array.isArray(amps) || amps.length !== 8 || !Array.isArray(phases) || phases.length !== 8) return null;
+  if (!amps.every((v) => typeof v === 'number') || !phases.every((v) => typeof v === 'number')) return null;
+  return {
+    amps: amps.map((v) => Math.max(0, Math.min(1, v))),
+    phases: phases.map((v) => ((v % 360) + 360) % 360),
+  };
+}
 function setHarmonicAmp(track, i, v) {
   const amps = getHarmonicsState(track).amps.slice();
   amps[i] = Math.max(0, Math.min(1, v));
@@ -4962,7 +4972,10 @@ function startVelocityDrag(e, track, item, lane, yToValue, spec) {
 // file's other lookup tables (CHORD_PRESETS/RHYTHM_PATTERNS/DRUM_KITS)
 // rather than re-declared inside renderAdsrRow() on every render.
 const QUICKSTART_SHAPES = {
-  Sine: () => ({ amps: [1, 0, 0, 0, 0, 0, 0, 0], phases: [0, 0, 0, 0, 0, 0, 0, 0] }),
+  // Derived from DEFAULT_HARMONICS rather than retyped, so the two can't
+  // silently drift apart — an untouched harmonics track already builds this
+  // exact shape, and the button's whole point is to say so.
+  Sine: () => ({ amps: DEFAULT_HARMONICS.amps.slice(), phases: DEFAULT_HARMONICS.phases.slice() }),
   Saw: () => {
     const amps = [], phases = [];
     for (let n = 1; n <= 8; n++) { amps.push(1 / n); phases.push(n % 2 === 0 ? 180 : 0); }
@@ -5298,7 +5311,11 @@ function renderAdsrRow(track) {
       phaseSlider.addEventListener('mousedown', (e) => e.stopPropagation());
       phaseSlider.addEventListener('input', () => {
         const v = parseFloat(phaseSlider.value);
-        phaseVal.textContent = Math.round(v) + '°';
+        // Match what setHarmonicPhase() actually stores (v % 360) rather than
+        // the slider's raw value — at the top of its range (360) those two
+        // disagree, since 360° and 0° are the same angle but only one of them
+        // is what gets saved.
+        phaseVal.textContent = Math.round(v % 360) + '°';
         setHarmonicPhase(track, k, v);
         drawPreview();
         autosave();
@@ -9357,7 +9374,8 @@ function applyPresetToTrack(track, preset) {
   if (preset.adsr) setAdsr(track, preset.adsr);
   if (preset.filter) setFilterState(track, preset.filter);
   if (preset.fm) setFmState(track, preset.fm);
-  if (preset.harmonics) setHarmonicsState(track, preset.harmonics);
+  const validHarmonics = preset.harmonics && validateHarmonics(preset.harmonics);
+  if (validHarmonics) setHarmonicsState(track, validHarmonics);
   // `in`, not truthiness: null is a real value here (a plain 50% square), and
   // presets saved before duty existed have no key at all and must not reset it.
   if ('duty' in preset) setTrackDuty(track, preset.duty);
