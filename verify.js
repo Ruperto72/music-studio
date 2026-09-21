@@ -3663,6 +3663,71 @@ async function main() {
       }
     });
 
+    step('Harmonics panel: quick-start fills, a slider edit reaches the file, and the preview draws', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`(() => {
+        [...document.querySelectorAll('#floating-layer [role="option"]')].find(o => /^Harmonics$/.test(o.textContent)).click();
+      })()`);
+      await cdp.evaluate(`(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+      })()`);
+      await waitFor(`!!document.querySelector('.harmonics-group')`);
+
+      const labelCount = await cdp.evaluate(`document.querySelectorAll('.harmonics-group .adsr-label').length`);
+      if (labelCount !== 16) throw new Error(`expected 16 harmonics fields (8 amp + 8 phase), got ${labelCount}`);
+      const quickBtnNames = await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].map(b => b.textContent)`);
+      if (JSON.stringify(quickBtnNames) !== JSON.stringify(['Sine', 'Saw', 'Square', 'Triangle'])) {
+        throw new Error(`expected the four quick-start buttons in order, got ${JSON.stringify(quickBtnNames)}`);
+      }
+
+      const blankPreview = await cdp.evaluate(`(() => {
+        const c = document.querySelector('.harmonics-preview');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        return d.some((v, i) => i % 4 !== 3 && v !== 0); // any non-alpha channel non-zero
+      })()`);
+      if (!blankPreview) throw new Error('the preview canvas should already show the default sine, not be blank');
+
+      const amp1 = () => `[...document.querySelectorAll('.harmonics-group .adsr-field')]
+        .find(f => f.querySelector('.adsr-label').textContent === 'H1 Amp').querySelector('input[type=range]')`;
+      const savedAmps = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        return (d.harmonics || {})[id] || null;
+      })()`);
+
+      // Untouched, right after switching to Harmonics: absent from the file,
+      // same as every other sparse per-track map's default.
+      if (await savedAmps() !== null) throw new Error('an untouched Harmonics track should carry no harmonics key yet');
+
+      // Saw quick-start fills all 8 amplitudes with a 1/n falloff.
+      await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Saw').click()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        const h = (d.harmonics || {})[id];
+        return h && Math.abs(h.amps[1] - 0.5) < 1e-9 && h.phases[1] === 180;
+      })()`);
+
+      // A direct slider drag reaches the file too.
+      await cdp.evaluate(`(() => { const s = ${amp1()}; s.value = 0.4; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return false;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+        const h = (d.harmonics || {})[id];
+        return h && Math.abs(h.amps[0] - 0.4) < 1e-9;
+      })()`);
+    });
+
     // Selectors and gestures the five master steps below all share. Spelled
     // out once: the strip container class and the 'master' data-track
     // sentinel are the contract these steps test, so they should move in one

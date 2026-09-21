@@ -305,6 +305,15 @@
   .master-fx-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 8px 12px; border-top: 1px solid #2a2a33; }
   .mfx-group { display: flex; align-items: center; gap: 10px; }
   .mfx-cap { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: #8f8f9c; font-weight: 700; }
+  /* The Harmonics group is much wider than its FM/Filter/Arpeggio neighbours
+     (16 sliders + a preview + 4 buttons), so unlike the plain .mfx-group it
+     wraps — one column per harmonic (amplitude above phase), matching the
+     spec's "amplitude above phase, one column per harmonic" layout. */
+  .harmonics-group { flex-wrap: wrap; max-width: 720px; }
+  .harmonics-pair { display: flex; flex-direction: column; gap: 4px; }
+  .harmonics-preview { display: block; width: 120px; height: 40px; background: #1c1c22; border-radius: 4px; }
+  .harmonics-quickstart { display: flex; gap: 6px; }
+  .harmonics-quickstart button { font-size: 11px; padding: 2px 8px; }
   #spectrum-canvas { background: #0c0c10; border: 1px solid #2a2a33; border-radius: 3px; }
 
   /* Sticks to the top of .daw's own (now-bounded) scrollport as tracks scroll
@@ -5179,6 +5188,7 @@ function renderAdsrRow(track) {
   const header = el('div', 'track-header automation-header');
   const title = el('span', 'automation-title'); title.textContent = state.waveform[track] === 'fm' ? 'Envelope, Filter & FM'
     : state.waveform[track] === 'ringmod' ? 'Envelope, Filter & Ring'
+    : state.waveform[track] === 'harmonics' ? 'Envelope, Filter & Harmonics'
     : state.waveform[track] === 'square' ? 'Envelope, Filter & Duty' : 'Envelope & Filter';
   const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -5391,6 +5401,137 @@ function renderAdsrRow(track) {
       modGroup.appendChild(sweepField);
     }
     lane.appendChild(modGroup);
+  }
+
+  if (state.waveform[track] === 'harmonics') {
+    lane.appendChild(el('span', 'adsr-divider'));
+    const hGroup = el('div', 'mfx-group harmonics-group');
+    const hCap = el('span', 'mfx-cap'); hCap.textContent = 'Harmonics';
+    hGroup.appendChild(hCap);
+
+    // Live preview: the same 8-term sine sum getHarmonicsWave() itself builds
+    // the PeriodicWave from, so what's drawn tracks what's heard (modulo the
+    // engine's own unit-peak normalization, which only rescales the vertical
+    // axis, never the shape). Reads state fresh on every call rather than
+    // closing over a snapshot, so it stays correct across any number of
+    // slider/quick-start edits without needing a full render().
+    const canvas = document.createElement('canvas');
+    canvas.className = 'harmonics-preview';
+    canvas.width = 120; canvas.height = 40;
+    function drawPreview() {
+      const hs = getHarmonicsState(track);
+      const cx = canvas.getContext('2d');
+      cx.clearRect(0, 0, canvas.width, canvas.height);
+      const n = 128;
+      const ys = [];
+      let peak = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        let y = 0;
+        for (let k = 0; k < 8; k++) y += hs.amps[k] * Math.sin(2 * Math.PI * (k + 1) * t + hs.phases[k] * Math.PI / 180);
+        ys.push(y);
+        if (Math.abs(y) > peak) peak = Math.abs(y);
+      }
+      peak = peak || 1;
+      cx.strokeStyle = trackColor(track);
+      cx.beginPath();
+      ys.forEach((y, i) => {
+        const px = (i / n) * canvas.width;
+        const py = canvas.height / 2 - (y / peak) * (canvas.height / 2 - 2);
+        if (i === 0) cx.moveTo(px, py); else cx.lineTo(px, py);
+      });
+      cx.stroke();
+    }
+    drawPreview();
+    hGroup.appendChild(canvas);
+
+    // Quick-start: fill the 8 amplitude/phase pairs with a classic waveform's
+    // own partial series, then the sliders take over from there — the same
+    // "start from something recognizable" pattern the Arpeggio quick-fills
+    // use. Amplitude is always >= 0 (a magnitude); a conventionally-negative
+    // coefficient is expressed as phase 180 instead.
+    const QUICKSTART_SHAPES = {
+      Sine: () => ({ amps: [1, 0, 0, 0, 0, 0, 0, 0], phases: [0, 0, 0, 0, 0, 0, 0, 0] }),
+      Saw: () => {
+        const amps = [], phases = [];
+        for (let n = 1; n <= 8; n++) { amps.push(1 / n); phases.push(n % 2 === 0 ? 180 : 0); }
+        return { amps, phases };
+      },
+      Square: () => {
+        const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
+        for (let n = 1; n <= 8; n += 2) amps[n - 1] = 1 / n;
+        return { amps, phases };
+      },
+      Triangle: () => {
+        const amps = new Array(8).fill(0), phases = new Array(8).fill(0);
+        let sign = 1;
+        for (let n = 1; n <= 8; n += 2) { amps[n - 1] = 1 / (n * n); phases[n - 1] = sign > 0 ? 0 : 180; sign *= -1; }
+        return { amps, phases };
+      },
+    };
+    const quickRow = el('div', 'harmonics-quickstart');
+    for (const [shapeName, calc] of Object.entries(QUICKSTART_SHAPES)) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.textContent = shapeName;
+      btn.title = `Fill the harmonics below with ${shapeName}'s own partial series`;
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setHarmonicsState(track, calc());
+        const n = trackNotes(track)[0];
+        if (n) previewNote(track, n);
+        render();
+        autosave();
+      });
+      quickRow.appendChild(btn);
+    }
+    hGroup.appendChild(quickRow);
+
+    // 8 columns, amplitude above phase, matching the spec's layout — a
+    // .harmonics-pair per harmonic rather than one flat row of 16 fields.
+    const hs = getHarmonicsState(track);
+    for (let k = 0; k < 8; k++) {
+      const pair = el('div', 'harmonics-pair');
+
+      const ampField = el('div', 'adsr-field');
+      const ampCap = el('span', 'adsr-label'); ampCap.textContent = `H${k + 1} Amp`;
+      const ampSlider = document.createElement('input');
+      ampSlider.type = 'range'; ampSlider.min = 0; ampSlider.max = 1; ampSlider.step = 0.02; ampSlider.value = hs.amps[k];
+      ampSlider.style.accentColor = trackColor(track);
+      ampSlider.title = `Amplitude of harmonic ${k + 1}`;
+      const ampVal = el('span', 'adsr-val'); ampVal.textContent = Math.round(hs.amps[k] * 100) + '%';
+      ampSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+      ampSlider.addEventListener('input', () => {
+        const v = parseFloat(ampSlider.value);
+        ampVal.textContent = Math.round(v * 100) + '%';
+        setHarmonicAmp(track, k, v);
+        drawPreview();
+        autosave();
+      });
+      ampField.append(ampCap, ampSlider, ampVal);
+      pair.appendChild(ampField);
+
+      const phaseField = el('div', 'adsr-field');
+      const phaseCap = el('span', 'adsr-label'); phaseCap.textContent = `H${k + 1} Phase`;
+      const phaseSlider = document.createElement('input');
+      phaseSlider.type = 'range'; phaseSlider.min = 0; phaseSlider.max = 360; phaseSlider.step = 5; phaseSlider.value = hs.phases[k];
+      phaseSlider.style.accentColor = trackColor(track);
+      phaseSlider.title = `Phase of harmonic ${k + 1}, in degrees`;
+      const phaseVal = el('span', 'adsr-val'); phaseVal.textContent = Math.round(hs.phases[k]) + '°';
+      phaseSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+      phaseSlider.addEventListener('input', () => {
+        const v = parseFloat(phaseSlider.value);
+        phaseVal.textContent = Math.round(v) + '°';
+        setHarmonicPhase(track, k, v);
+        drawPreview();
+        autosave();
+      });
+      phaseField.append(phaseCap, phaseSlider, phaseVal);
+      pair.appendChild(phaseField);
+
+      hGroup.appendChild(pair);
+    }
+    lane.appendChild(hGroup);
   }
 
   // Arpeggio speed applies whatever the waveform is — a note carries the
