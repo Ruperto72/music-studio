@@ -118,7 +118,7 @@ label) laid out left to right:
 
 | Panel | Contents |
 |---|---|
-| **Menu** | Songs library, Save file, Load file, Export code (toggles a code box open/closed), Export MIDI, Import MIDI, Export WAV, Add track, Add rhythm track, Fullscreen, Help |
+| **Menu** | Four sections, in order: *file I/O* — Songs library, Save file, Load file, Export code (opens a code box with its own Copy/Close controls), Export MIDI, Import MIDI, Export WAV; *track editing* — Split clip, Heal clips, Timing, Transpose, Dynamics, Add track, Add rhythm track; *device/view* — Connect MIDI keyboard, Fullscreen; *Help* — opens `help.html` in a new tab (`window.open`), not an in-app dialog |
 | **Transport** | Return-to-start (⏮), Stop (■), Play (▶), **Record** (a filled circle — arms nothing itself, it rolls the armed track's capture after a bar of count-in), Loop toggle (↺), **Metronome** toggle (a metronome glyph) — see A.16 |
 | **Bars\|Beats** | LCD-style counter (bar\|beat\|sub-beat, plus mm:ss) |
 | **Tools** | Pen / Eraser / Grab tool segmented control; Undo/Redo |
@@ -732,13 +732,32 @@ the loop's seam comes up on an *earlier* column, making the raw length
 negative, which the `Math.max` floor quietly turned into a one-step stab. It
 ends at the loop's end now, which is where it actually sounded.
 
-### A.12 Help dialog
+### A.12 Help — a standalone page, not an in-app dialog
 
-A single scrollable reference covering: overview, tracks & channel strips,
-tools, multi-select, note effects, the master bar, saving & exporting, and
-a keyboard-shortcut table (Space play/stop; 1/2/3 tool select; Delete;
+`help.html` replaced the old `<dialog id="help-dialog">`: the menu's Help
+button now does `window.open('help.html', '_blank')` rather than
+`showModal()`, so the guide can stay open in its own tab beside the editor
+instead of blocking it while read. It is a separate, self-contained HTML
+file (own `<style>`, no shared stylesheet with `index.html`) rather than
+markup living inside the app — every control the app has works while the
+guide is open in another tab.
+
+Layout: a sticky table of contents down the left (collapses below 900px),
+a numbered **Getting started** walkthrough up front (open/start a song → add
+and shape a track → place notes → add effects → save/export/share, each with
+a screenshot), then the same reference sections the dialog used to hold —
+overview, tracks & channel strips, tools, clips, multi-select, note effects,
+the bottom bar, mixing, transport & timeline, saving & exporting, a
+keyboard-shortcut table (Space play/stop; 1/2/3 tool select; Delete;
 arrow-key nudge; Ctrl/Cmd+C/V copy-paste; Ctrl/Cmd+Z / Shift+Z or Y
-undo/redo; Esc deselect/close).
+undo/redo; Esc deselect), and using it without a mouse — illustrated with
+seven screenshots (`docs/img/help/*.png`, four shot specifically for the
+guide, plus the three `README.md` already used). The footer's version
+string is not a second copy of `APP_VERSION`: a small inline script
+`fetch()`es `index.html`'s own source and reads the constant back out with
+the same regex `verify.js` uses for its own check, so there remains exactly
+one place that number is written. `help.html` and its screenshots are in
+`sw.js`'s precache list, so the guide works offline too.
 
 ### A.13 Accessibility
 
@@ -1200,7 +1219,10 @@ A separate **code-export** path (**Export code**) serializes only
 pasting back into the originating game — `songName`, `markers`,
 `automation`, `adsr`, and all six FX-panel groups have no representation in
 that format and are intentionally excluded from it (the game's own audio
-engine doesn't read them).
+engine doesn't read them). The result opens in a `<textarea>` with a small
+toolbar above it — **Copy** (`navigator.clipboard.writeText()`, falling back
+to `document.execCommand('copy')`) and **Close** — added because there was
+previously no way to get the text out except selecting it by hand.
 
 ### B.4 Rendering pipeline
 
@@ -1942,9 +1964,16 @@ with the note and so picks the change up on the next scheduled chunk.
   (A.11) rather than a reload-time prompt.
 - **Local songs**: named saves under a second `localStorage` key, an
   object keyed by name; listed/loaded/deleted from the Songs dialog.
-- **File save/load**: **Save file** downloads `currentSongData()` as a `.json`
-  file (name slugified from the song name); **Load file** reads a selected file
-  through the same `applySongData()` path as everything else.
+- **File save/load**: **Save file** writes `currentSongData()` out as a
+  `.json` file (name slugified from the song name); **Load file** reads a
+  chosen file through the same `applySongData()` path as everything else.
+  Both — plus **Export MIDI** and **Export WAV** below — go through
+  `saveBlobAs()`/`showOpenFilePicker()`: a native OS file picker in
+  Chrome/Edge, all four sharing one picker `id` so the browser remembers a
+  single project folder across them, falling back to the old
+  `<a download>`/hidden `<input>` path in Firefox/Safari or when the picker
+  call has no real user gesture behind it (an `AbortError` — the user
+  cancelled — is the one outcome that does *not* fall back to a download).
 - **Examples**: `songs/index.json` lists `{ file, name, desc }`; each
   example is fetched and applied the same way, with the display name
   overridden from the index entry (not the file's own `songName`, so
