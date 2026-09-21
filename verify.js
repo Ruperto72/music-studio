@@ -1718,7 +1718,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('.th-osc-trigger').click()`);
       await waitFor(`!!document.querySelector('.th-osc-menu')`);
       const menuCount = await cdp.evaluate(`document.querySelectorAll('.th-osc-menu button').length`);
-      if (menuCount !== 13) throw new Error(`expected 13 waveform options in the menu, got ${menuCount}`);
+      if (menuCount !== 14) throw new Error(`expected 14 waveform options in the menu, got ${menuCount}`);
       const switched = await cdp.evaluate(`(() => {
         [...document.querySelectorAll('.th-osc-menu button')].find(b => b.textContent.trim() === 'Saw').click();
         return document.querySelector('.th-osc-trigger').querySelector('span:not(.th-osc-caret)').textContent;
