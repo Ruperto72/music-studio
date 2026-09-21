@@ -1956,8 +1956,8 @@ const isRhythm = (id) => { const t = trackOf(id); return t ? t.kind === 'rhythm'
 const RHYTHM_PALETTE = ['#39ff6a', '#2de6a0', '#7de62d', '#0ff2c0', '#9dff5c'];
 const RHYTHM_COLOR = RHYTHM_PALETTE[0];
 const TRACK_PALETTE = ['#2ff3ff', '#ff2fb0', '#ffb347', '#b78bff', '#5ce0a0', '#ff7a7a', '#ffe14d', '#7ad0ff', '#ff9de0', '#9affc0'];
-const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'sawtri', 'sync', 'pluck', 'noise', 'ringmod', 'fm']; // selectable per tonal track
-const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', sawtri: 'Saw+Tri', sync: 'Hard sync', pluck: 'Pluck', noise: 'Noise', ringmod: 'Ring', fm: 'FM', kit: 'Kit' };
+const WAVEFORMS = ['square', 'pwm', 'triangle', 'sawtooth', 'sine', 'halfsine', 'nestri', 'sawtri', 'sync', 'pluck', 'noise', 'ringmod', 'fm', 'harmonics']; // selectable per tonal track
+const WAVE_LABEL = { square: 'Square', pwm: 'PWM', triangle: 'Triangle', sawtooth: 'Saw', sine: 'Sine', halfsine: 'Half sine', nestri: 'NES Tri', sawtri: 'Saw+Tri', sync: 'Hard sync', pluck: 'Pluck', noise: 'Noise', ringmod: 'Ring', fm: 'FM', harmonics: 'Harmonics', kit: 'Kit' };
 
 // ---------- Icon glyphs ----------
 // One table of tiny inline-SVG shapes, so the same concept looks the same
@@ -2016,6 +2016,10 @@ const GLYPHS = {
   // Two frequencies multiplied: a carrier whose envelope is itself a wave, so
   // the outline pinches to nothing where the modulator crosses zero.
   ringmod:  ['M1 6 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0 t3 0', 'M1 6 q5.5 -5 11 0 t11 0', 'M1 6 q5.5 5 11 0 t11 0'],
+  // Not a fixed shape like every other waveform glyph here — this one is
+  // user-defined, so it draws what the control surface actually is (eight
+  // bars of independent height, one per harmonic) rather than a curve.
+  harmonics: ['M2 10 V6', 'M5 10 V3', 'M8 10 V7', 'M11 10 V4', 'M14 10 V8', 'M17 10 V5', 'M20 10 V2', 'M23 10 V6'],
   kit:      ['M2 9 h20', 'M5 9 a3.5 3.5 0 0 1 7 0', 'M14 9 a2.5 2.5 0 0 1 5 0'],
   // The three drum kits. A waveform glyph draws the wave; a kit has no single
   // wave, so these draw what actually separates them — the shape of a hit's
@@ -2647,6 +2651,11 @@ const ARP_STEP_MIN = 1 / 60, ARP_STEP_MAX = 1 / 8;
 const DEFAULT_SYNC = { sweep: 0 };
 const SYNC_SWEEP_MAX = 12;   // Hz
 const SYNC_SWEEP_DEPTH = 0.6; // of the ratio, either side
+// 8 harmonics, amplitude (0..1, magnitude only — sign lives in phase) + phase
+// (degrees, 0..360) per partial. Amplitude 1 / phase 0 on the fundamental and
+// silence elsewhere is a plain sine — also what an untouched track would
+// build if it were ever put on the `harmonics` waveform.
+const DEFAULT_HARMONICS = { amps: [1, 0, 0, 0, 0, 0, 0, 0], phases: [0, 0, 0, 0, 0, 0, 0, 0] };
 
 // Per-track continuous send to the three shared FX buses (see createGlobalFxBuses()
 // below) — state.fxSend[track] absent -> this. 0 = silent/no-op, same "neutral
@@ -3275,6 +3284,7 @@ const state = {
   fm: {},                    // id -> { ratio, depth } (tonal tracks only, waveform === 'fm') — see DEFAULT_FM
   arpRate: {},               // id -> seconds per arpeggio step (tonal tracks only) — see DEFAULT_ARP_STEP
   sync: {},                  // id -> { sweep } (tonal tracks only, waveform === 'sync') — see DEFAULT_SYNC
+  harmonics: {},             // id -> { amps: number[8], phases: number[8] } (tonal tracks only, waveform === 'harmonics') — see DEFAULT_HARMONICS
   fxSend: {},                // id -> { delay, chorus, reverb } (0..1 each, any track kind) — see DEFAULT_FX_SEND
   comp: {},                  // id -> { threshold, ratio, attack, release } (any track kind) — see DEFAULT_TRACK_COMP
   crush: {},                 // id -> { amount } (0..1, any track kind) — see DEFAULT_TRACK_CRUSH
@@ -3322,7 +3332,7 @@ const state = {
 // The seeded maps (tracks/gains/waveform/pan/mute/solo) are deliberately not
 // in the list: those get one entry per track with a real default, so they are
 // rebuilt from the track list rather than cleared.
-const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'arpRate', 'sync', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'formant', 'activeFx', 'kit'];
+const SPARSE_TRACK_MAPS = ['automation', 'adsr', 'filter', 'fm', 'arpRate', 'sync', 'harmonics', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'formant', 'activeFx', 'kit'];
 const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k] = {}; };
 
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
@@ -3834,6 +3844,18 @@ function getArpStep(track) { return state.arpRate[track] || DEFAULT_ARP_STEP; }
 function setArpStep(track, v) { if (v == null) delete state.arpRate[track]; else state.arpRate[track] = v; }
 function getSyncState(track) { return state.sync[track] || DEFAULT_SYNC; }
 function setSyncState(track, patch) { state.sync[track] = { ...getSyncState(track), ...patch }; }
+function getHarmonicsState(track) { return state.harmonics[track] || DEFAULT_HARMONICS; }
+function setHarmonicsState(track, patch) { state.harmonics[track] = { ...getHarmonicsState(track), ...patch }; }
+function setHarmonicAmp(track, i, v) {
+  const amps = getHarmonicsState(track).amps.slice();
+  amps[i] = Math.max(0, Math.min(1, v));
+  setHarmonicsState(track, { amps });
+}
+function setHarmonicPhase(track, i, v) {
+  const phases = getHarmonicsState(track).phases.slice();
+  phases[i] = ((v % 360) + 360) % 360;
+  setHarmonicsState(track, { phases });
+}
 function setFmState(track, patch) { state.fm[track] = { ...getFmState(track), ...patch }; }
 function getFxSend(track) { return state.fxSend[track] || DEFAULT_FX_SEND; }
 function setFxSend(track, patch) { state.fxSend[track] = { ...getFxSend(track), ...patch }; }
@@ -10415,6 +10437,32 @@ function getSawTriWave() {
   sawTriWave = dftToPeriodicWave(samples);
   return sawTriWave;
 }
+// The harmonic editor's own waveform: unlike nestri/sawtri/halfsine above,
+// which go time-domain samples -> DFT -> PeriodicWave, this one already has
+// frequency-domain data (amplitude + phase per harmonic from the UI), so it
+// builds the PeriodicWave directly — no DFT needed.
+//
+// Cached per settings *object*, not per track id: setHarmonicAmp/
+// setHarmonicPhase (via setHarmonicsState) always replace state.harmonics[track]
+// with a new object rather than mutating in place, so a stale cache entry for
+// an edited-away object just becomes unreachable — no manual invalidation to
+// write or forget. Cleared wholesale in resetAudioCaches() below, since a
+// PeriodicWave (like every other cached wave here) is tied to the
+// AudioContext that built it and can't survive a context swap.
+let harmonicsWaveCache = new WeakMap();
+function getHarmonicsWave(hs) {
+  if (harmonicsWaveCache.has(hs)) return harmonicsWaveCache.get(hs);
+  const n = hs.amps.length;
+  const real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
+  for (let k = 1; k <= n; k++) {
+    const a = hs.amps[k - 1], rad = hs.phases[k - 1] * Math.PI / 180;
+    real[k] = a * Math.cos(rad);
+    imag[k] = -a * Math.sin(rad); // sign convention matches dftToPeriodicWave() above
+  }
+  const wave = ctx.createPeriodicWave(real, imag);
+  harmonicsWaveCache.set(hs, wave);
+  return wave;
+}
 let crushCurve = null;
 function bitcrushCurve() {
   if (crushCurve) return crushCurve;
@@ -10650,6 +10698,7 @@ function resetAudioCaches() {
   nesTriWave = null;
   halfSineWave = null;
   noiseWaveBuffer = null;
+  harmonicsWaveCache = new WeakMap();
   chanDelays.clear();
   reverbImpulse = null;
   chanReverbs.clear();
@@ -10801,7 +10850,7 @@ function voiceGainFor(note, destGain, startAt, dur) {
 // parameters (adsr, filter, fm, vib, and duty would have been the sixth),
 // which is how an argument ends up one slot off; now they take a single
 // `voice` and a new per-track setting is a field rather than another slot.
-const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null, pwmLfo: null, arpStep: DEFAULT_ARP_STEP, sync: DEFAULT_SYNC };
+const DEFAULT_VOICE = { adsr: DEFAULT_ADSR, filter: DEFAULT_FILTER, fm: DEFAULT_FM, vib: DEFAULT_VIBRATO, duty: null, pwmLfo: null, arpStep: DEFAULT_ARP_STEP, sync: DEFAULT_SYNC, harmonics: DEFAULT_HARMONICS };
 function getTrackVoice(track) {
   return {
     adsr: getAdsr(track), filter: getFilterState(track), fm: getFmState(track),
@@ -10809,7 +10858,7 @@ function getTrackVoice(track) {
     // The free-running sweep shared by every `pwm` note on this track. Absent
     // (a track with no channel yet) falls back to a note-local LFO.
     pwmLfo: chanPwmLfo[track] || null,
-    arpStep: getArpStep(track), sync: getSyncState(track),
+    arpStep: getArpStep(track), sync: getSyncState(track), harmonics: getHarmonicsState(track),
   };
 }
 // The note's own pulse width wins over the track's default; `null` on the note
@@ -10819,12 +10868,13 @@ const effectiveDuty = (note, voice) => note.duty ?? voice.duty;
 // chorus osc beside it, and the portamento scheduler's — which is three copies
 // to keep in step every time the rule changes (adding the track duty default
 // would have made it three near-identical four-branch chains).
-function setOscWave(osc, oscType, duty) {
+function setOscWave(osc, oscType, duty, harmonics) {
   if (oscType === 'fm' || oscType === 'sine') osc.type = 'sine';
   else if (oscType === 'square' && duty) osc.setPeriodicWave(pulseWave(duty));
   else if (oscType === 'nestri') osc.setPeriodicWave(getNesTriWave());
   else if (oscType === 'sawtri') osc.setPeriodicWave(getSawTriWave());
   else if (oscType === 'halfsine') osc.setPeriodicWave(getHalfSineWave());
+  else if (oscType === 'harmonics') osc.setPeriodicWave(getHarmonicsWave(harmonics));
   // Ring modulation's carrier is a triangle, the way the SID's is; the
   // modulator that multiplies it is built in createVoiceSource().
   else if (oscType === 'ringmod') osc.type = 'triangle';
@@ -11163,7 +11213,7 @@ function createHardSyncSource(freq, fm, sync) {
     stop: (t) => { gate.setValueAtTime(0, t); if (lfo) lfo.stop(t); },
   };
 }
-function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync) {
+function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync, harmonics) {
   // Falls back for the notes scheduled before the module resolves, and on a
   // browser without AudioWorklet at all. Sawtooth is what a hard-synced voice
   // is before anything resets it, so the fallback is the same voice with the
@@ -11182,7 +11232,7 @@ function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync) {
   if (oscType === 'pwm') return createPwmSource(freq, sweepLfo);
   if (oscType === 'pluck') return createPluckSource(freq);
   const osc = ctx.createOscillator();
-  setOscWave(osc, oscType, duty);
+  setOscWave(osc, oscType, duty, harmonics);
   if (oscType !== 'ringmod') {
     return {
       out: osc, pitch: osc.frequency, toPitch: (hz) => hz, detune: osc.detune,
@@ -11209,7 +11259,7 @@ function createVoiceSource(oscType, duty, freq, fm, sweepLfo, sync) {
 }
 function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOICE) {
   const duty = effectiveDuty(note, voice);
-  const src = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync);
+  const src = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync, voice.harmonics);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, dur);
 
   let chorus = null;
@@ -11228,7 +11278,7 @@ function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOI
     addTrackVibrato(src, note.freq, startAt, startAt + dur, voice.vib);
     if (oscType === 'fm') addFmModulator(src, note.freq, voice.fm.ratio, voice.fm.depth, startAt, startAt + dur);
     if (note.chorus) {
-      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync);
+      chorus = createVoiceSource(oscType, duty, note.freq, voice.fm, voice.pwmLfo, voice.sync, voice.harmonics);
       src.detune.value = 8;
       chorus.detune.value = -8;
       chorus.pitch.setValueAtTime(chorus.toPitch(note.freq), startAt);
@@ -11255,7 +11305,7 @@ function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, 
   // This used to hand-write the wave selection a fourth time — and read
   // note.duty directly, so the track's Duty default never reached a portamento
   // note. Everything goes through createVoiceSource()/effectiveDuty() now.
-  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm, voice.pwmLfo, voice.sync);
+  const src = createVoiceSource(oscType, effectiveDuty(note, voice), note.freq, voice.fm, voice.pwmLfo, voice.sync, voice.harmonics);
   const { gain, filter, pooled } = voiceGainFor(note, destGain, startAt, totalDur);
   src.pitch.setValueAtTime(src.toPitch(note.freq), startAt);
   const glideStart = startAt + dur * 0.6;

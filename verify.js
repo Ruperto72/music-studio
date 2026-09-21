@@ -2790,7 +2790,7 @@ async function main() {
       }
     });
 
-    step('Waveforms: all thirteen build a distinct sound, none is off in level, and PWM sweeps', async () => {
+    step('Waveforms: all fourteen build a distinct sound, none is off in level, and PWM sweeps', async () => {
       await fresh();
       // The DOM can only show that ten buttons exist. What matters is that each
       // one produces different audio — a waveform that silently fell through to
@@ -2869,7 +2869,7 @@ async function main() {
       const optionValues = await cdp.evaluate(
         `[...document.querySelectorAll('.th-osc-menu button')].map(b => b.dataset.value)`);
       await cdp.evaluate(`document.querySelector('.th-osc-trigger').click()`); // close it back up
-      if (optionValues.length !== 13) throw new Error(`expected 13 waveform options, got ${optionValues.length}`);
+      if (optionValues.length !== 14) throw new Error(`expected 14 waveform options, got ${optionValues.length}`);
 
       const results = {};
       const delayMods = {};
@@ -2918,16 +2918,20 @@ async function main() {
       }
 
       const names = Object.keys(results);
-      if (names.length !== 13) throw new Error(`rendered ${names.length} waveforms, expected 13`);
+      if (names.length !== 14) throw new Error(`rendered ${names.length} waveforms, expected 14`);
       const silent = names.filter((n) => results[n].peak <= 0.001);
       if (silent.length) throw new Error(`waveform(s) produced no sound: ${JSON.stringify(silent)}`);
       // FM at its default Depth of 0 IS a plain sine (addFmModulator returns
-      // early), so those two hashing alike is correct rather than a
+      // early), and Harmonics at its default (fundamental only, phase 0) IS a
+      // plain sine too — so those hashing alike is correct rather than a
       // fall-through. Asserting it keeps the check honest if that changes.
       if (results['fm'].hash !== results['sine'].hash) {
         throw new Error('FM at depth 0 should be identical to a plain sine');
       }
-      const others = names.filter((n) => n !== 'fm');
+      if (results['harmonics'].hash !== results['sine'].hash) {
+        throw new Error('Harmonics at its default (fundamental only) should be identical to a plain sine');
+      }
+      const others = names.filter((n) => n !== 'fm' && n !== 'harmonics');
       const hashes = new Set(others.map((n) => results[n].hash));
       if (hashes.size !== others.length) {
         throw new Error(`waveforms are not all distinct: ${JSON.stringify(Object.fromEntries(others.map((n) => [n, results[n].hash])))}`);
