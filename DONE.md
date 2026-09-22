@@ -2714,3 +2714,28 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   **Inte täckt av något steg:** eko efter seek, formant vid undo och Region
   repeat — de två första kräver att man följer ljudgrafen live, den tredje
   att loopintervallet sätts genom handtagen. Läst och resonerat, inte mätt.
+
+- [x] **"Cedar Nocturne" — nylonsträngad gitarr i fingerstyle, och en
+  nivåregression i pluck som låten hittade.** Ett eget stycke i a-moll, 6/8,
+  88 BPM, 33 takter (intro, A, B som öppnar mot C-dur och klättrar till höga
+  B, A′ tystare, avslutning som klingar ut i ett rullat Am(add9)). Lagt som en
+  högerhand spelar: tre stämmor, alla `pluck` — tummen på basen, fingrarna i
+  ett p-i-m-a-m-i-mönster, melodin ovanpå där a-fingret tar den (och
+  arpeggiot lämnar just den åttondelen åt den). Nylonkaraktären är ett mörkt
+  lågpass per stämma (1400/2200/2600 Hz), en liten filterkontur i anslaget och
+  lite rumsreverb. Genererad av ett skript, inte handskriven JSON.
+  **Nivåerna är uppmätta, inte gissade:** varje låt renderades genom appens
+  egen WAV-export och mättes. Det avslöjade att förra svepets pluck-
+  kalibrering var fel för riktiga låtar: kalibrerad mot nivåstegets *enda*
+  testton blev pluck ungefär 4 dB varmare i musik, och **Vowel & String gick
+  från −5,1 dBFS topp (före omskrivningen) till +2,0 — den klippte**. Tonen
+  var rätt, nivån inte. Mjukare excitation (lågpasskoefficient 0,35 → 0,2,
+  vilket också ger ett mörkare anslag) och `PLUCK_LEVEL` 3,5 → 2,3 tar Vowel &
+  String till −1,4 dBFS och Cedar Nocturne till −1,0. Nivåsteget fick ett eget
+  RMS-golv för pluck (−10 dB mot −7) av samma skäl som det redan hade ett eget
+  toppband: en knäppt sträng avklingar under noten. Den gamla slingan klarade
+  −7 bara för att den ringde falskt och därför avklingade långsammare.
+  Samma helkörning fällde också min egen humanize-kontroll från svepet: pennan
+  lämnade sista noten markerad, så Timing humaniserade bara den, och den blev
+  kvar på gridet i ungefär ett fall av tio. Steget avmarkerar nu och kör om
+  humanize tills något faktiskt flyttats.

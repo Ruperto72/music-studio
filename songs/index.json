@@ -98,5 +98,10 @@
     "file": "vowel-and-string.json",
     "name": "Vowel & String",
     "desc": "An 8-bar A minor sketch built to demonstrate what a purely synthesised engine can still do for realism, not to hide it: the bass is Karplus-Strong `pluck`, a delay line excited by noise rather than an oscillator, so each root note actually rings and decays like a string instead of holding a static tone. The chord pad is a plain sawtooth run through the new per-track Formant filter (three bandpass resonances scanning toward AH), which is what turns it from a buzz into something closer to a held voice or breath tone. Both are sent through the reverb bus's now-earlier-reflections-plus-darkening-tail impulse response, over a simple kick/snare/hihat groove on the acoustic kit — a demo, so it loops its one i-VI-III-VII phrase rather than developing anywhere."
+  },
+  {
+    "file": "cedar-nocturne.json",
+    "name": "Cedar Nocturne",
+    "desc": "An original fingerstyle piece for nylon-string guitar in A minor, 6/8. Every voice is the Karplus-Strong `pluck` — a string actually rung and left to decay — darkened with a lowpass for nylon's round tone and set in a little room reverb. It is laid out the way a guitarist's right hand plays it: the thumb on the bass strings, the fingers walking a p-i-m-a-m-i arpeggio through the chords, and the melody on top where the ring finger takes it. Intro, a tune that rises and falls over Am-Am/G-Fmaj7-E7, a brighter middle that opens toward C major and climbs to the high B, the tune again more quietly, and an ending that slows into a rolled A minor add9 left to ring out."
   }
 ]

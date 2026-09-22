@@ -1617,7 +1617,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.1.5';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -11268,7 +11268,7 @@ function createPwmSource(freq, sweepLfo) {
 const PLUCK_MIN_FREQ = 20;      // floor for the delay-length math, not a track limit
 const PLUCK_DECAY_TIME = 1.6;   // seconds to ring down to -60dB, independent of pitch
 const PLUCK_DAMP_HZ = 3000;     // in-loop lowpass: purely timbral, the "twang settling dull" character
-const PLUCK_LEVEL = 3.5;       // levelled against the other waveforms — see verify.js's band check
+const PLUCK_LEVEL = 2.3;       // levelled against the other waveforms — see verify.js's band check
 // The per-note feedback gain that reaches -60dB after PLUCK_DECAY_TIME
 // seconds at this frequency: solve feedback^(time/period) = 0.001 for feedback.
 const pluckFeedback = (freq) => Math.exp(Math.log(0.001) / (PLUCK_DECAY_TIME * freq));
@@ -11325,7 +11325,7 @@ function pluckBuffer(f) {
     // One period of gently lowpassed noise — the classic "fill the string"
     // excitation. Unfiltered, the in-loop lowpass stripped most of it on the
     // first trips and the onset stood 16+dB over the ring.
-    if (n < N) ex += ((rand() * 2 - 1) - ex) * 0.35;
+    if (n < N) ex += ((rand() * 2 - 1) - ex) * 0.2;
     loop[n] = (n < N ? ex * 1.8 : 0) + g * y;
   }
   pluckBuffers.set(key, buf);

@@ -299,7 +299,7 @@ as crash recovery — it's never restored automatically.
 4. Bump `CACHE_NAME` in `sw.js` so installed clients pick up the change.
 
 The bundled examples are listed in `songs/index.json`, which is what the Songs
-menu reads — twenty of them at the time of writing, from `froggy-hop.json` (the
+menu reads — twenty-one of them at the time of writing, from `froggy-hop.json` (the
 game demo) to the SID-voiced Bach arrangements (`inventio.json`, `air.json`, …).
 
 ## Deploy to GitHub Pages

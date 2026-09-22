@@ -3207,10 +3207,18 @@ async function main() {
       // inherently has; what it catches is a waveform falling outside it —
       // which is the original bug exactly, a noise buffer ~5 dB hot, whose RMS
       // would have landed above square's.
+      // `pluck` gets a lower floor, for the reason its peak gets a wider band
+      // below: a struck string decays across the note, so its RMS over the
+      // note sits under any sustained tone's. The old DelayNode loop only
+      // cleared -7 because it rang flat and so decayed more slowly; tuned
+      // correctly and calibrated so the bundled songs keep the balance they
+      // were written with (Vowel & String had gone 4dB hot and clipped), it
+      // measures about -8.
       for (const n of names) {
         const rel = 20 * Math.log10(results[n].rms / results['square'].rms);
-        if (rel > 0.5 || rel < -7) {
-          throw new Error(`${n} sits ${rel.toFixed(1)} dB (RMS) from Square, outside the -7..+0.5 dB the waveforms span`);
+        const floor = n === 'pluck' ? -10 : -7;
+        if (rel > 0.5 || rel < floor) {
+          throw new Error(`${n} sits ${rel.toFixed(1)} dB (RMS) from Square, outside the ${floor}..+0.5 dB band`);
         }
       }
       // Peak too, loosely: it costs headroom even when loudness is right. Wide
@@ -4920,14 +4928,19 @@ async function main() {
       // off the grid" would pass or fail on a dice roll.
       await goto(APP_URL);
       await waitFor(`!!document.querySelector('.track[data-kind="pitch"] .lane')`);
-      await cdp.evaluate(`(() => {
-        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
-        const r = lane.getBoundingClientRect();
-        for (let i = 0; i < 4; i++) {
-          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + i * 70, clientY: r.top + 25 }));
-        }
-      })()`);
+      // Re-queried per click: each placement replaces the lane, and a click on
+      // the old one lands wherever the viewport coordinate happens to divide.
+      for (let i = 0; i < 4; i++) {
+        await cdp.evaluate(`(() => {
+          const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 40 + ${i} * 70, clientY: r.top + 25 }));
+        })()`);
+      }
       await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .note').length === 4`);
+      // Nothing selected, so Timing acts on the whole track — the pen leaves
+      // the last note selected, and a selection narrows it to that one note.
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
 
       const starts = async () => cdp.evaluate(`(() => {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
@@ -4953,13 +4966,19 @@ async function main() {
       };
 
       await openTiming();
-      // Scatter them first, so there is an error to correct at all.
-      await run('timing-humanize', '1', 'timing-amount');
-      const scattered = await starts();
-      if (scattered.length !== 4) throw new Error(`humanize should not lose notes, got ${JSON.stringify(scattered)}`);
-      // Without an error to correct, the 0% and 50% checks below hold for any
-      // quantize at all, including one that ignores its strength.
-      if (!(err(scattered) > 0)) throw new Error(`humanize at full amount moved nothing: ${JSON.stringify(scattered)}`);
+      // Scatter them first, so there is an error to correct at all — without
+      // one, the 0% and 50% checks below hold for any quantize, including one
+      // that ignores its strength. Humanize is random and a note can land back
+      // on the grid, so it is rerun until something is off it rather than
+      // asserted on one roll (four notes all staying put is ~1 in 10,000 a
+      // roll; five rolls make it a non-event).
+      let scattered = [];
+      for (let tries = 0; tries < 5 && !(err(scattered) > 0); tries++) {
+        await run('timing-humanize', '1', 'timing-amount');
+        scattered = await starts();
+        if (scattered.length !== 4) throw new Error(`humanize should not lose notes, got ${JSON.stringify(scattered)}`);
+      }
+      if (!(err(scattered) > 0)) throw new Error(`five rounds of humanize left every note on the grid: ${JSON.stringify(scattered)}`);
 
       // Strength 0 is the sharp end: a quantize that ignores its strength
       // would snap everything here, and nothing else in this step would notice.
