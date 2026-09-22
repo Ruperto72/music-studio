@@ -1616,7 +1616,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -4993,6 +4993,13 @@ const QUICKSTART_SHAPES = {
     return { amps, phases };
   },
 };
+// Every per-track map this panel edits, named once so the Reset button below
+// cannot fall behind the controls beside it — the same rule SPARSE_TRACK_MAPS
+// keeps for save/load, one panel down. It had already drifted twice: `sync` (the
+// hard-sync Sweep) and `arpRate` (the Arpeggio Speed, which every waveform gets)
+// were both added as groups here long after Reset's hand-written list, so both
+// survived a reset that says it puts the panel back to its defaults.
+const ADSR_PANEL_MAPS = ['adsr', 'filter', 'fm', 'duty', 'harmonics', 'sync', 'arpRate'];
 function renderAdsrRow(track) {
   const row = el('div', 'track automation-row');
   row.dataset.track = track;
@@ -5003,9 +5010,21 @@ function renderAdsrRow(track) {
     : state.waveform[track] === 'ringmod' ? 'Envelope, Filter & Ring'
     : state.waveform[track] === 'harmonics' ? 'Envelope, Filter & Harmonics'
     : state.waveform[track] === 'square' ? 'Envelope, Filter & Duty' : 'Envelope & Filter';
-  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset envelope and filter to their defaults';
+  const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset everything in this panel to its default';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  resetBtn.addEventListener('click', (e) => { e.stopPropagation(); delete state.adsr[track]; delete state.filter[track]; delete state.fm[track]; delete state.duty[track]; delete state.harmonics[track]; render(); autosave(); });
+  // rowCache.delete() because this row's fields paint their own readouts and
+  // push straight to state without a render(), so the cached signature keeps
+  // describing the row as it was *built*. Every other way a value moves repaints
+  // in place and so stays honest; Reset is the one path that puts state back to
+  // exactly what the cached signature says, which makes renderTracks() reuse the
+  // row and leave the panel showing numbers nothing holds any more. The bundled
+  // row audit catches this one, which is how it was found.
+  resetBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    for (const k of ADSR_PANEL_MAPS) delete state[k][track];
+    rowCache.delete(track);
+    render(); autosave();
+  });
   const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
@@ -9379,6 +9398,19 @@ function applyPresetToTrack(track, preset) {
   // `in`, not truthiness: null is a real value here (a plain 50% square), and
   // presets saved before duty existed have no key at all and must not reset it.
   if ('duty' in preset) setTrackDuty(track, preset.duty);
+  // The other two settings the Env panel owns, under that same rule — a preset
+  // saved before they were captured carries neither key and must leave the
+  // track's own values alone. Range-checked the way the song loader checks them
+  // rather than trusted: both are bare numbers coming back out of localStorage,
+  // and a hand-edited arp step of 0 would divide a note into steps forever.
+  // Arp speed normalises back to absent at the default exactly as its own
+  // slider does, so loading a preset can't leave a track byte-different from
+  // one nobody ever touched.
+  const sweep = preset.sync && preset.sync.sweep;
+  if (typeof sweep === 'number' && sweep >= 0 && sweep <= SYNC_SWEEP_MAX) setSyncState(track, { sweep });
+  if (typeof preset.arpRate === 'number' && preset.arpRate >= ARP_STEP_MIN && preset.arpRate <= ARP_STEP_MAX) {
+    setArpStep(track, preset.arpRate === DEFAULT_ARP_STEP ? null : preset.arpRate);
+  }
   const n = trackNotes(track)[0];
   if (n) previewNote(track, n);
   render();
@@ -9440,6 +9472,11 @@ document.getElementById('preset-save').addEventListener('click', () => {
     waveform: state.waveform[track], adsr: { ...getAdsr(track) }, filter: { ...getFilterState(track) },
     fm: { ...getFmState(track) }, duty: getTrackDuty(track),
     harmonics: { amps: hs.amps.slice(), phases: hs.phases.slice() },
+    // An instrument is everything the Osc and Env panels own, so the hard-sync
+    // Sweep and the arpeggio Speed travel with it like the rest. Both resolve
+    // through their getters, so an untouched track saves the default rather
+    // than a hole applyPresetToTrack() would have to guess at.
+    sync: { ...getSyncState(track) }, arpRate: getArpStep(track),
   };
   writePresets(presets);
   presetNewNameInput.value = '';
@@ -10333,9 +10370,22 @@ function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
   if (!enabled || !depth) return;
   const duckTo = Math.max(0.05, 1 - depth);
   const releaseSec = 0.15;
+  // Collected and sorted before anything is scheduled, because chronological
+  // order is load-bearing here and neither loop provides it: hits are stored in
+  // the order they were placed (commitHit appends), and there can be more than
+  // one rhythm track. The cancelScheduledValues(at) below is what cuts a
+  // previous hit's release short when the next one lands inside it, but it
+  // "cancels all scheduled parameter changes with times greater than or equal
+  // to" that instant — so reaching an earlier hit *after* a later one deleted
+  // the later one's dip and its release along with it. Two kicks placed
+  // back-to-front left one of them not ducking at all.
+  const times = [];
   for (const id of RHYTHM_TRACK_IDS) for (const h of trackNotes(id)) {
     if ((h.type !== 'kick' && h.type !== 'snare') || h.start < fromCol || h.start >= toCol) continue;
-    const at = startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec;
+    times.push(startAt + (h.start - fromCol + swingOffsetCols(h.start)) * eighthSec);
+  }
+  times.sort((a, b) => a - b);
+  for (const at of times) {
     duckGain.gain.cancelScheduledValues(at);
     duckGain.gain.setValueAtTime(duckTo, at);
     duckGain.gain.exponentialRampToValueAtTime(1, at + releaseSec);
