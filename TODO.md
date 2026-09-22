@@ -7,6 +7,16 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
+## Arrangering, uppföljning
+
+Arrange-dialogen (infoga och ta bort takter, sektioner via markörer) är
+byggd, se `DONE.md`. Det som medvetet lämnades utanför första versionen:
+
+- [ ] **Flytta en sektion.** Duplicera + ta bort gör det redan i två steg,
+  men "flytta Bridge efter andra refrängen" är ett drag man vill göra i ett.
+  Är `duplicateSpan()` till målet följt av `shiftTime()` bakåt på källan,
+  med källans position justerad om målet låg före den.
+
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes

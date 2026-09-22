@@ -68,6 +68,17 @@
   .pattern-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: #b7b7c2; margin: 2px 0 12px; }
   .pattern-opt select { padding: 4px 6px; font-size: 12px; }
   .pattern-opt-note { color: #8f8f9c; }
+  .tap-btn { padding: 4px 8px; font-size: 12px; touch-action: manipulation; }
+  .euclid-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+  .euclid-presets button { padding: 4px 8px; font-size: 12px; }
+  .euclid-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0; font-size: 12px; color: #b7b7c2; }
+  .euclid-row label { display: flex; align-items: center; gap: 5px; }
+  .euclid-row input[type=number] { width: 52px; padding: 4px 6px; font-size: 12px; }
+  .euclid-row select { padding: 4px 6px; font-size: 12px; }
+  .euclid-view { display: flex; flex-wrap: wrap; gap: 3px; max-width: 100%; }
+  .euclid-view span { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #55555f; }
+  .euclid-view span.on { background: #ffcc00; border-color: #ffcc00; }
+  .dialog-sub { font-size: 13px; font-weight: 600; color: #d8d8e0; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #33333d; }
   .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
   .song-item .song-del:hover { border-color: #a33; }
   .song-save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -817,6 +828,10 @@
     border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2;
   }
+  .ghost-note {
+    position: absolute; pointer-events: none; z-index: 1; box-sizing: border-box;
+    border: 1px dashed; border-radius: 3px; background: rgba(255,255,255,0.05); opacity: 0.6;
+  }
   .note.selected, .hit.selected { outline: 2px solid #fff; z-index: 3; }
   .note.multi-selected, .hit.multi-selected { outline: 2px dashed #ffcc00; z-index: 3; }
   .marquee {
@@ -1266,18 +1281,41 @@
         <span class="pattern-opt-note">— hi-hat and ride to the right, shaker, toms and crash to the left; kick and snare stay centred. Off inserts everything dead centre.</span>
       </label>
       <div id="pattern-list" class="song-list"></div>
+      <h3 class="dialog-sub">Euclidean layer</h3>
+      <p class="songs-note">Spreads a number of hits as evenly as possible over a number of steps, on one piece of the kit — three hits over eight steps is the tresillo, five over sixteen the bossa nova. Insert <b>adds a layer</b>: it replaces only that piece's hits, from the playhead's bar to the end, so you can build a groove one piece at a time or lay one over a pattern above. The cycle runs on across bar lines, so steps that don't divide the bar give you a polyrhythm against it.</p>
+      <div id="euclid-presets" class="euclid-presets" role="group" aria-label="Known euclidean rhythms"></div>
+      <div class="euclid-row">
+        <label>Piece <select id="euclid-piece"></select></label>
+        <label>Hits <input id="euclid-hits" type="number" min="0" max="32" value="3"></label>
+        <label>Steps <input id="euclid-steps" type="number" min="2" max="32" value="8"></label>
+        <label>Rotate <input id="euclid-rotate" type="number" min="0" max="31" value="0"></label>
+        <label>Step <select id="euclid-step"></select></label>
+      </div>
+      <div class="euclid-row">
+        <div id="euclid-view" class="euclid-view" aria-hidden="true"></div>
+        <span id="euclid-text" class="pattern-opt-note"></span>
+        <button id="euclid-preview" aria-label="Preview the euclidean layer" title="Hear two bars: the layer with what the track already plays there">▶</button>
+        <button id="euclid-insert" title="Write the layer into this track — replaces only this piece's hits, from the playhead's bar to the end">Insert layer</button>
+      </div>
     </div>
   </dialog>
 
   <dialog id="progression-dialog">
     <div class="help-head">
-      <h2><span data-glyph="scale"></span> Chord progressions</h2>
+      <h2><span data-glyph="scale"></span> Chords &amp; parts</h2>
       <button id="progression-close">Close ✕</button>
     </div>
     <div class="songs-body">
       <p class="songs-note">Writes one chord per bar into this track, from the playhead's bar through the end of the song (replacing whatever was there). The chords come from the song's <b>key</b> — the same progression is major or minor depending on the scale you picked, so change the key and press Insert again to hear it somewhere else entirely.</p>
       <p class="songs-note" id="progression-key">Key: —</p>
       <div id="progression-list" class="song-list"></div>
+      <h3 class="dialog-sub">Follow another track's chords</h3>
+      <p class="songs-note">Writes a bass line or an arpeggio into this track that follows the chords another track is playing — same range as above, from the playhead's bar to the end. It reads whatever that track has, so insert a progression there first (or write your own chords) and come back here from the track that should follow it. Change the chords later and insert again: the part is written once, not linked.</p>
+      <label class="pattern-opt" for="follow-source">Follow
+        <select id="follow-source" title="The track whose chords the part is built from"></select>
+      </label>
+      <p class="songs-note" id="follow-note" hidden></p>
+      <div id="follow-list" class="song-list"></div>
     </div>
   </dialog>
 
@@ -1352,6 +1390,55 @@
     </div>
   </dialog>
 
+  <dialog id="vary-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="vary"></span> Variation</h2>
+      <button id="vary-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note" id="vary-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
+      <p class="songs-note">The same bar again, but not exactly the same. Each button changes a share of the notes — <b>Amount</b> — and leaves the rest as you wrote them, so the part stays recognisably yours. Press again for a different answer; undo if you don't like it.</p>
+      <label class="pattern-opt" for="vary-amount">Amount
+        <input type="range" id="vary-amount" min="0" max="1" step="0.05" value="0.25">
+        <output id="vary-amount-val">25%</output>
+        <span class="pattern-opt-note">— the share of notes each press touches.</span>
+      </label>
+      <div class="pattern-opt">
+        <button id="vary-neighbour">Neighbour tones</button>
+        <span class="pattern-opt-note">— a note moves one step up or down: a scale step with a key set, a semitone without. The melody keeps its shape and its key.</span>
+      </div>
+      <div class="pattern-opt">
+        <button id="vary-octave">Octave jumps</button>
+        <span class="pattern-opt-note">— a note jumps an octave up or down. Same notes, a different line.</span>
+      </div>
+      <div class="pattern-opt">
+        <button id="vary-thin">Thin out</button>
+        <span class="pattern-opt-note">— notes are left out, but never the ones on a bar's downbeat, so the part still lands where it did. Works on drums too.</span>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="arrange-dialog">
+    <div class="help-head">
+      <h2><span data-glyph="arrange"></span> Arrange</h2>
+      <button id="arrange-close">Close ✕</button>
+    </div>
+    <div class="songs-body">
+      <p class="songs-note">Works on the whole song at once — every track, its automation, the markers and the loop move together, so nothing is left behind where the music used to be.</p>
+      <h3 class="dialog-sub">Bars</h3>
+      <div class="euclid-row">
+        <label>At bar <input id="arrange-bar" type="number" min="1" value="1"></label>
+        <label>Bars <input id="arrange-count" type="number" min="1" value="1"></label>
+        <button id="arrange-insert" title="Open empty bars here — everything from this bar on moves later">Insert empty bars</button>
+        <button id="arrange-delete" title="Remove these bars — everything after them moves earlier">Delete bars</button>
+      </div>
+      <h3 class="dialog-sub">Sections</h3>
+      <p class="songs-note" id="arrange-sections-note">A section runs from one marker to the next (or to the end of the song). Name markers after the part of the song they start — Verse, Chorus — with the flag button by the transport, and they show up here.</p>
+      <div id="arrange-sections" class="song-list"></div>
+      <p class="songs-note" id="arrange-status" role="status"></p>
+    </div>
+  </dialog>
+
   <h1 class="sr-only">Web Audio Studio — synth-based music studio</h1>
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
@@ -1387,6 +1474,8 @@
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
           <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
+          <button id="vary-btn" class="file-menu-item" data-glyph="vary" title="Make a variation of the selection, or the whole active track: neighbour tones, octave jumps, fewer notes">Variation…</button>
+          <button id="arrange-btn" class="file-menu-item" data-glyph="arrange" title="Insert or delete bars across every track, and duplicate, copy or delete the sections your markers mark">Arrange…</button>
           <button id="add-track-btn" class="file-menu-item" data-glyph="addTrack" title="Add a new tonal track">Add track</button>
           <button id="add-rhythm-track-btn" class="file-menu-item" data-glyph="addDrums" title="Add a new rhythm track (same ten pieces; it picks its own kit sound)">Add rhythm track</button>
         </div>
@@ -1498,6 +1587,8 @@
             <div class="mstrip-row">
               <input id="tempo" type="number" min="40" max="300" step="1">
               <span class="unit">BPM</span>
+              <button id="tap-tempo" class="tap-btn" aria-label="Tap tempo"
+                      title="Tap tempo: tap this in time, four or more times, and the tempo follows your taps. Stop for two seconds to start a new count.">Tap</button>
             </div>
           </div>
           <div class="mstrip-cell">
@@ -1524,14 +1615,19 @@
           </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Grid</span>
-            <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
-              <option value="1/4">1/4</option>
-              <option value="1/8" selected>1/8</option>
-              <option value="1/16">1/16</option>
-              <option value="1/8T">1/8 T</option>
-              <option value="1/16T">1/16 T</option>
-              <option value="free">Free</option>
-            </select>
+            <div class="mstrip-row">
+              <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
+                <option value="1/4">1/4</option>
+                <option value="1/8" selected>1/8</option>
+                <option value="1/16">1/16</option>
+                <option value="1/8T">1/8 T</option>
+                <option value="1/16T">1/16 T</option>
+                <option value="free">Free</option>
+              </select>
+              <button id="ghost-notes" class="icon-btn" data-glyph="ghost" aria-pressed="true"
+                      aria-label="Show other tracks' notes in the active track"
+                      title="Ghost notes: the other tonal tracks' notes show faintly in the active track's piano roll, so you can see the chords while you write the melody. They cannot be clicked."></button>
+            </div>
           </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Swing</span>
@@ -1617,11 +1713,16 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.5';
+const APP_VERSION = '1.4.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
 const MAX_COLS = 576; // up to 72 bars in 4/4 — the allowed song-length range
+// The tempo range the field declares. Every assignment to state.tempo goes
+// through clampTempo() — the field, Tap, a loaded song, a MIDI import, an undo
+// — so a song file saying 1000 cannot reach the scheduler as it was.
+const TEMPO_MIN = 40, TEMPO_MAX = 300;
+function clampTempo(bpm) { return Math.max(TEMPO_MIN, Math.min(TEMPO_MAX, Math.round(bpm) || TEMPO_BPM)); }
 const seqLength = (seq) => seq.reduce((s, n) => s + n.d, 0);
 
 // ---- Time signature. `num/den` → eighths per bar/beat. 4/4 = 8 per bar (the
@@ -1682,6 +1783,10 @@ const scaleIsOff = () => scaleOf(state.scale).semis.length === 12;
 // exactly like Slip's `snapOn`: it is how you are working right now, and
 // opening someone else's song should not change what your mouse does.
 let keepToScale = localStorage.getItem('music-studio-keep-to-scale') === 'on';
+// Ghost notes: the other tonal tracks drawn faintly in the active track's
+// roll. Editor state, per browser, like the two above — and on by default,
+// since the point is that you see the chords without first knowing to ask.
+let ghostNotesOn = localStorage.getItem('music-studio-ghost-notes') !== 'off';
 // Nearest pitch inside the scale, ties resolving *downward*. Ties are real —
 // in a major scale a C# sits one semitone from both C and D — and picking a
 // side once here is what keeps a drag from flickering between two rows as the
@@ -1869,6 +1974,10 @@ const GLYPHS = {
   eraser:   { box: '0 0 24 24', paths: ['M4 20h16', 'M6 16.5l8.2-8.2a1.6 1.6 0 0 1 2.3 0l2.2 2.2a1.6 1.6 0 0 1 0 2.3L11.5 17H8.5z', 'M11.3 11.2l4.5 4.5'] },
   grab:     { box: '0 0 24 24', paths: ['M9 11V5.5a1.6 1.6 0 0 1 3.2 0V11', 'M12.2 11V4.6a1.6 1.6 0 0 1 3.2 0V11', 'M15.4 11.5V6.6a1.6 1.6 0 0 1 3.2 0V15a5 5 0 0 1-5 5h-2.2a4 4 0 0 1-3-1.4L5.4 14a1.6 1.6 0 0 1 2.3-2.2L9 13.2V11'] },
   marker:   { box: '0 0 24 24', paths: ['M6 21V4', 'M6 4h11l-2.5 3.5L17 11H6z'] },
+  // Three blocks on a timeline, the first and last the same: A-B-A.
+  arrange:  { box: '0 0 24 24', paths: ['M2 20h20', 'M3 8h5v8H3z', 'M10 11h4v5h-4z', 'M16 8h5v8h-5z'] },
+  // One line, and the same line with a note moved off it.
+  vary:     { box: '0 0 24 24', paths: ['M3 17h4', 'M9 13h4', 'M15 9h6', 'M9 7h4', 'M11 7v6'] },
   // The standard two-arrow loop; the first attempt crossed its arrowheads.
   repeat:   { box: '0 0 24 24', paths: ['M4 10V9a3 3 0 0 1 3-3h10', 'M14.5 3.5L17.5 6l-3 2.5', 'M20 14v1a3 3 0 0 1-3 3H7', 'M9.5 20.5L6.5 18l3-2.5'] },
   zoomIn:   { box: '0 0 24 24', paths: ['M17.5 17.5L21 21', 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z', 'M11 7.5v7', 'M7.5 11h7'] },
@@ -1899,6 +2008,8 @@ const GLYPHS = {
   // A rising staircase of unequal steps: what a scale is, as opposed to the
   // twelve equal ones the lane draws. The tall first riser is the tonic.
   scale:    { box: '0 0 24 24', paths: ['M3 21V9', 'M3 19h4v-4h4v-4h4V7h4V4', 'M20 4v17'] },
+  // A solid note block in front of a dashed one: your part over another's.
+  ghost:    { box: '0 0 24 24', paths: ['M3 13h11v6H3z', 'M9 5h3', 'M15 5h3', 'M21 5v3', 'M21 11h-2', 'M9 5v4'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
   // A power switch: the stem plus an open ring (broken at the top, where the
@@ -2042,6 +2153,202 @@ function romanFor(rootMidi, intervals) {
   const third = intervals[0], fifth = intervals[1];
   const numeral = third === 3 ? ROMAN[i].toLowerCase() : ROMAN[i];
   return numeral + (fifth === 6 ? '°' : fifth === 8 ? '+' : '');
+}
+
+// Parts written *from* another track's chords — the step after a progression.
+// A progression gets you chords; the bass and the arpeggio were still written
+// by hand, note by note, from a blank lane. These read what another tonal
+// track is playing (readChords()) and stamp a part over it.
+//
+// Stored as *chord tones*, not pitches, for the same reason PROGRESSIONS
+// stores degrees: `['R', '5']` is root-fifth under a C chord and under an Am,
+// so a row has no notes in it at all and keeps working whatever the chords
+// underneath turn out to be. R/3/5/7 are the chord's own tones (the third and
+// seventh are whatever readChords() found, so a minor chord gets a minor
+// third), O is the root an octave up.
+//
+// `every` is the step in eighths, or 'beat'/'bar' so a row means the same
+// thing in 3/4 as in 4/4. `gate` is how much of each step the note holds.
+// The sequence restarts on every chord change — a root-fifth bass that
+// carried its phase across a change would land the new chord on its fifth.
+//
+// A new part is one row.
+const CHORD_PARTS = [
+  { id: 'roots',   kind: 'bass', name: 'Roots',       every: 'bar',  gate: 1,    seq: ['R'],                          desc: 'The root, held for the whole chord. The bass that never gets in the way.' },
+  { id: 'rootfif', kind: 'bass', name: 'Root–fifth',  every: 'beat', gate: 0.9,  seq: ['R', '5'],                     desc: 'Root and fifth on alternate beats — the two-beat country and polka bass.' },
+  { id: 'pulse',   kind: 'bass', name: 'Eighth pulse', every: 1,     gate: 0.8,  seq: ['R'],                          desc: 'Driving eighths on the root. Rock, synthwave, anything that should push.' },
+  { id: 'octaves', kind: 'bass', name: 'Octaves',     every: 1,      gate: 0.7,  seq: ['R', 'O'],                     desc: 'Root and its octave in eighths — the disco bass.' },
+  { id: 'walk',    kind: 'bass', name: 'Chord walk',  every: 'beat', gate: 0.9,  seq: ['R', '3', '5', '3'],           desc: 'Walks the chord on every beat. Moves more than a root bass without leaving the harmony.' },
+  { id: 'arpup',   kind: 'arp',  name: 'Arp up',      every: 1,      gate: 0.9,  seq: ['R', '3', '5', 'O'],           desc: 'The chord climbed in eighths.' },
+  { id: 'arpdown', kind: 'arp',  name: 'Arp down',    every: 1,      gate: 0.9,  seq: ['O', '5', '3', 'R'],           desc: 'The chord from the top, falling.' },
+  { id: 'arpupdn', kind: 'arp',  name: 'Arp up-down', every: 1,      gate: 0.9,  seq: ['R', '3', '5', 'O', '5', '3'], desc: 'Up and back again — a line that never jumps.' },
+  { id: 'alberti', kind: 'arp',  name: 'Broken chord', every: 1,     gate: 0.9,  seq: ['R', '5', '3', '5'],           desc: 'Root, fifth, third, fifth: the Alberti figure under half of all classical piano.' },
+  { id: 'arp16',   kind: 'arp',  name: 'Fast 7th arp', every: 0.5,   gate: 0.9,  seq: ['R', '3', '5', '7'],           desc: 'Sevenths in sixteenths — the chiptune arpeggio that fakes a chord on one voice.' },
+];
+// Where each kind is written when the target track has nothing to go by: the
+// root lands in the octave around this MIDI note. C2-ish for a bass, C4-ish
+// for an arpeggio.
+const CHORD_PART_CENTRE = { bass: 42, arp: 66 };
+
+// Names the chord a set of sounding pitches spells: a root pitch class plus
+// the third/fifth/seventh that go with it, in semitones.
+//
+// **The sounding notes decide; the key only fills in what is missing.** Every
+// pitch class present is tried as the root against real chord qualities
+// (CHORD_QUALITIES — a third and a fifth that actually belong together) and
+// scored on how much of that chord is there, less one for every note that is
+// not part of it. Scoring against qualities rather than against "any third,
+// any fifth" is what reads an inversion right: E-G-C is a C chord, because
+// E-G-C only makes sense as E minor with a sharpened fifth, and that is not a
+// chord this table offers. The bass note is a tiebreak, never a reason on its
+// own.
+//
+// An earlier version took each root's third and fifth *from the key*, which
+// got every chord the key does not own wrong: G-B-D in C minor came out
+// rooted on B, and in a pentatonic key, where stacking every other scale tone
+// makes no triad at all, a plain C-E-G came out as G. The key is now used
+// only where the notes cannot answer — a lone root, or a root and fifth with
+// no third — and then only a third or fifth the key actually contains
+// (keyFill()), so a lone D in C major is still read as D minor, which is what
+// a bass under it should assume.
+const CHORD_QUALITIES = [
+  { third: 4, fifth: 7 },  // major
+  { third: 3, fifth: 7 },  // minor
+  { third: 5, fifth: 7 },  // sus4
+  { third: 2, fifth: 7 },  // sus2
+  { third: 3, fifth: 6 },  // diminished
+  { third: 4, fifth: 8 },  // augmented
+];
+// The third, fifth or seventh above `root` that the song's key holds, trying
+// `options` in order — or the first option when the key holds none of them
+// (and always, with no key set, which is chromatic and holds everything).
+function keyFill(root, options) {
+  for (const iv of options) if (inScale(48 + root + iv)) return iv;
+  return options[0];
+}
+function nameChord(midis) {
+  const bassPc = ((Math.min(...midis) % 12) + 12) % 12;
+  const pcs = new Set(midis.map(m => ((m % 12) + 12) % 12));
+  let best = null;
+  for (const r of pcs) {
+    const has = (iv) => pcs.has((r + iv) % 12);
+    let q = null, qScore = -1;
+    for (const cand of CHORD_QUALITIES) {
+      const sc = (has(cand.third) ? 2 : 0) + (has(cand.fifth) ? 2 : 0);
+      if (sc > qScore) { q = cand; qScore = sc; }
+    }
+    // A seventh or a sixth is part of the chord rather than a wrong note.
+    // Counting the sixth is what lets the bass decide between C6 and Am7 —
+    // the same four notes, and which one it is is which one is at the bottom.
+    const seventh = has(10) ? 10 : has(11) ? 11 : null;
+    const sixth = has(9) && q.fifth === 7 ? 9 : null;
+    const tones = new Set([0, q.third, q.fifth, ...[seventh, sixth].filter(x => x != null)]);
+    let score = qScore + (seventh != null ? 0.5 : 0) + (sixth != null ? 0.5 : 0) + (r === bassPc ? 0.75 : 0);
+    for (const pc of pcs) if (!tones.has(((pc - r) % 12 + 12) % 12)) score -= 1;
+    if (!best || score > best.score) best = { score, root: r, q, seventh, has };
+  }
+  const { root, has } = best;
+  let { third, fifth } = best.q;
+  // What the notes did not say, the key fills in: a missing third (a lone
+  // root, or an open fifth) and a missing fifth are taken from the key.
+  if (!has(third)) third = has(3) ? 3 : has(4) ? 4 : keyFill(root, [4, 3]);
+  if (!has(fifth)) fifth = keyFill(root, third === 3 ? [7, 6] : [7, 8]);
+  const seventh = best.seventh != null ? best.seventh : keyFill(root, [10, 11]);
+  return { root, third, fifth, seventh };
+}
+// The chords another track plays, as contiguous spans: `{ start, end, root,
+// third, fifth, seventh }`. A span ends wherever what is sounding changes and
+// the new sound names a different chord, so a pad that re-strikes the same
+// chord every bar is one span, and a melody reads as one "chord" per note —
+// following a lead line with a bass works too, it just follows single notes.
+function readChords(track) {
+  const notes = trackNotes(track) || [];
+  const edges = [...new Set(notes.flatMap(n => [n.start, n.start + n.len]))].sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < edges.length - 1; i++) {
+    const a = edges[i], b = edges[i + 1];
+    const sounding = notes.filter(n => n.start <= a && n.start + n.len > a);
+    if (!sounding.length) continue;
+    const ch = nameChord(sounding.map(n => freqToMidi(n.freq)));
+    const last = out[out.length - 1];
+    if (last && last.end === a && last.root === ch.root && last.third === ch.third && last.fifth === ch.fifth) last.end = b;
+    else out.push({ start: a, end: b, ...ch });
+  }
+  return out;
+}
+// How many of a track's chord spans actually hold a chord (two pitch classes
+// or more at once) — used to pick which track a new part should follow.
+function chordiness(track) {
+  const notes = trackNotes(track) || [];
+  let n = 0;
+  for (const s of new Set(notes.map(x => x.start))) {
+    const pcs = new Set(notes.filter(x => x.start <= s && x.start + x.len > s).map(x => freqToMidi(x.freq) % 12));
+    if (pcs.size > 1) n++;
+  }
+  return n;
+}
+// The track a part should follow by default: the one other tonal track that
+// holds the most chords, then the most notes. Null when none has any notes.
+function defaultChordSource(target) {
+  let best = null, bestKey = null;
+  for (const t of PITCH_TRACKS) {
+    if (t === target) continue;
+    const count = (trackNotes(t) || []).length;
+    if (!count) continue;
+    const key = [chordiness(t), count];
+    if (!best || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] > bestKey[1])) { best = t; bestKey = key; }
+  }
+  return best;
+}
+// A plain note — no per-note effects — which is what every generated part
+// writes, so an inserted note is indistinguishable from one placed by hand.
+function plainNote(start, len, midi, vel) {
+  return {
+    start, len, freq: round2(midiToFreq(Math.max(MIDI_MIN, Math.min(MIDI_MAX, midi)))), vel,
+    bend: null, vib: false, trem: false, duty: null, arp: null,
+    porta: false, crush: false, echo: false, chorus: false, reverb: false,
+  };
+}
+// The notes a CHORD_PARTS row writes over `chords`, from column `from` to the
+// end of the song. The one generator both Insert and ▶ call, so the preview
+// cannot play something Insert would not write.
+//
+// Steps sit on the song's own grid (multiples of `every` from bar 1), not on
+// multiples from each chord's start, so a part stays on the beat under a
+// chord that arrives on an off-beat; the chord's own first step is the one
+// exception, since a chord change without a note under it would be missed.
+function chordPartNotes(part, chords, from, centre) {
+  const every = part.every === 'bar' ? eighthsPerBar() : part.every === 'beat' ? eighthsPerBeat() : part.every;
+  const ebeat = eighthsPerBeat();
+  const out = [];
+  for (const ch of chords) {
+    const a = Math.max(ch.start, from), b = Math.min(ch.end, COLS);
+    if (b - a < MICRO / 2) continue;
+    // The root in the octave around `centre`, so a part stays in one register
+    // rather than following wherever the source happened to voice it.
+    const lo = centre - 6;
+    const root = lo + (((ch.root - lo) % 12) + 12) % 12;
+    const offset = { R: 0, 3: ch.third, 5: ch.fifth, 7: ch.seventh, O: 12 };
+    let i = 0;
+    for (let t = a; t < b - MICRO / 2;) {
+      const next = Math.min(b, quant((Math.floor(t / every + 1e-6) + 1) * every));
+      const len = Math.max(MICRO, quant((next - t) * part.gate));
+      // Accent the beat, as a player would; everything between it sits back.
+      const onBeat = Math.abs(t / ebeat - Math.round(t / ebeat)) < 1e-6;
+      out.push(plainNote(quant(t), len, root + offset[part.seq[i % part.seq.length]], onBeat ? 0.85 : 0.7));
+      i++;
+      t = next;
+    }
+  }
+  return out;
+}
+// Where a part for `target` goes: around the notes it already has (it is
+// being replaced, but its register is still the user's choice), otherwise
+// the kind's own default.
+function chordPartCentre(target, part) {
+  const notes = trackNotes(target) || [];
+  if (!notes.length) return CHORD_PART_CENTRE[part.kind];
+  return Math.round(notes.reduce((s, n) => s + freqToMidi(n.freq), 0) / notes.length);
 }
 
 // Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
@@ -2376,6 +2683,47 @@ const RHYTHM_PATTERNS = [
 // an existing arrangement is not always meant to comment on it.
 const FILL_EVERY_CHOICES = [0, 2, 4, 8];
 let patternFillEvery = 4;
+
+// Euclidean rhythms: k hits spread as evenly as they will go over n steps.
+// The patterns this gives are not a curiosity of the algorithm — Toussaint
+// showed that a large share of the world's traditional rhythms are exactly
+// these (E(3,8) is the Cuban tresillo, E(5,8) the cinquillo, E(7,12) a West
+// African bell pattern), which is why two numbers are enough to reach grooves
+// nobody here would have written a RHYTHM_PATTERNS row for.
+//
+// Bjorklund's construction rather than the one-line Bresenham form
+// (`(i * k) % n < k`): both spread the hits equally, but Bresenham lands on a
+// different *rotation* for most inputs, and then E(5,8) would not read as the
+// cinquillo the preset says it is. Rotation is a separate control, so either
+// could reach every pattern — the point is that the unrotated one is the
+// textbook one.
+function euclidPattern(k, n) {
+  if (k <= 0) return Array(n).fill(false);
+  if (k >= n) return Array(n).fill(true);
+  let a = Array.from({ length: k }, () => [true]);
+  let b = Array.from({ length: n - k }, () => [false]);
+  while (b.length > 1) {
+    const m = Math.min(a.length, b.length);
+    const joined = [];
+    for (let i = 0; i < m; i++) joined.push(a[i].concat(b[i]));
+    b = a.length > m ? a.slice(m) : b.slice(m);
+    a = joined;
+  }
+  return a.concat(b).flat();
+}
+// Step lengths offered, in eighths. A 16th layer also brings the 1/16 grid
+// with it, for the reason a 16th groove does (see insertPatternIntoRhythm).
+const EUCLID_STEPS = [{ id: '1/8', eighths: 1 }, { id: '1/16', eighths: 0.5 }];
+// Known rhythms as starting points. One row each; `step` is an EUCLID_STEPS id.
+const EUCLID_PRESETS = [
+  { name: 'Tresillo',   type: 'kick',  k: 3, n: 8,  step: '1/8',  desc: 'E(3,8) — the Cuban tresillo, and the bass drum of half of pop' },
+  { name: 'Cinquillo',  type: 'rim',   k: 5, n: 8,  step: '1/8',  desc: 'E(5,8) — the Cuban cinquillo' },
+  { name: 'Bossa',      type: 'rim',   k: 5, n: 16, step: '1/16', desc: 'E(5,16) — the bossa nova clave' },
+  { name: 'Samba',      type: 'shaker', k: 7, n: 16, step: '1/16', desc: 'E(7,16) — a Brazilian samba figure' },
+  { name: 'Bell 12',    type: 'ride',  k: 7, n: 12, step: '1/16', desc: 'E(7,12) — the West African standard bell, twelve sixteenths against a sixteen-step bar' },
+  { name: 'Four on the floor', type: 'kick', k: 4, n: 16, step: '1/16', desc: 'E(4,16) — the even case: a kick on every beat' },
+  { name: '5 against 4', type: 'tom',  k: 2, n: 5,  step: '1/8',  desc: 'E(2,5) — a five-step cycle that drifts across the bar' },
+];
 
 // Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
 // absent) — attack/decay/release are fractions of the note's own duration (so they
@@ -3446,8 +3794,14 @@ let historyTimer = null;
 const sparseTrackMapsPayload = () => Object.fromEntries(SPARSE_TRACK_MAPS.map(k => [k, state[k]]));
 // timeSig rides along because `cols` does: undoing a meter change put the
 // length back but not the meter, leaving a song that was no longer whole bars.
+// Markers ride along for the same reason since Arrange: they are song content
+// that moves with time, so undoing an inserted bar or a deleted section put
+// the music back and left every marker where the edit had moved it — and the
+// sections the Arrange dialog reads off them pointing at the wrong music. The
+// loop range stays out on purpose: it is editor state, and every loop drag
+// becoming an undo step would bury the edits in it.
 const snapshotSong = () => JSON.stringify({
-  tempo: state.tempo, cols: COLS, timeSig: state.timeSig, tracks: state.tracks, trackList: state.trackList,
+  tempo: state.tempo, cols: COLS, timeSig: state.timeSig, markers: state.markers, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
   ...sparseTrackMapsPayload()
 });
@@ -3482,8 +3836,9 @@ function restoreSnapshot(s) {
     applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq(); applyTrackFormant();
   }
   dropStaleRecTrack();
-  state.tempo = data.tempo;
+  state.tempo = clampTempo(data.tempo);
   tempoInput.value = state.tempo;
+  if (Array.isArray(data.markers)) state.markers = data.markers;
   if (data.timeSig) { restoreTimeSig(data); syncTimeSigUI(); }
   if (typeof data.cols === 'number' && data.cols >= 8) {
     COLS = data.cols;
@@ -4281,6 +4636,10 @@ function trackRowSignature(track, index) {
     // computed window is what the row actually draws from, so that is what
     // belongs here rather than its three inputs.
     t.kind === 'rhythm' ? null : pitchWindow(track),
+    // Ghost notes are drawn from *other* tracks' parts, so none of this
+    // track's own inputs moves when they change.
+    state.activeTrack === track && ghostNotesOn && t.kind !== 'rhythm'
+      ? ghostNotesFor(track).map(g => [g.track, trackColor(g.track), g.start, g.len, g.midi]) : null,
     // The resize handle on a note is drawn only in Grab mode, so the tool is
     // an input a row draws from even though most of its effect is CSS on the
     // body. The bundled audit logs this one; no step happened to switch tools
@@ -6012,11 +6371,12 @@ function buildHeader(track) {
     // setting it.
     const chordsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(chordsBtn, 'scale', '');
-    chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key';
+    chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key, or a bass/arpeggio that follows another track\'s chords';
     chordsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       setActive(track, true);
       renderProgressionList();
+      renderFollowList();
       progressionDialog.showModal();
     });
     tools.append(presetBtn, chordsBtn);
@@ -6035,6 +6395,7 @@ function buildHeader(track) {
       // a tonal track had focus.
       setActive(track, true);
       renderPatternList();
+      renderEuclidView(); // the meter may have changed since it was last drawn
       patternDialog.showModal();
     });
     tools.append(patternsBtn);
@@ -6566,6 +6927,7 @@ function renderPitchTrack(track) {
   }
   addClipBlocks(rollEl, track, pitchCount * ROW_H);
   addSubgrid(rollEl, pitchCount * ROW_H);
+  if (active && ghostNotesOn) addGhostNotes(rollEl, track, win);
   // Placement/marquee are handled at the lane level so a click anywhere resolves
   // to a snapped (possibly sub-eighth) column, not just a whole-cell index.
   rollEl.addEventListener('click', (e) => {
@@ -6642,6 +7004,40 @@ function renderPitchTrack(track) {
   renderMarquee(rollEl, track, pitchCount * ROW_H);
   row.appendChild(rollEl);
   (trackSink || tracksEl).appendChild(row);
+}
+
+// The other tonal tracks' notes, drawn faintly in the active track's roll —
+// what the chords are while you write the melody over them, without soloing
+// or scrolling to another lane. Only on the active track: on every lane they
+// would be a second copy of the whole song and read as noise.
+//
+// They are decoration, not items: `pointer-events: none` so every click
+// still lands on the lane underneath (placing a note on a ghost's row is the
+// most common thing you'll want to do), aria-hidden and outside the roving
+// tabindex, because they belong to another track and are reachable there.
+// A ghost outside this track's pitch window is left out rather than clamped
+// to the edge, which would draw it on a pitch it does not have.
+function ghostNotesFor(track) {
+  const out = [];
+  for (const other of PITCH_TRACKS) {
+    if (other === track) continue;
+    for (const n of trackNotes(other) || []) out.push({ track: other, start: n.start, len: n.len, midi: freqToMidi(n.freq) });
+  }
+  return out;
+}
+function addGhostNotes(rollEl, track, win) {
+  for (const g of ghostNotesFor(track)) {
+    if (g.midi < win.min || g.midi > win.max) continue;
+    const div = el('div', 'ghost-note');
+    div.dataset.track = g.track;
+    div.setAttribute('aria-hidden', 'true');
+    div.style.left = (g.start * colPx) + 'px';
+    div.style.width = Math.max(3, g.len * colPx) + 'px';
+    div.style.top = ((win.max - g.midi) * ROW_H) + 'px';
+    div.style.height = ROW_H + 'px';
+    div.style.borderColor = trackColor(g.track);
+    rollEl.appendChild(div);
+  }
 }
 
 function renderRhythmTrack(track) {
@@ -7234,6 +7630,49 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   render();
   autosave();
 }
+// The hits a euclidean layer writes from `from` to `until`, as real hits.
+// Shared by Insert and ▶ so the preview is what gets written.
+//
+// The cycle runs on from `from` rather than restarting every bar: with steps
+// that divide the bar it is the same thing, and with steps that don't it is
+// the whole point — five eighths against a bar of eight is a polyrhythm, and
+// restarting it at each bar line would quietly turn it back into one bar.
+// The first hit of each cycle is full; the rest sit a little back, so the
+// cycle is audible as a cycle once it no longer lines up with the bar.
+function euclidHits({ type, k, n, rotate, step }, from, until) {
+  const pat = euclidPattern(k, n);
+  const r = ((rotate % n) + n) % n;
+  const first = pat.findIndex((_, i) => pat[(i + r) % n]);
+  const out = [];
+  for (let i = 0; ; i++) {
+    const start = quant(from + i * step);
+    if (start >= until) break;
+    if (!pat[(i + r) % n]) continue;
+    const vel = i % n === first ? 1 : 0.8;
+    out.push(patternHitAt(vel < 1 ? { start: 0, type, vel } : { start: 0, type }, start, 1));
+  }
+  return out;
+}
+// Writes a euclidean layer into the active rhythm track. Unlike a pattern it
+// replaces *only its own piece* in the range, because a layer is meant to be
+// stacked — kick in one pass, rim in the next — and replacing the whole
+// track each time would make building anything out of them impossible.
+function insertEuclidLayer(layer) {
+  const track = state.activeTrack;
+  if (!isRhythm(track) || layer.n < 1) return;
+  const barLen = eighthsPerBar();
+  const startBar = Math.floor(state.playhead / barLen) * barLen;
+  const newHits = euclidHits(layer, startBar, COLS);
+  const kept = trackNotes(track).filter(h => h.start < startBar || h.type !== layer.type);
+  setTrackNotes(track, kept.concat(newHits));
+  // The whole-track write path does not reconcile the selection, and a
+  // selected hit this layer replaced would otherwise stay selected while no
+  // longer being in the song.
+  dropVanishedSelection(track);
+  if (layer.step < state.grid) { state.grid = layer.step; syncGridUI(); }
+  render();
+  autosave();
+}
 // Writes a PROGRESSIONS entry into the active tonal track — one chord per bar
 // from the playhead's bar to the end of the song, replacing whatever was in
 // that range. Deliberately the same contract as insertPatternIntoRhythm():
@@ -7263,18 +7702,17 @@ function insertProgression(prog) {
     const intervals = diatonicIntervals(rootMidi);
     if (!intervals) continue;
     const len = Math.min(barLen, COLS - barCol);
-    for (const semi of [0, ...intervals]) {
-      const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semi));
-      newNotes.push({
-        start: barCol, len, freq: round2(midiToFreq(midi)), vel: 0.8,
-        bend: null, vib: false, trem: false, duty: null, arp: null,
-        porta: false, crush: false, echo: false, chorus: false, reverb: false,
-      });
-    }
+    for (const semi of [0, ...intervals]) newNotes.push(plainNote(barCol, len, rootMidi + semi, 0.8));
   }
+  writeFromBar(track, startBar, newNotes);
+}
+// The tail both inserts share: everything from `startBar` on is replaced by
+// `newNotes`, which end up selected so the next thing you do — a transpose,
+// Dynamics, Delete — acts on exactly what was just written.
+function writeFromBar(track, startBar, newNotes) {
   if (!newNotes.length) return;
   // clearOverlaps() rather than a hand-written filter, like every other path
-  // that places notes — a chord tone landing on an existing note of the same
+  // that places notes — a new note landing on an existing note of the same
   // pitch is the one case that has to give way, and only that case.
   let notes = trackNotes(track).filter(n => n.start < startBar);
   for (const n of newNotes) notes = clearOverlaps(notes, n);
@@ -7283,6 +7721,26 @@ function insertProgression(prog) {
   state.multiSelected = new Set(newNotes);
   render();
   autosave();
+}
+// Writes a CHORD_PARTS row into the active tonal track, following `source`'s
+// chords — the same "from the playhead's bar, to the end, replacing" contract
+// as insertProgression(), so the three ways of starting a part agree.
+//
+// It is a stamp, not a link: change the chords afterwards and the part does
+// not follow until you insert it again. A live link would have to decide what
+// happens to a note you edited by hand the moment the chords move, and there
+// is no answer to that which is not sometimes wrong.
+// Returns whether anything was written: a source whose chords all lie before
+// the playhead's bar gives nothing to follow, and the caller has to say so
+// rather than close the dialog on a click that did nothing.
+function insertChordPart(part, source) {
+  const track = state.activeTrack;
+  if (isRhythm(track) || !source || source === track) return false;
+  const startBar = Math.floor(state.playhead / eighthsPerBar()) * eighthsPerBar();
+  const newNotes = chordPartNotes(part, readChords(source), startBar, chordPartCentre(track, part));
+  if (!newNotes.length) return false;
+  writeFromBar(track, startBar, newNotes);
+  return true;
 }
 // Keyboard selection through the active track, ordered as the grid reads:
 // left to right, and low to high where notes share a column. Rhythm tracks
@@ -8481,7 +8939,58 @@ document.getElementById('redo-btn').addEventListener('click', redo);
 
 const tempoInput = document.getElementById('tempo');
 tempoInput.value = state.tempo;
-tempoInput.addEventListener('change', () => { state.tempo = parseInt(tempoInput.value, 10) || TEMPO_BPM; });
+// The field and Tap both land here. Changing the tempo while the transport
+// runs has to re-anchor it: playStartCol/playStartCtxTime pair a column with
+// an audio time *at the old tempo*, and ctxTimeToCol() dividing by the new
+// one made the playhead jump and put recorded notes in the wrong columns
+// until the next chunk re-anchored. Tapping along to a playing song is the
+// obvious way to use Tap, so it is the case that has to work: read where the
+// transport is at the old tempo, then restart from exactly there at the new
+// one, taking back what was scheduled at the old tempo the way a seek does.
+function setTempo(bpm) {
+  const next = clampTempo(bpm);
+  tempoInput.value = next;
+  if (next === state.tempo) return;
+  const col = playing && ctx ? ctxTimeToCol(ctx.currentTime) : null;
+  state.tempo = next;
+  if (col != null) {
+    cancelScheduledVoices();
+    startPlaybackFrom(Math.max(0, Math.min(COLS - MICRO, quant(col))));
+  }
+  autosave();
+}
+tempoInput.addEventListener('change', () => setTempo(parseInt(tempoInput.value, 10)));
+
+// ---------- Tap tempo ----------
+// Tap in time and the tempo follows. For the riff you have in your head (or
+// in another app) and want to write down at the speed it actually goes.
+//
+// Counted on pointerdown, not click: a click fires on *release*, and how long
+// a finger rests on the button is not part of the beat — measured on release
+// the taps wobble by however long each press happened to last. The keyboard
+// reaches the same count through click, which a pointer also sends after its
+// pointerdown; `detail === 0` is what tells a keyboard click from that echo.
+//
+// The tempo is the mean of the recent intervals rather than the last one, so
+// one early tap nudges it instead of throwing it. Only the last TAP_KEEP taps
+// count, so a count that drifts on purpose (slowing to find the right feel)
+// is followed rather than averaged away, and a pause longer than
+// TAP_RESET_MS starts a new count — without that, tapping again a minute
+// later would average in an interval of a minute.
+const TAP_RESET_MS = 2000, TAP_KEEP = 8;
+let tapTimes = [];
+function tapTempo(now = performance.now()) {
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > TAP_RESET_MS) tapTimes = [];
+  tapTimes.push(now);
+  if (tapTimes.length > TAP_KEEP) tapTimes.shift();
+  if (tapTimes.length < 2) { announce('Tap again in time'); return; }
+  const mean = (tapTimes[tapTimes.length - 1] - tapTimes[0]) / (tapTimes.length - 1);
+  setTempo(60000 / mean);
+  announce(`${state.tempo} BPM`);
+}
+const tapBtn = document.getElementById('tap-tempo');
+tapBtn.addEventListener('pointerdown', (e) => { if (e.button === 0) tapTempo(); });
+tapBtn.addEventListener('click', (e) => { if (e.detail === 0) tapTempo(); });
 
 // ---------- Bottom bar: master volume (static) + collapse toggle ----------
 const masterVolInput = document.getElementById('master-vol');
@@ -8640,6 +9149,20 @@ keySnapBtn.addEventListener('click', () => {
 });
 syncKeyUI();
 
+const ghostBtn = document.getElementById('ghost-notes');
+function syncGhostUI() {
+  ghostBtn.setAttribute('aria-pressed', String(ghostNotesOn));
+  ghostBtn.classList.toggle('on', ghostNotesOn);
+}
+ghostBtn.addEventListener('click', () => {
+  ghostNotesOn = !ghostNotesOn;
+  try { localStorage.setItem('music-studio-ghost-notes', ghostNotesOn ? 'on' : 'off'); } catch { /* ignore */ }
+  syncGhostUI();
+  render();
+  announce(ghostNotesOn ? 'Showing other tracks\' notes' : 'Hiding other tracks\' notes');
+});
+syncGhostUI();
+
 // ---------- Time signature (meter) ----------
 const timeSigSelect = document.getElementById('time-sig');
 for (const ts of TIME_SIGS) {
@@ -8675,30 +9198,16 @@ document.getElementById('add-marker').addEventListener('click', addMarkerAtPlayh
 
 // ---------- Song length (whole bars) ----------
 function updateLengthUI() { document.getElementById('len-bars').textContent = round2(COLS / eighthsPerBar()) + ' bars'; }
-// Change the song length. Shrinking drops notes/hits/markers past the new end
-// (and trims notes that straddle it); growing just adds empty bars. The length
-// is encoded on export/save as the trailing rest, so it round-trips.
+// Change the song length: bars added or taken off the *end*. That is a time
+// edit at the song's last column, so it is shiftTime()'s — which trims notes
+// that straddle the new end, drops what starts past it (automation and clip
+// windows included, which a hand-written copy of this here used to skip) and
+// clamps the loop, the markers and the playhead the same way Arrange does.
+// The length is encoded on export/save as the trailing rest, so it round-trips.
 function setCols(newCols) {
   newCols = clampCols(newCols);
   if (newCols === COLS) return;
-  const wasFullLoop = state.loopStart === 0 && state.loopEnd === COLS;
-  if (newCols < COLS) {
-    for (const t of PITCH_TRACKS) {
-      setTrackNotes(t, trackNotes(t)
-        .filter(n => n.start < newCols)
-        .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n)));
-    }
-    for (const id of RHYTHM_TRACK_IDS) setTrackNotes(id, trackNotes(id).filter(h => h.start < newCols));
-    state.markers = state.markers.filter(m => m.col <= newCols);
-  }
-  COLS = newCols;
-  if (wasFullLoop) { state.loopStart = 0; state.loopEnd = COLS; }
-  else { state.loopStart = Math.min(state.loopStart, COLS - 1); state.loopEnd = Math.min(state.loopEnd, COLS); if (state.loopEnd <= state.loopStart) state.loopEnd = COLS; }
-  state.playhead = Math.min(state.playhead, COLS - 1);
-  visualPlayhead = state.playhead;
-  state.selected = null;
-  state.multiSelected.clear();
-  updateLengthUI();
+  shiftTime(Math.min(newCols, COLS), newCols - COLS);
   render();
 }
 document.getElementById('len-minus').addEventListener('click', () => setCols(COLS - eighthsPerBar()));
@@ -8781,6 +9290,244 @@ document.getElementById('loop-reset').addEventListener('click', () => {
 });
 
 // ---------- Region repeat ("loop clip") ----------
+// Copies landing among existing notes: clearing the destination by start
+// column alone leaves two kinds of same-pitch overlap — a note from before it
+// still ringing into the first copy, and the last copy's tail running into a
+// note after it. Whichever starts first ends where the other begins. Shared
+// by Repeat and section duplication, which place copies the same way.
+function trimCopiesAgainst(rest, copies) {
+  for (const c of copies) {
+    for (const o of rest) {
+      if (!notesConflict(o, c)) continue;
+      if (o.start < c.start) o.len = quant(c.start - o.start);
+      else c.len = quant(o.start - c.start);
+    }
+  }
+  return copies;
+}
+
+// ---------- Arrange: time itself, across every track ----------
+// Every other edit acts on one track's items. These act on the *timeline*:
+// open a gap, close one, copy a stretch of the whole song somewhere else. That
+// is the difference between having a loop and having a song — a chorus two
+// bars later means moving everything after it, and doing that track by track
+// is where arranging used to stop.
+//
+// One function moves time, shiftTime(), and everything that has a column goes
+// through it: every track's items *and* its clip windows, automation points,
+// markers, the loop range and the playhead. Anything with a column that is
+// left out of it silently stays put while the music moves out from under it,
+// which is the one failure this whole section exists to prevent — so a new
+// kind of timed data belongs in here, not beside it.
+//
+// `delta > 0` opens `delta` columns at `at`. `delta < 0` removes the range
+// [at, at - delta): items that start in it go and items after it move back.
+// Starts and ends map differently at the boundary — something *starting* at
+// `at` moves with an insert, something *ending* there stays — and a note that
+// rings across `at` is treated exactly like a clip window that does: its end
+// moves with the edit, so an insert sustains it through the new bars and a
+// delete shortens it by what was cut. That makes insert-then-delete give the
+// song back exactly. The first version kept such a note's length on insert,
+// which sounded its tail alone in the "empty" bar, cut off from the music it
+// went with, and then lost that tail for good when the bar was deleted again.
+// Clip windows follow the same map, so every window keeps what it hid.
+//
+// Automation is anchored rather than just moved (shiftCurve()): a ramp across
+// an insert would otherwise stretch over the new bars and play every later
+// value at the wrong time, so the curve holds its value through the gap and
+// both sides keep their shape.
+//
+// Always whole bars: a song is a whole number of bars everywhere else (the
+// Length control, the meter change, clampCols()), and a length that is not
+// one reloads rounded, dropping the music in the last part-bar. Returns false
+// (and changes nothing) for a delta that is not whole bars, or one that would
+// leave MAX_COLS or go under one bar.
+function shiftTime(at, delta) {
+  if (!delta) return true;
+  const bar = eighthsPerBar();
+  if (Math.abs(delta / bar - Math.round(delta / bar)) > EPS) return false;
+  const newCols = COLS + delta;
+  if (newCols > MAX_COLS || newCols < bar) return false;
+  const cut = delta < 0 ? -delta : 0;
+  const mapStart = (c) => (c < at ? c : delta > 0 ? c + delta : c < at + cut ? at : c - cut);
+  const mapEnd = (c) => (c <= at ? c : delta > 0 ? c + delta : c <= at + cut ? at : c - cut);
+  const inCut = (c) => cut > 0 && c >= at && c < at + cut;
+  for (const t of state.trackList) {
+    const clips = [];
+    for (const clip of clipsOf(t.id)) {
+      const notes = [];
+      for (const it of clip.notes) {
+        if (inCut(it.start)) continue;
+        if (typeof it.len === 'number' && it.start < at && it.start + it.len > at) {
+          it.len = quant(Math.max(MICRO, mapEnd(it.start + it.len) - it.start));
+        } else it.start = quant(mapStart(it.start));
+        notes.push(it);
+      }
+      const start = mapStart(clip.start);
+      const len = clip.len == null ? null : mapEnd(clip.start + clip.len) - start;
+      if (len != null && len <= 0) continue; // the whole window was cut
+      clips.push({ ...clip, start, len, notes });
+    }
+    setClips(t.id, clips);
+  }
+  for (const [track, byParam] of Object.entries(state.automation || {})) {
+    for (const [param, pts] of Object.entries(byParam)) {
+      // Through setAutomationPoints(), which deletes a curve the cut emptied —
+      // an empty list left behind would read as "automated" to
+      // fxHasAutomation() and keep a chip on screen with nothing under it.
+      setAutomationPoints(track, param, shiftCurve(pts, at, delta, mapStart, inCut));
+    }
+    if (!Object.keys(byParam).length) delete state.automation[track];
+  }
+  state.markers = state.markers.filter(m => !inCut(m.col)).map(m => ({ ...m, col: mapStart(m.col) }));
+  const wasFullLoop = state.loopStart === 0 && state.loopEnd === COLS;
+  COLS = newCols;
+  if (wasFullLoop) { state.loopStart = 0; state.loopEnd = COLS; } else {
+    state.loopStart = Math.min(mapStart(state.loopStart), COLS - 1);
+    state.loopEnd = Math.min(mapEnd(state.loopEnd), COLS);
+    if (state.loopEnd <= state.loopStart) { state.loopStart = 0; state.loopEnd = COLS; }
+  }
+  // The playhead is a column like any other: it stays with the music it was on.
+  state.playhead = Math.min(mapStart(state.playhead), COLS - 1);
+  visualPlayhead = state.playhead;
+  state.selected = null;
+  state.multiSelected.clear();
+  updateLengthUI();
+  return true;
+}
+// Two points on one column are a step: the curve arrives at the first value
+// and leaves from the second. automationValueAt() and the scheduler both read
+// them that way (a ramp to the same instant is a jump), which is what lets an
+// edit keep the curve exact on *both* sides of a boundary.
+const roundAuto = (v) => Math.round(v * 10000) / 10000;
+function dedupeCurve(pts) {
+  return pts.filter((p, i) => !(i && pts[i - 1].col === p.col && pts[i - 1].value === p.value));
+}
+// One curve through shiftTime(). An insert inside the curve holds the value at
+// `at` through the new bars (an anchor on each side of the gap). A delete that
+// the curve spans keeps both sides exact with a step at the join: the left
+// side still arrives at the value it had at `at`, the right side leaves from
+// the value it had where the cut ended.
+function shiftCurve(pts, at, delta, mapStart, inCut) {
+  if (!pts.length) return pts;
+  const val = (c) => roundAuto(automationValueAt(pts, c, 0));
+  const first = pts[0].col, last = pts[pts.length - 1].col;
+  if (delta > 0) {
+    const moved = pts.map(p => ({ ...p, col: mapStart(p.col) }));
+    if (!(first < at && last >= at)) return moved;
+    const v = val(at);
+    const before = moved.filter(p => p.col < at), after = moved.filter(p => p.col >= at);
+    const gapEnd = after.length && after[0].col === at + delta ? [] : [{ col: at + delta, value: v }];
+    return dedupeCurve([...before, { col: at, value: v }, ...gapEnd, ...after]);
+  }
+  const cut = -delta;
+  const before = pts.filter(p => p.col < at);
+  const after = pts.filter(p => !inCut(p.col) && p.col >= at).map(p => ({ ...p, col: mapStart(p.col) }));
+  if (!before.length || !after.length) return [...before, ...after];
+  const join = [{ col: at, value: val(at) }];
+  if (after[0].col !== at) join.push({ col: at, value: val(at + cut) });
+  return dedupeCurve([...before, ...join, ...after]);
+}
+// A song's sections are its markers: each one runs from its marker's bar to
+// the next marker's bar, or to the end of the song. Named by the marker, so
+// "Chorus" is whatever you called it. Not a second structure beside the
+// markers — a marker already *is* "something starts here", and a second list
+// would have to be kept in step with it.
+//
+// Whole bars, from the bar the marker sits in: a marker can be dropped on any
+// eighth, and a section of three and a half bars duplicated would leave the
+// song half a bar long (shiftTime() refuses that). Two markers in one bar
+// make one section, named by the first.
+function songSections() {
+  const bar = eighthsPerBar();
+  const marks = [...state.markers].filter(m => m.col < COLS).sort((a, b) => a.col - b.col);
+  const starts = [];
+  for (const m of marks) {
+    const start = Math.floor(m.col / bar) * bar;
+    if (!starts.length || starts[starts.length - 1].start !== start) starts.push({ marker: m, name: m.name || 'Marker', start });
+  }
+  return starts.map((sec, i) => ({ ...sec, end: i + 1 < starts.length ? starts[i + 1].start : COLS }))
+    .filter(sec => sec.end > sec.start);
+}
+// Gives `track` a window over whatever part of [from, to) no window covers,
+// so material filed there lands in one window rather than one each. Without
+// it, setTrackNotes() makes a window per orphaned note — a duplicated section
+// of eighth notes on a split track came out as sixty-four one-note clips.
+function coverWithWindow(track, from, to) {
+  const clips = clipsOf(track);
+  if (isWholeTrackClip(clips)) return;
+  const gaps = [];
+  let cursor = from;
+  for (const c of [...clips].sort((a, b) => a.start - b.start)) {
+    if (clipEnd(c) <= cursor) continue;
+    if (c.start >= to) break;
+    if (c.start > cursor) gaps.push([cursor, c.start]);
+    cursor = Math.max(cursor, clipEnd(c));
+  }
+  if (cursor < to) gaps.push([cursor, to]);
+  if (gaps.length) setClips(track, [...clips, ...gaps.map(([s, e]) => makeClip([], { start: s, len: e - s }))]);
+}
+// Copies the whole song between [start, end) — every track, its automation
+// and the markers inside it, the section's own marker included — into a gap
+// opened at `dest`. Nothing is overwritten: everything from `dest` on moves
+// later by the section's length, which is what "put another chorus here"
+// means. `dest` may be anywhere, including inside the section itself.
+function duplicateSpan(start, end, dest) {
+  const len = end - start;
+  if (len <= 0) return false;
+  // Copied *before* time moves, at the positions they will have in the gap:
+  // the gap starts at `dest` and the copy is laid into it from its own start.
+  // shiftTime() then moves the originals, and the copies — separate objects —
+  // are exactly where they were aimed. Reading the source back afterwards
+  // would have to undo the shift for a section that straddles `dest`.
+  const inSrc = (c) => c >= start && c < end;
+  const place = (c) => quant(dest + (c - start));
+  const copies = new Map();
+  for (const t of state.trackList) {
+    const list = trackNotes(t.id).filter(it => inSrc(it.start)).map(it => ({ ...cloneItem(it), start: place(it.start) }));
+    if (list.length) copies.set(t.id, list);
+  }
+  // A curve's copy is the section's *values*, not only the points that happen
+  // to fall inside it: a section with no point at its start begins mid-ramp,
+  // so the copy is bracketed by what the curve was at the section's two ends,
+  // and the music either side of the gap keeps what it had at `dest`.
+  const curves = [];
+  for (const [track, byParam] of Object.entries(state.automation || {})) {
+    for (const [param, pts] of Object.entries(byParam)) {
+      if (!pts.length) continue;
+      const val = (c) => roundAuto(automationValueAt(pts, c, 0));
+      curves.push({
+        track, param, vd: val(dest), vs: val(start), ve: val(end),
+        inner: pts.filter(p => inSrc(p.col)).map(p => ({ ...p, col: place(p.col) })),
+      });
+    }
+  }
+  const markerCopies = state.markers.filter(m => inSrc(m.col)).map(m => ({ ...m, col: place(m.col) }));
+  if (!shiftTime(dest, len)) return false;
+  for (const [track, list] of copies) {
+    coverWithWindow(track, dest, dest + len);
+    const items = trackNotes(track);
+    setTrackNotes(track, [...items, ...(isRhythm(track) ? list : trimCopiesAgainst(items, list))]);
+  }
+  for (const { track, param, vd, vs, ve, inner } of curves) {
+    const pts = state.automation[track][param];
+    const before = pts.filter(p => p.col < dest), after = pts.filter(p => p.col >= dest + len);
+    setAutomationPoints(track, param, dedupeCurve([
+      ...before, { col: dest, value: vd }, { col: dest, value: vs },
+      ...inner, { col: dest + len, value: ve },
+      ...(after.length && after[0].col === dest + len ? [] : [{ col: dest + len, value: vd }]), ...after,
+    ]));
+  }
+  state.markers.push(...markerCopies);
+  return true;
+}
+function arrangeDone(what) {
+  commitHistory(); render(); autosave();
+  announce(what);
+  refreshArrangeDialog();
+}
+const barOf = (col) => Math.floor(col / eighthsPerBar()) + 1;
+
 // Duplicates every track's notes/hits within the loop range into the region
 // right after it, overwriting whatever was already there, and advances the
 // loop range onto the new copy so clicking again keeps stamping forward.
@@ -8800,18 +9547,7 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
     const source = trackNotes(t).filter(n => n.start >= start && n.start < end);
     const rest = trackNotes(t).filter(n => !(n.start >= destStart && n.start < destEnd));
     const copies = source.map(n => ({ ...cloneItem(n), start: n.start - start + destStart }));
-    // Clearing the destination by start column alone left two kinds of
-    // same-pitch overlap: a note from before it still ringing into the first
-    // copy, and the last copy's tail running into a note after it. Whichever
-    // starts first ends where the other begins.
-    for (const c of copies) {
-      for (const o of rest) {
-        if (!notesConflict(o, c)) continue;
-        if (o.start < c.start) o.len = quant(c.start - o.start);
-        else c.len = quant(o.start - c.start);
-      }
-    }
-    setTrackNotes(t, [...rest, ...copies]);
+    setTrackNotes(t, [...rest, ...trimCopiesAgainst(rest, copies)]);
   }
   for (const id of RHYTHM_TRACK_IDS) {
     const sourceHits = trackNotes(id).filter(h => h.start >= start && h.start < end);
@@ -8895,7 +9631,7 @@ function applySongData(data, name) {
   stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
   state.songName = name || (typeof data.songName === 'string' && data.songName) || 'Untitled Song';
   updateSongNameUI();
-  state.tempo = typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM;
+  state.tempo = clampTempo(typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM);
   tempoInput.value = state.tempo;
   restoreTimeSig(data);
   restoreKey(data);
@@ -9222,7 +9958,7 @@ function importMidiIntoSong(buffer) {
   refreshTrackArrays();
   for (const t of state.trackList) ensureChannelNodes(t.id);
   if (importedBpm !== state.tempo && confirm(`This MIDI file's tempo is ${importedBpm} BPM (song is currently ${state.tempo} BPM). Use the file's tempo?`)) {
-    state.tempo = importedBpm;
+    state.tempo = clampTempo(importedBpm);
     tempoInput.value = state.tempo;
   }
   const neededBar = Math.ceil(maxCol / eighthsPerBar()) * eighthsPerBar();
@@ -9687,6 +10423,90 @@ function renderPatternList() {
 }
 document.getElementById('pattern-close').addEventListener('click', () => patternDialog.close());
 
+// The euclidean half of the pattern dialog. Its controls are plain inputs
+// read on demand by euclidLayer(), so the view, ▶ and Insert all see the same
+// numbers, clamped the same way.
+const euclidPieceEl = document.getElementById('euclid-piece');
+const euclidHitsEl = document.getElementById('euclid-hits');
+const euclidStepsEl = document.getElementById('euclid-steps');
+const euclidRotateEl = document.getElementById('euclid-rotate');
+const euclidStepEl = document.getElementById('euclid-step');
+for (const type of RHYTHM_ROWS) {
+  const opt = document.createElement('option');
+  opt.value = type; opt.textContent = RHYTHM_TITLES[type] || RHYTHM_LABELS[type];
+  euclidPieceEl.appendChild(opt);
+}
+for (const st of EUCLID_STEPS) {
+  const opt = document.createElement('option');
+  opt.value = st.id; opt.textContent = st.id;
+  euclidStepEl.appendChild(opt);
+}
+function euclidLayer() {
+  const int = (el, lo, hi, dflt) => Math.max(lo, Math.min(hi, parseInt(el.value, 10) || dflt));
+  const n = int(euclidStepsEl, 2, 32, 8);
+  return {
+    type: RHYTHM_ROWS.includes(euclidPieceEl.value) ? euclidPieceEl.value : 'kick',
+    n,
+    k: Math.max(0, Math.min(n, parseInt(euclidHitsEl.value, 10) || 0)),
+    rotate: int(euclidRotateEl, 0, n - 1, 0),
+    step: (EUCLID_STEPS.find(s => s.id === euclidStepEl.value) || EUCLID_STEPS[0]).eighths,
+  };
+}
+function renderEuclidView() {
+  const layer = euclidLayer();
+  const pat = euclidPattern(layer.k, layer.n);
+  const view = document.getElementById('euclid-view');
+  view.innerHTML = '';
+  for (let i = 0; i < layer.n; i++) view.appendChild(el('span', pat[(i + layer.rotate) % layer.n] ? 'on' : ''));
+  // Spelled out as well as drawn: the boxes are aria-hidden decoration.
+  const barSteps = eighthsPerBar() / layer.step;
+  document.getElementById('euclid-text').textContent =
+    `E(${layer.k},${layer.n})` + (layer.rotate ? ` rotated ${layer.rotate}` : '') + ' — '
+    + (barSteps % layer.n === 0 ? `repeats ${barSteps / layer.n}× per bar`
+      : layer.n % barSteps === 0 ? `one cycle spans ${layer.n / barSteps} bars`
+      : `${layer.n} steps against a bar of ${barSteps}: drifts across the bar line`);
+}
+for (const input of [euclidPieceEl, euclidHitsEl, euclidStepsEl, euclidRotateEl, euclidStepEl]) {
+  input.addEventListener('input', renderEuclidView);
+  input.addEventListener('change', renderEuclidView);
+}
+for (const p of EUCLID_PRESETS) {
+  const b = el('button');
+  b.textContent = p.name;
+  b.title = p.desc;
+  b.dataset.euclid = p.name;
+  b.addEventListener('click', () => {
+    euclidPieceEl.value = p.type; euclidHitsEl.value = p.k; euclidStepsEl.value = p.n;
+    euclidRotateEl.value = 0; euclidStepEl.value = p.step;
+    renderEuclidView();
+  });
+  document.getElementById('euclid-presets').appendChild(b);
+}
+// Two bars of the layer *with* what the track already plays there, because a
+// layer on its own says very little — whether five rims work depends entirely
+// on the kick they sit against.
+document.getElementById('euclid-preview').addEventListener('click', () => {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const track = state.activeTrack;
+    const layer = euclidLayer();
+    const barLen = eighthsPerBar();
+    const from = Math.floor(state.playhead / barLen) * barLen, until = from + 2 * barLen;
+    const context = trackNotes(track).filter(h => h.start >= from && h.start < until && h.type !== layer.type);
+    const eighthSec = 60 / state.tempo / 2;
+    const t0 = ctx.currentTime + 0.05;
+    for (const h of context.concat(euclidHits(layer, from, until))) {
+      scheduleDrum(h.type, t0 + (h.start - from) * eighthSec, previewGain, hitVel(h), hitPan(h), getTrackKitId(track));
+    }
+  } catch { /* audio unavailable */ }
+});
+document.getElementById('euclid-insert').addEventListener('click', () => {
+  insertEuclidLayer(euclidLayer());
+  patternDialog.close();
+});
+renderEuclidView();
+
 // ---------- Chord progression dialog ----------
 const progressionDialog = document.getElementById('progression-dialog');
 const progressionListEl = document.getElementById('progression-list');
@@ -9741,6 +10561,89 @@ function renderProgressionList() {
     progressionListEl.appendChild(row);
   }
 }
+// The second half of the dialog: parts that follow another track's chords.
+// The source list is every other tonal track, preselected to the one that
+// holds the most chords — from the Bass track of the starter layout, that is
+// whichever track you just put a progression into.
+const followSourceEl = document.getElementById('follow-source');
+const followListEl = document.getElementById('follow-list');
+function previewChordPart(part, source) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const track = state.activeTrack;
+    const startBar = Math.floor(state.playhead / eighthsPerBar()) * eighthsPerBar();
+    // Two bars is enough to hear the figure and one chord change, without
+    // sitting through a whole song to decide.
+    const until = startBar + 2 * eighthsPerBar();
+    const chords = readChords(source).filter(c => c.start < until);
+    const notes = chordPartNotes(part, chords, startBar, chordPartCentre(track, part)).filter(n => n.start < until);
+    const eighthSec = 60 / state.tempo / 2;
+    const voice = getTrackVoice(track);
+    const oscType = state.waveform[track] || 'square';
+    const t0 = ctx.currentTime + 0.05;
+    for (const n of notes) {
+      scheduleTone(n, t0 + (n.start - startBar) * eighthSec, n.len * eighthSec, oscType, previewGain, voice);
+    }
+  } catch { /* audio unavailable */ }
+}
+function renderFollowList() {
+  const target = state.activeTrack;
+  const sources = PITCH_TRACKS.filter(t => t !== target);
+  const keep = followPicked;
+  followSourceEl.innerHTML = '';
+  for (const t of sources) {
+    const opt = document.createElement('option');
+    const n = (trackNotes(t) || []).length;
+    opt.value = t; opt.textContent = trackName(t) + (n ? '' : ' (empty)');
+    followSourceEl.appendChild(opt);
+  }
+  // A choice the user made stands, empty or not — snapping an "(empty)" pick
+  // back to the default hid the very message below that explains it. Only a
+  // choice they *made*: the select's own value is also whatever the default
+  // was last time, and keeping that would pin the dialog to a track that was
+  // chosen for them before it had any chords.
+  followSourceEl.value = sources.includes(keep) ? keep : (defaultChordSource(target) || sources[0] || '');
+  const source = followSourceEl.value;
+  const empty = !source || !(trackNotes(source) || []).length;
+  const note = document.getElementById('follow-note');
+  note.hidden = !empty;
+  note.textContent = sources.length
+    ? 'That track has no notes yet — there are no chords to follow. Insert a progression into it first.'
+    : 'There is no other tonal track to follow. Add one from the menu.';
+  followSourceEl.disabled = !sources.length;
+  followListEl.innerHTML = '';
+  for (const part of CHORD_PARTS) {
+    const row = el('div', 'song-item');
+    row.dataset.part = part.id;
+    const info = el('div', 'song-info');
+    const title = el('div', 'song-title'); title.textContent = part.name; info.appendChild(title);
+    const desc = el('div', 'song-desc');
+    desc.textContent = (part.kind === 'bass' ? 'Bass · ' : 'Arpeggio · ') + part.desc;
+    info.appendChild(desc);
+    row.appendChild(info);
+    const preview = el('button'); preview.textContent = '▶';
+    preview.title = 'Hear the first two bars on this track\'s sound';
+    preview.setAttribute('aria-label', `Preview ${part.name}`);
+    preview.disabled = empty;
+    preview.addEventListener('click', () => previewChordPart(part, followSourceEl.value));
+    row.appendChild(preview);
+    const insert = el('button'); insert.textContent = 'Insert';
+    insert.title = 'Write it into this track, following the chosen track\'s chords';
+    insert.disabled = empty;
+    insert.addEventListener('click', () => {
+      if (insertChordPart(part, followSourceEl.value)) { progressionDialog.close(); return; }
+      const note = document.getElementById('follow-note');
+      note.textContent = `${trackName(followSourceEl.value)} has no chords from bar ${barOf(state.playhead)} on — move the playhead back to where its chords are, or pick another track.`;
+      note.hidden = false;
+      announce(note.textContent);
+    });
+    row.appendChild(insert);
+    followListEl.appendChild(row);
+  }
+}
+let followPicked = null; // the source the user chose themselves, if any
+followSourceEl.addEventListener('change', () => { followPicked = followSourceEl.value; renderFollowList(); });
 document.getElementById('progression-close').addEventListener('click', () => progressionDialog.close());
 
 // ---------- Timing dialog (quantize / humanize) ----------
@@ -9886,6 +10789,111 @@ document.getElementById('dynamics-vary').addEventListener('click', () => {
 document.getElementById('dynamics-accent').addEventListener('click', () => {
   runDynamics('accent', parseFloat(dynamicsAmount.value));
   refreshDynamicsScope();
+});
+
+// ---------- Variation dialog ----------
+// Fourth of the "shape what you wrote" dialogs, same scope rule and same
+// "say what it acts on" as the other three.
+const varyDialog = document.getElementById('vary-dialog');
+const varyAmount = document.getElementById('vary-amount');
+function refreshVaryScope() {
+  const { track, items } = timingTargets();
+  const drum = isRhythm(track);
+  const kind = drum ? 'hit' : 'note';
+  document.getElementById('vary-scope').textContent =
+    (state.multiSelected.size || (state.selected && state.selected.track === track)
+      ? `Acts on the ${items.length} selected ${kind}${items.length === 1 ? '' : 's'}.`
+      : `Acts on all ${items.length} ${kind}${items.length === 1 ? '' : 's'} on ${trackName(track)}.`)
+    + (drum ? ' A drum hit has no pitch, so only Thin out applies.' : '');
+  document.getElementById('vary-neighbour').disabled = drum;
+  document.getElementById('vary-octave').disabled = drum;
+}
+varyAmount.addEventListener('input', () => {
+  document.getElementById('vary-amount-val').textContent = Math.round(parseFloat(varyAmount.value) * 100) + '%';
+});
+document.getElementById('vary-btn').addEventListener('click', () => {
+  closeFileMenu();
+  refreshVaryScope();
+  varyDialog.showModal();
+});
+document.getElementById('vary-close').addEventListener('click', () => varyDialog.close());
+for (const [id, what] of [['vary-neighbour', 'neighbour'], ['vary-octave', 'octave'], ['vary-thin', 'thin']]) {
+  document.getElementById(id).addEventListener('click', () => { runVary(what, parseFloat(varyAmount.value)); refreshVaryScope(); });
+}
+
+// ---------- Arrange dialog ----------
+const arrangeDialog = document.getElementById('arrange-dialog');
+const arrangeBarEl = document.getElementById('arrange-bar');
+const arrangeCountEl = document.getElementById('arrange-count');
+function arrangeSay(msg) { document.getElementById('arrange-status').textContent = msg; announce(msg); }
+const totalBars = () => Math.round(COLS / eighthsPerBar());
+function refreshArrangeDialog() {
+  arrangeBarEl.max = String(totalBars() + 1);
+  const sections = songSections();
+  document.getElementById('arrange-sections-note').hidden = false;
+  const list = document.getElementById('arrange-sections');
+  list.innerHTML = '';
+  for (const sec of sections) {
+    const row = el('div', 'song-item');
+    row.dataset.section = sec.name;
+    const info = el('div', 'song-info');
+    const title = el('div', 'song-title'); title.textContent = sec.name; info.appendChild(title);
+    const desc = el('div', 'song-desc');
+    const b0 = sec.start / eighthsPerBar() + 1, b1 = sec.end / eighthsPerBar();
+    desc.textContent = `Bars ${round2(b0)}–${round2(b1)} · ${round2(b1 - b0 + 1)} bar${b1 - b0 + 1 === 1 ? '' : 's'}`;
+    info.appendChild(desc);
+    row.appendChild(info);
+    const btn = (label, title, fn) => {
+      const b = el('button'); b.textContent = label; b.title = title;
+      b.setAttribute('aria-label', `${label}: ${sec.name}`);
+      b.addEventListener('click', fn);
+      row.appendChild(b);
+    };
+    const len = sec.end - sec.start;
+    btn('Duplicate', 'Play it twice: a copy goes straight after it, and everything later moves on', () => {
+      if (!duplicateSpan(sec.start, sec.end, sec.end)) { arrangeSay(`No room: the song can be at most ${Math.round(MAX_COLS / eighthsPerBar())} bars.`); return; }
+      arrangeDone(`Duplicated ${sec.name}`);
+    });
+    btn('Copy to end', 'Append a copy after the last bar of the song', () => {
+      if (!duplicateSpan(sec.start, sec.end, COLS)) { arrangeSay(`No room: the song can be at most ${Math.round(MAX_COLS / eighthsPerBar())} bars.`); return; }
+      arrangeDone(`Copied ${sec.name} to the end`);
+    });
+    btn('Delete', 'Remove the section and close the gap', () => {
+      if (!shiftTime(sec.start, -len)) { arrangeSay('A song needs at least one bar.'); return; }
+      arrangeDone(`Deleted ${sec.name}`);
+    });
+    list.appendChild(row);
+  }
+  document.getElementById('arrange-sections-note').textContent = sections.length
+    ? 'A section runs from its marker to the next one, or to the end of the song. Duplicate and Delete move everything after it.'
+    : 'No sections yet. A section runs from one marker to the next (or to the end of the song) — put a marker where each part of the song starts with the flag button by the transport, click it to name it Verse, Chorus…, and it shows up here.';
+}
+function arrangeBars() {
+  const bar = Math.max(1, Math.min(totalBars() + 1, parseInt(arrangeBarEl.value, 10) || 1));
+  const count = Math.max(1, parseInt(arrangeCountEl.value, 10) || 1);
+  return { at: (bar - 1) * eighthsPerBar(), bar, count, len: count * eighthsPerBar() };
+}
+document.getElementById('arrange-btn').addEventListener('click', () => {
+  closeFileMenu();
+  arrangeBarEl.value = String(barOf(state.playhead));
+  document.getElementById('arrange-status').textContent = '';
+  refreshArrangeDialog();
+  arrangeDialog.showModal();
+});
+document.getElementById('arrange-close').addEventListener('click', () => arrangeDialog.close());
+document.getElementById('arrange-insert').addEventListener('click', () => {
+  const { at, bar, count, len } = arrangeBars();
+  if (!shiftTime(at, len)) { arrangeSay(`No room: the song can be at most ${Math.round(MAX_COLS / eighthsPerBar())} bars.`); return; }
+  state.playhead = visualPlayhead = Math.min(at, COLS - 1); // on the edit, where you look next
+  arrangeDone(`Inserted ${count} empty bar${count === 1 ? '' : 's'} at bar ${bar}`);
+});
+document.getElementById('arrange-delete').addEventListener('click', () => {
+  const { at, bar, count } = arrangeBars();
+  if (bar > totalBars()) { arrangeSay(`There is no bar ${bar} to delete — the song has ${totalBars()} bars.`); return; }
+  const len = Math.min(count * eighthsPerBar(), COLS - at);
+  if (len <= 0 || !shiftTime(at, -len)) { arrangeSay('A song needs at least one bar.'); return; }
+  state.playhead = visualPlayhead = Math.min(at, COLS - 1);
+  arrangeDone(`Deleted ${Math.round(len / eighthsPerBar())} bar${len === eighthsPerBar() ? '' : 's'} from bar ${bar}`);
 });
 
 // ---------- Playback ----------
@@ -12517,15 +13525,21 @@ const clampMidi = (m) => Math.max(MIDI_MIN, Math.min(MIDI_MAX, m));
 // fallback below is what stops that from quietly costing a voice.
 function transposeItems(track, items, mode, n) {
   if (isRhythm(track) || !items.length) return 0;
-  const midiOf = (it) => freqToMidi(it.freq);
-  const targetFor = (it) => {
-    const m = midiOf(it);
+  return moveNotesTo(track, items, (it) => {
+    const m = freqToMidi(it.freq);
     if (mode === 'semi') return clampMidi(m + n);
     if (mode === 'fit') return clampMidi(snapToScaleAlways(m));
     let out = m;
     for (let i = 0; i < Math.abs(n); i++) out += scaleStep(out, Math.sign(n));
     return clampMidi(out);
-  };
+  });
+}
+// Moves each note to the MIDI pitch `targetFor(note)` names, as one edit.
+// The pitch half of applyItemEdit(), shared by Transpose and Variation — both
+// move notes to pitches that may already be taken, and how that is settled
+// must not depend on which dialog asked.
+function moveNotesTo(track, items, targetFor) {
+  const midiOf = (it) => freqToMidi(it.freq);
   // Collisions are resolved with notesConflict(), not by comparing pitches:
   // two notes only collide if they also overlap in *time*, and a whole-track
   // fit is full of notes that share a pitch in different bars. An earlier
@@ -12557,6 +13571,65 @@ function transposeItems(track, items, mode, n) {
     if (it.bend) it.bend = round2(it.bend * (it.freq / before));
     return it.freq !== before;
   });
+}
+// ---------- Variation: the same part, not exactly the same ----------
+// Timing, Transpose and Dynamics each *correct* a part; this one departs from
+// it on purpose, for the second time a bar comes round. Every operation picks
+// a share of the notes (`amount`) and changes only those, so the part stays
+// recognisably the one you wrote — a full rewrite would be a different part,
+// and you would have written that one yourself.
+//
+// Real randomness, like Dynamics' Vary: pressing it twice should give two
+// different answers, and undo is the way back from one you don't like.
+function pickShare(items, amount) {
+  return items.filter(() => Math.random() < amount);
+}
+// A note moves one step up or down — a scale step when the song has a key (so
+// the variation stays in it, through the same scaleStep() the ↑/↓ nudge
+// uses), a semitone when it has none. Pitch collisions are settled by
+// moveNotesTo(), the same way Transpose settles them.
+function varyNeighbour(track, items, amount) {
+  const pick = pickShare(items, amount);
+  if (!pick.length) return 0;
+  const dirs = new Map(pick.map(it => [it, Math.random() < 0.5 ? -1 : 1]));
+  return moveNotesTo(track, pick, (it) => {
+    const m = freqToMidi(it.freq);
+    return clampMidi(m + scaleStep(m, dirs.get(it)));
+  });
+}
+function varyOctave(track, items, amount) {
+  const pick = pickShare(items, amount);
+  if (!pick.length) return 0;
+  const dirs = new Map(pick.map(it => {
+    // Toward the middle of the range when a jump the other way would clamp:
+    // a note at the top of the range jumping "up" would not move at all.
+    const m = freqToMidi(it.freq);
+    const d = m + 12 > MIDI_MAX ? -1 : m - 12 < MIDI_MIN ? 1 : Math.random() < 0.5 ? -1 : 1;
+    return [it, d];
+  }));
+  return moveNotesTo(track, pick, (it) => clampMidi(freqToMidi(it.freq) + 12 * dirs.get(it)));
+}
+// Leaves notes out — but never one on a bar's downbeat, since that is what
+// makes the thinned part still land where the original did. Works on hits
+// too; it is the one variation a drum part has.
+function varyThin(track, items, amount) {
+  const bar = eighthsPerBar();
+  const onDownbeat = (it) => Math.abs(it.start / bar - Math.round(it.start / bar)) < EPS;
+  const drop = new Set(pickShare(items.filter(it => !onDownbeat(it)), amount));
+  if (!drop.size) return 0;
+  setTrackNotes(track, trackNotes(track).filter(it => !drop.has(it)));
+  return drop.size;
+}
+function runVary(what, amount) {
+  const { track, items } = timingTargets();
+  if (!items.length) { announce('Nothing to vary'); return; }
+  if (what !== 'thin' && isRhythm(track)) { announce('A drum hit has no pitch to vary'); return; }
+  const changed = what === 'neighbour' ? varyNeighbour(track, items, amount)
+    : what === 'octave' ? varyOctave(track, items, amount) : varyThin(track, items, amount);
+  dropVanishedSelection(track);
+  commitHistory(); render(); autosave();
+  const verb = what === 'thin' ? 'Left out' : 'Moved';
+  announce(`${verb} ${changed} of ${items.length} ${isRhythm(track) ? 'hits' : 'notes'}`);
 }
 // snapToScale() answers "…if the user asked for it"; this one always answers,
 // because Fit to scale *is* the user asking.

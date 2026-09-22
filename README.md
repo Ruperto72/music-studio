@@ -92,6 +92,31 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   picked: change the key and insert it again to hear it somewhere else
   entirely. The drum side has had this for a while — this is the same idea for
   the half of a song that isn't the beat
+- **Parts that follow the chords** — from the same Chords dialog, write a bass
+  line (roots, root–fifth, eighth pulse, octaves, a chord walk) or an arpeggio
+  (up, down, up-down, broken chord, fast 7ths) into a track, built from the
+  chords another track is playing. It reads whatever chords are there — a
+  progression you inserted or ones you wrote yourself — and starts the figure
+  over on every chord change
+- **Arrange** — insert or delete bars across the whole song at once: every
+  track, its automation, the markers and the loop move together. Markers
+  double as **sections** (Verse, Chorus, …): duplicate one, copy it to the
+  end, or delete it, and everything after it moves to make room or close the
+  gap
+- **Variation** — the same part, not exactly the same: move a share of the
+  notes to a neighbouring scale step, jump some an octave, or thin the part
+  out while keeping every downbeat. Press again for a different answer
+- **Tap tempo** — tap the button beside the tempo field in time and the
+  tempo follows; stop for two seconds to start a new count
+- **Euclidean rhythms** — in the Patterns dialog, spread a number of hits as
+  evenly as they go over a number of steps on one kit piece (the tresillo,
+  the bossa clave, a five-against-four drift, ...), rotated as you like, and
+  insert it as a *layer* that replaces only that piece, so a groove can be
+  built one piece at a time
+- **Ghost notes** — the other tonal tracks' notes show faintly in the active
+  track's piano roll, so you can see the chords while you write the melody
+  over them. They can't be clicked, so they never get in the way; the button
+  beside the Grid picker turns them off
 - **Chords** — place several pitches in one column, or build one from a
   selected note with the inspector's ten quick voicings (power chord, maj,
   min, dim, aug, sus2, sus4, 7, maj7, m7), which add real notes above the
