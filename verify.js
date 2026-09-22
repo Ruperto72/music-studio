@@ -6103,6 +6103,140 @@ async function main() {
       }
     });
 
+    // Opens the Chords dialog from a starter track addressed by name, and puts
+    // a named progression into it — the precondition both steps below need.
+    const pitchRowByName = (name) => `[...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')]
+      .find(t => t.querySelector('.th-name')?.textContent === ${JSON.stringify(name)})`;
+    const openChordsOn = async (name) => {
+      await cdp.evaluate(`[...${pitchRowByName(name)}.querySelectorAll('.th-tool-btn')].find(b => /progression/i.test(b.title)).click()`);
+      await waitFor(`document.getElementById('progression-dialog').open`);
+    };
+    const activatePitch = (name) => cdp.evaluate(
+      `${pitchRowByName(name)}.querySelector('.track-header').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    const insertRow = (listId, title) => cdp.evaluate(`(() => {
+      const row = [...document.querySelectorAll('#${listId} .song-item')]
+        .find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(title)});
+      [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+    })()`);
+    // Pitch name + left edge of every note in a named track, in time order.
+    const notesOf = (name) => cdp.evaluate(`[...${pitchRowByName(name)}.querySelectorAll('.lane .note')]
+      .map(n => ({ label: n.getAttribute('aria-label').split(',')[0], left: parseFloat(n.style.left) }))
+      .sort((a, b) => a.left - b.left || a.label.localeCompare(b.label))`);
+
+    step('Follow chords: a bass and an arpeggio follow the chords another track plays', async () => {
+      await fresh();
+      await setKey(0, 'major');
+      await openChordsOn('Harmony');
+      await insertRow('progression-list', 'I–V–vi–IV');
+      await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length > 0`);
+      await openChordsOn('Bass');
+      // The empty tracks are offered too, but the one to follow by default is
+      // the one that has chords in it.
+      const source = await cdp.evaluate(`document.getElementById('follow-source').selectedOptions[0]?.textContent`);
+      if (source !== 'Harmony') throw new Error(`the Bass track should default to following Harmony, got ${JSON.stringify(source)}`);
+      const rows = await cdp.evaluate(`[...document.querySelectorAll('#follow-list .song-title')].map(t => t.textContent)`);
+      if (rows.length < 8) throw new Error(`expected the built-in parts, got ${JSON.stringify(rows)}`);
+      await insertRow('follow-list', 'Roots');
+      await waitFor(`${pitchRowByName('Bass')}.querySelectorAll('.lane .note').length > 0`);
+      // One held root per bar, and the roots of I–V–vi–IV in C are C G A F —
+      // in the bass register, not wherever the chords were voiced.
+      const roots = await notesOf('Bass');
+      const firstFour = roots.slice(0, 4).map(n => n.label);
+      if (firstFour.map(l => l.replace(/\d/, '')).join(' ') !== 'C G A F') {
+        throw new Error(`the roots of I–V–vi–IV in C are C G A F, got ${JSON.stringify(firstFour)}`);
+      }
+      if (!firstFour.every(l => /[A-G]#?[12]$/.test(l))) {
+        throw new Error(`a bass should sit in octaves 1–2, got ${JSON.stringify(firstFour)}`);
+      }
+      const lefts = new Set(roots.map(n => n.left));
+      if (lefts.size !== roots.length) throw new Error(`Roots writes one note at a time, got stacked notes: ${JSON.stringify(roots.slice(0, 8))}`);
+      // Same track again, a different part: replaces rather than stacks, and
+      // alternates root and fifth — C/G under the C chord.
+      await openChordsOn('Bass');
+      await insertRow('follow-list', 'Root–fifth');
+      await waitFor(`${pitchRowByName('Bass')}.querySelectorAll('.lane .note').length > ${roots.length}`);
+      const rf = await notesOf('Bass');
+      const bar1 = rf.slice(0, 4).map(n => n.label.replace(/\d/, '')).join(' ');
+      if (bar1 !== 'C G C G') throw new Error(`Root–fifth under a C chord is C G C G, got ${JSON.stringify(rf.slice(0, 4))}`);
+      if (new Set(rf.map(n => n.left)).size !== rf.length) throw new Error('inserting over a part must replace it, not stack under it');
+      // The arpeggio reads the chord's quality: bar 3 is vi, so A-C-E-A.
+      await openChordsOn('Lead');
+      await insertRow('follow-list', 'Arp up');
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length > 0`);
+      const arp = await notesOf('Lead');
+      const bar3 = arp.slice(16, 20).map(n => n.label.replace(/\d/, '')).join(' ');
+      if (bar3 !== 'A C E A') throw new Error(`Arp up over vi in C is A C E A, got ${JSON.stringify(arp.slice(16, 20))}`);
+      // The figure starts over on every chord change. Up-down is six notes
+      // long against eight eighths a bar, so a sequence that ran on across
+      // the change would open bar 2 in the middle of its figure.
+      await openChordsOn('Lead');
+      await insertRow('follow-list', 'Arp up-down');
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length > 0`);
+      const updn = await notesOf('Lead');
+      const bar2 = updn.slice(8, 14).map(n => n.label.replace(/\d/, '')).join(' ');
+      if (bar2 !== 'G B D G D B') throw new Error(`Arp up-down over V in C restarts as G B D G D B, got ${JSON.stringify(updn.slice(8, 14))}`);
+    });
+
+    step('Follow chords: with nothing to follow, the parts say so instead of writing silence', async () => {
+      await fresh();
+      await openChordsOn('Bass');
+      const state = await cdp.evaluate(`({
+        noteShown: !document.getElementById('follow-note').hidden,
+        disabled: [...document.querySelectorAll('#follow-list button')].every(b => b.disabled),
+        count: document.querySelectorAll('#follow-list button').length,
+      })`);
+      if (!state.count) throw new Error('the part list rendered no buttons at all');
+      if (!state.noteShown || !state.disabled) throw new Error(`an empty source must disable the parts and say why: ${JSON.stringify(state)}`);
+    });
+
+    step('Ghost notes: other tracks show in the active roll, clicks go through, and the toggle hides them', async () => {
+      await fresh();
+      await setKey(0, 'major');
+      await openChordsOn('Harmony');
+      await insertRow('progression-list', 'I–V–vi–IV');
+      await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length > 0`);
+      await activatePitch('Lead');
+      await waitFor(`${pitchRowByName('Lead')}.classList.contains('active')`);
+      const ghosts = await cdp.evaluate(`(() => {
+        const g = [...${pitchRowByName('Lead')}.querySelectorAll('.ghost-note')];
+        return { n: g.length, pe: g.map(x => getComputedStyle(x).pointerEvents), hidden: g.every(x => x.getAttribute('aria-hidden') === 'true'),
+          elsewhere: document.querySelectorAll('.track:not(.active) .ghost-note').length };
+      })()`);
+      if (!ghosts.n) throw new Error('the active track shows none of the Harmony track\'s notes');
+      if (ghosts.pe.some(p => p !== 'none') || !ghosts.hidden) throw new Error(`ghosts must be inert and hidden from AT: ${JSON.stringify(ghosts)}`);
+      if (ghosts.elsewhere) throw new Error(`only the active track draws ghosts, found ${ghosts.elsewhere} elsewhere`);
+      // A click on top of a ghost places a note on the active track.
+      const before = await cdp.evaluate(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const g = ${pitchRowByName('Lead')}.querySelector('.ghost-note').getBoundingClientRect();
+        const target = document.elementFromPoint(g.left + 2, g.top + g.height / 2);
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: g.left + 2, clientY: g.top + g.height / 2 }));
+      })()`);
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length === ${before + 1}`);
+      // An undo on the other track has to reach the ghosts even though nothing
+      // about the Lead track itself changed — the row-reuse cache must see it.
+      // The note commits to history on a debounce, and a disabled button
+      // swallows the click, so wait for it rather than clicking into nothing.
+      await waitFor(`!document.getElementById('undo-btn').disabled`);
+      for (let i = 0; i < 3 && await cdp.evaluate(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length > 0`); i++) {
+        await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      }
+      await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length === 0`);
+      await activatePitch('Lead');
+      const after = await cdp.evaluate(`${pitchRowByName('Lead')}.querySelectorAll('.ghost-note').length`);
+      if (after) throw new Error(`undoing the progression left ${after} ghosts behind`);
+      await cdp.evaluate(`document.getElementById('redo-btn').click()`);
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.ghost-note').length > 0`);
+      // The toggle: off hides them, and it is remembered per browser.
+      await cdp.evaluate(`document.getElementById('ghost-notes').click()`);
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.ghost-note').length === 0`);
+      const pressed = await cdp.evaluate(`document.getElementById('ghost-notes').getAttribute('aria-pressed')`);
+      if (pressed !== 'false') throw new Error(`the toggle should report aria-pressed=false when off, got ${pressed}`);
+      const stored = await cdp.evaluate(`localStorage.getItem('music-studio-ghost-notes')`);
+      if (stored !== 'off') throw new Error(`the ghost-notes preference was not remembered: ${stored}`);
+    });
+
     step('Duplicate track: the copy carries the part and the whole voice, independently', async () => {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);

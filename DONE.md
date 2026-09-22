@@ -536,6 +536,60 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   är exakt den lista fyra andra ställen tidigare skrev av var för sig och fick
   fel.
 
+- [x] **Stämmor som följer ackorden.** En ackordföljd gav ackord, men basen
+  och arpeggiot skrevs fortfarande för hand, not för not, i en tom lane. Det
+  var nästa tröskel efter tonart och ackordföljder. Nu har Chords-dialogen en
+  andra halva, *Follow another track's chords*: välj ett spår att följa
+  (förvalt det spår som har flest ackord, så från Bass-spåret i startlayouten
+  blir det det spår du just lade en ackordföljd i) och en stämma ur
+  `CHORD_PARTS`. Tabellen har fem basfigurer och fem arpeggion.
+  **Stämmorna lagras som ackordtoner, inte tonhöjder** (`['R', '5']`), av
+  samma skäl som `PROGRESSIONS` lagrar skalsteg: en rad har inga noter i sig
+  och fungerar vilka ackord som än ligger under. En ny stämma är en tabellrad.
+  `readChords()` läser vad det andra spåret faktiskt spelar i sammanhängande
+  spann, och `nameChord()` avgör grundton och kvalitet genom att pröva varje
+  klingande tonklass som grundton; basnoten avgör vid lika poäng. Med en
+  tonart satt kommer ters och kvint från `diatonicIntervals()`, samma ställe
+  som ackordknapparna och ackordföljderna hämtar sina, så ett ensamt D i
+  C-dur läses som Dm. Det är vad en bas under det bör anta.
+  **Tre beslut som är medvetna:**
+  - *Figuren startar om vid varje ackordbyte.* En grundton–kvint-bas som bar
+    sin fas över ett byte hade landat det nya ackordet på kvinten. Verify-
+    steget använder up-down (sex toner mot åtta åttondelar per takt) just
+    därför: grundton–kvint och arp up går jämnt upp i takten och fångade inte
+    en borttagen omstart när den injicerades.
+  - *Stegen ligger på låtens rutnät, inte räknat från ackordets början*, så en
+    stämma håller sig på slaget under ett ackord som kommer på ett offbeat.
+    Ackordets eget första steg är undantaget, annars missas bytet.
+  - *En stämpel, inte en länk.* Ändrar du ackorden får du infoga igen. En
+    levande länk måste avgöra vad som händer med en not du redigerat för hand
+    när ackorden flyttas, och det finns inget svar på det som inte ibland är
+    fel. Kontraktet är detsamma som för `insertProgression()`: från
+    spelhuvudets takt, till slutet, ersättande. Svansen de delar ligger i
+    `writeFromBar()`, och noten de skriver i `plainNote()`.
+  Registret bestäms av målspårets befintliga noter (medelvärdet), annars
+  `CHORD_PART_CENTRE` (runt C2 för bas, C4 för arpeggio). ▶ spelar de två
+  första takterna genom samma `chordPartNotes()` som Insert använder.
+- [x] **Spöknoter.** När man skrev melodin syntes inte vad Harmony- och
+  Bass-spåret spelade, och det enda sättet att se ackorden var att titta på
+  ett annat spår. Nu ritas de andra tonala spårens noter svagt och streckat i
+  det aktiva spårets pianorulle, i respektive spårs färg. Det görs bara i det
+  aktiva spåret, eftersom en kopia av hela låten i varje lane bara är brus.
+  De är dekoration, inte objekt: `pointer-events: none` så att ett klick på en
+  spökton placerar en not på det aktiva spåret (det vanligaste man vill göra
+  där), `aria-hidden` och utanför roving tabindex, eftersom de tillhör ett
+  annat spår och nås där. En spökton utanför spårets tonhöjdsfönster utelämnas
+  i stället för att klämmas mot kanten, där den skulle ritas på en tonhöjd den
+  inte har.
+  **Radåteranvändningen var fällan:** spöknoterna ritas från *andra* spårs
+  stämmor, så ingen av det aktiva spårets egna indata ändras när de gör det.
+  De står därför i `trackRowSignature()` för det aktiva spåret. Verify-steget
+  ångrar ackordföljden på Harmony och kräver att spöknoterna försvinner ur
+  Lead. Med signaturraden borttagen fångades det av `__rowAudit` direkt.
+  Knappen (bredvid Grid) är en inställning per webbläsare i `localStorage`,
+  som Keep to scale, och är på som förval: poängen är att man ser ackorden
+  utan att först behöva veta att man kan be om dem.
+
 ## Buggar hittade av rapporter
 
 - [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan

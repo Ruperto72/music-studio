@@ -68,6 +68,7 @@
   .pattern-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: #b7b7c2; margin: 2px 0 12px; }
   .pattern-opt select { padding: 4px 6px; font-size: 12px; }
   .pattern-opt-note { color: #8f8f9c; }
+  .dialog-sub { font-size: 13px; font-weight: 600; color: #d8d8e0; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #33333d; }
   .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
   .song-item .song-del:hover { border-color: #a33; }
   .song-save-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -817,6 +818,10 @@
     border-radius: 3px; cursor: pointer; position: relative; align-self: stretch;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.45); z-index: 2;
   }
+  .ghost-note {
+    position: absolute; pointer-events: none; z-index: 1; box-sizing: border-box;
+    border: 1px dashed; border-radius: 3px; background: rgba(255,255,255,0.05); opacity: 0.6;
+  }
   .note.selected, .hit.selected { outline: 2px solid #fff; z-index: 3; }
   .note.multi-selected, .hit.multi-selected { outline: 2px dashed #ffcc00; z-index: 3; }
   .marquee {
@@ -1271,13 +1276,20 @@
 
   <dialog id="progression-dialog">
     <div class="help-head">
-      <h2><span data-glyph="scale"></span> Chord progressions</h2>
+      <h2><span data-glyph="scale"></span> Chords &amp; parts</h2>
       <button id="progression-close">Close ✕</button>
     </div>
     <div class="songs-body">
       <p class="songs-note">Writes one chord per bar into this track, from the playhead's bar through the end of the song (replacing whatever was there). The chords come from the song's <b>key</b> — the same progression is major or minor depending on the scale you picked, so change the key and press Insert again to hear it somewhere else entirely.</p>
       <p class="songs-note" id="progression-key">Key: —</p>
       <div id="progression-list" class="song-list"></div>
+      <h3 class="dialog-sub">Follow another track's chords</h3>
+      <p class="songs-note">Writes a bass line or an arpeggio into this track that follows the chords another track is playing — same range as above, from the playhead's bar to the end. It reads whatever that track has, so insert a progression there first (or write your own chords) and come back here from the track that should follow it. Change the chords later and insert again: the part is written once, not linked.</p>
+      <label class="pattern-opt" for="follow-source">Follow
+        <select id="follow-source" title="The track whose chords the part is built from"></select>
+      </label>
+      <p class="songs-note" id="follow-note" hidden></p>
+      <div id="follow-list" class="song-list"></div>
     </div>
   </dialog>
 
@@ -1524,14 +1536,19 @@
           </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Grid</span>
-            <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
-              <option value="1/4">1/4</option>
-              <option value="1/8" selected>1/8</option>
-              <option value="1/16">1/16</option>
-              <option value="1/8T">1/8 T</option>
-              <option value="1/16T">1/16 T</option>
-              <option value="free">Free</option>
-            </select>
+            <div class="mstrip-row">
+              <select id="grid-select" title="Snap resolution for placing/moving notes. Free places and drags without snapping.">
+                <option value="1/4">1/4</option>
+                <option value="1/8" selected>1/8</option>
+                <option value="1/16">1/16</option>
+                <option value="1/8T">1/8 T</option>
+                <option value="1/16T">1/16 T</option>
+                <option value="free">Free</option>
+              </select>
+              <button id="ghost-notes" class="icon-btn" data-glyph="ghost" aria-pressed="true"
+                      aria-label="Show other tracks' notes in the active track"
+                      title="Ghost notes: the other tonal tracks' notes show faintly in the active track's piano roll, so you can see the chords while you write the melody. They cannot be clicked."></button>
+            </div>
           </div>
           <div class="mstrip-cell">
             <span class="mstrip-cap">Swing</span>
@@ -1682,6 +1699,10 @@ const scaleIsOff = () => scaleOf(state.scale).semis.length === 12;
 // exactly like Slip's `snapOn`: it is how you are working right now, and
 // opening someone else's song should not change what your mouse does.
 let keepToScale = localStorage.getItem('music-studio-keep-to-scale') === 'on';
+// Ghost notes: the other tonal tracks drawn faintly in the active track's
+// roll. Editor state, per browser, like the two above — and on by default,
+// since the point is that you see the chords without first knowing to ask.
+let ghostNotesOn = localStorage.getItem('music-studio-ghost-notes') !== 'off';
 // Nearest pitch inside the scale, ties resolving *downward*. Ties are real —
 // in a major scale a C# sits one semitone from both C and D — and picking a
 // side once here is what keeps a drag from flickering between two rows as the
@@ -1899,6 +1920,8 @@ const GLYPHS = {
   // A rising staircase of unequal steps: what a scale is, as opposed to the
   // twelve equal ones the lane draws. The tall first riser is the tonic.
   scale:    { box: '0 0 24 24', paths: ['M3 21V9', 'M3 19h4v-4h4v-4h4V7h4V4', 'M20 4v17'] },
+  // A solid note block in front of a dashed one: your part over another's.
+  ghost:    { box: '0 0 24 24', paths: ['M3 13h11v6H3z', 'M9 5h3', 'M15 5h3', 'M21 5v3', 'M21 11h-2', 'M9 5v4'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
   preset:   { box: '0 0 24 24', paths: ['M6 4v16', 'M12 4v16', 'M18 4v16', 'M3.5 9h5', 'M9.5 14h5', 'M15.5 7h5'] },
   // A power switch: the stem plus an open ring (broken at the top, where the
@@ -2042,6 +2065,165 @@ function romanFor(rootMidi, intervals) {
   const third = intervals[0], fifth = intervals[1];
   const numeral = third === 3 ? ROMAN[i].toLowerCase() : ROMAN[i];
   return numeral + (fifth === 6 ? '°' : fifth === 8 ? '+' : '');
+}
+
+// Parts written *from* another track's chords — the step after a progression.
+// A progression gets you chords; the bass and the arpeggio were still written
+// by hand, note by note, from a blank lane. These read what another tonal
+// track is playing (readChords()) and stamp a part over it.
+//
+// Stored as *chord tones*, not pitches, for the same reason PROGRESSIONS
+// stores degrees: `['R', '5']` is root-fifth under a C chord and under an Am,
+// so a row has no notes in it at all and keeps working whatever the chords
+// underneath turn out to be. R/3/5/7 are the chord's own tones (the third and
+// seventh are whatever readChords() found, so a minor chord gets a minor
+// third), O is the root an octave up.
+//
+// `every` is the step in eighths, or 'beat'/'bar' so a row means the same
+// thing in 3/4 as in 4/4. `gate` is how much of each step the note holds.
+// The sequence restarts on every chord change — a root-fifth bass that
+// carried its phase across a change would land the new chord on its fifth.
+//
+// A new part is one row.
+const CHORD_PARTS = [
+  { id: 'roots',   kind: 'bass', name: 'Roots',       every: 'bar',  gate: 1,    seq: ['R'],                          desc: 'The root, held for the whole chord. The bass that never gets in the way.' },
+  { id: 'rootfif', kind: 'bass', name: 'Root–fifth',  every: 'beat', gate: 0.9,  seq: ['R', '5'],                     desc: 'Root and fifth on alternate beats — the two-beat country and polka bass.' },
+  { id: 'pulse',   kind: 'bass', name: 'Eighth pulse', every: 1,     gate: 0.8,  seq: ['R'],                          desc: 'Driving eighths on the root. Rock, synthwave, anything that should push.' },
+  { id: 'octaves', kind: 'bass', name: 'Octaves',     every: 1,      gate: 0.7,  seq: ['R', 'O'],                     desc: 'Root and its octave in eighths — the disco bass.' },
+  { id: 'walk',    kind: 'bass', name: 'Chord walk',  every: 'beat', gate: 0.9,  seq: ['R', '3', '5', '3'],           desc: 'Walks the chord on every beat. Moves more than a root bass without leaving the harmony.' },
+  { id: 'arpup',   kind: 'arp',  name: 'Arp up',      every: 1,      gate: 0.9,  seq: ['R', '3', '5', 'O'],           desc: 'The chord climbed in eighths.' },
+  { id: 'arpdown', kind: 'arp',  name: 'Arp down',    every: 1,      gate: 0.9,  seq: ['O', '5', '3', 'R'],           desc: 'The chord from the top, falling.' },
+  { id: 'arpupdn', kind: 'arp',  name: 'Arp up-down', every: 1,      gate: 0.9,  seq: ['R', '3', '5', 'O', '5', '3'], desc: 'Up and back again — a line that never jumps.' },
+  { id: 'alberti', kind: 'arp',  name: 'Broken chord', every: 1,     gate: 0.9,  seq: ['R', '5', '3', '5'],           desc: 'Root, fifth, third, fifth: the Alberti figure under half of all classical piano.' },
+  { id: 'arp16',   kind: 'arp',  name: 'Fast 7th arp', every: 0.5,   gate: 0.9,  seq: ['R', '3', '5', '7'],           desc: 'Sevenths in sixteenths — the chiptune arpeggio that fakes a chord on one voice.' },
+];
+// Where each kind is written when the target track has nothing to go by: the
+// root lands in the octave around this MIDI note. C2-ish for a bass, C4-ish
+// for an arpeggio.
+const CHORD_PART_CENTRE = { bass: 42, arp: 66 };
+
+// Names the chord a set of sounding pitches spells: a root pitch class plus
+// the third/fifth/seventh that go with it, in semitones.
+//
+// Every pitch class present is tried as the root and scored on how much of a
+// triad it explains; the bass note breaks ties, so C-E-G and E-G-C both come
+// out C but an E under G-B comes out Em. With a key set, a root's third and
+// fifth come from diatonicIntervals() — the same place the chord buttons and
+// progressions get theirs — so a lone D in C major is read as Dm, which is
+// what a bass under it should assume. Without one (or on a note outside the
+// scale) they come from what is actually sounding.
+function nameChord(midis) {
+  const bass = Math.min(...midis);
+  const pcs = new Set(midis.map(m => ((m % 12) + 12) % 12));
+  let best = null;
+  for (const r of pcs) {
+    const has = (s) => pcs.has((r + s) % 12);
+    const dia = scaleIsOff() ? null : diatonicIntervals(48 + r, 4);
+    const third = dia ? dia[0] : has(3) && !has(4) ? 3 : 4;
+    const fifth = dia ? dia[1] : has(7) ? 7 : has(6) ? 6 : has(8) ? 8 : 7;
+    const seventh = dia ? dia[2] : has(11) && !has(10) ? 11 : 10;
+    const tones = new Set([0, third, fifth, seventh]);
+    let score = (has(third) ? 2 : 0) + (has(fifth) ? 2 : 0) + (has(seventh) ? 0.5 : 0)
+      + (r === ((bass % 12) + 12) % 12 ? 1.5 : 0);
+    for (const pc of pcs) if (!tones.has(((pc - r) % 12 + 12) % 12)) score -= 1;
+    if (!best || score > best.score) best = { score, root: r, third, fifth, seventh };
+  }
+  const { root, third, fifth, seventh } = best;
+  return { root, third, fifth, seventh };
+}
+// The chords another track plays, as contiguous spans: `{ start, end, root,
+// third, fifth, seventh }`. A span ends wherever what is sounding changes and
+// the new sound names a different chord, so a pad that re-strikes the same
+// chord every bar is one span, and a melody reads as one "chord" per note —
+// following a lead line with a bass works too, it just follows single notes.
+function readChords(track) {
+  const notes = trackNotes(track) || [];
+  const edges = [...new Set(notes.flatMap(n => [n.start, n.start + n.len]))].sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < edges.length - 1; i++) {
+    const a = edges[i], b = edges[i + 1];
+    const sounding = notes.filter(n => n.start <= a && n.start + n.len > a);
+    if (!sounding.length) continue;
+    const ch = nameChord(sounding.map(n => freqToMidi(n.freq)));
+    const last = out[out.length - 1];
+    if (last && last.end === a && last.root === ch.root && last.third === ch.third && last.fifth === ch.fifth) last.end = b;
+    else out.push({ start: a, end: b, ...ch });
+  }
+  return out;
+}
+// How many of a track's chord spans actually hold a chord (two pitch classes
+// or more at once) — used to pick which track a new part should follow.
+function chordiness(track) {
+  const notes = trackNotes(track) || [];
+  let n = 0;
+  for (const s of new Set(notes.map(x => x.start))) {
+    const pcs = new Set(notes.filter(x => x.start <= s && x.start + x.len > s).map(x => freqToMidi(x.freq) % 12));
+    if (pcs.size > 1) n++;
+  }
+  return n;
+}
+// The track a part should follow by default: the one other tonal track that
+// holds the most chords, then the most notes. Null when none has any notes.
+function defaultChordSource(target) {
+  let best = null, bestKey = null;
+  for (const t of PITCH_TRACKS) {
+    if (t === target) continue;
+    const count = (trackNotes(t) || []).length;
+    if (!count) continue;
+    const key = [chordiness(t), count];
+    if (!best || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] > bestKey[1])) { best = t; bestKey = key; }
+  }
+  return best;
+}
+// A plain note — no per-note effects — which is what every generated part
+// writes, so an inserted note is indistinguishable from one placed by hand.
+function plainNote(start, len, midi, vel) {
+  return {
+    start, len, freq: round2(midiToFreq(Math.max(MIDI_MIN, Math.min(MIDI_MAX, midi)))), vel,
+    bend: null, vib: false, trem: false, duty: null, arp: null,
+    porta: false, crush: false, echo: false, chorus: false, reverb: false,
+  };
+}
+// The notes a CHORD_PARTS row writes over `chords`, from column `from` to the
+// end of the song. The one generator both Insert and ▶ call, so the preview
+// cannot play something Insert would not write.
+//
+// Steps sit on the song's own grid (multiples of `every` from bar 1), not on
+// multiples from each chord's start, so a part stays on the beat under a
+// chord that arrives on an off-beat; the chord's own first step is the one
+// exception, since a chord change without a note under it would be missed.
+function chordPartNotes(part, chords, from, centre) {
+  const every = part.every === 'bar' ? eighthsPerBar() : part.every === 'beat' ? eighthsPerBeat() : part.every;
+  const ebeat = eighthsPerBeat();
+  const out = [];
+  for (const ch of chords) {
+    const a = Math.max(ch.start, from), b = Math.min(ch.end, COLS);
+    if (b - a < MICRO / 2) continue;
+    // The root in the octave around `centre`, so a part stays in one register
+    // rather than following wherever the source happened to voice it.
+    const lo = centre - 6;
+    const root = lo + (((ch.root - lo) % 12) + 12) % 12;
+    const offset = { R: 0, 3: ch.third, 5: ch.fifth, 7: ch.seventh, O: 12 };
+    let i = 0;
+    for (let t = a; t < b - MICRO / 2;) {
+      const next = Math.min(b, quant((Math.floor(t / every + 1e-6) + 1) * every));
+      const len = Math.max(MICRO, quant((next - t) * part.gate));
+      // Accent the beat, as a player would; everything between it sits back.
+      const onBeat = Math.abs(t / ebeat - Math.round(t / ebeat)) < 1e-6;
+      out.push(plainNote(quant(t), len, root + offset[part.seq[i % part.seq.length]], onBeat ? 0.85 : 0.7));
+      i++;
+      t = next;
+    }
+  }
+  return out;
+}
+// Where a part for `target` goes: around the notes it already has (it is
+// being replaced, but its register is still the user's choice), otherwise
+// the kind's own default.
+function chordPartCentre(target, part) {
+  const notes = trackNotes(target) || [];
+  if (!notes.length) return CHORD_PART_CENTRE[part.kind];
+  return Math.round(notes.reduce((s, n) => s + freqToMidi(n.freq), 0) / notes.length);
 }
 
 // Built-in one-bar rhythm-track templates. Authored at 8-eighths-per-bar
@@ -4281,6 +4463,10 @@ function trackRowSignature(track, index) {
     // computed window is what the row actually draws from, so that is what
     // belongs here rather than its three inputs.
     t.kind === 'rhythm' ? null : pitchWindow(track),
+    // Ghost notes are drawn from *other* tracks' parts, so none of this
+    // track's own inputs moves when they change.
+    state.activeTrack === track && ghostNotesOn && t.kind !== 'rhythm'
+      ? ghostNotesFor(track).map(g => [g.track, trackColor(g.track), g.start, g.len, g.midi]) : null,
     // The resize handle on a note is drawn only in Grab mode, so the tool is
     // an input a row draws from even though most of its effect is CSS on the
     // body. The bundled audit logs this one; no step happened to switch tools
@@ -6012,11 +6198,12 @@ function buildHeader(track) {
     // setting it.
     const chordsBtn = el('button', 'th-tool-btn icon');
     setGlyphLabel(chordsBtn, 'scale', '');
-    chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key';
+    chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key, or a bass/arpeggio that follows another track\'s chords';
     chordsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       setActive(track, true);
       renderProgressionList();
+      renderFollowList();
       progressionDialog.showModal();
     });
     tools.append(presetBtn, chordsBtn);
@@ -6566,6 +6753,7 @@ function renderPitchTrack(track) {
   }
   addClipBlocks(rollEl, track, pitchCount * ROW_H);
   addSubgrid(rollEl, pitchCount * ROW_H);
+  if (active && ghostNotesOn) addGhostNotes(rollEl, track, win);
   // Placement/marquee are handled at the lane level so a click anywhere resolves
   // to a snapped (possibly sub-eighth) column, not just a whole-cell index.
   rollEl.addEventListener('click', (e) => {
@@ -6642,6 +6830,40 @@ function renderPitchTrack(track) {
   renderMarquee(rollEl, track, pitchCount * ROW_H);
   row.appendChild(rollEl);
   (trackSink || tracksEl).appendChild(row);
+}
+
+// The other tonal tracks' notes, drawn faintly in the active track's roll —
+// what the chords are while you write the melody over them, without soloing
+// or scrolling to another lane. Only on the active track: on every lane they
+// would be a second copy of the whole song and read as noise.
+//
+// They are decoration, not items: `pointer-events: none` so every click
+// still lands on the lane underneath (placing a note on a ghost's row is the
+// most common thing you'll want to do), aria-hidden and outside the roving
+// tabindex, because they belong to another track and are reachable there.
+// A ghost outside this track's pitch window is left out rather than clamped
+// to the edge, which would draw it on a pitch it does not have.
+function ghostNotesFor(track) {
+  const out = [];
+  for (const other of PITCH_TRACKS) {
+    if (other === track) continue;
+    for (const n of trackNotes(other) || []) out.push({ track: other, start: n.start, len: n.len, midi: freqToMidi(n.freq) });
+  }
+  return out;
+}
+function addGhostNotes(rollEl, track, win) {
+  for (const g of ghostNotesFor(track)) {
+    if (g.midi < win.min || g.midi > win.max) continue;
+    const div = el('div', 'ghost-note');
+    div.dataset.track = g.track;
+    div.setAttribute('aria-hidden', 'true');
+    div.style.left = (g.start * colPx) + 'px';
+    div.style.width = Math.max(3, g.len * colPx) + 'px';
+    div.style.top = ((win.max - g.midi) * ROW_H) + 'px';
+    div.style.height = ROW_H + 'px';
+    div.style.borderColor = trackColor(g.track);
+    rollEl.appendChild(div);
+  }
 }
 
 function renderRhythmTrack(track) {
@@ -7263,18 +7485,17 @@ function insertProgression(prog) {
     const intervals = diatonicIntervals(rootMidi);
     if (!intervals) continue;
     const len = Math.min(barLen, COLS - barCol);
-    for (const semi of [0, ...intervals]) {
-      const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, rootMidi + semi));
-      newNotes.push({
-        start: barCol, len, freq: round2(midiToFreq(midi)), vel: 0.8,
-        bend: null, vib: false, trem: false, duty: null, arp: null,
-        porta: false, crush: false, echo: false, chorus: false, reverb: false,
-      });
-    }
+    for (const semi of [0, ...intervals]) newNotes.push(plainNote(barCol, len, rootMidi + semi, 0.8));
   }
+  writeFromBar(track, startBar, newNotes);
+}
+// The tail both inserts share: everything from `startBar` on is replaced by
+// `newNotes`, which end up selected so the next thing you do — a transpose,
+// Dynamics, Delete — acts on exactly what was just written.
+function writeFromBar(track, startBar, newNotes) {
   if (!newNotes.length) return;
   // clearOverlaps() rather than a hand-written filter, like every other path
-  // that places notes — a chord tone landing on an existing note of the same
+  // that places notes — a new note landing on an existing note of the same
   // pitch is the one case that has to give way, and only that case.
   let notes = trackNotes(track).filter(n => n.start < startBar);
   for (const n of newNotes) notes = clearOverlaps(notes, n);
@@ -7283,6 +7504,21 @@ function insertProgression(prog) {
   state.multiSelected = new Set(newNotes);
   render();
   autosave();
+}
+// Writes a CHORD_PARTS row into the active tonal track, following `source`'s
+// chords — the same "from the playhead's bar, to the end, replacing" contract
+// as insertProgression(), so the three ways of starting a part agree.
+//
+// It is a stamp, not a link: change the chords afterwards and the part does
+// not follow until you insert it again. A live link would have to decide what
+// happens to a note you edited by hand the moment the chords move, and there
+// is no answer to that which is not sometimes wrong.
+function insertChordPart(part, source) {
+  const track = state.activeTrack;
+  if (isRhythm(track) || !source || source === track) return;
+  const startBar = Math.floor(state.playhead / eighthsPerBar()) * eighthsPerBar();
+  const newNotes = chordPartNotes(part, readChords(source), startBar, chordPartCentre(track, part));
+  writeFromBar(track, startBar, newNotes);
 }
 // Keyboard selection through the active track, ordered as the grid reads:
 // left to right, and low to high where notes share a column. Rhythm tracks
@@ -8640,6 +8876,20 @@ keySnapBtn.addEventListener('click', () => {
 });
 syncKeyUI();
 
+const ghostBtn = document.getElementById('ghost-notes');
+function syncGhostUI() {
+  ghostBtn.setAttribute('aria-pressed', String(ghostNotesOn));
+  ghostBtn.classList.toggle('on', ghostNotesOn);
+}
+ghostBtn.addEventListener('click', () => {
+  ghostNotesOn = !ghostNotesOn;
+  try { localStorage.setItem('music-studio-ghost-notes', ghostNotesOn ? 'on' : 'off'); } catch { /* ignore */ }
+  syncGhostUI();
+  render();
+  announce(ghostNotesOn ? 'Showing other tracks\' notes' : 'Hiding other tracks\' notes');
+});
+syncGhostUI();
+
 // ---------- Time signature (meter) ----------
 const timeSigSelect = document.getElementById('time-sig');
 for (const ts of TIME_SIGS) {
@@ -9741,6 +9991,78 @@ function renderProgressionList() {
     progressionListEl.appendChild(row);
   }
 }
+// The second half of the dialog: parts that follow another track's chords.
+// The source list is every other tonal track, preselected to the one that
+// holds the most chords — from the Bass track of the starter layout, that is
+// whichever track you just put a progression into.
+const followSourceEl = document.getElementById('follow-source');
+const followListEl = document.getElementById('follow-list');
+function previewChordPart(part, source) {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const track = state.activeTrack;
+    const startBar = Math.floor(state.playhead / eighthsPerBar()) * eighthsPerBar();
+    // Two bars is enough to hear the figure and one chord change, without
+    // sitting through a whole song to decide.
+    const until = startBar + 2 * eighthsPerBar();
+    const chords = readChords(source).filter(c => c.start < until);
+    const notes = chordPartNotes(part, chords, startBar, chordPartCentre(track, part)).filter(n => n.start < until);
+    const eighthSec = 60 / state.tempo / 2;
+    const voice = getTrackVoice(track);
+    const oscType = state.waveform[track] || 'square';
+    const t0 = ctx.currentTime + 0.05;
+    for (const n of notes) {
+      scheduleTone(n, t0 + (n.start - startBar) * eighthSec, n.len * eighthSec, oscType, previewGain, voice);
+    }
+  } catch { /* audio unavailable */ }
+}
+function renderFollowList() {
+  const target = state.activeTrack;
+  const sources = PITCH_TRACKS.filter(t => t !== target);
+  const keep = followSourceEl.value;
+  followSourceEl.innerHTML = '';
+  for (const t of sources) {
+    const opt = document.createElement('option');
+    const n = (trackNotes(t) || []).length;
+    opt.value = t; opt.textContent = trackName(t) + (n ? '' : ' (empty)');
+    followSourceEl.appendChild(opt);
+  }
+  followSourceEl.value = sources.includes(keep) && (trackNotes(keep) || []).length
+    ? keep : (defaultChordSource(target) || sources[0] || '');
+  const source = followSourceEl.value;
+  const empty = !source || !(trackNotes(source) || []).length;
+  const note = document.getElementById('follow-note');
+  note.hidden = !empty;
+  note.textContent = sources.length
+    ? 'That track has no notes yet — there are no chords to follow. Insert a progression into it first.'
+    : 'There is no other tonal track to follow. Add one from the menu.';
+  followSourceEl.disabled = !sources.length;
+  followListEl.innerHTML = '';
+  for (const part of CHORD_PARTS) {
+    const row = el('div', 'song-item');
+    row.dataset.part = part.id;
+    const info = el('div', 'song-info');
+    const title = el('div', 'song-title'); title.textContent = part.name; info.appendChild(title);
+    const desc = el('div', 'song-desc');
+    desc.textContent = (part.kind === 'bass' ? 'Bass · ' : 'Arpeggio · ') + part.desc;
+    info.appendChild(desc);
+    row.appendChild(info);
+    const preview = el('button'); preview.textContent = '▶';
+    preview.title = 'Hear the first two bars on this track\'s sound';
+    preview.setAttribute('aria-label', `Preview ${part.name}`);
+    preview.disabled = empty;
+    preview.addEventListener('click', () => previewChordPart(part, followSourceEl.value));
+    row.appendChild(preview);
+    const insert = el('button'); insert.textContent = 'Insert';
+    insert.title = 'Write it into this track, following the chosen track\'s chords';
+    insert.disabled = empty;
+    insert.addEventListener('click', () => { insertChordPart(part, followSourceEl.value); progressionDialog.close(); });
+    row.appendChild(insert);
+    followListEl.appendChild(row);
+  }
+}
+followSourceEl.addEventListener('change', renderFollowList);
 document.getElementById('progression-close').addEventListener('click', () => progressionDialog.close());
 
 // ---------- Timing dialog (quantize / humanize) ----------

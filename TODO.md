@@ -7,6 +7,39 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
+## Kreativa genvägar, omgång två
+
+Resten av listan från genomgången "vad saknas för att det ska vara lätt att
+skriva ny musik". Punkt 1 och 2 där (stämmor som följer ackorden, spöknoter)
+är byggda, se `DONE.md`. Ordnat efter nytta per insats.
+
+- [ ] **Infoga och ta bort takter över alla spår.** Repeat och klipp finns,
+  men det går inte att skjuta in två takter mitt i låten (till exempel före
+  refrängen) eller ta bort en vers så att *allt* flyttar med: noter och
+  träffar på alla spår, klippgränser, automationskurvor, markörer och
+  loopgränser. I dag får man flytta spår för spår. Det är det som gör
+  arrangering tungt. Kräver en gemensam `shiftTime(from, delta)` som allt
+  tidsberoende går igenom. Det är den största punkten här, men den som gör
+  mest för att gå från slinga till låt.
+- [ ] **Sektioner via markörer.** Låtar byggs A-B-A-B-C-B. Om markörerna
+  fick fungera som sektioner ("Vers", "Refräng") kunde man ha "Duplicera
+  sektion till slutet" och "Kopiera Refräng hit". Bygger direkt på
+  tidsförskjutningen ovan, eftersom en infogad sektion måste skjuta allt
+  efter sig.
+- [ ] **Variation på en markering.** Dynamics rör medvetet bara velocity.
+  Motsvarigheten för noter vore en *Vary*-dialog: byt några noter mot
+  grannsteg i skalan, skifta en oktav här och där, ta bort var N:te. Samma
+  `strength`-reglage och samma `applyItemEdit()`-väg som Transpose, så att
+  kollisioner avgörs på ett ställe. Svaret på "samma takt igen, men inte
+  exakt samma".
+- [ ] **Tap tempo.** Knacka in tempot några gånger så sätts BPM. Liten kod,
+  men praktiskt när man har ett riff i huvudet och vill hitta tempot innan
+  man börjar skriva.
+- [ ] **Euklidiska rytmer.** Ett läge i Patterns-dialogen: "k slag på n
+  steg" plus rotation, per trumljud. Ger afrikanska och latinamerikanska
+  mönster och udda polyrytmer utan att någon behöver skriva in dem som
+  tabellrader.
+
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes
