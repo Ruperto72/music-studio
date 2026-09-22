@@ -98,6 +98,14 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   chords another track is playing. It reads whatever chords are there — a
   progression you inserted or ones you wrote yourself — and starts the figure
   over on every chord change
+- **Arrange** — insert or delete bars across the whole song at once: every
+  track, its automation, the markers and the loop move together. Markers
+  double as **sections** (Verse, Chorus, …): duplicate one, copy it to the
+  end, or delete it, and everything after it moves to make room or close the
+  gap
+- **Variation** — the same part, not exactly the same: move a share of the
+  notes to a neighbouring scale step, jump some an octave, or thin the part
+  out while keeping every downbeat. Press again for a different answer
 - **Tap tempo** — tap the button beside the tempo field in time and the
   tempo follows; stop for two seconds to start a new count
 - **Euclidean rhythms** — in the Patterns dialog, spread a number of hits as

@@ -637,6 +637,64 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   samma plats i stereobilden som ett mönsters träffar, och ett 1/16-lager tar
   med sig 1/16-rutnätet av samma skäl som en 16-dels-groove gör.
 
+- [x] **Infoga och ta bort takter över alla spår.** Repeat och klipp fanns,
+  men det gick inte att skjuta in två takter före refrängen eller ta bort en
+  vers så att *allt* flyttade med. Man fick flytta spår för spår, och där tog
+  arrangerandet slut. Nu har menyn **Arrange…**: vid takt *n*, *m* takter,
+  *Insert empty bars* eller *Delete bars*.
+  **En funktion flyttar tid, `shiftTime(at, delta)`**, och allt som har en
+  kolumn går igenom den: varje spårs objekt *och* klippfönster,
+  automationspunkter, markörer, loopgränser och spelhuvudet. Det som har en
+  kolumn och lämnas utanför står kvar medan musiken flyttar sig under det,
+  och det är just det fel hela avsnittet finns för att förhindra.
+  Två avbildningar, en för starter och en för slut, som skiljer sig bara vid
+  gränsen: något som *börjar* vid `at` flyttar med infogningen, något som
+  *slutar* vid `at` står kvar. Vid borttagning försvinner det som börjar i
+  intervallet, och en not som börjar före och klingar in i det kortas med det
+  som skars bort i stället för att tas bort. **Ett infogande förlänger aldrig
+  en not**, så en infogad takt är faktiskt tyst.
+  **Fällan var klippen.** En delning ger *båda* halvorna en kopia av allt
+  material, så ett fönster som lämnats kvar vid fel kolumn visar exakt de
+  noter det rätta fönstret skulle ha visat, och rutnätet ser likadant ut.
+  Felinjiceringen "flytta noterna men inte fönstren" gick först grön. Nu
+  kontrollerar steget fönstrens positioner direkt: en delning vid 16 och en
+  takt infogad vid 8 ska ge `[0,24)` och `[24,…)`.
+  Kurvor som en borttagning tömmer går genom `setAutomationPoints()` och
+  försvinner, eftersom en tom lista annars räknas som "automatiserad" av
+  `fxHasAutomation()`.
+- [x] **Sektioner via markörer.** Låtar byggs A-B-A-B-C-B, och markörerna
+  sa redan "här börjar något". Det är ingen ny struktur bredvid dem:
+  `songSections()` läser en sektion från en markör till nästa (eller till
+  låtens slut), med markörens namn. En andra lista hade behövt hållas i fas
+  med markörerna. Arrange-dialogen listar sektionerna med *Duplicate*
+  (kopian direkt efter, resten flyttar senare), *Copy to end* och *Delete*.
+  `duplicateSpan()` **kopierar innan tiden flyttas**, till de positioner
+  kopiorna ska få i luckan, och öppnar sedan luckan med `shiftTime()`.
+  Originalen flyttar, kopiorna (separata objekt) står där de siktades.
+  Att läsa källan efteråt hade krävt att förskjutningen räknades baklänges
+  för en sektion som korsar målpunkten. Kopian tar med automationen och
+  markörerna inom sektionen, sin egen markör inräknad, så en duplicerad
+  refräng listas som en egen sektion. Noter som kopieras in bland befintliga
+  går genom `trimCopiesAgainst()`, som Repeat nu också använder i stället för
+  sin egen kopia av samma regel.
+  Verify-stegen använder Cinematic (sex sektioner, 21 automationspunkter)
+  och jämför hela låten mot filen: varje spår, markör och automationspunkt
+  efter varje operation, och infoga följt av ta bort måste ge filen tillbaka.
+- [x] **Variation på en markering.** Timing, Transpose och Dynamics
+  *rättar* en stämma. Den här avviker med flit, till andra gången en takt
+  kommer. *Neighbour tones* flyttar en not ett steg upp eller ned (ett
+  skalsteg via samma `scaleStep()` som ↑/↓, en halvton utan tonart), *Octave
+  jumps* en oktav, *Thin out* utelämnar noter men aldrig en på taktens
+  ettslag, så att den tunnade stämman fortfarande landar där originalet
+  gjorde. Det sista fungerar även på trummor.
+  **Amount är andelen noter som rörs**, inte hur mycket de rörs: resten står
+  som du skrev dem, så stämman förblir din. Äkta slump, som Dynamics' Vary:
+  två tryck ska ge två svar, och undo är vägen tillbaka.
+  Tonhöjdskollisioner avgörs av `moveNotesTo()`, som bröts ut ur
+  `transposeItems()` så att Transpose och Variation delar regeln (en not vars
+  mål är upptaget står kvar). Samma scope-regel som de tre andra dialogerna
+  (`timingTargets()`).
+
 ## Buggar hittade av rapporter
 
 - [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan

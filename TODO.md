@@ -7,31 +7,21 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
-## Kreativa genvägar, omgång två
+## Arrangering, uppföljning
 
-Resten av listan från genomgången "vad saknas för att det ska vara lätt att
-skriva ny musik". Stämmor som följer ackorden, spöknoter, tap tempo och
-euklidiska rytmer är byggda, se `DONE.md`. Ordnat efter nytta per insats.
+Arrange-dialogen (infoga och ta bort takter, sektioner via markörer) är
+byggd, se `DONE.md`. Det som medvetet lämnades utanför första versionen:
 
-- [ ] **Infoga och ta bort takter över alla spår.** Repeat och klipp finns,
-  men det går inte att skjuta in två takter mitt i låten (till exempel före
-  refrängen) eller ta bort en vers så att *allt* flyttar med: noter och
-  träffar på alla spår, klippgränser, automationskurvor, markörer och
-  loopgränser. I dag får man flytta spår för spår. Det är det som gör
-  arrangering tungt. Kräver en gemensam `shiftTime(from, delta)` som allt
-  tidsberoende går igenom. Det är den största punkten här, men den som gör
-  mest för att gå från slinga till låt.
-- [ ] **Sektioner via markörer.** Låtar byggs A-B-A-B-C-B. Om markörerna
-  fick fungera som sektioner ("Vers", "Refräng") kunde man ha "Duplicera
-  sektion till slutet" och "Kopiera Refräng hit". Bygger direkt på
-  tidsförskjutningen ovan, eftersom en infogad sektion måste skjuta allt
-  efter sig.
-- [ ] **Variation på en markering.** Dynamics rör medvetet bara velocity.
-  Motsvarigheten för noter vore en *Vary*-dialog: byt några noter mot
-  grannsteg i skalan, skifta en oktav här och där, ta bort var N:te. Samma
-  `strength`-reglage och samma `applyItemEdit()`-väg som Transpose, så att
-  kollisioner avgörs på ett ställe. Svaret på "samma takt igen, men inte
-  exakt samma".
+- [ ] **Flytta en sektion.** Duplicera + ta bort gör det redan i två steg,
+  men "flytta Bridge efter andra refrängen" är ett drag man vill göra i ett.
+  Är `duplicateSpan()` till målet följt av `shiftTime()` bakåt på källan,
+  med källans position justerad om målet låg före den.
+- [ ] **Dela noter som korsar infogningspunkten.** En not som klingar över
+  punkten där takter infogas behåller i dag sin längd och klingar därför in
+  i den tomma luckan. Det är medvetet (ett infogande ska inte förlänga
+  något), men en DAW delar ofta noten i två. Värt att ta upp om det visar
+  sig störa i praktiken.
+
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes
