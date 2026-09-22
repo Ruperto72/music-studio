@@ -68,6 +68,16 @@
   .pattern-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 12px; color: #b7b7c2; margin: 2px 0 12px; }
   .pattern-opt select { padding: 4px 6px; font-size: 12px; }
   .pattern-opt-note { color: #8f8f9c; }
+  .tap-btn { padding: 4px 8px; font-size: 12px; touch-action: manipulation; }
+  .euclid-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+  .euclid-presets button { padding: 4px 8px; font-size: 12px; }
+  .euclid-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0; font-size: 12px; color: #b7b7c2; }
+  .euclid-row label { display: flex; align-items: center; gap: 5px; }
+  .euclid-row input[type=number] { width: 52px; padding: 4px 6px; font-size: 12px; }
+  .euclid-row select { padding: 4px 6px; font-size: 12px; }
+  .euclid-view { display: flex; flex-wrap: wrap; gap: 3px; max-width: 100%; }
+  .euclid-view span { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #55555f; }
+  .euclid-view span.on { background: #ffcc00; border-color: #ffcc00; }
   .dialog-sub { font-size: 13px; font-weight: 600; color: #d8d8e0; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #33333d; }
   .song-item .song-del { background: #2a1414; border-color: #5a1e1e; color: #ff9a9a; }
   .song-item .song-del:hover { border-color: #a33; }
@@ -1271,6 +1281,22 @@
         <span class="pattern-opt-note">— hi-hat and ride to the right, shaker, toms and crash to the left; kick and snare stay centred. Off inserts everything dead centre.</span>
       </label>
       <div id="pattern-list" class="song-list"></div>
+      <h3 class="dialog-sub">Euclidean layer</h3>
+      <p class="songs-note">Spreads a number of hits as evenly as possible over a number of steps, on one piece of the kit — three hits over eight steps is the tresillo, five over sixteen the bossa nova. Insert <b>adds a layer</b>: it replaces only that piece's hits, from the playhead's bar to the end, so you can build a groove one piece at a time or lay one over a pattern above. The cycle runs on across bar lines, so steps that don't divide the bar give you a polyrhythm against it.</p>
+      <div id="euclid-presets" class="euclid-presets" role="group" aria-label="Known euclidean rhythms"></div>
+      <div class="euclid-row">
+        <label>Piece <select id="euclid-piece"></select></label>
+        <label>Hits <input id="euclid-hits" type="number" min="0" max="32" value="3"></label>
+        <label>Steps <input id="euclid-steps" type="number" min="2" max="32" value="8"></label>
+        <label>Rotate <input id="euclid-rotate" type="number" min="0" max="31" value="0"></label>
+        <label>Step <select id="euclid-step"></select></label>
+      </div>
+      <div class="euclid-row">
+        <div id="euclid-view" class="euclid-view" aria-hidden="true"></div>
+        <span id="euclid-text" class="pattern-opt-note"></span>
+        <button id="euclid-preview" aria-label="Preview the euclidean layer" title="Hear two bars: the layer with what the track already plays there">▶</button>
+        <button id="euclid-insert" title="Write the layer into this track — replaces only this piece's hits, from the playhead's bar to the end">Insert layer</button>
+      </div>
     </div>
   </dialog>
 
@@ -1510,6 +1536,8 @@
             <div class="mstrip-row">
               <input id="tempo" type="number" min="40" max="300" step="1">
               <span class="unit">BPM</span>
+              <button id="tap-tempo" class="tap-btn" aria-label="Tap tempo"
+                      title="Tap tempo: tap this in time, four or more times, and the tempo follows your taps. Stop for two seconds to start a new count.">Tap</button>
             </div>
           </div>
           <div class="mstrip-cell">
@@ -2558,6 +2586,47 @@ const RHYTHM_PATTERNS = [
 // an existing arrangement is not always meant to comment on it.
 const FILL_EVERY_CHOICES = [0, 2, 4, 8];
 let patternFillEvery = 4;
+
+// Euclidean rhythms: k hits spread as evenly as they will go over n steps.
+// The patterns this gives are not a curiosity of the algorithm — Toussaint
+// showed that a large share of the world's traditional rhythms are exactly
+// these (E(3,8) is the Cuban tresillo, E(5,8) the cinquillo, E(7,12) a West
+// African bell pattern), which is why two numbers are enough to reach grooves
+// nobody here would have written a RHYTHM_PATTERNS row for.
+//
+// Bjorklund's construction rather than the one-line Bresenham form
+// (`(i * k) % n < k`): both spread the hits equally, but Bresenham lands on a
+// different *rotation* for most inputs, and then E(5,8) would not read as the
+// cinquillo the preset says it is. Rotation is a separate control, so either
+// could reach every pattern — the point is that the unrotated one is the
+// textbook one.
+function euclidPattern(k, n) {
+  if (k <= 0) return Array(n).fill(false);
+  if (k >= n) return Array(n).fill(true);
+  let a = Array.from({ length: k }, () => [true]);
+  let b = Array.from({ length: n - k }, () => [false]);
+  while (b.length > 1) {
+    const m = Math.min(a.length, b.length);
+    const joined = [];
+    for (let i = 0; i < m; i++) joined.push(a[i].concat(b[i]));
+    b = a.length > m ? a.slice(m) : b.slice(m);
+    a = joined;
+  }
+  return a.concat(b).flat();
+}
+// Step lengths offered, in eighths. A 16th layer also brings the 1/16 grid
+// with it, for the reason a 16th groove does (see insertPatternIntoRhythm).
+const EUCLID_STEPS = [{ id: '1/8', eighths: 1 }, { id: '1/16', eighths: 0.5 }];
+// Known rhythms as starting points. One row each; `step` is an EUCLID_STEPS id.
+const EUCLID_PRESETS = [
+  { name: 'Tresillo',   type: 'kick',  k: 3, n: 8,  step: '1/8',  desc: 'E(3,8) — the Cuban tresillo, and the bass drum of half of pop' },
+  { name: 'Cinquillo',  type: 'rim',   k: 5, n: 8,  step: '1/8',  desc: 'E(5,8) — the Cuban cinquillo' },
+  { name: 'Bossa',      type: 'rim',   k: 5, n: 16, step: '1/16', desc: 'E(5,16) — the bossa nova clave' },
+  { name: 'Samba',      type: 'shaker', k: 7, n: 16, step: '1/16', desc: 'E(7,16) — a Brazilian samba figure' },
+  { name: 'Bell 12',    type: 'ride',  k: 7, n: 12, step: '1/16', desc: 'E(7,12) — the West African standard bell, twelve sixteenths against a sixteen-step bar' },
+  { name: 'Four on the floor', type: 'kick', k: 4, n: 16, step: '1/16', desc: 'E(4,16) — the even case: a kick on every beat' },
+  { name: '5 against 4', type: 'tom',  k: 2, n: 5,  step: '1/8',  desc: 'E(2,5) — a five-step cycle that drifts across the bar' },
+];
 
 // Default ADSR shape for tonal tracks without a custom envelope (state.adsr[track]
 // absent) — attack/decay/release are fractions of the note's own duration (so they
@@ -6222,6 +6291,7 @@ function buildHeader(track) {
       // a tonal track had focus.
       setActive(track, true);
       renderPatternList();
+      renderEuclidView(); // the meter may have changed since it was last drawn
       patternDialog.showModal();
     });
     tools.append(patternsBtn);
@@ -7453,6 +7523,45 @@ function insertPatternIntoRhythm(pattern, fillEvery = patternFillEvery) {
   // and unreadable. Setting it also leaves the editing snap where the
   // pattern's own hits live, which is where you want it to edit them.
   if (pattern.grid != null) { state.grid = pattern.grid; syncGridUI(); }
+  render();
+  autosave();
+}
+// The hits a euclidean layer writes from `from` to `until`, as real hits.
+// Shared by Insert and ▶ so the preview is what gets written.
+//
+// The cycle runs on from `from` rather than restarting every bar: with steps
+// that divide the bar it is the same thing, and with steps that don't it is
+// the whole point — five eighths against a bar of eight is a polyrhythm, and
+// restarting it at each bar line would quietly turn it back into one bar.
+// The first hit of each cycle is full; the rest sit a little back, so the
+// cycle is audible as a cycle once it no longer lines up with the bar.
+function euclidHits({ type, k, n, rotate, step }, from, until) {
+  const pat = euclidPattern(k, n);
+  const r = ((rotate % n) + n) % n;
+  const first = pat.findIndex((_, i) => pat[(i + r) % n]);
+  const out = [];
+  for (let i = 0; ; i++) {
+    const start = quant(from + i * step);
+    if (start >= until) break;
+    if (!pat[(i + r) % n]) continue;
+    const vel = i % n === first ? 1 : 0.8;
+    out.push(patternHitAt(vel < 1 ? { start: 0, type, vel } : { start: 0, type }, start, 1));
+  }
+  return out;
+}
+// Writes a euclidean layer into the active rhythm track. Unlike a pattern it
+// replaces *only its own piece* in the range, because a layer is meant to be
+// stacked — kick in one pass, rim in the next — and replacing the whole
+// track each time would make building anything out of them impossible.
+function insertEuclidLayer(layer) {
+  const track = state.activeTrack;
+  if (!isRhythm(track) || layer.n < 1) return;
+  const barLen = eighthsPerBar();
+  const startBar = Math.floor(state.playhead / barLen) * barLen;
+  const newHits = euclidHits(layer, startBar, COLS);
+  const kept = trackNotes(track).filter(h => h.start < startBar || h.type !== layer.type);
+  setTrackNotes(track, kept.concat(newHits));
+  if (layer.step < state.grid) { state.grid = layer.step; syncGridUI(); }
   render();
   autosave();
 }
@@ -8717,7 +8826,46 @@ document.getElementById('redo-btn').addEventListener('click', redo);
 
 const tempoInput = document.getElementById('tempo');
 tempoInput.value = state.tempo;
-tempoInput.addEventListener('change', () => { state.tempo = parseInt(tempoInput.value, 10) || TEMPO_BPM; });
+// The field and Tap both land here, so both are held to the range the field
+// itself declares — a typed 1000 used to reach the scheduler as it was.
+const TEMPO_MIN = 40, TEMPO_MAX = 300;
+function setTempo(bpm) {
+  state.tempo = Math.max(TEMPO_MIN, Math.min(TEMPO_MAX, Math.round(bpm) || TEMPO_BPM));
+  tempoInput.value = state.tempo;
+  autosave();
+}
+tempoInput.addEventListener('change', () => setTempo(parseInt(tempoInput.value, 10)));
+
+// ---------- Tap tempo ----------
+// Tap in time and the tempo follows. For the riff you have in your head (or
+// in another app) and want to write down at the speed it actually goes.
+//
+// Counted on pointerdown, not click: a click fires on *release*, and how long
+// a finger rests on the button is not part of the beat — measured on release
+// the taps wobble by however long each press happened to last. The keyboard
+// reaches the same count through click, which a pointer also sends after its
+// pointerdown; `detail === 0` is what tells a keyboard click from that echo.
+//
+// The tempo is the mean of the recent intervals rather than the last one, so
+// one early tap nudges it instead of throwing it. Only the last TAP_KEEP taps
+// count, so a count that drifts on purpose (slowing to find the right feel)
+// is followed rather than averaged away, and a pause longer than
+// TAP_RESET_MS starts a new count — without that, tapping again a minute
+// later would average in an interval of a minute.
+const TAP_RESET_MS = 2000, TAP_KEEP = 8;
+let tapTimes = [];
+function tapTempo(now = performance.now()) {
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > TAP_RESET_MS) tapTimes = [];
+  tapTimes.push(now);
+  if (tapTimes.length > TAP_KEEP) tapTimes.shift();
+  if (tapTimes.length < 2) { announce('Tap again in time'); return; }
+  const mean = (tapTimes[tapTimes.length - 1] - tapTimes[0]) / (tapTimes.length - 1);
+  setTempo(60000 / mean);
+  announce(`${state.tempo} BPM`);
+}
+const tapBtn = document.getElementById('tap-tempo');
+tapBtn.addEventListener('pointerdown', (e) => { if (e.button === 0) tapTempo(); });
+tapBtn.addEventListener('click', (e) => { if (e.detail === 0) tapTempo(); });
 
 // ---------- Bottom bar: master volume (static) + collapse toggle ----------
 const masterVolInput = document.getElementById('master-vol');
@@ -9936,6 +10084,88 @@ function renderPatternList() {
   }
 }
 document.getElementById('pattern-close').addEventListener('click', () => patternDialog.close());
+
+// The euclidean half of the pattern dialog. Its controls are plain inputs
+// read on demand by euclidLayer(), so the view, ▶ and Insert all see the same
+// numbers, clamped the same way.
+const euclidPieceEl = document.getElementById('euclid-piece');
+const euclidHitsEl = document.getElementById('euclid-hits');
+const euclidStepsEl = document.getElementById('euclid-steps');
+const euclidRotateEl = document.getElementById('euclid-rotate');
+const euclidStepEl = document.getElementById('euclid-step');
+for (const type of RHYTHM_ROWS) {
+  const opt = document.createElement('option');
+  opt.value = type; opt.textContent = RHYTHM_TITLES[type] || RHYTHM_LABELS[type];
+  euclidPieceEl.appendChild(opt);
+}
+for (const st of EUCLID_STEPS) {
+  const opt = document.createElement('option');
+  opt.value = st.id; opt.textContent = st.id;
+  euclidStepEl.appendChild(opt);
+}
+function euclidLayer() {
+  const int = (el, lo, hi, dflt) => Math.max(lo, Math.min(hi, parseInt(el.value, 10) || dflt));
+  const n = int(euclidStepsEl, 2, 32, 8);
+  return {
+    type: RHYTHM_ROWS.includes(euclidPieceEl.value) ? euclidPieceEl.value : 'kick',
+    n,
+    k: Math.max(0, Math.min(n, parseInt(euclidHitsEl.value, 10) || 0)),
+    rotate: int(euclidRotateEl, 0, n - 1, 0),
+    step: (EUCLID_STEPS.find(s => s.id === euclidStepEl.value) || EUCLID_STEPS[0]).eighths,
+  };
+}
+function renderEuclidView() {
+  const layer = euclidLayer();
+  const pat = euclidPattern(layer.k, layer.n);
+  const view = document.getElementById('euclid-view');
+  view.innerHTML = '';
+  for (let i = 0; i < layer.n; i++) view.appendChild(el('span', pat[(i + layer.rotate) % layer.n] ? 'on' : ''));
+  // Spelled out as well as drawn: the boxes are aria-hidden decoration.
+  const barSteps = eighthsPerBar() / layer.step;
+  document.getElementById('euclid-text').textContent =
+    `E(${layer.k},${layer.n})` + (layer.rotate ? ` rotated ${layer.rotate}` : '') + ' — '
+    + (barSteps % layer.n === 0 ? `repeats ${barSteps / layer.n}× per bar` : `${layer.n} steps against a bar of ${barSteps}: drifts across the bar line`);
+}
+for (const input of [euclidPieceEl, euclidHitsEl, euclidStepsEl, euclidRotateEl, euclidStepEl]) {
+  input.addEventListener('input', renderEuclidView);
+  input.addEventListener('change', renderEuclidView);
+}
+for (const p of EUCLID_PRESETS) {
+  const b = el('button');
+  b.textContent = p.name;
+  b.title = p.desc;
+  b.dataset.euclid = p.name;
+  b.addEventListener('click', () => {
+    euclidPieceEl.value = p.type; euclidHitsEl.value = p.k; euclidStepsEl.value = p.n;
+    euclidRotateEl.value = 0; euclidStepEl.value = p.step;
+    renderEuclidView();
+  });
+  document.getElementById('euclid-presets').appendChild(b);
+}
+// Two bars of the layer *with* what the track already plays there, because a
+// layer on its own says very little — whether five rims work depends entirely
+// on the kick they sit against.
+document.getElementById('euclid-preview').addEventListener('click', () => {
+  try {
+    ensureCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const track = state.activeTrack;
+    const layer = euclidLayer();
+    const barLen = eighthsPerBar();
+    const from = Math.floor(state.playhead / barLen) * barLen, until = from + 2 * barLen;
+    const context = trackNotes(track).filter(h => h.start >= from && h.start < until && h.type !== layer.type);
+    const eighthSec = 60 / state.tempo / 2;
+    const t0 = ctx.currentTime + 0.05;
+    for (const h of context.concat(euclidHits(layer, from, until))) {
+      scheduleDrum(h.type, t0 + (h.start - from) * eighthSec, previewGain, hitVel(h), hitPan(h), getTrackKitId(track));
+    }
+  } catch { /* audio unavailable */ }
+});
+document.getElementById('euclid-insert').addEventListener('click', () => {
+  insertEuclidLayer(euclidLayer());
+  patternDialog.close();
+});
+renderEuclidView();
 
 // ---------- Chord progression dialog ----------
 const progressionDialog = document.getElementById('progression-dialog');

@@ -6237,6 +6237,103 @@ async function main() {
       if (stored !== 'off') throw new Error(`the ghost-notes preference was not remembered: ${stored}`);
     });
 
+    step('Tap tempo: the tempo follows the taps, a pause starts a new count, and a click is not a second tap', async () => {
+      await fresh();
+      // Taps are timed inside the page, so the spacing is the page's clock
+      // and not a round trip over the protocol each time.
+      const tap = (gapMs, count, how) => cdp.evaluate(`(async () => {
+        const b = document.getElementById('tap-tempo');
+        for (let i = 0; i < ${count}; i++) {
+          if (i) await new Promise(r => setTimeout(r, ${gapMs}));
+          if (${JSON.stringify(how)} === 'pointer') {
+            b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+            // What a real press sends next: a click with detail 1. It must not
+            // count again, or every interval after the first is ~0ms.
+            b.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+          } else {
+            b.click(); // detail 0 — the keyboard's Enter/Space
+          }
+        }
+        return Number(document.getElementById('tempo').value);
+      })()`);
+      const near = (got, want, tol, what) => {
+        if (Math.abs(got - want) > tol) throw new Error(`${what}: expected about ${want} BPM, got ${got}`);
+      };
+      near(await tap(400, 5, 'pointer'), 150, 8, 'five taps 400ms apart');
+      // A pause past the reset: one tap alone must leave the tempo where it is.
+      await new Promise(r => setTimeout(r, 2300));
+      const afterOne = await tap(0, 1, 'pointer');
+      if (afterOne !== await cdp.evaluate(`Number(document.getElementById('tempo').value)`) || Math.abs(afterOne - 150) > 8) {
+        throw new Error(`a single tap after a pause must not change the tempo, got ${afterOne}`);
+      }
+      await new Promise(r => setTimeout(r, 2300));
+      near(await tap(600, 4, 'keyboard'), 100, 6, 'four keyboard taps 600ms apart');
+      // It is a song value like any other: it reaches the autosaved song.
+      await waitFor(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return k && Math.abs(JSON.parse(localStorage.getItem(k)).tempo - 100) <= 6;
+      })()`);
+    });
+
+    step('Euclidean layer: hits spread evenly, only its own piece is replaced, and the cycle runs across bars', async () => {
+      await fresh();
+      const openPatterns = () => cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .track-header')
+        && [...document.querySelector('.track[data-kind="rhythm"]').querySelectorAll('.th-tool-btn')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await openPatterns();
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      // A groove underneath, so there is something the layer must leave alone.
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#pattern-list .song-item')].find(r => r.querySelector('.song-title').textContent === 'Rock');
+        [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+      })()`);
+      const saved = () => cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        if (!k) return null;
+        const d = JSON.parse(localStorage.getItem(k));
+        const id = d.trackList.find(t => t.kind === 'rhythm').id;
+        return window.__savedNotes(d, id);
+      })()`);
+      await waitFor(`(() => { const k = Object.keys(localStorage).find(k => k.includes('autosave')); return !!k; })()`);
+      await new Promise(r => setTimeout(r, 600));
+      const rock = await saved();
+      const rockKicks = rock.filter(h => h.type === 'kick').map(h => h.start);
+      if (!rockKicks.length) throw new Error('the Rock pattern put no kicks down to test against');
+      // The tresillo on the tom: E(3,8) on eighths is x..x..x., bar after bar.
+      const setLayer = (piece, k, n, rot, stepId) => cdp.evaluate(`(() => {
+        const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); };
+        set('euclid-piece', ${JSON.stringify(piece)}); set('euclid-hits', ${k}); set('euclid-steps', ${n});
+        set('euclid-rotate', ${rot}); set('euclid-step', ${JSON.stringify(stepId)});
+        return { on: [...document.querySelectorAll('#euclid-view span')].map(s => s.classList.contains('on') ? 'x' : '.').join(''),
+                 text: document.getElementById('euclid-text').textContent };
+      })()`);
+      await openPatterns();
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const view = await setLayer('tom', 3, 8, 0, '1/8');
+      if (view.on !== 'x..x..x.') throw new Error(`E(3,8) is the tresillo x..x..x., the view drew ${view.on}`);
+      // The textbook rotation, not merely an even spread: Bresenham's one-liner
+      // gives x.x.xx.x for E(5,8), the cinquillo is x.xx.xx.
+      const cinq = await setLayer('tom', 5, 8, 0, '1/8');
+      if (cinq.on !== 'x.xx.xx.') throw new Error(`E(5,8) is the cinquillo x.xx.xx., the view drew ${cinq.on}`);
+      await setLayer('tom', 3, 8, 0, '1/8');
+      await cdp.evaluate(`document.getElementById('euclid-insert').click()`);
+      await new Promise(r => setTimeout(r, 700));
+      const after = await saved();
+      const toms = after.filter(h => h.type === 'tom').map(h => h.start).sort((a, b) => a - b);
+      if (toms.slice(0, 6).join(',') !== '0,3,6,8,11,14') throw new Error(`the tresillo on eighths lands on 0,3,6 of every bar, got ${toms.slice(0, 6)}`);
+      const kicksAfter = after.filter(h => h.type === 'kick').map(h => h.start);
+      if (kicksAfter.join(',') !== rockKicks.join(',')) throw new Error('a layer on the tom must leave the kicks exactly where they were');
+      // Five steps against a bar of eight: E(2,5) is x.x.., and the second
+      // cycle starts at column 5, not back at the bar line.
+      await openPatterns();
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      const drift = await setLayer('rim', 2, 5, 0, '1/8');
+      if (!/drifts/.test(drift.text)) throw new Error(`a 5-step cycle on a bar of 8 should say it drifts: ${drift.text}`);
+      await cdp.evaluate(`document.getElementById('euclid-insert').click()`);
+      await new Promise(r => setTimeout(r, 700));
+      const rims = (await saved()).filter(h => h.type === 'rim').map(h => h.start).sort((a, b) => a - b);
+      if (rims.slice(0, 6).join(',') !== '0,2,5,7,10,12') throw new Error(`E(2,5) runs on across the bar as 0,2,5,7,10,12, got ${rims.slice(0, 6)}`);
+    });
+
     step('Duplicate track: the copy carries the part and the whole voice, independently', async () => {
       await fresh();
       await waitFor(`!!document.querySelector('.th-osc-trigger')`);

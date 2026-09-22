@@ -10,8 +10,8 @@ hur roligt det vore att bygga.
 ## Kreativa genvägar, omgång två
 
 Resten av listan från genomgången "vad saknas för att det ska vara lätt att
-skriva ny musik". Punkt 1 och 2 där (stämmor som följer ackorden, spöknoter)
-är byggda, se `DONE.md`. Ordnat efter nytta per insats.
+skriva ny musik". Stämmor som följer ackorden, spöknoter, tap tempo och
+euklidiska rytmer är byggda, se `DONE.md`. Ordnat efter nytta per insats.
 
 - [ ] **Infoga och ta bort takter över alla spår.** Repeat och klipp finns,
   men det går inte att skjuta in två takter mitt i låten (till exempel före
@@ -32,14 +32,6 @@ skriva ny musik". Punkt 1 och 2 där (stämmor som följer ackorden, spöknoter)
   `strength`-reglage och samma `applyItemEdit()`-väg som Transpose, så att
   kollisioner avgörs på ett ställe. Svaret på "samma takt igen, men inte
   exakt samma".
-- [ ] **Tap tempo.** Knacka in tempot några gånger så sätts BPM. Liten kod,
-  men praktiskt när man har ett riff i huvudet och vill hitta tempot innan
-  man börjar skriva.
-- [ ] **Euklidiska rytmer.** Ett läge i Patterns-dialogen: "k slag på n
-  steg" plus rotation, per trumljud. Ger afrikanska och latinamerikanska
-  mönster och udda polyrytmer utan att någon behöver skriva in dem som
-  tabellrader.
-
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes

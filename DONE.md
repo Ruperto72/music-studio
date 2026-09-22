@@ -590,6 +590,53 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   som Keep to scale, och är på som förval: poängen är att man ser ackorden
   utan att först behöva veta att man kan be om dem.
 
+- [x] **Tap tempo.** En *Tap*-knapp bredvid tempofältet: knacka i takt så
+  följer tempot. Den är till för riffet man har i huvudet, eller i ett annat
+  program, och vill skriva ned i den takt det faktiskt går.
+  **Räknas på `pointerdown`, inte på `click`.** Ett klick kommer när man
+  *släpper*, och hur länge fingret vilar på knappen är inte en del av slaget.
+  Mätt vid släpp svajar knackningarna med hur länge varje tryck råkade vara.
+  Tangentbordet når samma räkning via `click`, som en pekare också skickar
+  efter sin `pointerdown`. `detail === 0` skiljer tangentbordets klick från
+  det ekot. Verify-steget skickar just den kombinationen: med vakten borttagen
+  blev varje intervall utom det första ~0 ms och tempot slog i taket.
+  Tempot är medelvärdet av de senaste intervallen (högst åtta knackningar),
+  inte det sista, så en tidig knackning knuffar tempot i stället för att kasta
+  det. En paus över två sekunder börjar en ny räkning, annars hade nästa
+  knackning en minut senare räknat in ett intervall på en minut.
+  Fältet och Tap går nu båda genom `setTempo()`, som håller värdet inom
+  40–300. Det är det intervall fältet själv deklarerar; ett inskrivet 1000 nådde
+  tidigare schemaläggaren som det var.
+- [x] **Euklidiska rytmer.** En andra halva i Patterns-dialogen: *k* slag
+  spridda så jämnt det går över *n* steg, på ett trumljud, med rotation och
+  steglängd (1/8 eller 1/16). Det är ingen kuriositet hos algoritmen. Toussaint
+  visade att en stor del av världens traditionella rytmer är exakt dessa:
+  E(3,8) är tresillon, E(5,8) cinquillon, E(7,12) en västafrikansk
+  klockfigur. Två tal räcker alltså för att nå grooves som ingen här hade
+  skrivit en `RHYTHM_PATTERNS`-rad för. Kända rytmer ligger som startpunkter i
+  `EUCLID_PRESETS`, en rad var.
+  **Tre beslut:**
+  - *Bjorklunds konstruktion, inte Bresenhams enradare* (`(i*k) % n < k`).
+    Båda sprider slagen lika, men Bresenham hamnar på en annan *rotation* för
+    de flesta indata, och då hade E(5,8) inte varit den cinquillo förinställningen
+    säger. Verify-steget jämför mot läroboksformen och fångade Bresenham när
+    den injicerades.
+  - *Ett lager, inte ett mönster.* Insert ersätter bara sitt eget trumljud i
+    intervallet, från spelhuvudets takt till slutet. Lager är till för att
+    staplas: kick i en omgång, rim i nästa, eller ett lager ovanpå en groove
+    ovanför. Att ersätta hela spåret varje gång hade gjort det omöjligt att
+    bygga något av dem.
+  - *Cykeln löper vidare över taktstrecket* i stället för att börja om varje
+    takt. Med steg som delar takten är det samma sak, med steg som inte gör det
+    är det hela poängen: fem åttondelar mot en takt av åtta är en polyrytm, och
+    en omstart vid varje taktstreck hade i tysthet gjort om den till en takt.
+    Dialogen säger vilket av fallen det är ("drifts across the bar line").
+  ▶ spelar två takter av lagret *tillsammans med* det spåret redan har där,
+  eftersom ett lager ensamt säger lite: om fem rim fungerar beror helt på
+  kicken de ligger mot. Lagret går genom `patternHitAt()`, så det hamnar på
+  samma plats i stereobilden som ett mönsters träffar, och ett 1/16-lager tar
+  med sig 1/16-rutnätet av samma skäl som en 16-dels-groove gör.
+
 ## Buggar hittade av rapporter
 
 - [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan

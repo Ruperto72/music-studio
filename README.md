@@ -98,6 +98,13 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   chords another track is playing. It reads whatever chords are there — a
   progression you inserted or ones you wrote yourself — and starts the figure
   over on every chord change
+- **Tap tempo** — tap the button beside the tempo field in time and the
+  tempo follows; stop for two seconds to start a new count
+- **Euclidean rhythms** — in the Patterns dialog, spread a number of hits as
+  evenly as they go over a number of steps on one kit piece (the tresillo,
+  the bossa clave, a five-against-four drift, ...), rotated as you like, and
+  insert it as a *layer* that replaces only that piece, so a groove can be
+  built one piece at a time
 - **Ghost notes** — the other tonal tracks' notes show faintly in the active
   track's piano roll, so you can see the chords while you write the melody
   over them. They can't be clicked, so they never get in the way; the button
