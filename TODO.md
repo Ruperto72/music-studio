@@ -16,11 +16,6 @@ byggd, se `DONE.md`. Det som medvetet lämnades utanför första versionen:
   men "flytta Bridge efter andra refrängen" är ett drag man vill göra i ett.
   Är `duplicateSpan()` till målet följt av `shiftTime()` bakåt på källan,
   med källans position justerad om målet låg före den.
-- [ ] **Dela noter som korsar infogningspunkten.** En not som klingar över
-  punkten där takter infogas behåller i dag sin längd och klingar därför in
-  i den tomma luckan. Det är medvetet (ett infogande ska inte förlänga
-  något), men en DAW delar ofta noten i två. Värt att ta upp om det visar
-  sig störa i praktiken.
 
 ## Framskjutet (medvetet, inte glömt)
 

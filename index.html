@@ -1718,6 +1718,11 @@ const APP_VERSION = '1.4.0';
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
 const MAX_COLS = 576; // up to 72 bars in 4/4 — the allowed song-length range
+// The tempo range the field declares. Every assignment to state.tempo goes
+// through clampTempo() — the field, Tap, a loaded song, a MIDI import, an undo
+// — so a song file saying 1000 cannot reach the scheduler as it was.
+const TEMPO_MIN = 40, TEMPO_MAX = 300;
+function clampTempo(bpm) { return Math.max(TEMPO_MIN, Math.min(TEMPO_MAX, Math.round(bpm) || TEMPO_BPM)); }
 const seqLength = (seq) => seq.reduce((s, n) => s + n.d, 0);
 
 // ---- Time signature. `num/den` → eighths per bar/beat. 4/4 = 8 per bar (the
@@ -2188,30 +2193,67 @@ const CHORD_PART_CENTRE = { bass: 42, arp: 66 };
 // Names the chord a set of sounding pitches spells: a root pitch class plus
 // the third/fifth/seventh that go with it, in semitones.
 //
-// Every pitch class present is tried as the root and scored on how much of a
-// triad it explains; the bass note breaks ties, so C-E-G and E-G-C both come
-// out C but an E under G-B comes out Em. With a key set, a root's third and
-// fifth come from diatonicIntervals() — the same place the chord buttons and
-// progressions get theirs — so a lone D in C major is read as Dm, which is
-// what a bass under it should assume. Without one (or on a note outside the
-// scale) they come from what is actually sounding.
+// **The sounding notes decide; the key only fills in what is missing.** Every
+// pitch class present is tried as the root against real chord qualities
+// (CHORD_QUALITIES — a third and a fifth that actually belong together) and
+// scored on how much of that chord is there, less one for every note that is
+// not part of it. Scoring against qualities rather than against "any third,
+// any fifth" is what reads an inversion right: E-G-C is a C chord, because
+// E-G-C only makes sense as E minor with a sharpened fifth, and that is not a
+// chord this table offers. The bass note is a tiebreak, never a reason on its
+// own.
+//
+// An earlier version took each root's third and fifth *from the key*, which
+// got every chord the key does not own wrong: G-B-D in C minor came out
+// rooted on B, and in a pentatonic key, where stacking every other scale tone
+// makes no triad at all, a plain C-E-G came out as G. The key is now used
+// only where the notes cannot answer — a lone root, or a root and fifth with
+// no third — and then only a third or fifth the key actually contains
+// (keyFill()), so a lone D in C major is still read as D minor, which is what
+// a bass under it should assume.
+const CHORD_QUALITIES = [
+  { third: 4, fifth: 7 },  // major
+  { third: 3, fifth: 7 },  // minor
+  { third: 5, fifth: 7 },  // sus4
+  { third: 2, fifth: 7 },  // sus2
+  { third: 3, fifth: 6 },  // diminished
+  { third: 4, fifth: 8 },  // augmented
+];
+// The third, fifth or seventh above `root` that the song's key holds, trying
+// `options` in order — or the first option when the key holds none of them
+// (and always, with no key set, which is chromatic and holds everything).
+function keyFill(root, options) {
+  for (const iv of options) if (inScale(48 + root + iv)) return iv;
+  return options[0];
+}
 function nameChord(midis) {
-  const bass = Math.min(...midis);
+  const bassPc = ((Math.min(...midis) % 12) + 12) % 12;
   const pcs = new Set(midis.map(m => ((m % 12) + 12) % 12));
   let best = null;
   for (const r of pcs) {
-    const has = (s) => pcs.has((r + s) % 12);
-    const dia = scaleIsOff() ? null : diatonicIntervals(48 + r, 4);
-    const third = dia ? dia[0] : has(3) && !has(4) ? 3 : 4;
-    const fifth = dia ? dia[1] : has(7) ? 7 : has(6) ? 6 : has(8) ? 8 : 7;
-    const seventh = dia ? dia[2] : has(11) && !has(10) ? 11 : 10;
-    const tones = new Set([0, third, fifth, seventh]);
-    let score = (has(third) ? 2 : 0) + (has(fifth) ? 2 : 0) + (has(seventh) ? 0.5 : 0)
-      + (r === ((bass % 12) + 12) % 12 ? 1.5 : 0);
+    const has = (iv) => pcs.has((r + iv) % 12);
+    let q = null, qScore = -1;
+    for (const cand of CHORD_QUALITIES) {
+      const sc = (has(cand.third) ? 2 : 0) + (has(cand.fifth) ? 2 : 0);
+      if (sc > qScore) { q = cand; qScore = sc; }
+    }
+    // A seventh or a sixth is part of the chord rather than a wrong note.
+    // Counting the sixth is what lets the bass decide between C6 and Am7 —
+    // the same four notes, and which one it is is which one is at the bottom.
+    const seventh = has(10) ? 10 : has(11) ? 11 : null;
+    const sixth = has(9) && q.fifth === 7 ? 9 : null;
+    const tones = new Set([0, q.third, q.fifth, ...[seventh, sixth].filter(x => x != null)]);
+    let score = qScore + (seventh != null ? 0.5 : 0) + (sixth != null ? 0.5 : 0) + (r === bassPc ? 0.75 : 0);
     for (const pc of pcs) if (!tones.has(((pc - r) % 12 + 12) % 12)) score -= 1;
-    if (!best || score > best.score) best = { score, root: r, third, fifth, seventh };
+    if (!best || score > best.score) best = { score, root: r, q, seventh, has };
   }
-  const { root, third, fifth, seventh } = best;
+  const { root, has } = best;
+  let { third, fifth } = best.q;
+  // What the notes did not say, the key fills in: a missing third (a lone
+  // root, or an open fifth) and a missing fifth are taken from the key.
+  if (!has(third)) third = has(3) ? 3 : has(4) ? 4 : keyFill(root, [4, 3]);
+  if (!has(fifth)) fifth = keyFill(root, third === 3 ? [7, 6] : [7, 8]);
+  const seventh = best.seventh != null ? best.seventh : keyFill(root, [10, 11]);
   return { root, third, fifth, seventh };
 }
 // The chords another track plays, as contiguous spans: `{ start, end, root,
@@ -3752,8 +3794,14 @@ let historyTimer = null;
 const sparseTrackMapsPayload = () => Object.fromEntries(SPARSE_TRACK_MAPS.map(k => [k, state[k]]));
 // timeSig rides along because `cols` does: undoing a meter change put the
 // length back but not the meter, leaving a song that was no longer whole bars.
+// Markers ride along for the same reason since Arrange: they are song content
+// that moves with time, so undoing an inserted bar or a deleted section put
+// the music back and left every marker where the edit had moved it — and the
+// sections the Arrange dialog reads off them pointing at the wrong music. The
+// loop range stays out on purpose: it is editor state, and every loop drag
+// becoming an undo step would bury the edits in it.
 const snapshotSong = () => JSON.stringify({
-  tempo: state.tempo, cols: COLS, timeSig: state.timeSig, tracks: state.tracks, trackList: state.trackList,
+  tempo: state.tempo, cols: COLS, timeSig: state.timeSig, markers: state.markers, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
   ...sparseTrackMapsPayload()
 });
@@ -3788,8 +3836,9 @@ function restoreSnapshot(s) {
     applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq(); applyTrackFormant();
   }
   dropStaleRecTrack();
-  state.tempo = data.tempo;
+  state.tempo = clampTempo(data.tempo);
   tempoInput.value = state.tempo;
+  if (Array.isArray(data.markers)) state.markers = data.markers;
   if (data.timeSig) { restoreTimeSig(data); syncTimeSigUI(); }
   if (typeof data.cols === 'number' && data.cols >= 8) {
     COLS = data.cols;
@@ -7616,6 +7665,10 @@ function insertEuclidLayer(layer) {
   const newHits = euclidHits(layer, startBar, COLS);
   const kept = trackNotes(track).filter(h => h.start < startBar || h.type !== layer.type);
   setTrackNotes(track, kept.concat(newHits));
+  // The whole-track write path does not reconcile the selection, and a
+  // selected hit this layer replaced would otherwise stay selected while no
+  // longer being in the song.
+  dropVanishedSelection(track);
   if (layer.step < state.grid) { state.grid = layer.step; syncGridUI(); }
   render();
   autosave();
@@ -7677,12 +7730,17 @@ function writeFromBar(track, startBar, newNotes) {
 // not follow until you insert it again. A live link would have to decide what
 // happens to a note you edited by hand the moment the chords move, and there
 // is no answer to that which is not sometimes wrong.
+// Returns whether anything was written: a source whose chords all lie before
+// the playhead's bar gives nothing to follow, and the caller has to say so
+// rather than close the dialog on a click that did nothing.
 function insertChordPart(part, source) {
   const track = state.activeTrack;
-  if (isRhythm(track) || !source || source === track) return;
+  if (isRhythm(track) || !source || source === track) return false;
   const startBar = Math.floor(state.playhead / eighthsPerBar()) * eighthsPerBar();
   const newNotes = chordPartNotes(part, readChords(source), startBar, chordPartCentre(track, part));
+  if (!newNotes.length) return false;
   writeFromBar(track, startBar, newNotes);
+  return true;
 }
 // Keyboard selection through the active track, ordered as the grid reads:
 // left to right, and low to high where notes share a column. Rhythm tracks
@@ -8881,12 +8939,24 @@ document.getElementById('redo-btn').addEventListener('click', redo);
 
 const tempoInput = document.getElementById('tempo');
 tempoInput.value = state.tempo;
-// The field and Tap both land here, so both are held to the range the field
-// itself declares — a typed 1000 used to reach the scheduler as it was.
-const TEMPO_MIN = 40, TEMPO_MAX = 300;
+// The field and Tap both land here. Changing the tempo while the transport
+// runs has to re-anchor it: playStartCol/playStartCtxTime pair a column with
+// an audio time *at the old tempo*, and ctxTimeToCol() dividing by the new
+// one made the playhead jump and put recorded notes in the wrong columns
+// until the next chunk re-anchored. Tapping along to a playing song is the
+// obvious way to use Tap, so it is the case that has to work: read where the
+// transport is at the old tempo, then restart from exactly there at the new
+// one, taking back what was scheduled at the old tempo the way a seek does.
 function setTempo(bpm) {
-  state.tempo = Math.max(TEMPO_MIN, Math.min(TEMPO_MAX, Math.round(bpm) || TEMPO_BPM));
-  tempoInput.value = state.tempo;
+  const next = clampTempo(bpm);
+  tempoInput.value = next;
+  if (next === state.tempo) return;
+  const col = playing && ctx ? ctxTimeToCol(ctx.currentTime) : null;
+  state.tempo = next;
+  if (col != null) {
+    cancelScheduledVoices();
+    startPlaybackFrom(Math.max(0, Math.min(COLS - MICRO, quant(col))));
+  }
   autosave();
 }
 tempoInput.addEventListener('change', () => setTempo(parseInt(tempoInput.value, 10)));
@@ -9128,30 +9198,16 @@ document.getElementById('add-marker').addEventListener('click', addMarkerAtPlayh
 
 // ---------- Song length (whole bars) ----------
 function updateLengthUI() { document.getElementById('len-bars').textContent = round2(COLS / eighthsPerBar()) + ' bars'; }
-// Change the song length. Shrinking drops notes/hits/markers past the new end
-// (and trims notes that straddle it); growing just adds empty bars. The length
-// is encoded on export/save as the trailing rest, so it round-trips.
+// Change the song length: bars added or taken off the *end*. That is a time
+// edit at the song's last column, so it is shiftTime()'s — which trims notes
+// that straddle the new end, drops what starts past it (automation and clip
+// windows included, which a hand-written copy of this here used to skip) and
+// clamps the loop, the markers and the playhead the same way Arrange does.
+// The length is encoded on export/save as the trailing rest, so it round-trips.
 function setCols(newCols) {
   newCols = clampCols(newCols);
   if (newCols === COLS) return;
-  const wasFullLoop = state.loopStart === 0 && state.loopEnd === COLS;
-  if (newCols < COLS) {
-    for (const t of PITCH_TRACKS) {
-      setTrackNotes(t, trackNotes(t)
-        .filter(n => n.start < newCols)
-        .map(n => (n.start + n.len > newCols ? { ...n, len: newCols - n.start } : n)));
-    }
-    for (const id of RHYTHM_TRACK_IDS) setTrackNotes(id, trackNotes(id).filter(h => h.start < newCols));
-    state.markers = state.markers.filter(m => m.col <= newCols);
-  }
-  COLS = newCols;
-  if (wasFullLoop) { state.loopStart = 0; state.loopEnd = COLS; }
-  else { state.loopStart = Math.min(state.loopStart, COLS - 1); state.loopEnd = Math.min(state.loopEnd, COLS); if (state.loopEnd <= state.loopStart) state.loopEnd = COLS; }
-  state.playhead = Math.min(state.playhead, COLS - 1);
-  visualPlayhead = state.playhead;
-  state.selected = null;
-  state.multiSelected.clear();
-  updateLengthUI();
+  shiftTime(Math.min(newCols, COLS), newCols - COLS);
   render();
 }
 document.getElementById('len-minus').addEventListener('click', () => setCols(COLS - eighthsPerBar()));
@@ -9264,23 +9320,35 @@ function trimCopiesAgainst(rest, copies) {
 // which is the one failure this whole section exists to prevent — so a new
 // kind of timed data belongs in here, not beside it.
 //
-// `delta > 0` opens `delta` columns of silence at `at`. `delta < 0` removes
-// the range [at, at - delta): items that start in it go, items after it move
-// back, and a note that starts before the cut and rings into it is shortened
-// by the part that was cut rather than dropped. A note is never lengthened by
-// an insert: one ringing across `at` keeps its length, so an inserted bar is
-// actually silent. Clip windows follow the same map, so a window straddling
-// the point grows or shrinks with it and every window keeps what it hid.
-// Returns false (and changes nothing) when the song would leave MAX_COLS or
-// fall under one bar.
+// `delta > 0` opens `delta` columns at `at`. `delta < 0` removes the range
+// [at, at - delta): items that start in it go and items after it move back.
+// Starts and ends map differently at the boundary — something *starting* at
+// `at` moves with an insert, something *ending* there stays — and a note that
+// rings across `at` is treated exactly like a clip window that does: its end
+// moves with the edit, so an insert sustains it through the new bars and a
+// delete shortens it by what was cut. That makes insert-then-delete give the
+// song back exactly. The first version kept such a note's length on insert,
+// which sounded its tail alone in the "empty" bar, cut off from the music it
+// went with, and then lost that tail for good when the bar was deleted again.
+// Clip windows follow the same map, so every window keeps what it hid.
+//
+// Automation is anchored rather than just moved (shiftCurve()): a ramp across
+// an insert would otherwise stretch over the new bars and play every later
+// value at the wrong time, so the curve holds its value through the gap and
+// both sides keep their shape.
+//
+// Always whole bars: a song is a whole number of bars everywhere else (the
+// Length control, the meter change, clampCols()), and a length that is not
+// one reloads rounded, dropping the music in the last part-bar. Returns false
+// (and changes nothing) for a delta that is not whole bars, or one that would
+// leave MAX_COLS or go under one bar.
 function shiftTime(at, delta) {
   if (!delta) return true;
+  const bar = eighthsPerBar();
+  if (Math.abs(delta / bar - Math.round(delta / bar)) > EPS) return false;
   const newCols = COLS + delta;
-  if (newCols > MAX_COLS || newCols < eighthsPerBar()) return false;
+  if (newCols > MAX_COLS || newCols < bar) return false;
   const cut = delta < 0 ? -delta : 0;
-  // Where a start column goes, and where an end column goes. They differ only
-  // at the boundary: something *starting* at `at` moves with the insert,
-  // something *ending* at `at` stays where it is.
   const mapStart = (c) => (c < at ? c : delta > 0 ? c + delta : c < at + cut ? at : c - cut);
   const mapEnd = (c) => (c <= at ? c : delta > 0 ? c + delta : c <= at + cut ? at : c - cut);
   const inCut = (c) => cut > 0 && c >= at && c < at + cut;
@@ -9291,7 +9359,7 @@ function shiftTime(at, delta) {
       for (const it of clip.notes) {
         if (inCut(it.start)) continue;
         if (typeof it.len === 'number' && it.start < at && it.start + it.len > at) {
-          if (cut) it.len = quant(Math.max(MICRO, mapEnd(it.start + it.len) - it.start));
+          it.len = quant(Math.max(MICRO, mapEnd(it.start + it.len) - it.start));
         } else it.start = quant(mapStart(it.start));
         notes.push(it);
       }
@@ -9307,7 +9375,7 @@ function shiftTime(at, delta) {
       // Through setAutomationPoints(), which deletes a curve the cut emptied —
       // an empty list left behind would read as "automated" to
       // fxHasAutomation() and keep a chip on screen with nothing under it.
-      setAutomationPoints(track, param, pts.filter(p => !inCut(p.col)).map(p => ({ ...p, col: mapStart(p.col) })));
+      setAutomationPoints(track, param, shiftCurve(pts, at, delta, mapStart, inCut));
     }
     if (!Object.keys(byParam).length) delete state.automation[track];
   }
@@ -9319,23 +9387,85 @@ function shiftTime(at, delta) {
     state.loopEnd = Math.min(mapEnd(state.loopEnd), COLS);
     if (state.loopEnd <= state.loopStart) { state.loopStart = 0; state.loopEnd = COLS; }
   }
-  state.playhead = Math.min(at, COLS - 1);
+  // The playhead is a column like any other: it stays with the music it was on.
+  state.playhead = Math.min(mapStart(state.playhead), COLS - 1);
   visualPlayhead = state.playhead;
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
   return true;
 }
-// A song's sections are its markers: each one runs from its own column to the
-// next marker, or to the end of the song. Named by the marker, so "Chorus" is
-// whatever you called it. Not a second structure beside the markers — a
-// marker already *is* "something starts here", and a second list would have
-// to be kept in step with it.
+// Two points on one column are a step: the curve arrives at the first value
+// and leaves from the second. automationValueAt() and the scheduler both read
+// them that way (a ramp to the same instant is a jump), which is what lets an
+// edit keep the curve exact on *both* sides of a boundary.
+const roundAuto = (v) => Math.round(v * 10000) / 10000;
+function dedupeCurve(pts) {
+  return pts.filter((p, i) => !(i && pts[i - 1].col === p.col && pts[i - 1].value === p.value));
+}
+// One curve through shiftTime(). An insert inside the curve holds the value at
+// `at` through the new bars (an anchor on each side of the gap). A delete that
+// the curve spans keeps both sides exact with a step at the join: the left
+// side still arrives at the value it had at `at`, the right side leaves from
+// the value it had where the cut ended.
+function shiftCurve(pts, at, delta, mapStart, inCut) {
+  if (!pts.length) return pts;
+  const val = (c) => roundAuto(automationValueAt(pts, c, 0));
+  const first = pts[0].col, last = pts[pts.length - 1].col;
+  if (delta > 0) {
+    const moved = pts.map(p => ({ ...p, col: mapStart(p.col) }));
+    if (!(first < at && last >= at)) return moved;
+    const v = val(at);
+    const before = moved.filter(p => p.col < at), after = moved.filter(p => p.col >= at);
+    const gapEnd = after.length && after[0].col === at + delta ? [] : [{ col: at + delta, value: v }];
+    return dedupeCurve([...before, { col: at, value: v }, ...gapEnd, ...after]);
+  }
+  const cut = -delta;
+  const before = pts.filter(p => p.col < at);
+  const after = pts.filter(p => !inCut(p.col) && p.col >= at).map(p => ({ ...p, col: mapStart(p.col) }));
+  if (!before.length || !after.length) return [...before, ...after];
+  const join = [{ col: at, value: val(at) }];
+  if (after[0].col !== at) join.push({ col: at, value: val(at + cut) });
+  return dedupeCurve([...before, ...join, ...after]);
+}
+// A song's sections are its markers: each one runs from its marker's bar to
+// the next marker's bar, or to the end of the song. Named by the marker, so
+// "Chorus" is whatever you called it. Not a second structure beside the
+// markers — a marker already *is* "something starts here", and a second list
+// would have to be kept in step with it.
+//
+// Whole bars, from the bar the marker sits in: a marker can be dropped on any
+// eighth, and a section of three and a half bars duplicated would leave the
+// song half a bar long (shiftTime() refuses that). Two markers in one bar
+// make one section, named by the first.
 function songSections() {
+  const bar = eighthsPerBar();
   const marks = [...state.markers].filter(m => m.col < COLS).sort((a, b) => a.col - b.col);
-  return marks.map((m, i) => ({
-    marker: m, name: m.name || 'Marker', start: m.col, end: i + 1 < marks.length ? marks[i + 1].col : COLS,
-  })).filter(sec => sec.end > sec.start);
+  const starts = [];
+  for (const m of marks) {
+    const start = Math.floor(m.col / bar) * bar;
+    if (!starts.length || starts[starts.length - 1].start !== start) starts.push({ marker: m, name: m.name || 'Marker', start });
+  }
+  return starts.map((sec, i) => ({ ...sec, end: i + 1 < starts.length ? starts[i + 1].start : COLS }))
+    .filter(sec => sec.end > sec.start);
+}
+// Gives `track` a window over whatever part of [from, to) no window covers,
+// so material filed there lands in one window rather than one each. Without
+// it, setTrackNotes() makes a window per orphaned note — a duplicated section
+// of eighth notes on a split track came out as sixty-four one-note clips.
+function coverWithWindow(track, from, to) {
+  const clips = clipsOf(track);
+  if (isWholeTrackClip(clips)) return;
+  const gaps = [];
+  let cursor = from;
+  for (const c of [...clips].sort((a, b) => a.start - b.start)) {
+    if (clipEnd(c) <= cursor) continue;
+    if (c.start >= to) break;
+    if (c.start > cursor) gaps.push([cursor, c.start]);
+    cursor = Math.max(cursor, clipEnd(c));
+  }
+  if (cursor < to) gaps.push([cursor, to]);
+  if (gaps.length) setClips(track, [...clips, ...gaps.map(([s, e]) => makeClip([], { start: s, len: e - s }))]);
 }
 // Copies the whole song between [start, end) — every track, its automation
 // and the markers inside it, the section's own marker included — into a gap
@@ -9357,22 +9487,36 @@ function duplicateSpan(start, end, dest) {
     const list = trackNotes(t.id).filter(it => inSrc(it.start)).map(it => ({ ...cloneItem(it), start: place(it.start) }));
     if (list.length) copies.set(t.id, list);
   }
-  const autoCopies = [];
+  // A curve's copy is the section's *values*, not only the points that happen
+  // to fall inside it: a section with no point at its start begins mid-ramp,
+  // so the copy is bracketed by what the curve was at the section's two ends,
+  // and the music either side of the gap keeps what it had at `dest`.
+  const curves = [];
   for (const [track, byParam] of Object.entries(state.automation || {})) {
     for (const [param, pts] of Object.entries(byParam)) {
-      for (const p of pts) if (inSrc(p.col)) autoCopies.push([track, param, { ...p, col: place(p.col) }]);
+      if (!pts.length) continue;
+      const val = (c) => roundAuto(automationValueAt(pts, c, 0));
+      curves.push({
+        track, param, vd: val(dest), vs: val(start), ve: val(end),
+        inner: pts.filter(p => inSrc(p.col)).map(p => ({ ...p, col: place(p.col) })),
+      });
     }
   }
   const markerCopies = state.markers.filter(m => inSrc(m.col)).map(m => ({ ...m, col: place(m.col) }));
   if (!shiftTime(dest, len)) return false;
   for (const [track, list] of copies) {
+    coverWithWindow(track, dest, dest + len);
     const items = trackNotes(track);
     setTrackNotes(track, [...items, ...(isRhythm(track) ? list : trimCopiesAgainst(items, list))]);
   }
-  for (const [track, param, pt] of autoCopies) {
+  for (const { track, param, vd, vs, ve, inner } of curves) {
     const pts = state.automation[track][param];
-    pts.push(pt);
-    pts.sort((a, b) => a.col - b.col);
+    const before = pts.filter(p => p.col < dest), after = pts.filter(p => p.col >= dest + len);
+    setAutomationPoints(track, param, dedupeCurve([
+      ...before, { col: dest, value: vd }, { col: dest, value: vs },
+      ...inner, { col: dest + len, value: ve },
+      ...(after.length && after[0].col === dest + len ? [] : [{ col: dest + len, value: vd }]), ...after,
+    ]));
   }
   state.markers.push(...markerCopies);
   return true;
@@ -9487,7 +9631,7 @@ function applySongData(data, name) {
   stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
   state.songName = name || (typeof data.songName === 'string' && data.songName) || 'Untitled Song';
   updateSongNameUI();
-  state.tempo = typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM;
+  state.tempo = clampTempo(typeof data.tempo === 'number' ? data.tempo : TEMPO_BPM);
   tempoInput.value = state.tempo;
   restoreTimeSig(data);
   restoreKey(data);
@@ -9814,7 +9958,7 @@ function importMidiIntoSong(buffer) {
   refreshTrackArrays();
   for (const t of state.trackList) ensureChannelNodes(t.id);
   if (importedBpm !== state.tempo && confirm(`This MIDI file's tempo is ${importedBpm} BPM (song is currently ${state.tempo} BPM). Use the file's tempo?`)) {
-    state.tempo = importedBpm;
+    state.tempo = clampTempo(importedBpm);
     tempoInput.value = state.tempo;
   }
   const neededBar = Math.ceil(maxCol / eighthsPerBar()) * eighthsPerBar();
@@ -10318,7 +10462,9 @@ function renderEuclidView() {
   const barSteps = eighthsPerBar() / layer.step;
   document.getElementById('euclid-text').textContent =
     `E(${layer.k},${layer.n})` + (layer.rotate ? ` rotated ${layer.rotate}` : '') + ' — '
-    + (barSteps % layer.n === 0 ? `repeats ${barSteps / layer.n}× per bar` : `${layer.n} steps against a bar of ${barSteps}: drifts across the bar line`);
+    + (barSteps % layer.n === 0 ? `repeats ${barSteps / layer.n}× per bar`
+      : layer.n % barSteps === 0 ? `one cycle spans ${layer.n / barSteps} bars`
+      : `${layer.n} steps against a bar of ${barSteps}: drifts across the bar line`);
 }
 for (const input of [euclidPieceEl, euclidHitsEl, euclidStepsEl, euclidRotateEl, euclidStepEl]) {
   input.addEventListener('input', renderEuclidView);
@@ -10452,8 +10598,9 @@ function renderFollowList() {
     opt.value = t; opt.textContent = trackName(t) + (n ? '' : ' (empty)');
     followSourceEl.appendChild(opt);
   }
-  followSourceEl.value = sources.includes(keep) && (trackNotes(keep) || []).length
-    ? keep : (defaultChordSource(target) || sources[0] || '');
+  // A choice the user made stands, empty or not — snapping an "(empty)" pick
+  // back to the default hid the very message below that explains it.
+  followSourceEl.value = sources.includes(keep) ? keep : (defaultChordSource(target) || sources[0] || '');
   const source = followSourceEl.value;
   const empty = !source || !(trackNotes(source) || []).length;
   const note = document.getElementById('follow-note');
@@ -10481,7 +10628,13 @@ function renderFollowList() {
     const insert = el('button'); insert.textContent = 'Insert';
     insert.title = 'Write it into this track, following the chosen track\'s chords';
     insert.disabled = empty;
-    insert.addEventListener('click', () => { insertChordPart(part, followSourceEl.value); progressionDialog.close(); });
+    insert.addEventListener('click', () => {
+      if (insertChordPart(part, followSourceEl.value)) { progressionDialog.close(); return; }
+      const note = document.getElementById('follow-note');
+      note.textContent = `${trackName(followSourceEl.value)} has no chords from bar ${barOf(state.playhead)} on — move the playhead back to where its chords are, or pick another track.`;
+      note.hidden = false;
+      announce(note.textContent);
+    });
     row.appendChild(insert);
     followListEl.appendChild(row);
   }
@@ -10727,12 +10880,15 @@ document.getElementById('arrange-close').addEventListener('click', () => arrange
 document.getElementById('arrange-insert').addEventListener('click', () => {
   const { at, bar, count, len } = arrangeBars();
   if (!shiftTime(at, len)) { arrangeSay(`No room: the song can be at most ${Math.round(MAX_COLS / eighthsPerBar())} bars.`); return; }
+  state.playhead = visualPlayhead = Math.min(at, COLS - 1); // on the edit, where you look next
   arrangeDone(`Inserted ${count} empty bar${count === 1 ? '' : 's'} at bar ${bar}`);
 });
 document.getElementById('arrange-delete').addEventListener('click', () => {
   const { at, bar, count } = arrangeBars();
+  if (bar > totalBars()) { arrangeSay(`There is no bar ${bar} to delete — the song has ${totalBars()} bars.`); return; }
   const len = Math.min(count * eighthsPerBar(), COLS - at);
   if (len <= 0 || !shiftTime(at, -len)) { arrangeSay('A song needs at least one bar.'); return; }
+  state.playhead = visualPlayhead = Math.min(at, COLS - 1);
   arrangeDone(`Deleted ${Math.round(len / eighthsPerBar())} bar${len === eighthsPerBar() ? '' : 's'} from bar ${bar}`);
 });
 

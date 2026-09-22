@@ -651,8 +651,11 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   gränsen: något som *börjar* vid `at` flyttar med infogningen, något som
   *slutar* vid `at` står kvar. Vid borttagning försvinner det som börjar i
   intervallet, och en not som börjar före och klingar in i det kortas med det
-  som skars bort i stället för att tas bort. **Ett infogande förlänger aldrig
-  en not**, så en infogad takt är faktiskt tyst.
+  som skars bort i stället för att tas bort. En not som klingar över
+  infogningspunkten behandlas som ett klippfönster som gör det: slutet flyttar
+  med, så noten klingar vidare genom de nya takterna, och infoga följt av ta
+  bort ger låten tillbaka exakt. (Första versionen behöll längden, se
+  granskningen nedan.)
   **Fällan var klippen.** En delning ger *båda* halvorna en kopia av allt
   material, så ett fönster som lämnats kvar vid fel kolumn visar exakt de
   noter det rätta fönstret skulle ha visat, och rutnätet ser likadant ut.
@@ -680,6 +683,51 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   Verify-stegen använder Cinematic (sex sektioner, 21 automationspunkter)
   och jämför hela låten mot filen: varje spår, markör och automationspunkt
   efter varje operation, och infoga följt av ta bort måste ge filen tillbaka.
+- [x] **Granskningen av omgången (code review).** Fjorton fynd, alla
+  åtgärdade, och alla felinjicerade mot sina steg efteråt:
+  - *Undo glömde markörerna.* Arrange flyttar markörer, men undo-bilden bar
+    dem inte, så ett ångrat infogande lämnade varje markör förskjuten och
+    sektionerna pekade på fel musik. Markörerna ligger nu i
+    `snapshotSong()`. Loopen hålls utanför med flit: den är editorläge, och
+    varje loopdragning som ett undo-steg hade begravt redigeringarna.
+  - *`nameChord()` lät tonarten bestämma ackordet.* Ters och kvint togs ur
+    tonarten, så G-B-D i C-moll fick grundton B och ett vanligt C-E-G i
+    pentatonik blev G. Nu avgör de klingande tonerna mot riktiga
+    ackordkvaliteter (`CHORD_QUALITIES`), och tonarten fyller bara i det
+    tonerna inte säger (`keyFill()`: en ensam grundton, en öppen kvint). Det
+    rättade också omvändningar: E-G-C lästes som ett E-ackord med höjd kvint
+    eftersom "vilken ters och kvint som helst" tilläts. Sexten räknas som
+    ackordton, så att basen skiljer C6 från Am7.
+  - *Sektioner kunde ge halva takter.* En markör kan ligga på vilken åttondel
+    som helst, och en duplicerad sektion gav "8.5 bars". Sektioner går nu från
+    markörens takt, och `shiftTime()` vägrar allt som inte är hela takter.
+  - *Kopior på delade spår blev ett klipp per not.* `coverWithWindow()` ger
+    luckan ett fönster innan materialet fylls i.
+  - *En not över infogningspunkten* klingade ensam i den tomma takten och
+    förlorade sin svans när takten togs bort igen. Den sträcks nu som ett
+    fönster.
+  - *Automationen* flyttades punkt för punkt, så en ramp över ett infogande
+    töjdes ut och en duplicerad sektion saknade sina startvärden. Nu
+    förankras kurvan vid kanterna (`shiftCurve()`): den håller sitt värde
+    genom en infogad lucka, en borttagning blir ett steg där båda sidor är
+    exakta, och en kopia omges av kurvans värden vid sektionens ändar. Två
+    punkter på samma kolumn är ett steg, vilket `automationValueAt()` och
+    schemaläggaren redan läste så. Verify-stegen jämför nu kurvorna på
+    *värde* vid varje halvkolumn, inte på punkter.
+  - *`setCols()`* var en andra funktion som ändrade låtens slut och hoppade
+    över klippfönster och automation. Den går nu genom `shiftTime()`.
+  - *Tempo under uppspelning* ändrades mitt i en chunk utan ny förankring,
+    så spelhuvudet hoppade och inspelade noter hamnade fel. `setTempo()`
+    läser var transporten är vid det gamla tempot och startar om exakt där.
+  - *Tempogränsen* satt bara i fältet och Tap. `clampTempo()` används nu på
+    alla ställen som sätter tempot: laddning, MIDI-import, undo.
+  - *Mindre:* Insert i ackorddialogen när källan saknar ackord efter
+    spelhuvudet säger nu varför och stänger inte dialogen; ett uttryckligt
+    val av ett tomt spår hoppar inte längre tillbaka; ett euklidiskt lager
+    släpper en markering det ersatt (piltangenten flyttade annars den
+    borttagna träffen och raderade en riktig); en cykel som täcker hela
+    takter beskrivs som det i stället för som en förskjutning; Delete bars
+    efter låtens slut säger att takten inte finns.
 - [x] **Variation på en markering.** Timing, Transpose och Dynamics
   *rättar* en stämma. Den här avviker med flit, till andra gången en takt
   kommer. *Neighbour tones* flyttar en not ett steg upp eller ned (ett

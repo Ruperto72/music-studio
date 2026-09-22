@@ -6177,6 +6177,68 @@ async function main() {
       if (bar2 !== 'G B D G D B') throw new Error(`Arp up-down over V in C restarts as G B D G D B, got ${JSON.stringify(updn.slice(8, 14))}`);
     });
 
+    step('Follow chords: the notes decide the chord — an inversion, a chord outside the key, a pentatonic key', async () => {
+      // Places a note by clicking the lane where the gutter's own key for that
+      // pitch sits, so the pitch is read off the keyboard rather than
+      // re-derived from the window arithmetic.
+      const place = (name, midi, col) => cdp.evaluate(`(() => {
+        const row = ${pitchRowByName(name)};
+        const key = row.querySelector('.pkey[data-midi="${midi}"]');
+        const lane = row.querySelector('.lane');
+        const k = key.getBoundingClientRect(), l = lane.getBoundingClientRect();
+        const colPx = l.width / parseInt(lane.style.gridTemplateColumns.split('(')[1], 10);
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: l.left + colPx * ${col} + 2, clientY: k.top + k.height / 2 }));
+      })()`);
+      const firstRoot = async (part) => {
+        await openChordsOn('Bass');
+        const src = await cdp.evaluate(`document.getElementById('follow-source').selectedOptions[0]?.textContent`);
+        if (src !== 'Harmony') throw new Error(`Bass should follow Harmony, got ${src}`);
+        await insertRow('follow-list', part);
+        await waitFor(`${pitchRowByName('Bass')}.querySelectorAll('.lane .note').length > 0`);
+        return (await notesOf('Bass')).map(n => n.label.replace(/\d/, ''));
+      };
+      // The chord at each of `cols`, one grid step long each.
+      const chord = async (midis, cols = [0]) => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        for (const c of cols) {
+          for (const m of midis) {
+            const before = await cdp.evaluate(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length`);
+            await place('Harmony', m, c);
+            await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length === ${before + 1}`);
+          }
+        }
+      };
+      // E-G-C with no key: C major in first inversion, so the root is C — not
+      // an E chord with a sharpened fifth.
+      await fresh();
+      await chord([64, 67, 72]);
+      const inv = await firstRoot('Roots');
+      if (inv[0] !== 'C') throw new Error(`E-G-C is a C chord, the bass played ${inv[0]}`);
+      // G-B-D in C minor is the major V the key does not own — the root is G,
+      // and the arpeggio has to play the B natural that is sounding.
+      await fresh();
+      await setKey(0, 'minor');
+      // Four eighths of it (two quarter-note strikes), so the arpeggio below
+      // has room for its whole figure.
+      await cdp.evaluate(`(() => { const g = document.getElementById('grid-select'); g.value = '1/4'; g.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await chord([67, 71, 74], [0, 2]);
+      const v = await firstRoot('Roots');
+      if (v[0] !== 'G') throw new Error(`G-B-D in C minor is rooted on G, the bass played ${v[0]}`);
+      await openChordsOn('Lead');
+      await insertRow('follow-list', 'Arp up');
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length > 0`);
+      const arp = (await notesOf('Lead')).slice(0, 4).map(n => n.label.replace(/\d/, '')).join(' ');
+      if (arp !== 'G B D G') throw new Error(`Arp up over G-B-D is G B D G whatever the key, got ${arp}`);
+      // A plain C-E-G in C major pentatonic, where every-other-scale-tone is
+      // not a triad at all: still a C chord.
+      await fresh();
+      await setKey(0, 'majPenta');
+      await cdp.evaluate(`(() => { const g = document.getElementById('grid-select'); g.value = '1/4'; g.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await chord([60, 64, 67], [0, 2]);
+      const p = await firstRoot('Root–fifth');
+      if (p.slice(0, 2).join(' ') !== 'C G') throw new Error(`Root–fifth under C-E-G in C pentatonic is C G, got ${p.slice(0, 2).join(' ')}`);
+    });
+
     step('Follow chords: with nothing to follow, the parts say so instead of writing silence', async () => {
       await fresh();
       await openChordsOn('Bass');
@@ -6187,6 +6249,46 @@ async function main() {
       })`);
       if (!state.count) throw new Error('the part list rendered no buttons at all');
       if (!state.noteShown || !state.disabled) throw new Error(`an empty source must disable the parts and say why: ${JSON.stringify(state)}`);
+      // Picking an empty track on purpose keeps the pick, and says why the
+      // parts are off — it used to snap straight back to the default.
+      await fresh();
+      await setKey(0, 'major');
+      await openChordsOn('Harmony');
+      await insertRow('progression-list', 'I–V–vi–IV');
+      await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length > 0`);
+      await openChordsOn('Bass');
+      const picked = await cdp.evaluate(`(() => {
+        const sel = document.getElementById('follow-source');
+        sel.value = 'pad';
+        sel.dispatchEvent(new Event('change'));
+        return { value: sel.value, note: !document.getElementById('follow-note').hidden,
+                 disabled: [...document.querySelectorAll('#follow-list button')].every(b => b.disabled) };
+      })()`);
+      if (picked.value !== 'pad' || !picked.note || !picked.disabled) throw new Error(`choosing the empty Pad must stick and explain itself: ${JSON.stringify(picked)}`);
+      await cdp.evaluate(`document.getElementById('progression-close').click()`);
+      // A source whose chords all lie before the playhead: Insert says so and
+      // leaves the dialog open, rather than closing on a click that did nothing.
+      const bars = await cdp.evaluate(`parseInt(document.getElementById('len-bars').textContent, 10)`);
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        document.getElementById('arrange-btn').click();
+        document.getElementById('arrange-bar').value = '${bars + 1}';
+        document.getElementById('arrange-count').value = '2';
+        document.getElementById('arrange-insert').click(); // two empty bars after the chords
+        document.getElementById('arrange-close').click();
+      })()`);
+      await cdp.evaluate(`(() => {
+        const cell = document.querySelectorAll('.tl-ruler .ruler-cell')[${bars * 8}];
+        const r = cell.getBoundingClientRect();
+        const at = { bubbles: true, clientX: r.left + 1, clientY: r.top + 2, pointerId: 1, button: 0 };
+        cell.dispatchEvent(new PointerEvent('pointerdown', at)); window.dispatchEvent(new PointerEvent('pointerup', at));
+      })()`); // the first of the empty bars
+      await openChordsOn('Bass');
+      await cdp.evaluate(`(() => { const sel = document.getElementById('follow-source'); sel.value = 'harmony'; sel.dispatchEvent(new Event('change')); })()`);
+      await insertRow('follow-list', 'Roots');
+      const after = await cdp.evaluate(`({ open: document.getElementById('progression-dialog').open, note: document.getElementById('follow-note').textContent,
+        notes: ${pitchRowByName('Bass')}.querySelectorAll('.lane .note').length })`);
+      if (!after.open || !/no chords from bar/.test(after.note) || after.notes) throw new Error(`Insert with nothing to follow must say so and stay open: ${JSON.stringify(after)}`);
     });
 
     step('Ghost notes: other tracks show in the active roll, clicks go through, and the toggle hides them', async () => {
@@ -6268,10 +6370,27 @@ async function main() {
       }
       await new Promise(r => setTimeout(r, 2300));
       near(await tap(600, 4, 'keyboard'), 100, 6, 'four keyboard taps 600ms apart');
+      // Mid-playback the transport re-anchors: halving the tempo 1.5 s into a
+      // song used to jump the playhead back by half of everything played since
+      // the chunk began, and put recorded notes in the wrong columns with it.
+      await cdp.evaluate(`(() => { const t = document.getElementById('tempo'); t.value = '120'; t.dispatchEvent(new Event('change')); })()`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await new Promise(r => setTimeout(r, 1500));
+      const jump = await cdp.evaluate(`(async () => {
+        const ph = () => parseFloat(document.querySelector('.playhead').style.left);
+        const lane = document.querySelector('.lane');
+        const colPx = lane.getBoundingClientRect().width / parseInt(lane.style.gridTemplateColumns.split('(')[1], 10);
+        const before = ph();
+        const t = document.getElementById('tempo'); t.value = '60'; t.dispatchEvent(new Event('change'));
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return (ph() - before) / colPx;
+      })()`);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      if (jump < -0.5 || jump > 1) throw new Error(`changing the tempo mid-playback moved the playhead by ${jump.toFixed(2)} columns`);
       // It is a song value like any other: it reaches the autosaved song.
       await waitFor(`(() => {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
-        return k && Math.abs(JSON.parse(localStorage.getItem(k)).tempo - 100) <= 6;
+        return k && JSON.parse(localStorage.getItem(k)).tempo === 60;
       })()`);
     });
 
@@ -6326,60 +6445,121 @@ async function main() {
       // cycle starts at column 5, not back at the bar line.
       await openPatterns();
       await waitFor(`document.getElementById('pattern-dialog').open`);
+      const two = await setLayer('rim', 3, 16, 0, '1/8');
+      if (!/spans 2 bars/.test(two.text)) throw new Error(`16 eighths is exactly two bars of 4/4, not a drift: ${two.text}`);
       const drift = await setLayer('rim', 2, 5, 0, '1/8');
       if (!/drifts/.test(drift.text)) throw new Error(`a 5-step cycle on a bar of 8 should say it drifts: ${drift.text}`);
       await cdp.evaluate(`document.getElementById('euclid-insert').click()`);
       await new Promise(r => setTimeout(r, 700));
       const rims = (await saved()).filter(h => h.type === 'rim').map(h => h.start).sort((a, b) => a - b);
       if (rims.slice(0, 6).join(',') !== '0,2,5,7,10,12') throw new Error(`E(2,5) runs on across the bar as 0,2,5,7,10,12, got ${rims.slice(0, 6)}`);
+      // A selected hit that a layer replaces lets go of the selection, rather
+      // than leaving the inspector editing a hit that is no longer in the song.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track[data-kind="rhythm"] .lane');
+        const r = lane.getBoundingClientRect();
+        const colPx = r.width / parseInt(lane.style.gridTemplateColumns.split('(')[1], 10);
+        // The rim row's own place in the gutter, not a tenth of the lane —
+        // the lane is taller than its ten rows.
+        const rim = document.querySelector('.track[data-kind="rhythm"] .gutter').children[2].getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + colPx * 1 + 2, clientY: rim.top + rim.height / 2 }));
+      })()`); // the rim row, column 1 — a column E(2,5) leaves empty
+      await waitFor(`[...document.querySelectorAll('.insp-cap')].some(c => c.textContent === 'Selected hit')`);
+      const picked = await cdp.evaluate(`document.querySelector('.hit.selected')?.getAttribute('aria-label') || ''`);
+      if (!/^Rim/.test(picked)) throw new Error(`the click should have selected a rim hit, got ${JSON.stringify(picked)}`);
+      await openPatterns();
+      await waitFor(`document.getElementById('pattern-dialog').open`);
+      await setLayer('rim', 2, 5, 0, '1/8');
+      await cdp.evaluate(`document.getElementById('euclid-insert').click()`);
+      await new Promise(r => setTimeout(r, 300));
+      const stillSelected = await cdp.evaluate(`[...document.querySelectorAll('.insp-cap')].some(c => c.textContent === 'Selected hit')`);
+      if (stillSelected) throw new Error('the replaced hit is still selected in the inspector');
+      // The inspector already hid a stale selection; the nudge did not. → on
+      // a hit that is no longer in the song moved it onto the layer's rim at
+      // column 2, and hitsConflict() then deleted the *real* one.
+      const rimsBefore = (await saved()).filter(h => h.type === 'rim').length;
+      await cdp.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))`);
+      await new Promise(r => setTimeout(r, 600));
+      const rimsAfter = (await saved()).filter(h => h.type === 'rim').length;
+      if (rimsAfter !== rimsBefore) throw new Error(`a nudge after the layer changed the rim count ${rimsBefore} -> ${rimsAfter}: it moved a hit that was no longer in the song`);
     });
 
-    // The song as a comparable summary: every item as "start|pitch-or-drum"
-    // per track, plus markers, automation and length. Lengths are left out on
-    // purpose — a note ringing across an insert point keeps its length and so
-    // rings into the gap, which a delete of that gap then trims; that is the
-    // designed behaviour, not a round-trip failure.
-    const SONG_SUMMARY = `(d) => {
+    // The song as the page saved it: every item as {s, e, v} per track (a hit
+    // has no end), the markers, and every automation curve's points.
+    const SONG_RAW = `(d) => {
       const tracks = {};
       for (const t of d.trackList) {
-        tracks[t.id] = window.__savedNotes(d, t.id).map(n => Math.round(n.start * 6) / 6 + '|' + (n.type || n.freq)).sort();
+        tracks[t.id] = window.__savedNotes(d, t.id).map(n => ({ s: n.start, e: typeof n.len === 'number' ? n.start + n.len : null, v: String(n.type || n.freq) }));
       }
-      const automation = [];
+      const curves = {};
       for (const [t, byParam] of Object.entries(d.automation || {})) {
-        for (const [p, pts] of Object.entries(byParam)) for (const pt of pts) automation.push(t + '|' + p + '|' + pt.col + '|' + pt.value);
+        for (const [p, pts] of Object.entries(byParam)) curves[t + '|' + p] = pts.map(q => [q.col, q.value]);
       }
-      return { cols: d.cols, tracks, markers: (d.markers || []).map(m => m.col + '|' + m.name).sort(), automation: automation.sort() };
+      return { cols: d.cols, tracks, markers: (d.markers || []).map(m => m.col + '|' + m.name).sort(), curves };
     }`;
-    const savedSummary = () => cdp.evaluate(`(() => {
+    const savedRaw = () => cdp.evaluate(`(() => {
       const k = Object.keys(localStorage).find(k => k.includes('autosave'));
-      return k ? (${SONG_SUMMARY})(JSON.parse(localStorage.getItem(k))) : null;
+      return k ? (${SONG_RAW})(JSON.parse(localStorage.getItem(k))) : null;
     })()`);
-    const fileSummary = (file) => cdp.evaluate(`fetch('songs/${file}').then(r => r.json()).then(d => (${SONG_SUMMARY})(d))`);
-    // What the file would look like after `fn` moved every column.
-    const mapSummary = (sum, fn, cols) => ({
-      cols,
-      tracks: Object.fromEntries(Object.entries(sum.tracks).map(([t, list]) => [t, list
-        .map(k => { const [c, v] = k.split('|'); const m = fn(Number(c)); return m == null ? null : Math.round(m * 6) / 6 + '|' + v; })
-        .filter(Boolean).sort()])),
-      markers: sum.markers.map(k => { const [c, ...n] = k.split('|'); const m = fn(Number(c)); return m == null ? null : m + '|' + n.join('|'); }).filter(Boolean).sort(),
-      automation: sum.automation.map(k => { const [t, p, c, v] = k.split('|'); const m = fn(Number(c)); return m == null ? null : [t, p, m, v].join('|'); }).filter(Boolean).sort(),
-    });
-    const sameSummary = (got, want, what) => {
-      if (got.cols !== want.cols) throw new Error(`${what}: length ${got.cols}, expected ${want.cols}`);
-      for (const key of ['markers', 'automation']) {
-        if (JSON.stringify(got[key]) !== JSON.stringify(want[key])) {
-          throw new Error(`${what}: ${key} differ — got ${JSON.stringify(got[key]).slice(0, 300)}, expected ${JSON.stringify(want[key]).slice(0, 300)}`);
+    const fileRaw = (file) => cdp.evaluate(`fetch('songs/${file}').then(r => r.json()).then(d => (${SONG_RAW})(d))`);
+    // automationValueAt(), restated: flat before the first point and after the
+    // last, linear between, and a step where two points share a column.
+    const curveAt = (pts, c) => {
+      if (c <= pts[0][0]) return pts[0][1];
+      const last = pts[pts.length - 1];
+      if (c >= last[0]) return last[1];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ac, av] = pts[i], [bc, bv] = pts[i + 1];
+        if (c >= ac && c <= bc) return av + (bv - av) * (c - ac) / ((bc - ac) || 1);
+      }
+      return null;
+    };
+    const r6 = (x) => Math.round(x * 6) / 6;
+    const itemKey = (it, withEnd) => r6(it.s) + '|' + (withEnd && it.e != null ? r6(it.e) : '') + '|' + it.v;
+    // Compares what the page saved against the file after an edit, described
+    // by two maps: `item(s, e)` says where an item of the file must now be (or
+    // null if it must be gone), and `source(c)` says which column of the file
+    // a column of the edited song must sound like — the automation is checked
+    // by *value*, sampled at every half column, because an edit adds anchor
+    // points and what matters is that the curve still plays the same.
+    const sameAsFile = (got, file, { cols, item, source, markers, withEnd = true, extra = {} }, what) => {
+      if (got.cols !== cols) throw new Error(`${what}: length ${got.cols}, expected ${cols}`);
+      const wantMarkers = [...file.markers.map(k => { const [c, ...n] = k.split('|'); const m = source.marker(Number(c)); return m == null ? null : m + '|' + n.join('|'); }).filter(Boolean), ...(markers || [])].sort();
+      if (JSON.stringify(got.markers) !== JSON.stringify(wantMarkers)) throw new Error(`${what}: markers ${JSON.stringify(got.markers)}, expected ${JSON.stringify(wantMarkers)}`);
+      const ids = Object.keys(file.tracks);
+      if (!ids.length) throw new Error(`${what}: the reference has no tracks`);
+      for (const t of ids) {
+        const want = [...file.tracks[t].map(it => item(it)).filter(Boolean), ...(extra[t] || [])].map(it => itemKey(it, withEnd)).sort();
+        const have = (got.tracks[t] || []).map(it => itemKey(it, withEnd)).sort();
+        if (JSON.stringify(have) !== JSON.stringify(want)) {
+          const missing = want.filter(k => !have.includes(k)).slice(0, 4), extraGot = have.filter(k => !want.includes(k)).slice(0, 4);
+          throw new Error(`${what}: track ${t} (${have.length} vs ${want.length}) — missing ${JSON.stringify(missing)}, unexpected ${JSON.stringify(extraGot)}`);
         }
       }
-      if (!Object.keys(want.tracks).length) throw new Error(`${what}: the reference has no tracks`);
-      for (const [t, list] of Object.entries(want.tracks)) {
-        const g = got.tracks[t] || [];
-        if (JSON.stringify(g) !== JSON.stringify(list)) {
-          const missing = list.filter(k => !g.includes(k)).slice(0, 5), extra = g.filter(k => !list.includes(k)).slice(0, 5);
-          throw new Error(`${what}: track ${t} differs (${g.length} vs ${list.length} items) — missing ${JSON.stringify(missing)}, extra ${JSON.stringify(extra)}`);
+      const keys = Object.keys(file.curves);
+      if (Object.keys(got.curves).sort().join() !== keys.sort().join()) throw new Error(`${what}: curves ${Object.keys(got.curves)} vs ${keys}`);
+      for (const k of keys) {
+        for (let c = 0; c < cols; c++) {
+          const want = curveAt(file.curves[k], source.col(c + 0.5)), have = curveAt(got.curves[k], c + 0.5);
+          if (Math.abs(want - have) > 1e-3) throw new Error(`${what}: curve ${k} at column ${c + 0.5} plays ${have}, should play ${want}`);
         }
       }
     };
+    // The maps for the three edits. An insert at `a` of `d` columns: starts
+    // from `a` on move, an end past `a` moves (a note ringing across the point
+    // sustains through the new bars), and the new bars sound like column `a`.
+    const insertMap = (a, d, cols) => ({
+      cols,
+      item: (it) => ({ ...it, s: it.s < a ? it.s : it.s + d, e: it.e == null ? null : it.e <= a ? it.e : it.e + d }),
+      source: { col: (c) => (c < a ? c : c < a + d ? a : c - d), marker: (c) => (c < a ? c : c + d) },
+    });
+    const deleteMap = (a, cut, cols) => ({
+      cols,
+      item: (it) => (it.s >= a && it.s < a + cut ? null
+        : { ...it, s: it.s < a ? it.s : it.s - cut, e: it.e == null ? null : it.e <= a ? it.e : it.e <= a + cut ? a : it.e - cut }),
+      source: { col: (c) => (c < a ? c : c + cut), marker: (c) => (c >= a && c < a + cut ? null : c < a ? c : c - cut) },
+    });
     const openArrange = async () => {
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`document.getElementById('arrange-btn').click()`);
@@ -6389,50 +6569,44 @@ async function main() {
       const k = Object.keys(localStorage).find(k => k.includes('autosave'));
       return k && JSON.parse(localStorage.getItem(k)).cols === ${cols};
     })()`);
+    const arrangeBars = (bar, count, which) => cdp.evaluate(`(() => {
+      document.getElementById('arrange-bar').value = '${bar}';
+      document.getElementById('arrange-count').value = '${count}';
+      document.getElementById('arrange-${which}').click();
+    })()`);
 
     step('Arrange: inserting and deleting bars moves every track, its clips, the automation and the markers together', async () => {
       await fresh();
       await loadExample('Cinematic');
-      const file = await fileSummary('cinematic.json');
-      if (!file.automation.length || file.markers.length < 4) throw new Error('Cinematic no longer has the automation and markers this step needs');
-      // Two empty bars at bar 3: everything from column 16 on moves 16 later.
+      const file = await fileRaw('cinematic.json');
+      if (Object.keys(file.curves).length < 2 || file.markers.length < 4) throw new Error('Cinematic no longer has the automation and markers this step needs');
+      // Two bars at bar 3: everything from column 16 on moves 16 later, a note
+      // ringing across 16 sustains through them, and every curve holds its
+      // value there.
       await openArrange();
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '3';
-        document.getElementById('arrange-count').value = '2';
-        document.getElementById('arrange-insert').click();
-      })()`);
+      await arrangeBars(3, 2, 'insert');
       await waitSavedCols(file.cols + 16);
-      sameSummary(await savedSummary(), mapSummary(file, c => (c < 16 ? c : c + 16), file.cols + 16), 'after inserting 2 bars at bar 3');
+      sameAsFile(await savedRaw(), file, insertMap(16, 16, file.cols + 16), 'after inserting 2 bars at bar 3');
       const lenText = await cdp.evaluate(`document.getElementById('len-bars').textContent`);
       if (lenText !== `${(file.cols + 16) / 8} bars`) throw new Error(`the Length display did not follow: ${lenText}`);
-      // Deleting the same two bars is the way back.
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '3';
-        document.getElementById('arrange-count').value = '2';
-        document.getElementById('arrange-delete').click();
-      })()`);
+      // Deleting the same two bars gives the file back — lengths included,
+      // which is what an insert that left crossing notes alone could not do.
+      await arrangeBars(3, 2, 'delete');
       await waitSavedCols(file.cols);
-      sameSummary(await savedSummary(), file, 'after deleting them again');
+      sameAsFile(await savedRaw(), file, insertMap(0, 0, file.cols), 'after deleting them again');
       // With a clip boundary in the way. The delete left the playhead at
       // column 16; split the active track's clip there, then open a bar at
-      // bar 2. Moving the notes without their windows would leave the notes
-      // that were at 8-15 inside the first window's range no longer — they
-      // would land at 16-23, hidden by a window that still ends at 16.
+      // bar 2.
       await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
       await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
       await openArrange();
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '2';
-        document.getElementById('arrange-count').value = '1';
-        document.getElementById('arrange-insert').click();
-      })()`);
+      await arrangeBars(2, 1, 'insert');
       await waitSavedCols(file.cols + 8);
-      sameSummary(await savedSummary(), mapSummary(file, c => (c < 8 ? c : c + 8), file.cols + 8), 'after a split and an insert at bar 2');
-      // The notes alone cannot show it: a split hands *both* halves a copy of
-      // all the material, so a second window left behind at 16 shows the very
-      // notes the first one should have — the grid reads the same either way.
-      // The windows themselves have to be where the bar moved them.
+      sameAsFile(await savedRaw(), file, insertMap(8, 8, file.cols + 8), 'after a split and an insert at bar 2');
+      // The notes alone cannot show where the windows went: a split hands
+      // *both* halves a copy of all the material, so a second window left
+      // behind at 16 shows the very notes the first one should have. The
+      // windows themselves have to be where the bar moved them.
       const windows = await cdp.evaluate(`(() => {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
@@ -6443,82 +6617,128 @@ async function main() {
       if (JSON.stringify(windows) !== JSON.stringify([[0, 24], [24, null]])) {
         throw new Error(`a split at 16 and a bar inserted at 8 leave windows [0,24) and [24,…), got ${JSON.stringify(windows)}`);
       }
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '2';
-        document.getElementById('arrange-count').value = '1';
-        document.getElementById('arrange-delete').click();
-      })()`);
+      await arrangeBars(2, 1, 'delete');
       await waitSavedCols(file.cols);
-      sameSummary(await savedSummary(), file, 'after deleting bar 2 again');
+      sameAsFile(await savedRaw(), file, insertMap(0, 0, file.cols), 'after deleting bar 2 again');
       // Deleting bars that hold music takes that music with it, and nothing else.
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '9';
-        document.getElementById('arrange-count').value = '1';
-        document.getElementById('arrange-delete').click();
-      })()`);
+      await arrangeBars(9, 1, 'delete');
       await waitSavedCols(file.cols - 8);
-      sameSummary(await savedSummary(), mapSummary(file, c => (c < 64 ? c : c < 72 ? null : c - 8), file.cols - 8), 'after deleting bar 9');
+      sameAsFile(await savedRaw(), file, deleteMap(64, 8, file.cols - 8), 'after deleting bar 9');
+      // Undo puts all of it back — the markers too, which the undo snapshot
+      // did not carry until Arrange started moving them.
+      await cdp.evaluate(`document.getElementById('arrange-close').click()`);
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await waitSavedCols(file.cols);
+      sameAsFile(await savedRaw(), file, insertMap(0, 0, file.cols), 'after undoing the delete');
       // No room: 72 bars is the ceiling, and a refused insert changes nothing.
-      await cdp.evaluate(`(() => {
-        document.getElementById('arrange-bar').value = '1';
-        document.getElementById('arrange-count').value = '40';
-        document.getElementById('arrange-insert').click();
-      })()`);
+      // A bar past the end is not one Delete can take, and says so.
+      await openArrange();
+      await arrangeBars(1, 40, 'insert');
       const status = await cdp.evaluate(`document.getElementById('arrange-status').textContent`);
       if (!/No room/.test(status)) throw new Error(`an insert past the maximum length should say so, got ${JSON.stringify(status)}`);
-      const after = await savedSummary();
-      if (after.cols !== file.cols - 8) throw new Error(`a refused insert still changed the length to ${after.cols}`);
+      await arrangeBars(file.cols / 8 + 1, 1, 'delete');
+      const past = await cdp.evaluate(`document.getElementById('arrange-status').textContent`);
+      if (!/no bar/.test(past)) throw new Error(`deleting the bar after the end should say there is no such bar, got ${JSON.stringify(past)}`);
+      if ((await savedRaw()).cols !== file.cols) throw new Error('a refused edit still changed the length');
     });
 
     step('Arrange: sections come from the markers, and Duplicate/Copy to end/Delete move the whole song', async () => {
       await fresh();
       await loadExample('Cinematic');
-      const file = await fileSummary('cinematic.json');
+      const file = await fileRaw('cinematic.json');
       await openArrange();
       const names = await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-title')].map(t => t.textContent)`);
       if (names.join(',') !== 'Intro,Theme,Bridge,Theme II,Climax,Outro') throw new Error(`the sections should be the song's markers in order, got ${JSON.stringify(names)}`);
-      const press = (section, label) => cdp.evaluate(`(() => {
-        const row = [...document.querySelectorAll('#arrange-sections .song-item')].find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(section)});
+      const press = (section, label, nth = 0) => cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('#arrange-sections .song-item')].filter(r => r.querySelector('.song-title').textContent === ${JSON.stringify(section)})[${nth}];
         [...row.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)}).click();
       })()`);
-      // Theme is columns 64-128. Duplicated, a second Theme occupies 128-192
-      // and everything from the Bridge on moves 64 later.
+      // Theme is columns 64-128. Duplicated, a second Theme occupies 128-192,
+      // everything from the Bridge on moves 64 later, and the copy *sounds*
+      // like the Theme: its automation plays the Theme's values, including
+      // where the Theme starts mid-ramp.
       await press('Theme', 'Duplicate');
       await waitSavedCols(file.cols + 64);
-      const inTheme = (c) => c >= 64 && c < 128;
-      const dup = await savedSummary();
-      const expected = mapSummary(file, c => (c < 128 ? c : c + 64), file.cols + 64);
-      for (const [t, list] of Object.entries(file.tracks)) {
-        expected.tracks[t] = [...expected.tracks[t], ...list.filter(k => inTheme(Number(k.split('|')[0])))
-          .map(k => { const [c, v] = k.split('|'); return Math.round((Number(c) + 64) * 6) / 6 + '|' + v; })].sort();
-      }
-      expected.markers = [...expected.markers, '128|Theme'].sort();
-      expected.automation = [...expected.automation, ...file.automation.filter(k => inTheme(Number(k.split('|')[2])))
-        .map(k => { const [t, p, c, v] = k.split('|'); return [t, p, Number(c) + 64, v].join('|'); })].sort();
-      sameSummary(dup, expected, 'after duplicating Theme');
-      // The copy is a section in its own right, listed where it landed.
+      const inTheme = (it) => it.s >= 64 && it.s < 128;
+      const extra = Object.fromEntries(Object.entries(file.tracks).map(([t, list]) => [t, list.filter(inTheme).map(it => ({ ...it, s: it.s + 64, e: null }))]));
+      const dupMap = {
+        cols: file.cols + 64, withEnd: false, extra, markers: ['128|Theme'],
+        item: (it) => ({ ...it, s: it.s < 128 ? it.s : it.s + 64 }),
+        source: { col: (c) => (c < 128 ? c : c < 192 ? c - 64 : c - 64), marker: (c) => (c < 128 ? c : c + 64) },
+      };
+      sameAsFile(await savedRaw(), file, dupMap, 'after duplicating Theme');
       const names2 = await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-title')].map(t => t.textContent)`);
       if (names2.join(',') !== 'Intro,Theme,Theme,Bridge,Theme II,Climax,Outro') throw new Error(`the duplicate should list as its own section: ${JSON.stringify(names2)}`);
-      // Delete puts it back exactly.
-      await press('Bridge', 'Delete');
+      // Delete the copy: the file comes back (by start — a copy's notes were
+      // trimmed where they met the original's).
+      await press('Theme', 'Delete', 1);
       await waitSavedCols(file.cols);
-      const del = await savedSummary();
-      const noBridge = mapSummary(expected, c => (c < 192 ? c : c < 256 ? null : c - 64), file.cols);
-      sameSummary(del, noBridge, 'after deleting the Bridge');
+      sameAsFile(await savedRaw(), file, { ...insertMap(0, 0, file.cols), withEnd: false }, 'after deleting the copy again');
       // Copy to end appends after the last bar, whatever came before.
       await press('Intro', 'Copy to end');
       await waitSavedCols(file.cols + 64);
-      const end = await savedSummary();
+      const end = await savedRaw();
       if (!end.markers.includes(`${file.cols}|Intro`)) throw new Error(`Copy to end should put an Intro marker at column ${file.cols}: ${JSON.stringify(end.markers)}`);
-      for (const [t, list] of Object.entries(del.tracks)) {
-        const intro = list.filter(k => Number(k.split('|')[0]) < 64).length;
-        const tail = (end.tracks[t] || []).filter(k => Number(k.split('|')[0]) >= file.cols).length;
+      for (const [t, list] of Object.entries(file.tracks)) {
+        const intro = list.filter(it => it.s < 64).length;
+        const tail = (end.tracks[t] || []).filter(it => it.s >= file.cols).length;
         if (intro !== tail) throw new Error(`track ${t}: the Intro has ${intro} items but the copy at the end has ${tail}`);
       }
-      // One undo takes the copy back off.
+      // One undo takes the copy back off, markers included.
       await cdp.evaluate(`document.getElementById('arrange-close').click()`);
       await cdp.evaluate(`document.getElementById('undo-btn').click()`);
       await waitSavedCols(file.cols);
+      sameAsFile(await savedRaw(), file, { ...insertMap(0, 0, file.cols), withEnd: false }, 'after undoing Copy to end');
+    });
+
+    step('Arrange: a section is whole bars, and a copy on a split track lands in one window', async () => {
+      await fresh();
+      // The playhead onto column `col` through the ruler, the way a click does.
+      const seekRuler = (col) => cdp.evaluate(`(() => {
+        const cell = document.querySelectorAll('.tl-ruler .ruler-cell')[${col}];
+        const r = cell.getBoundingClientRect();
+        // Just inside the cell's left edge: seekTo() rounds to the nearest
+        // column, so the middle of cell 8 is column 9.
+        const at = { bubbles: true, clientX: r.left + 1, clientY: r.top + r.height / 2, pointerId: 1, button: 0 };
+        cell.dispatchEvent(new PointerEvent('pointerdown', at));
+        window.dispatchEvent(new PointerEvent('pointerup', at));
+      })()`);
+      // A part on the Lead, cut into two clips at bar 2 below — so the gap a
+      // duplicate opens at bar 2 has no window in it.
+      await setKey(0, 'major');
+      await openChordsOn('Harmony');
+      await insertRow('progression-list', 'I–V–vi–IV');
+      await waitFor(`${pitchRowByName('Harmony')}.querySelectorAll('.lane .note').length > 0`);
+      await openChordsOn('Lead');
+      await insertRow('follow-list', 'Arp up');
+      await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length > 0`);
+      // A marker on bar 1 and one three eighths into bar 2: the second section
+      // still starts on its bar, so duplicating the first adds exactly a bar.
+      await cdp.evaluate(`document.getElementById('add-marker').click()`);
+      await seekRuler(11);
+      await cdp.evaluate(`document.getElementById('add-marker').click()`);
+      await seekRuler(8);
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('split-clip-btn').click()`);
+      await openArrange();
+      const secs = await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-desc')].map(d => d.textContent)`);
+      if (secs.length !== 2 || !/^Bars 1–1 /.test(secs[0]) || !/^Bars 2–/.test(secs[1])) {
+        throw new Error(`a marker three eighths into bar 2 starts its section at bar 2: ${JSON.stringify(secs)}`);
+      }
+      const before = await cdp.evaluate(`document.getElementById('len-bars').textContent`);
+      await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-item')][0].querySelector('button').click()`);
+      const after = await cdp.evaluate(`document.getElementById('len-bars').textContent`);
+      if (!/^\d+ bars$/.test(after) || parseInt(after, 10) !== parseInt(before, 10) + 1) {
+        throw new Error(`duplicating a one-bar section adds exactly one bar: ${before} -> ${after}`);
+      }
+      // The Lead's copy of bar 1 went into the gap at bar 2 as one window, not
+      // a window per note.
+      await new Promise(r => setTimeout(r, 600));
+      const lead = await cdp.evaluate(`(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        return JSON.parse(localStorage.getItem(k)).tracks.lead.map(c => [c.start, c.len]);
+      })()`);
+      if (lead.length !== 3) throw new Error(`the Lead should have its two clips plus one for the copy, got ${JSON.stringify(lead)}`);
     });
 
     step('Variation: neighbour tones stay in the key, octave jumps are octaves, and thinning keeps the downbeats', async () => {
