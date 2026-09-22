@@ -8461,6 +8461,282 @@ async function main() {
       if (got.hits !== 0) throw new Error(`no kit: the Air has no percussion to steal a voice for: ${got.hits} hits`);
     });
 
+    // Gestures the two Env-panel steps below share, and the autosave read they
+    // both make. Spelled out once here rather than a third and fourth copy of
+    // what the SID rates step already does.
+    const openEnvPanel = () => cdp.evaluate(`(() => {
+      const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+      [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
+    })()`);
+    const envSlider = (label) => `[...document.querySelectorAll('.adsr-lane-el .adsr-field')]
+      .find(f => f.querySelector('.adsr-label').textContent === ${JSON.stringify(label)})
+      .querySelector('input[type=range]')`;
+    const setEnvSlider = (label, v) => cdp.evaluate(
+      `(() => { const s = ${envSlider(label)}; s.value = ${v}; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    const pickWaveform = async (re) => {
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('#floating-layer [role="option"]')`);
+      await cdp.evaluate(`(() => {
+        [...document.querySelectorAll('#floating-layer [role="option"]')].find(o => ${re}.test(o.textContent)).click();
+      })()`);
+    };
+    // The Lead track's row in the autosave, as an expression `body` can read
+    // `d` (the saved song) and `id` (the track) out of.
+    const leadRow = (body) => `(() => {
+      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      if (!k) return false;
+      const d = JSON.parse(localStorage.getItem(k));
+      const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
+      ${body}
+    })()`;
+    // Every per-track map the Env panel edits on a hard-sync track, so "Reset
+    // clears the panel" can be asked of the set rather than of one field.
+    const ENV_PANEL_MAPS = ['adsr', 'filter', 'fm', 'sync', 'arpRate'];
+    const leadEnvMaps = async () => JSON.parse(await cdp.evaluate(leadRow(
+      `return JSON.stringify(Object.fromEntries(${JSON.stringify(ENV_PANEL_MAPS)}.map(m => [m, (d[m] || {})[id] ?? null])));`)));
+
+    step('Envelope panel: Reset clears every control the panel shows, Sweep and Speed included', async () => {
+      await fresh();
+      await openEnvPanel();
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+      // Hard sync, so the modulator group is built and Sweep exists at all: on
+      // the square track this starts as, a Reset that forgets `sync` cannot be
+      // caught, because the field is not on screen to have been forgotten.
+      await pickWaveform('/hard sync/i');
+      await waitFor(`[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === 'Sweep')`);
+
+      // One control out of each map the panel owns on this waveform.
+      await setEnvSlider('Attack', 0.25);
+      await setEnvSlider('Cutoff', 0.5);
+      await setEnvSlider('Ratio', 3);
+      await setEnvSlider('Sweep', 6);
+      await setEnvSlider('Speed', 50);
+      await waitFor(leadRow(`return ((d.sync || {})[id] || {}).sweep === 6 && (d.arpRate || {})[id] != null;`));
+      // Assert the setup landed before asserting anything about Reset: a step
+      // that silently dialled nothing in would "pass" the check below against
+      // any build at all, which is the empty-list trap one axis over.
+      const dialled = await leadEnvMaps();
+      const missing = Object.entries(dialled).filter(([, v]) => v == null).map(([m]) => m);
+      if (missing.length) {
+        throw new Error(`the step never dialled ${missing.join(', ')} in, so there is nothing for Reset to clear: ${JSON.stringify(dialled)}`);
+      }
+
+      // The Env row and an open Automation row share the .automation-row class,
+      // so name the panel by its own heading rather than taking the first match.
+      await cdp.evaluate(`(() => {
+        const row = [...document.querySelectorAll('.track.automation-row')]
+          .find(r => /^Envelope/.test(r.querySelector('.automation-title').textContent));
+        [...row.querySelectorAll('.track-header button')].find(b => b.textContent === 'Reset').click();
+      })()`);
+      // Timeout swallowed on purpose here too: the assertion below names which
+      // maps survived, which is the useful half of the answer.
+      await waitFor(leadRow(`return (d.adsr || {})[id] == null;`), 2000).catch(() => {});
+
+      const after = await leadEnvMaps();
+      const left = Object.entries(after).filter(([, v]) => v != null).map(([m]) => m);
+      if (left.length) {
+        throw new Error(`Reset left ${left.join(', ')} behind — the panel shows them, so its Reset owns them: ${JSON.stringify(after)}`);
+      }
+      // And the panel agrees with the state: the Sweep readout is back to 'off'
+      // rather than still naming a rate nothing is holding any more.
+      const sweepText = await cdp.evaluate(
+        `${envSlider('Sweep')}.closest('.adsr-field').querySelector('.adsr-val').textContent`);
+      if (sweepText !== 'off') throw new Error(`the Sweep readout should read 'off' after Reset, reads ${sweepText}`);
+    });
+
+    step('Presets: the sync Sweep and the arpeggio Speed survive a save and a load', async () => {
+      await fresh();
+      const presetBtn = `(() => {
+        const head = document.querySelectorAll('.track[data-kind="pitch"] .track-header')[0];
+        [...head.querySelectorAll('.th-tool-btn.icon')].find(b => b.title.startsWith('Instrument presets')).click();
+      })()`;
+      const savePreset = async (name) => {
+        await cdp.evaluate(presetBtn);
+        await waitFor(`document.getElementById('preset-dialog').open === true`);
+        await cdp.evaluate(`(() => {
+          const input = document.getElementById('preset-new-name');
+          input.value = ${JSON.stringify(name)};
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          document.getElementById('preset-save').click();
+        })()`);
+        await waitFor(`(() => { try {
+          return !!JSON.parse(localStorage.getItem('music-studio-instrument-presets'))[${JSON.stringify(name)}];
+        } catch { return false; } })()`);
+        await cdp.evaluate(`document.getElementById('preset-close').click()`);
+      };
+      const loadPreset = async (name) => {
+        await cdp.evaluate(presetBtn);
+        await waitFor(`document.getElementById('preset-dialog').open === true`);
+        await cdp.evaluate(`(() => {
+          const row = [...document.querySelectorAll('#preset-list .song-item')]
+            .find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(name)});
+          row.querySelector('button').click(); // "Load"
+        })()`);
+        await waitFor(`document.getElementById('preset-dialog').open === false`);
+      };
+
+      await openEnvPanel();
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+      await pickWaveform('/hard sync/i');
+      await waitFor(`[...document.querySelectorAll('.adsr-lane-el .adsr-label')].some(l => l.textContent === 'Sweep')`);
+      await setEnvSlider('Sweep', 6);
+      await setEnvSlider('Speed', 50);
+      await waitFor(leadRow(`return ((d.sync || {})[id] || {}).sweep === 6 && Math.abs((d.arpRate || {})[id] - 0.02) < 1e-9;`));
+
+      await savePreset('Test SID Rates');
+      const stored = JSON.parse(await cdp.evaluate(
+        `JSON.stringify(JSON.parse(localStorage.getItem('music-studio-instrument-presets'))['Test SID Rates'])`));
+      if (!stored.sync || stored.sync.sweep !== 6) {
+        throw new Error(`the preset did not capture the Sweep: ${JSON.stringify(stored.sync)}`);
+      }
+      if (Math.abs(stored.arpRate - 0.02) > 1e-9) {
+        throw new Error(`the preset did not capture the arpeggio Speed: ${stored.arpRate}`);
+      }
+
+      // Move the live track off both, then load the preset back over it. Read
+      // from the file rather than from the sliders: a slider is painted from
+      // the value it was built with, so a panel that re-rendered from stale
+      // state would show the right number having restored nothing.
+      await setEnvSlider('Sweep', 0);
+      await setEnvSlider('Speed', 20);
+      await waitFor(leadRow(`return Math.abs((d.arpRate || {})[id] - 0.05) < 1e-9;`));
+      await loadPreset('Test SID Rates');
+      // Settle the debounced autosave, swallowing the timeout on purpose: when
+      // the load restores nothing, the assertion below names what is missing
+      // far better than "timed out waiting for" and a page of expression does.
+      await waitFor(leadRow(`return ((d.sync || {})[id] || {}).sweep === 6;`), 2000).catch(() => {});
+      const reapplied = JSON.parse(await cdp.evaluate(leadRow(
+        `return JSON.stringify({ sync: (d.sync || {})[id] ?? null, arpRate: (d.arpRate || {})[id] ?? null });`)));
+      if (!reapplied.sync || reapplied.sync.sweep !== 6 || Math.abs(reapplied.arpRate - 0.02) > 1e-9) {
+        throw new Error(`loading the preset did not restore both rates: ${JSON.stringify(reapplied)}`);
+      }
+
+      // A preset saved from a track sitting at the default speed must put the
+      // key *back to absent*, not write the default number in — the rule the
+      // slider itself keeps at that position, and what lets every sparse map
+      // say "no key means nobody touched this".
+      await setEnvSlider('Speed', 33);
+      await waitFor(leadRow(`return (d.arpRate || {})[id] == null;`));
+      await savePreset('Test SID Default');
+      // Move the Sweep off too, so the wait after the load is on a value this
+      // load actually puts back. The autosave is debounced by 400ms, and a wait
+      // on something already true answers from the write *before* the load —
+      // which is how this read first came back with the pre-load arp speed and
+      // failed a fix that was working.
+      await setEnvSlider('Sweep', 0);
+      await setEnvSlider('Speed', 50);
+      await waitFor(leadRow(`return ((d.sync || {})[id] || {}).sweep === 0 && (d.arpRate || {})[id] != null;`));
+      await loadPreset('Test SID Default');
+      await waitFor(leadRow(`return ((d.sync || {})[id] || {}).sweep === 6;`), 2000).catch(() => {});
+      const backToDefault = await cdp.evaluate(leadRow(`return (d.arpRate || {})[id] ?? null;`));
+      if (backToDefault != null) {
+        throw new Error(`a default-speed preset must leave the track without an arpRate key, left ${backToDefault}`);
+      }
+
+      // Don't leak the test presets into other runs' localStorage.
+      await cdp.evaluate(`(() => {
+        const p = JSON.parse(localStorage.getItem('music-studio-instrument-presets'));
+        delete p['Test SID Rates']; delete p['Test SID Default'];
+        localStorage.setItem('music-studio-instrument-presets', JSON.stringify(p));
+      })()`);
+    });
+
+    step('Sidechain: every kick ducks, whatever order the hits were placed in', async () => {
+      await fresh();
+      // What makes hit order matter here is a spec rule rather than anything
+      // visible in the calls themselves: cancelScheduledValues(t) removes every
+      // event already scheduled at or after t. Against the broken version every
+      // call still *happens* — what is lost is an earlier call's effect — so
+      // counting calls proves nothing, and the log has to be replayed under
+      // that one rule instead. An offline render can't show it either: it
+      // renders whatever the graph ends up holding, and the dip is simply gone.
+      await cdp.evaluate(`(() => {
+        window.__duckLog = []; window.__paramSeq = 0;
+        const wrap = (name, kind) => {
+          const real = AudioParam.prototype[name];
+          AudioParam.prototype[name] = function (...a) {
+            if (!this.__paramId) this.__paramId = 'p' + (++window.__paramSeq);
+            window.__duckLog.push(kind === 'cancel'
+              ? { id: this.__paramId, kind, time: a[0] }
+              : { id: this.__paramId, kind, value: a[0], time: a[1] });
+            return real.apply(this, a);
+          };
+        };
+        wrap('cancelScheduledValues', 'cancel');
+        wrap('setValueAtTime', 'set');
+        wrap('exponentialRampToValueAtTime', 'ramp');
+      })()`);
+
+      await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
+      await waitFor(`!!${masterSec('sidechain')}`);
+      await cdp.evaluate(`${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn').click()`);
+      await waitFor(`${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn').textContent === 'On'`);
+
+      // Two kicks, placed late one first. That is the whole scenario: hits are
+      // stored in the order they were placed, so this is what a rhythm track
+      // looks like whenever someone drops a backbeat in and then fills the bar
+      // in front of it.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Activated from its header, not by clicking the lane: under the Pen a
+      // click into a track that is not active places at the clicked cell, and a
+      // bare .click() carries no coordinates — so that gesture quietly dropped
+      // a third kick at column 0 and the count below came out one over.
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .track-header')
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 150));
+      const clickKick = (x) => cdp.evaluate(`(() => {
+        const lane = ${RHYTHM_LANE};
+        const r = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${x}, clientY: r.top + 8 }));
+      })()`);
+      const kicks = `[...${RHYTHM_LANE}.querySelectorAll('.hit')].filter(h => /^Kick/.test(h.getAttribute('aria-label') || '')).length`;
+      const startKicks = await cdp.evaluate(kicks);
+      if (startKicks !== 0) throw new Error(`the starter kit is empty — ${startKicks} kick(s) means the step placed one by accident`);
+      await clickKick(300);
+      await waitFor(`${kicks} === 1`);
+      await clickKick(60);
+      await waitFor(`${kicks} === 2`);
+
+      await cdp.evaluate(`window.__duckLog.length = 0; document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await new Promise((r) => setTimeout(r, 300));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      const log = JSON.parse(await cdp.evaluate(`JSON.stringify(window.__duckLog)`));
+      // The duck param names itself: it is the only one ramping back to exactly
+      // 1 a release after a dip it set itself. The metronome's own ramp to 1 is
+      // 2ms after its attack, not 150.
+      const duckId = (() => {
+        for (const e of log) {
+          if (e.kind !== 'ramp' || e.value !== 1) continue;
+          if (log.some((d) => d.id === e.id && d.kind === 'set' && Math.abs(d.time + 0.15 - e.time) < 1e-6)) return e.id;
+        }
+        return null;
+      })();
+      if (!duckId) throw new Error('no ducking was scheduled at all — is Sidechain really on, and are both kicks inside the first chunk?');
+
+      const own = log.filter((e) => e.id === duckId);
+      const scheduled = own.filter((e) => e.kind === 'set' && e.value < 1);
+      if (scheduled.length !== 2) {
+        throw new Error(`the two kicks should have scheduled two dips before anything is cancelled, got ${scheduled.length}`);
+      }
+      // Replay the log under the one rule above: a cancel drops every event
+      // still standing at or after its time.
+      const alive = [];
+      for (const e of own) {
+        if (e.kind === 'cancel') {
+          for (let i = alive.length - 1; i >= 0; i--) if (alive[i].time >= e.time - 1e-9) alive.splice(i, 1);
+        } else alive.push(e);
+      }
+      const dips = alive.filter((e) => e.kind === 'set' && e.value < 1).map((e) => e.time);
+      if (dips.length !== 2) {
+        throw new Error(
+          `both kicks must still duck after the whole chunk is scheduled — ${dips.length} of 2 survived, ` +
+          `so a hit reached out of order deleted another one's dip`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

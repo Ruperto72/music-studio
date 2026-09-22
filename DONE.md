@@ -2525,3 +2525,57 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   `verify.js --only <delsträng>` finns för att en enstegskörning ska kosta en
   minut i stället för tjugo, vilket är det som gör ett-i-taget överhuvudtaget
   praktiskt.
+
+- [x] **Fyra buggar ur en fullständig kodgenomgång — tre rapporterade, den
+  fjärde föll ut ur testet för den tredje.** Genomgången läste ljudsyntes,
+  låt-I/O, de glesa per-spår-kartorna, MIDI-vägarna och de fem
+  Node-verktygen (`cdp.js`, `dev-server.js`, `dev.js`, `icons.js`,
+  `shots.js` — rena).
+  - **`scheduleDucking()` schemalade i placeringsordning, inte i tid.**
+    `cancelScheduledValues(at)` sitter där för att kapa föregående slags
+    release när nästa landar inuti den, men specen säger att den tar bort
+    *varje* händelse vid eller efter `at` — så ett slag som nåddes efter ett
+    senare raderade det senares dipp och dess release med sig. Träffar lagras
+    i den ordning de placerades (`commitHit()` konkatenerar) och det kan
+    finnas flera rytmspår, så ingen av looparna gav kronologisk ordning: två
+    kick placerade baklänges gav **en** dipp av två. Samlas och sorteras nu
+    innan något schemaläggs. Att bara räkna anropen visar ingenting — mot den
+    trasiga versionen sker varje anrop, det som går förlorat är ett tidigare
+    anrops *verkan* — och en offline-rendering ser den inte heller, eftersom
+    den renderar vad grafen till slut råkar hålla.
+  - **Instrumentpresets tappade hard sync-svepet och arpeggiohastigheten.**
+    Sparandet fångade `waveform/adsr/filter/fm/duty/harmonics` men inte
+    `sync` och `arpRate`, trots att båda är per-spårinställningar i samma
+    Env-panel — ett sparat svep gick alltså inte att få tillbaka. Båda reser
+    med preseten nu, intervallkontrollerade som låtläsaren gör
+    (`SYNC_SWEEP_MAX`, `ARP_STEP_MIN`/`ARP_STEP_MAX`) eftersom de är nakna
+    tal ur `localStorage`, och arpeggiohastigheten normaliseras tillbaka till
+    *frånvarande* vid standardvärdet precis som dess eget reglage gör: en
+    preset får inte lämna ett spår byte-olikt ett som ingen rört.
+  - **Env-panelens Reset rensade fem av sju kartor.** `sync` och `arpRate`
+    lades till som grupper i panelen långt efter Resets handskrivna lista.
+    Kartorna heter nu `ADSR_PANEL_MAPS` på ett ställe och knappen går igenom
+    den — samma regel som `SPARSE_TRACK_MAPS` håller för spara/ladda, ett
+    lager ned. Arpeggio-gruppen är dessutom ovillkorlig, så den halvan gällde
+    varje spår, inte bara sync-spår.
+  - **Och den fjärde, som testet hittade:** Reset rensade state men panelen
+    fortsatte visa de gamla siffrorna. Panelens fält målar sina egna
+    avläsningar och skriver till state utan `render()`, så `rowCache` håller
+    signaturen från när raden *byggdes*. Varje annan väg ett värde rör sig
+    målar om på plats och förblir ärlig; Reset är den enda som för state
+    tillbaka till precis det cachen säger — då matchar signaturen igen, raden
+    återanvänds och panelen visar tal ingenting håller. `rowCache.delete(track)`
+    före `render()`. Den inbyggda radrevisionen (`window.__rowAudit`) skrek om
+    exakt det här, vilket är hur den hittades: testet var skrivet mot state och
+    gick grönt på den halvan.
+  **Tre nya verify-steg, alla fyra injektionerna körda en i taget:** utan
+  sorteringen överlever 1 dipp av 2; utan sparfälten är `preset.sync`
+  `undefined`; utan tillämpningen står spåret kvar på `{sweep: 0}`; utan
+  `rowCache.delete` läser Sweep fortfarande "6.0 Hz" efter Reset.
+  **Två fällor kostade en omgång var.** Autosparandet är debouncat 400 ms, så
+  en naken läsning direkt efter en laddning svarar från skrivningen *före*
+  den — väntan måste hänga på ett värde just den laddningen ändrar, annars
+  underkänns en fix som fungerar. Och under pennan placerar ett klick i ett
+  icke-aktivt spår *på den klickade cellen*: `lane.click()` utan koordinater
+  la ett tredje kick på kolumn 0 och antalet gick ett över. Spåret aktiveras
+  från sin rubrik i stället.
