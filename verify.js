@@ -8737,6 +8737,284 @@ async function main() {
       }
     });
 
+    // Addressing a starter track by its name rather than its position: the
+    // Env/Vel/Automation rows are `.track` too, so position means nothing once
+    // one is open.
+    const trackRow = (name) => `[...document.querySelectorAll('#tracks > .track:not(.automation-row)')]
+      .find(t => t.querySelector('.th-name')?.textContent === ${JSON.stringify(name)})`;
+    // Headers activate on mousedown, not click — see buildHeader().
+    const activateByName = (name) => cdp.evaluate(
+      `${trackRow(name)}.querySelector('.track-header').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    const penAt = (name, x, y) => cdp.evaluate(`(() => {
+      const lane = ${trackRow(name)}.querySelector('.lane');
+      const r = lane.getBoundingClientRect();
+      lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${x}, clientY: r.top + ${y} }));
+    })()`);
+    const notesIn = (name) => cdp.evaluate(`${trackRow(name)}.querySelectorAll('.lane .note').length`);
+    // Below 760px the phone player hides the editor, and every rect in it reads
+    // as zeros — so a step about where a lane *is* has to run wide, or a rect
+    // read off a detached node is indistinguishable from a live one.
+    const wide = async (fn) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+      try {
+        await fresh();
+        if (!(await cdp.evaluate(`${trackRow('Bass')}.querySelector('.lane').getBoundingClientRect().left`) > 0)) {
+          throw new Error('the editor is not laid out — the lane has no position to get wrong');
+        }
+        await fn();
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
+    };
+
+    step('History: a loaded song starts its own undo history, and undoing a meter change brings the meter back', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 60, 40);
+      await waitFor(`!document.querySelector('#undo-btn').disabled`, 4000)
+        .catch(() => { throw new Error('placing a note should put something on the undo stack — nothing to carry across the load'); });
+      // The snapshot holds the tracks and their settings but not the song's
+      // name, meter, key or master bus, so an undo across a load used to put
+      // the old song's parts under the new song's name.
+      await loadExample('Froggy Hop');
+      if (!await cdp.evaluate(`document.querySelector('#undo-btn').disabled`)) {
+        throw new Error('Undo is still offered after loading a song — it would restore the previous song\'s tracks under this one');
+      }
+      const before = await cdp.evaluate(`document.getElementById('time-sig').value`);
+      const other = before === '3/4' ? '4/4' : '3/4';
+      await cdp.evaluate(`(() => { const s = document.getElementById('time-sig'); s.value = ${JSON.stringify(other)};
+        s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await waitFor(`!document.querySelector('#undo-btn').disabled`, 4000)
+        .catch(() => { throw new Error('a meter change should be an undo step'); });
+      await cdp.evaluate(`document.querySelector('#undo-btn').click()`);
+      await waitFor(`document.getElementById('time-sig').value === ${JSON.stringify(before)}`, 2000)
+        .catch(async () => {
+          throw new Error(`undoing the meter change should bring back ${before}, the picker shows ${await cdp.evaluate(`document.getElementById('time-sig').value`)}`);
+        });
+    });
+
+    step('Master FX: a song that carries no master bus loads with a neutral one', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"] .th-fx-chip-body').click()`);
+      await waitFor(`!!${masterSec('sidechain')}`);
+      await cdp.evaluate(`${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn').click()`);
+      await waitFor(`${masterSec('sidechain')}.querySelector('.th-strip-section-head .icon-btn').textContent === 'On'`);
+      await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
+      if (!((await draft()).sidechain || {}).enabled) throw new Error('the setup never turned Sidechain on, so there is nothing to carry over');
+      // Froggy Hop predates the master bus and has none of its fields.
+      await loadExample('Froggy Hop');
+      const after = await draft();
+      if ((after.sidechain || {}).enabled) {
+        throw new Error(`the previous song's Sidechain carried into Froggy Hop: ${JSON.stringify(after.sidechain)}`);
+      }
+      if (!await cdp.evaluate(`document.querySelector('.th-master-fx-chip[data-key="sidechain"]').classList.contains('bypassed')`)) {
+        throw new Error('the Sidechain chip should look off again after loading a song without one');
+      }
+    });
+
+    step('Recording: undoing an armed track leaves nothing armed', async () => {
+      await fresh();
+      const ids = () => cdp.evaluate(`[...document.querySelectorAll('#tracks > .track')].map(t => t.dataset.track)`);
+      const before = await ids();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`Array.from(document.querySelectorAll('#file-menu-panel button')).find(b => b.textContent.includes('Add track')).click()`);
+      await waitFor(`document.querySelectorAll('#tracks > .track').length === ${before.length} + 1`);
+      const added = (await ids()).find((id) => !before.includes(id));
+      await cdp.evaluate(`document.querySelector('.track[data-track="${added}"] button[aria-label^="Record-arm"]').click()`);
+      // Armed, the keyboard is an instrument: [ and ] step the octave and say so.
+      // That is the observable — the arm's own button goes with the track.
+      const octave = async () => {
+        await cdp.evaluate(`document.querySelector('#a11y-status').textContent = ''`);
+        await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'BracketRight', key: ']', bubbles: true }))`);
+        await new Promise((r) => setTimeout(r, 200));
+        return /Octave/.test(await cdp.evaluate(`document.querySelector('#a11y-status').textContent`));
+      };
+      if (!await octave()) throw new Error('arming the new track should make ] step the octave — the arm did not take');
+      await waitFor(`!document.querySelector('#undo-btn').disabled`, 4000);
+      await cdp.evaluate(`document.querySelector('#undo-btn').click()`);
+      await waitFor(`!document.querySelector('.track[data-track="${added}"]')`);
+      if (await octave()) {
+        throw new Error('the undone track is still armed: the keyboard keeps playing into a track nothing draws');
+      }
+    });
+
+    step('Chord: a chord added to a note on another track stays on that track', async () => {
+      await withSelectedNote();
+      const home = await cdp.evaluate(`document.querySelector('.track.active .th-name').textContent`);
+      const away = home === 'Bass' ? 'Pad' : 'Bass';
+      // The inspector keeps showing the selected note across a track switch —
+      // that is on purpose, and it is what lets the chord land on a track the
+      // selection-scoped actions no longer point at.
+      await activateByName(away);
+      await waitFor(`document.querySelector('.track.active .th-name')?.textContent === ${JSON.stringify(away)}`);
+      await openPalette('chord');
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj"]').click()`);
+      await waitFor(`${trackRow(home)}.querySelectorAll('.lane .note').length === 3`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 300));
+      const [inHome, inAway] = [await notesIn(home), await notesIn(away)];
+      if (inAway !== 0 || inHome !== 3) {
+        throw new Error(`nudging the new chord should move it within ${home}; ${home} has ${inHome} notes and ${away} has ${inAway}`);
+      }
+    });
+
+    step('Grab: a marquee drawn on a track that is not active selects what is under it', () => wide(async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await penAt('Bass', 100, 40);
+        await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 1`);
+        await activateByName('Lead');
+        await waitFor(`document.querySelector('.track.active .th-name')?.textContent === 'Lead'`);
+        await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+        // Drawn from left of the note to right of it, on the lane of a track that
+        // is not the active one — so the pointerdown's setActive() rebuilds the
+        // row before the marquee reads where the lane is.
+        await cdp.evaluate(`(() => {
+          const lane = ${trackRow('Bass')}.querySelector('.lane');
+          const r = lane.getBoundingClientRect();
+          const at = (type, x, target) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, button: 0, clientX: r.left + x, clientY: r.top + 40 }));
+          at('pointerdown', 20, lane);
+          at('pointermove', 260, window);
+          at('pointerup', 260, window);
+        })()`);
+        await new Promise((r) => setTimeout(r, 300));
+        const picked = await cdp.evaluate(`${trackRow('Bass')}.querySelectorAll('.lane .note.multi-selected').length`);
+        if (picked !== 1) throw new Error(`the marquee covered the Bass note but selected ${picked} — it measured from a lane that had been replaced`);
+    }));
+
+    step('Velocity lane: pressing a head on a track that is not active keeps the value under it', () => wide(async () => {
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await penAt('Bass', 100, 40);
+        await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 1`);
+        await cdp.evaluate(`[...${trackRow('Bass')}.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click()`);
+        await waitFor(`!!document.querySelector('.vel-head')`);
+        await activateByName('Lead');
+        await waitFor(`document.querySelector('.track.active .th-name')?.textContent === 'Lead'`);
+        const before = await cdp.evaluate(`Number(document.querySelector('.vel-head').getAttribute('aria-valuenow'))`);
+        if (!(before > 0.9)) throw new Error(`a freshly placed note should be at full velocity, the lane shows ${before}`);
+        // Pressed exactly where it already sits, so the value must not move.
+        await cdp.evaluate(`(() => {
+          const head = document.querySelector('.vel-head');
+          const r = head.getBoundingClientRect();
+          const opts = { bubbles: true, pointerId: 7, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+          head.dispatchEvent(new PointerEvent('pointerdown', opts));
+          window.dispatchEvent(new PointerEvent('pointerup', opts));
+        })()`);
+        await new Promise((r) => setTimeout(r, 300));
+        const after = await cdp.evaluate(`Number(document.querySelector('.vel-head').getAttribute('aria-valuenow'))`);
+        if (Math.abs(after - before) > 0.1) {
+          throw new Error(`pressing the head where it sat moved the velocity ${before} -> ${after}: the drag measured from a lane that had been replaced`);
+        }
+    }));
+
+    step('Automation: a fade longer than a chunk ramps across it live, and Mute silences it', async () => {
+      await fresh();
+      // A volume fade from bar 1 to bar 17 on Lead, in a 24-bar song — longer
+      // than one 8-bar scheduling chunk, which is the case that played as a
+      // staircase. Built as a saved song so the curve is exact.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 60, 40);
+      await new Promise((r) => setTimeout(r, 700));
+      await cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        d.cols = 192;
+        d.automation = { lead: { gain: [{ col: 0, value: 0 }, { col: 128, value: 1 }] } };
+        d.songName = 'AutoRamp';
+        localStorage.setItem('music-studio-songs', JSON.stringify({ AutoRamp: { data: d, savedAt: Date.now() } }));
+      })()`);
+      await loadExample('AutoRamp');
+      await cdp.evaluate(`(() => {
+        window.__autoLog = []; window.__autoSeq = 0;
+        for (const [name, kind] of [['cancelScheduledValues', 'cancel'], ['setValueAtTime', 'set'], ['linearRampToValueAtTime', 'ramp']]) {
+          const real = AudioParam.prototype[name];
+          AudioParam.prototype[name] = function (...a) {
+            if (!this.__autoId) this.__autoId = ++window.__autoSeq;
+            window.__autoLog.push(kind === 'cancel' ? { id: this.__autoId, kind, time: a[0] } : { id: this.__autoId, kind, value: a[0], time: a[1] });
+            return real.apply(this, a);
+          };
+        }
+      })()`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await new Promise((r) => setTimeout(r, 300));
+      const log = JSON.parse(await cdp.evaluate(`JSON.stringify(window.__autoLog)`));
+      // The first chunk (cols 0-64) holds no point of the curve inside it, so
+      // without a ramp to its own end it held 0 for eight bars and then jumped.
+      // The curve is 0.5 at col 64, and nothing else in this song ramps there.
+      const toBoundary = log.find((e) => e.kind === 'ramp' && Math.abs(e.value - 0.5) < 1e-6);
+      if (!toBoundary) {
+        throw new Error(`the first chunk should ramp to the curve's value at its end (0.5); ramps scheduled: ${JSON.stringify(log.filter((e) => e.kind === 'ramp').slice(0, 12))}`);
+      }
+      const fade = { id: toBoundary.id };
+      const mark = await cdp.evaluate(`window.__autoLog.length`);
+      await cdp.evaluate(`document.querySelector('button[aria-label="Mute Lead"]').click()`);
+      await new Promise((r) => setTimeout(r, 200));
+      const afterMute = JSON.parse(await cdp.evaluate(`JSON.stringify(window.__autoLog.slice(${mark}))`)).filter((e) => e.id === fade.id);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      const cancelled = afterMute.some((e) => e.kind === 'cancel');
+      const zeroed = afterMute.some((e) => e.kind === 'set' && e.value === 0);
+      const rampsBack = afterMute.some((e) => e.kind === 'ramp');
+      if (!cancelled || !zeroed || rampsBack) {
+        throw new Error(`muting mid-fade must take back the queued ramps and hold 0 — after the click: ${JSON.stringify(afterMute)}`);
+      }
+      await cdp.evaluate(`localStorage.removeItem('music-studio-songs')`);
+    });
+
+    step('Recording: a note erased during a take stays erased when the take ends', async () => {
+      await fresh();
+      // Same short fast loop as the overdub step, so the take runs in seconds.
+      await cdp.evaluate(`(() => { const t = document.getElementById('tempo'); t.value = 240; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await cdp.evaluate(`(() => {
+        const minus = document.getElementById('len-minus');
+        for (let i = 0; i < 64 && !/^2 bars/.test(document.getElementById('len-bars').textContent); i++) minus.click();
+      })()`);
+      await waitFor(`/^2 bars/.test(document.getElementById('len-bars').textContent)`);
+      await cdp.evaluate(`document.getElementById('loop-reset').click()`);
+      await cdp.evaluate(`(() => { const l = document.getElementById('loop'); if (!l.checked) l.click(); })()`);
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('button[aria-label^="Record-arm"]').click()`);
+      await waitFor(`document.querySelectorAll('.th-btns button.r.on').length === 1`);
+      const key = (type) => cdp.evaluate(`window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: 'KeyZ', bubbles: true }))`);
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await key('keydown');
+      await new Promise((r) => setTimeout(r, 200));
+      await key('keyup');
+      await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 1`, 6000)
+        .catch(() => { throw new Error('the played note never reached the Bass lane — nothing to erase'); });
+      // takeItems keeps every item the pass captured; whatever removed one from
+      // the track mid-take used to be filed straight back into the take clip.
+      await cdp.evaluate(`document.querySelector('[data-tool="eraser"]').click()`);
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('.lane .note').click()`);
+      await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 0`, 2000)
+        .catch(() => { throw new Error('the Eraser did not remove the recorded note'); });
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const left = await notesIn('Bass');
+      if (left !== 0) throw new Error(`the erased note came back when the take ended: ${left} note(s) in Bass`);
+    });
+
+    step('Transport: Play while already playing schedules nothing more', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 60, 40);
+      await cdp.evaluate(`(() => {
+        window.__starts = 0;
+        const real = AudioScheduledSourceNode.prototype.start;
+        AudioScheduledSourceNode.prototype.start = function (...a) { window.__starts++; return real.apply(this, a); };
+      })()`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await new Promise((r) => setTimeout(r, 300));
+      const first = await cdp.evaluate(`window.__starts`);
+      if (!first) throw new Error('playing a song with a note in it should start at least one source');
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const second = await cdp.evaluate(`window.__starts`);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      if (second !== first) {
+        throw new Error(`a second Play while playing started ${second - first} more sources — the song would sound twice over`);
+      }
+    });
+
     for (const s of steps) await s();
   } finally {
     if (cdp) cdp.close();

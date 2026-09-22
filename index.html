@@ -1616,7 +1616,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.1.3';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3423,8 +3423,10 @@ let historyTimer = null;
 // a per-track setting missing from an undo snapshot silently survives an undo,
 // which is the same class of bug as one missing from a save.
 const sparseTrackMapsPayload = () => Object.fromEntries(SPARSE_TRACK_MAPS.map(k => [k, state[k]]));
+// timeSig rides along because `cols` does: undoing a meter change put the
+// length back but not the meter, leaving a song that was no longer whole bars.
 const snapshotSong = () => JSON.stringify({
-  tempo: state.tempo, cols: COLS, tracks: state.tracks, trackList: state.trackList,
+  tempo: state.tempo, cols: COLS, timeSig: state.timeSig, tracks: state.tracks, trackList: state.trackList,
   gains: state.gains, waveform: state.waveform, pan: state.pan, mute: state.mute, solo: state.solo,
   ...sparseTrackMapsPayload()
 });
@@ -3458,8 +3460,10 @@ function restoreSnapshot(s) {
     for (const t of state.trackList) ensureChannelNodes(t.id);
     applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
   }
+  dropStaleRecTrack();
   state.tempo = data.tempo;
   tempoInput.value = state.tempo;
+  if (data.timeSig) { restoreTimeSig(data); syncTimeSigUI(); }
   if (typeof data.cols === 'number' && data.cols >= 8) {
     COLS = data.cols;
     state.loopStart = Math.min(state.loopStart, COLS - 1);
@@ -3492,6 +3496,26 @@ function redo() {
 function updateHistoryButtons() {
   document.getElementById('undo-btn').disabled = undoStack.length === 0;
   document.getElementById('redo-btn').disabled = redoStack.length === 0;
+}
+// Loading a song or starting a new one is a new document, not an edit. The
+// snapshot only covers the tracks and their settings, so an undo across a load
+// used to put song A's parts under song B's name, meter, key and master bus.
+function resetHistory() {
+  clearTimeout(historyTimer);
+  historyTimer = null;
+  undoStack.length = 0;
+  redoStack.length = 0;
+  lastCommitted = snapshotSong();
+  updateHistoryButtons();
+}
+// An armed track that no longer exists keeps the keyboard in note mode and
+// files what is played into state.tracks under an id nothing draws. Removing
+// the track, undoing its creation and loading a song can all leave one behind.
+function dropStaleRecTrack() {
+  if (!state.recTrack || trackOf(state.recTrack)) return;
+  state.recTrack = null;
+  heldKeys.clear();
+  stepAnchor = null;
 }
 
 // ---------- Element refs / layout constants ----------
@@ -4491,6 +4515,7 @@ function removeTrack(id) {
   if (state.activeTrack === id) activateTrack((state.trackList[0] || { id: 'rhythm' }).id);
   if (state.selected && state.selected.track === id) state.selected = null;
   state.multiSelected.clear();
+  dropStaleRecTrack();
   render(); autosave();
 }
 
@@ -4941,9 +4966,10 @@ function renderVelocityRow(track, param) {
 function startVelocityDrag(e, track, item, lane, yToValue, spec) {
   e.preventDefault();
   e.stopPropagation();
+  // Rect before setActive(), which can rebuild the row and detach `lane`.
+  const rect = lane.getBoundingClientRect();
   setActive(track);
   state.selected = { track, item };
-  const rect = lane.getBoundingClientRect();
   const apply = (ev) => {
     // The table decides what storing a value means — including that a neutral
     // one is stored as *absent*, which is the contract every per-item default
@@ -6510,7 +6536,13 @@ function renderPitchTrack(track) {
     setActive(track);
     onCellClick(track, midi, col);
   });
-  rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+  rollEl.addEventListener('pointerdown', (e) => {
+    if (state.tool !== 'grab') return;
+    // Rect before setActive() — see the pen click handler for why.
+    const rect = rollEl.getBoundingClientRect();
+    setActive(track);
+    startMarquee(e, rect, track);
+  });
 
   trackNotes(track).forEach((note, idx) => {
     const midi = freqToMidi(note.freq);
@@ -6617,7 +6649,13 @@ function renderRhythmTrack(track) {
     setActive(track);
     onRhythmCellClick(track, row, col);
   });
-  rollEl.addEventListener('pointerdown', (e) => { if (state.tool !== 'grab') return; setActive(track); startMarquee(e, rollEl, track); });
+  rollEl.addEventListener('pointerdown', (e) => {
+    if (state.tool !== 'grab') return;
+    // Rect before setActive() — see the pen click handler for why.
+    const rect = rollEl.getBoundingClientRect();
+    setActive(track);
+    startMarquee(e, rect, track);
+  });
 
   for (const hit of trackNotes(track)) {
     const r = RHYTHM_ROWS.indexOf(hit.type);
@@ -7254,11 +7292,12 @@ function deleteItem(track, item) {
 }
 
 // ---------- Multi-select / marquee ----------
-function startMarquee(e, rollEl, track) {
+// Takes the lane's rect rather than the lane: the caller's setActive() can
+// replace the element, and a detached node's rect is all zeros.
+function startMarquee(e, rollRect, track) {
   e.preventDefault();
   interacting = true;
   const pointerId = e.pointerId;
-  const rollRect = rollEl.getBoundingClientRect();
   const startCol = Math.max(0, Math.min(COLS, Math.round((e.clientX - rollRect.left) / colPx)));
   let moved = false;
   const setRange = (a, b) => { state.marquee = { col0: Math.min(a, b), col1: Math.max(a, b), track }; scheduleRender(); };
@@ -8071,6 +8110,11 @@ function renderInspector() {
     notes.push(...newNotes);
     setTrackNotes(track, notes);
     for (const n of newNotes) previewNote(track, n);
+    // multiSelected belongs to the active track, and the inspector can be
+    // showing a note on another one — activateTrack() keeps state.selected
+    // across a switch. Without this, the next nudge filed these notes into the
+    // active track while their own track still held them.
+    activateTrack(track);
     state.multiSelected = new Set([note, ...newNotes]);
     state.selected = null;
     render();
@@ -8628,11 +8672,7 @@ function createNewSong(withStarterTracks, name) {
   applyTrackCrush();
   applyTrackTremolo();
   applyTrackEq();
-  state.masterEQ = { ...DEFAULT_MASTER_EQ };
-  state.masterComp = { ...DEFAULT_MASTER_COMP };
-  state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
-  state.sidechain = { ...DEFAULT_SIDECHAIN };
-  state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
+  resetMasterFx();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(state.masterCrush.amount);
   state.swing = DEFAULT_SWING;
@@ -8643,9 +8683,21 @@ function createNewSong(withStarterTracks, name) {
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
+  dropStaleRecTrack();
   render();
+  resetHistory();
   autosave();
   songsDialog.close();
+}
+// The master bus is song content, but most bundled songs predate it and carry
+// none of it — so a load has to start from neutral, or song A's sidechain,
+// compressor and downsampler play under song B.
+function resetMasterFx() {
+  state.masterEQ = { ...DEFAULT_MASTER_EQ };
+  state.masterComp = { ...DEFAULT_MASTER_COMP };
+  state.masterParallel = { ...DEFAULT_MASTER_PARALLEL };
+  state.sidechain = { ...DEFAULT_SIDECHAIN };
+  state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
 }
 document.getElementById('new-song-starter').addEventListener('click', () => {
   createNewSong(true, document.getElementById('new-song-name').value.trim() || 'Untitled Song');
@@ -8772,6 +8824,7 @@ function applySongData(data, name) {
   COLS = colsFromSaved(data, state.tracks);
   state.loopStart = 0; state.loopEnd = COLS;
   state.playhead = Math.min(state.playhead, COLS - 1); visualPlayhead = state.playhead;
+  resetMasterFx();
   applySavedMix(data);
   activateTrack(state.trackList[0] ? state.trackList[0].id : 'rhythm');
   syncMasterVolUI();
@@ -8792,7 +8845,9 @@ function applySongData(data, name) {
   state.selected = null;
   state.multiSelected.clear();
   updateLengthUI();
+  dropStaleRecTrack();
   render();
+  resetHistory();
   return true;
 }
 // Parses and applies a song file, shared by the native-picker path (above)
@@ -10271,7 +10326,24 @@ function previewHit(track, type, vel, pan) {
   } catch { /* audio unavailable */ }
 }
 function applyGains() {
-  for (const ch of ALL_TRACKS) if (chanGain[ch]) chanGain[ch].gain.value = audible(ch) ? state.gains[ch] : 0;
+  for (const ch of ALL_TRACKS) {
+    if (!chanGain[ch]) continue;
+    const curve = playing && (state.automation[ch] || {}).gain;
+    if (!curve || !curve.length) { chanGain[ch].gain.value = audible(ch) ? state.gains[ch] : 0; continue; }
+    // A volume curve's ramps for the rest of the chunk are already queued, and
+    // setting .value only inserts one event among them — a muted track faded
+    // straight back in on the next ramp. Take them back and redo the rest of
+    // the chunk from now instead.
+    const now = ctx.currentTime;
+    const eighthSec = 60 / state.tempo / 2;
+    if (audible(ch)) {
+      const nowCol = playStartCol + (now - playStartCtxTime) / eighthSec;
+      scheduleParamAutomation(chanGain[ch].gain, curve, state.gains[ch], now, eighthSec, nowCol, playChunkToCol);
+    } else {
+      chanGain[ch].gain.cancelScheduledValues(now);
+      chanGain[ch].gain.setValueAtTime(0, now);
+    }
+  }
 }
 function applyPan() {
   for (const ch of ALL_TRACKS) if (chanPan[ch]) chanPan[ch].pan.value = state.pan[ch];
@@ -10337,12 +10409,21 @@ function applyTrackFormant() {
 // rebuilt fresh each play session.
 function scheduleParamAutomation(audioParam, points, baseValue, startAt, eighthSec, fromCol, toCol) {
   if (!points || !points.length) return;
-  audioParam.cancelScheduledValues(startAt);
+  // Just after startAt, not at it: the previous chunk's closing ramp ends
+  // exactly at startAt, and cancelScheduledValues() removes events "greater
+  // than or equal to" its time — so cancelling at startAt would delete a ramp
+  // that is still running, 0.3s before it finishes.
+  audioParam.cancelScheduledValues(startAt + 1e-6);
   audioParam.setValueAtTime(automationValueAt(points, fromCol, baseValue), startAt);
   for (const p of points) {
     if (p.col <= fromCol || p.col >= toCol) continue;
     audioParam.linearRampToValueAtTime(p.value, startAt + (p.col - fromCol) * eighthSec);
   }
+  // Ramp on to the curve's value at the chunk's end. Stopping at the last point
+  // inside the chunk held that value to the boundary and the next chunk then
+  // jumped, so a fade longer than a chunk played as a staircase live while the
+  // one-chunk offline render got it right.
+  audioParam.linearRampToValueAtTime(automationValueAt(points, toCol, baseValue), startAt + (toCol - fromCol) * eighthSec);
 }
 function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
   for (const ch of ALL_TRACKS) {
@@ -11786,6 +11867,7 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
   }
 }
 let rafId = null, playStartCtxTime = 0, playStartCol = 0;
+let playChunkToCol = 0; // where the chunk loop() last scheduled ends — see applyGains()
 // Cap how much of the song gets scheduled in one synchronous burst. Without
 // this, "loop" defaulting to the full song range (or just pressing Play with
 // loop off) schedules every remaining note — for a long, dense song that can
@@ -11823,6 +11905,7 @@ function startPlaybackFrom(col) {
     playOnce(startAt, eighthSec, fromCol, toCol);
     playStartCtxTime = startAt;
     playStartCol = fromCol;
+    playChunkToCol = toCol;
     const chunkDur = Math.max(0.01, (toCol - fromCol) * eighthSec);
     const chunkEndAt = startAt + chunkDur;
     const delayMs = Math.max(0, (chunkEndAt - SCHEDULE_AHEAD_SEC - ctx.currentTime) * 1000);
@@ -12473,6 +12556,9 @@ function startRecording() {
     recording = true;
     syncRecordUI();
     document.body.classList.add('playing');
+    // Record pressed during playback: take back what is already queued, the
+    // way a seek does, or the pass plays over a second copy of the song.
+    if (playing) cancelScheduledVoices();
     startPlaybackFrom(state.playhead);
   }, (bar * eighthSec) * 1000);
 }
@@ -12495,7 +12581,11 @@ function startRecording() {
 // rather than deleted wherever a window survives to hide it in.
 function finishTake() {
   const track = state.recTrack;
-  const taken = [...takeItems];
+  // Only what the track still holds: a later lap that replaced a note, or the
+  // Eraser mid-take, removed it from the track but not from takeItems, and
+  // filing it back here resurrected it on top of its replacement.
+  const present = Array.isArray(state.tracks[track]) ? new Set(clipsOf(track).flatMap(c => c.notes)) : new Set();
+  const taken = [...takeItems].filter(it => present.has(it));
   takeItems = new Set();
   if (!track || !taken.length || !Array.isArray(state.tracks[track])) return;
   // The take spans the first to the last thing captured, which is the *tightest*
@@ -12560,6 +12650,9 @@ metronomeBtn.addEventListener('click', () => {
 syncMetronomeUI();
 
 document.getElementById('play').addEventListener('click', async () => {
+  // Already rolling: starting again would schedule a second copy on top of the
+  // chunk already queued (a double tap on the phone player's button did it).
+  if (playing) return;
   ensureCtx();
   if (ctx.state === 'suspended') ctx.resume();
   if (hardSyncPending && usesHardSync()) await hardSyncPending;

@@ -2579,3 +2579,59 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   icke-aktivt spår *på den klickade cellen*: `lane.click()` utan koordinater
   la ett tredje kick på kolumn 0 och antalet gick ett över. Spåret aktiveras
   från sin rubrik i stället.
+
+- [x] **Tio fynd ur en bredare genomgång med sju parallella granskare.**
+  Granskningen delade `index.html` i fem delar och tog `verify.js`, låtfilerna,
+  `help.html` och verktygen för sig; 57 fynd efter sammanslagning. De tio som
+  var verifierade i koden och hade lokala orsaker är fixade här; resten ligger
+  kvar som kandidater (klippöverlapp, pluck-slingans minsta fördröjning,
+  eko efter seek, inspelning vid loopens söm m.fl.).
+  - **Undo över en laddad låt gav en blandning av två låtar.** Laddning och Ny
+    låt tömde aldrig historiken, och snapshoten täcker bara spåren och deras
+    inställningar — inte namn, taktart, tonart eller masterbuss. Undo efter en
+    laddning satte låt A:s stämmor under låt B:s namn. `resetHistory()` körs
+    nu sist i `applySongData()` och `createNewSong()`. `timeSig` ligger i
+    snapshoten, eftersom `cols` gör det: att ångra ett taktbyte satte tillbaka
+    längden men inte taktarten, och låten var inte längre hela takter.
+  - **Master-FX följde med till nästa låt.** `applySavedMix()` skriver bara de
+    grupper filen har, och tolv av tjugo medföljande låtar har ingen alls —
+    Froggy Hop spelades med Rust Foundrys sidechain, kompressor och
+    downsampling. `resetMasterFx()` nollställer först, delad med Ny låt.
+  - **Ett armerat spår som försvann lämnade tangentbordet armerat.** Borttaget
+    spår, ångrat spår eller laddad låt: `state.recTrack` pekade på ett id som
+    inget ritar, M och siffrorna var skuggade, och det som spelades hamnade i
+    `state.tracks` under det id:t. `dropStaleRecTrack()` på alla tre vägarna.
+  - **Overdub återuppväckte noter.** `takeItems` får allt en tagning fångar,
+    men ingenting tog bort det som ett senare varv ersatte eller som raderades
+    mitt i tagningen — `finishTake()` lade tillbaka det ovanpå ersättaren.
+    Tagningen tar nu bara det spåret fortfarande håller.
+  - **Ackordknappen markerade noter i fel spår.** Inspektören visar den valda
+    noten även efter ett spårbyte, men `multiSelected` hör till det aktiva
+    spåret — nästa nudge lade samma not-objekt i två spår.
+    `addChordAbove()` aktiverar notens eget spår först.
+  - **Marquee och Vel-lanen mätte från en frånkopplad nod.** Samma bugg som
+    pennklicket redan rättat: `setActive()` bygger om raden, så en rect läst
+    efteråt är nollor. Vel-lanen satte då velocity till 10 %, pan helt vänster
+    eller bend −12 och committade det. Rect läses nu före aktiveringen på båda
+    ställena.
+  - **Automation spelades som en trappa live.** `scheduleParamAutomation()`
+    rampade bara till punkter *inuti* 8-taktsblocket, så en fade längre än ett
+    block stod still till gränsen och hoppade; offline-exporten, ett enda
+    block, var rätt. Nu rampar varje block till kurvans värde vid sitt slut —
+    och nästa block avbryter på `startAt + 1e-6` i stället för `startAt`,
+    eftersom `cancelScheduledValues` tar händelser *större än eller lika med*
+    tiden och annars raderade just den rampen 0,3 s innan den var klar.
+  - **Mute tystade inte ett spår med volymkurva.** `gain.value = 0` lägger
+    bara in en händelse bland de köade ramperna, som körde vidare uppåt.
+    `applyGains()` tar under uppspelning tillbaka ramperna och schemalägger
+    resten av blocket från nu, med `playChunkToCol` som nytt ankare.
+  - **Play under uppspelning dubblade ljudet.** Ett dubbeltryck på mobilens ▶
+    räckte. Play gör inget när det redan spelar; Record under uppspelning tar
+    tillbaka det köade först, som en seek gör.
+  **Nio nya verify-steg, elva injektioner en i taget, alla bet.** Två bet inte
+  vid första försöket — och det var viewporten, inte stegen: sviten körs i
+  750 px här, under 760-brytpunkten, så mobilspelaren döljer editorn och
+  *varje* rect är nollor, både den frånkopplade och den levande. Marquee- och
+  Vel-stegen körs nu på 1280 px med en kontroll att lanen faktiskt har en
+  position. Samma sak förklarar sannolikt en stor del av de 29 steg som
+  fallerar på den här maskinen — värt en egen omgång.
