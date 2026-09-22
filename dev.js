@@ -16,6 +16,12 @@ const server = spawn(process.execPath, [path.join(__dirname, 'dev-server.js')], 
   env: process.env,
 });
 server.on('error', (err) => { console.error('Could not start dev-server.js:', err.message); process.exit(1); });
+// The server dies at once if the port is taken — and the poll below would then
+// find whatever *else* is on that port and open the browser on it.
+server.on('exit', (code) => {
+  console.error(`dev-server.js exited${code ? ` (code ${code})` : ''} — is port ${PORT} already in use?`);
+  process.exit(code || 1);
+});
 
 function openBrowser() {
   const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start ""' : 'xdg-open';
@@ -35,5 +41,5 @@ function waitThenOpen(retriesLeft = 30) {
 }
 waitThenOpen();
 
-process.on('SIGINT', () => { server.kill(); process.exit(0); });
-process.on('SIGTERM', () => { server.kill(); process.exit(0); });
+process.on('SIGINT', () => { server.removeAllListeners('exit'); server.kill(); process.exit(0); });
+process.on('SIGTERM', () => { server.removeAllListeners('exit'); server.kill(); process.exit(0); });

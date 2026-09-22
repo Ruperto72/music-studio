@@ -99,6 +99,23 @@ function auditBundledSongs(repoRoot) {
   const DUTY_VALUES = constArray('DUTY_VALUES');
   const AUTOMATION_PARAMS = constArray('AUTOMATION_PARAMS');
   const SPARSE_TRACK_MAPS = constArray('SPARSE_TRACK_MAPS');
+  // Scalar limits the loader range-checks against, read the same way.
+  const constNumbers = (re, what) => {
+    const m = html.match(re);
+    if (!m) throw new Error(`could not read ${what} out of index.html — the audit would pass vacuously`);
+    return m.slice(1).map((s) => eval(s));
+  };
+  const [MIDI_MIN, MIDI_MAX] = constNumbers(/const MIDI_MIN = (\d+), MIDI_MAX = (\d+);/, 'MIDI_MIN/MIDI_MAX');
+  const [ARP_STEP_MIN, ARP_STEP_MAX] = constNumbers(/const ARP_STEP_MIN = ([\d./ ]+), ARP_STEP_MAX = ([\d./ ]+);/, 'ARP_STEP_MIN/MAX');
+  const [SYNC_SWEEP_MAX] = constNumbers(/const SYNC_SWEEP_MAX = ([\d.]+);/, 'SYNC_SWEEP_MAX');
+  const KIT_IDS = (() => {
+    const from = html.indexOf('const DRUM_KITS = {');
+    if (from < 0) throw new Error('could not find DRUM_KITS in index.html');
+    const src = html.slice(from, from + html.slice(from).indexOf('\n};'));
+    const ids = [...src.matchAll(/^  (\w+): \{$/gm)].map((m) => m[1]);
+    if (!ids.length) throw new Error('read no kits out of DRUM_KITS');
+    return ids;
+  })();
   const rangeSrc = html.match(/const AUTOMATION_RANGE = (\{.*?\});/);
   if (!rangeSrc) throw new Error('could not read AUTOMATION_RANGE out of index.html');
   const AUTOMATION_RANGE = eval('(' + rangeSrc[1] + ')');
@@ -135,7 +152,8 @@ function auditBundledSongs(repoRoot) {
     if (EFFECT_KEYS.length !== 9) throw new Error(`expected 9 TRACK_FX_REGISTRY entries, read ${EFFECT_KEYS.length}: ${EFFECT_KEYS.join(',')}`);
   }
 
-  const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty', 'harmonics'];
+  // sync and arpRate are read back for tonal tracks only, like the rest.
+  const TONAL_ONLY = ['adsr', 'filter', 'fm', 'vibrato', 'duty', 'harmonics', 'sync', 'arpRate'];
   const SEEDED_MAPS = ['gains', 'waveform', 'pan', 'mute', 'solo'];
   const REQUIRED_FIELDS = {
     adsr: ['attack', 'decay', 'sustain', 'release'],
@@ -181,6 +199,29 @@ function auditBundledSongs(repoRoot) {
         // — and it is what the inspector deliberately avoids writing.
         const unity = seq.filter((h) => h.vel === 1);
         if (unity.length) add(`${id}: ${unity.length} hit(s) store vel: 1, which means the same as leaving it off`);
+        // hitsConflict() never lets a user put two of one drum in one column;
+        // a file can, and they play at double level while drawing as one.
+        const seen = new Set();
+        const dup = seq.filter((h) => { const k = h.start + ':' + h.type; if (seen.has(k)) return true; seen.add(k); return false; });
+        if (dup.length) add(`${id}: ${dup.length} hit(s) stacked on an identical hit in the same column`);
+      } else {
+        const notes = seq.filter((n) => typeof n.freq === 'number' && n.freq > 0);
+        const midiOf = (f) => Math.round(69 + 12 * Math.log2(f / 440));
+        const outside = notes.filter((n) => midiOf(n.freq) < MIDI_MIN || midiOf(n.freq) > MIDI_MAX);
+        if (outside.length) add(`${id}: ${outside.length} note(s) outside the pitch range the lane can show (MIDI ${MIDI_MIN}-${MIDI_MAX})`);
+        // A bend is the target frequency in Hz. A small number is a semitone
+        // count written into it — it bends to a near-zero or negative pitch.
+        const semis = notes.filter((n) => typeof n.bend === 'number' && n.bend !== 0 && n.bend < 20);
+        if (semis.length) add(`${id}: ${semis.length} note(s) bend to ${[...new Set(semis.map((n) => n.bend))].join('/')} Hz — written as semitones?`);
+        // notesConflict(): same pitch, overlapping in time.
+        const sorted = [...notes].sort((a, b) => a.start - b.start);
+        let overlaps = 0;
+        for (let i = 0; i < sorted.length; i++) {
+          for (let j = i + 1; j < sorted.length && sorted[j].start < sorted[i].start + sorted[i].len - 1e-9; j++) {
+            if (sorted[j].freq === sorted[i].freq) overlaps++;
+          }
+        }
+        if (overlaps) add(`${id}: ${overlaps} pair(s) of same-pitch notes overlap — the editor would never let that be drawn`);
       }
       const past = seq.filter((n) => typeof n.start === 'number' && n.start >= cols);
       if (past.length) add(`${id}: ${past.length} item(s) start past the song end (cols ${cols})`);
@@ -212,6 +253,12 @@ function auditBundledSongs(repoRoot) {
           if (!isRhythm(id) && !WAVEFORMS.includes(v)) add(`waveform["${id}"] = "${v}", not a selectable waveform — dropped on load`);
         }
         if (key === 'pan' && (v < -1 || v > 1)) add(`pan["${id}"] = ${v}, outside -1..1`);
+        if (key === 'kit') {
+          if (!isRhythm(id)) add(`kit["${id}"] is on a tonal track — dropped on load`);
+          else if (!KIT_IDS.includes(v)) add(`kit["${id}"] = "${v}", not one of ${KIT_IDS.join('/')} — dropped on load`);
+        }
+        if (key === 'arpRate' && !(typeof v === 'number' && v >= ARP_STEP_MIN && v <= ARP_STEP_MAX)) add(`arpRate["${id}"] = ${v}, outside the range the loader keeps — dropped on load`);
+        if (key === 'sync' && !(v && typeof v.sweep === 'number' && v.sweep >= 0 && v.sweep <= SYNC_SWEEP_MAX)) add(`sync["${id}"] = ${JSON.stringify(v)}, outside 0..${SYNC_SWEEP_MAX} — dropped on load`);
       }
     }
 
@@ -448,13 +495,23 @@ async function main() {
   // to be chased with no evidence — the timing turns that into a line you can
   // read off the log. It is also the cheapest way to notice a step that has
   // quietly started waiting out a timeout instead of asserting something.
+  // A console error or page exception during a step fails *that* step. They
+  // used to be collected namelessly and printed at the end, so the step that
+  // caused one still reported ok.
+  let ran = 0;
   function step(name, fn) {
     steps.push(async () => {
       if (ONLY && !name.toLowerCase().includes(ONLY)) return;
+      ran++;
       const t0 = Date.now();
       const secs = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
-      try { await fn(); console.log(`  ok  [${secs()}] ${name}`); }
-      catch (e) { console.log(`FAIL  [${secs()}] ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
+      const before = errors.length;
+      try {
+        await fn();
+        const raised = errors.slice(before);
+        if (raised.length) throw new Error(`logged ${raised.length} error(s): ${raised[0]}`);
+        console.log(`  ok  [${secs()}] ${name}`);
+      } catch (e) { console.log(`FAIL  [${secs()}] ${name}: ${e.message}`); errors.push(`[${name}] ${e.message}`); }
     });
   }
 
@@ -490,7 +547,12 @@ async function main() {
       // resume() never takes and ctx.currentTime sits at 0 forever. Anything
       // that measures *when* something happened (the recording step) would then
       // see every event at time zero.
-      args: ['--autoplay-policy=no-user-gesture-required'],
+      // A desktop window. Chrome's headless default here is 750px, under the
+      // app's 760px breakpoint, so the phone player took over: the editor, the
+      // toolbar and the floating layer were display:none, every rect read
+      // zero, and about half the suite either timed out or asserted over
+      // nothing. The phone-layout steps set their own width.
+      args: ['--autoplay-policy=no-user-gesture-required', '--window-size=1280,900'],
     });
     cdp = await openPage(launched.httpBase);
     cdp.on('Runtime.consoleAPICalled', (p) => {
@@ -528,6 +590,10 @@ async function main() {
     // injected in that run, which means an audit run against a coupled suite
     // reports things that are not true.
     async function fresh() {
+      // What a previous step left in storage — an open palette, a saved song,
+      // a draft — is state this step did not set up. Cleared on the page that
+      // is still loaded (same origin), before leaving it.
+      await cdp.evaluate(`location.origin === ${JSON.stringify(APP_URL)} && localStorage.clear()`).catch(() => {});
       await goto(APP_URL);
       await waitFor(`document.querySelectorAll('.track').length >= 5`);
     }
@@ -922,8 +988,12 @@ async function main() {
       await fresh();
       const before = errors.length;
       await cdp.evaluate(`document.querySelector('#play').click()`);
+      // Actually playing: without this a Play button that did nothing passed.
+      await waitFor(`document.body.classList.contains('playing')`, 8000)
+        .catch(() => { throw new Error('Play did not start playback'); });
       await new Promise((r) => setTimeout(r, 1200));
-      await cdp.evaluate(`document.querySelector('#play').click()`);
+      // Stop, not a second Play: Play while playing is deliberately a no-op.
+      await cdp.evaluate(`document.querySelector('#stop').click()`);
       await new Promise((r) => setTimeout(r, 100));
       if (errors.length > before) throw new Error('errors occurred during playback');
     });
@@ -998,12 +1068,24 @@ async function main() {
       if (grids !== 0) throw new Error(`expected both palettes collapsed by default, ${grids} were open`);
       const collapsed = await cdp.evaluate(`Array.from(document.querySelectorAll('.palette-toggle')).every(b => b.getAttribute('aria-expanded') === 'false')`);
       if (!collapsed) throw new Error('collapsed palettes should report aria-expanded="false"');
-      // And the inspector now fits without scrolling on a small laptop.
-      const fits = await cdp.evaluate(`(() => {
-        const col = document.querySelector('.inspector-column');
-        return { content: document.querySelector('.inspector').scrollHeight, visible: col.clientHeight };
-      })()`);
-      if (fits.content > 620) throw new Error(`collapsed inspector should stay compact, measured ${fits.content}px`);
+      // And the inspector now fits without scrolling on a small laptop —
+      // measured against that screen rather than a fixed pixel count, which
+      // only ever passed because the suite's old 750px window hid the editor
+      // and every height read zero.
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+      try {
+        await new Promise((r) => setTimeout(r, 200));
+        const fits = await cdp.evaluate(`(() => {
+          const col = document.querySelector('.inspector-column');
+          return { content: document.querySelector('.inspector').scrollHeight, visible: col.clientHeight };
+        })()`);
+        if (!(fits.visible > 0)) throw new Error('the inspector column has no height — it is not on screen to measure');
+        if (fits.content > fits.visible) {
+          throw new Error(`collapsed inspector should fit a 1366x768 screen: ${fits.content}px of content in ${fits.visible}px`);
+        }
+      } finally {
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      }
     });
 
     step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
@@ -1088,6 +1170,10 @@ async function main() {
         return { count: document.querySelectorAll('.track.active .lane .note').length, rootKey: root ? ${rootKey}(root) : null };
       })()`);
       if (!before.rootKey) throw new Error('expected the just-placed note to be the selected root');
+      // The setup has to have reached the ceiling, or a maj chord adds its two
+      // tones like anywhere else and every check below passes untested.
+      const rootLabel = await cdp.evaluate(`document.querySelector('.track.active .lane .note.selected').getAttribute('aria-label')`);
+      if (!/^C7(,|$)/.test(rootLabel)) throw new Error(`the root should sit on the ceiling (C7, MIDI_MAX), it is "${rootLabel}"`);
       await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
       await openPalette('chord');
       await cdp.evaluate(`
@@ -1108,8 +1194,8 @@ async function main() {
       if (after.keys.filter((k) => k === before.rootKey).length !== 1) {
         throw new Error(`a chord button stacked a duplicate on the root's own pitch (${before.rootKey})`);
       }
-      if (after.count < before.count) {
-        throw new Error(`a chord button deleted an existing note (${before.count} -> ${after.count})`);
+      if (after.count !== before.count) {
+        throw new Error(`at the ceiling the chord button is a no-op, but the note count went ${before.count} -> ${after.count}`);
       }
     });
 
@@ -1118,6 +1204,9 @@ async function main() {
       // The other chord steps only exercise `maj` (two tones). A seventh is the
       // three-tone shape, and the power chord the one-tone shape, so check the
       // table is fully wired and that a longer interval list lands correctly.
+      // Opened here: it used to pass only because an earlier step left the
+      // palette open in localStorage, and fresh() clears that now.
+      await openPalette('chord');
       const labels = await cdp.evaluate(`Array.from(document.querySelectorAll('.preset-grid button[data-chord]')).map(b => b.dataset.chord)`);
       const expected = ['5', 'maj', 'min', 'dim', 'aug', 'sus2', 'sus4', '7', 'maj7', 'm7'];
       if (labels.join(',') !== expected.join(',')) {
@@ -1310,7 +1399,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 200));
       const afterRepeat = await cdp.evaluate(countHits);
       if (afterRepeat !== start + 2) {
-        throw new Error(`re-placing the same hit type stacked a duplicate (${afterSecond} -> ${afterRepeat})`);
+        throw new Error(`re-placing the same hit type stacked a duplicate (${start + 2} -> ${afterRepeat})`);
       }
 
       // Same rule on drop: dragging a hit into an occupied column must displace
@@ -1884,8 +1973,9 @@ async function main() {
       if (labelled.total === 0) throw new Error('expected a populated grid to check');
       if (labelled.named !== labelled.total) throw new Error(`${labelled.total - labelled.named} grid items have no accessible name`);
       if (!labelled.lanesNamed) throw new Error('every lane needs an accessible name');
-      // Roving tabindex: the grid must not put hundreds of stops in Tab order.
-      if (labelled.tabStops > 1) throw new Error(`expected at most one grid tab stop, got ${labelled.tabStops}`);
+      // Roving tabindex: exactly one stop. Not "at most one" — zero means the
+      // grid cannot be reached with Tab at all, and that passed.
+      if (labelled.tabStops !== 1) throw new Error(`expected exactly one grid tab stop, got ${labelled.tabStops}`);
 
       // Stateful controls have to say what state they are in, or a screen
       // reader user cannot tell which tool is active or which track is muted.
@@ -2059,9 +2149,12 @@ async function main() {
       await cdp.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
       await waitFor(`document.getElementById('pattern-dialog').open`);
       const reggae = await insertAndRead('Reggae (one drop)');
-      const onOne = reggae.labels.filter((l) => /^Kick, bar [123] beat 1$/.test(l));
+      // Not anchored at the end: an accented kick's label goes on with its
+      // velocity ("…beat 1, velocity 60%"), which a `$` never matched — so a
+      // kick on one was invisible to this check.
+      const onOne = reggae.labels.filter((l) => /^Kick, bar [123] beat 1(,|$)/.test(l));
       if (onOne.length) throw new Error(`the one drop leaves beat 1 empty, found ${onOne.length} kick(s) there`);
-      if (!reggae.labels.some((l) => /^Kick, bar 1 beat 3$/.test(l))) {
+      if (!reggae.labels.some((l) => /^Kick, bar 1 beat 3(,|$)/.test(l))) {
         throw new Error('the one drop puts its kick on beat 3');
       }
 
@@ -2129,10 +2222,13 @@ async function main() {
         }
       }
       // Two pieces on opposite sides, so this can't pass with everything nudged
-      // one way — the shaker is left where the hi-hat is right.
-      const shaker = new Set(panOf(flat.labels, 'Shaker'));
-      if (shaker.size && !/^pan L/.test([...shaker][0])) {
-        throw new Error(`the shaker should sit left of centre, got ${JSON.stringify([...shaker])}`);
+      // one way — the crash is left where the hi-hat is right. The crash, off
+      // the fill version of Rock, not the shaker this used to check: Rock has
+      // no shaker, so the check was skipped on every run, and the flat groove
+      // has nothing on the left at all.
+      const crash = new Set(panOf(rock.labels, 'Crash'));
+      if (crash.size !== 1 || !/^pan L/.test([...crash][0])) {
+        throw new Error(`the crash should sit left of centre, got ${JSON.stringify([...crash])}`);
       }
 
       // And the toggle really turns it off — same pattern, everything centred.
@@ -2173,22 +2269,27 @@ async function main() {
       // previous song left in a sparse per-track map survives on every track id
       // the two share — and every song has a `rhythm`. Neon Cathedral is the
       // one example that uses the FX panel, so it is the one that leaks.
-      await goto(APP_URL);
-      await waitFor(`!!document.querySelector('.track')`);
-      await loadExample('Neon Cathedral');
-      const dirty = await draft();
-      if (!Object.keys(dirty.comp || {}).length || !Object.keys(dirty.filter || {}).length) {
-        throw new Error('Neon Cathedral should carry per-track comp and filter settings — the check below proves nothing without them');
-      }
-      await loadExample('Techno');
-      const after = await draft();
-      const file = await cdp.evaluate(`fetch('songs/techno.json').then(r => r.json())`);
-      const maps = ['automation', 'adsr', 'filter', 'fm', 'fxSend', 'comp', 'crush', 'tremolo', 'vibrato', 'duty', 'eq', 'activeFx', 'harmonics'];
-      for (const k of maps) {
-        const got = Object.keys(after[k] || {}).sort();
-        const want = Object.keys(file[k] || {}).sort();
-        if (got.join(',') !== want.join(',')) {
-          throw new Error(`state.${k} after loading Techno is ${JSON.stringify(got)}, the file says ${JSON.stringify(want)}`);
+      // The maps come from index.html's own SPARSE_TRACK_MAPS: a hand-written
+      // copy here had already fallen behind (no kit, sync, arpRate or formant),
+      // which is the drift that list exists to stop.
+      const maps = eval(fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8').match(/const SPARSE_TRACK_MAPS = (\[[^\]]*\]);/)[1]);
+      // Two sources between them cover comp/filter (Neon Cathedral) and the SID
+      // settings plus a non-default kit (Rasterline).
+      for (const [source, needs] of [['Neon Cathedral', ['comp', 'filter']], ['Rasterline', ['kit', 'sync', 'arpRate']]]) {
+        await fresh();
+        await loadExample(source);
+        const dirty = await draft();
+        const missing = needs.filter((k) => !Object.keys(dirty[k] || {}).length);
+        if (missing.length) throw new Error(`${source} should carry ${missing.join('/')} — the check below proves nothing without them`);
+        await loadExample('Techno');
+        const after = await draft();
+        const file = await cdp.evaluate(`fetch('songs/techno.json').then(r => r.json())`);
+        for (const k of maps) {
+          const got = Object.keys(after[k] || {}).sort();
+          const want = Object.keys(file[k] || {}).sort();
+          if (got.join(',') !== want.join(',')) {
+            throw new Error(`state.${k} after ${source} then Techno is ${JSON.stringify(got)}, the file says ${JSON.stringify(want)}`);
+          }
         }
       }
     });
@@ -2341,7 +2442,8 @@ async function main() {
       await cdp.evaluate(`document.getElementById('export-box-copy').click()`);
       await waitFor(`document.getElementById('export-box-copy').textContent === 'Copied!'`, 2000);
       const clipboardText = await cdp.evaluate(`navigator.clipboard.readText().catch(() => null)`);
-      if (clipboardText !== null && clipboardText !== code) {
+      // Windows hands clipboard text back with CRLF line ends.
+      if (clipboardText !== null && clipboardText.replace(/\r\n/g, '\n') !== code) {
         throw new Error(`clipboard should hold the exported code, got: ${String(clipboardText).slice(0, 80)}...`);
       }
       await cdp.evaluate(`document.getElementById('export-box-close').click()`);
@@ -2895,8 +2997,7 @@ async function main() {
       const collect = async () => {
         await goto(APP_URL);
         await waitFor(`!!(${RHYTHM_LANE})`);
-        // Place a hit and audition it — that builds the noise buffers — and
-        // give a note a Reverb flag so the convolver gets its impulse.
+        // Place hits and audition them — that builds the noise buffers.
         await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
         // Row 1 is the snare (short noise buffer) and row 8 the crash (long
         // one); the kick on row 0 is a pure oscillator and would build neither.
@@ -2925,7 +3026,9 @@ async function main() {
         return cdp.evaluate(`JSON.parse(JSON.stringify(window.__bufSums))`);
       };
       const first = await collect();
-      if (!first.noise) throw new Error(`no drum noise buffer was captured: ${JSON.stringify(first)}`);
+      // Both, since a crash was placed: with only one captured, the other was
+      // never compared and could be unseeded without this step noticing.
+      if (!first.noise || !first.crashNoise) throw new Error(`both drum noise buffers should be captured, got ${JSON.stringify(first)}`);
       const second = await collect();
       for (const key of Object.keys(first)) {
         if (first[key] !== second[key]) {
@@ -3502,8 +3605,20 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 300));
       await cdp.evaluate(`window.__freqMod = []`);
-      await cdp.evaluate(`document.querySelector('.lane .note')?.click()`);
+      // Counted, so "nothing connected" can't be satisfied by nothing having
+      // played: the note has to exist and its click has to audition it.
+      await cdp.evaluate(`(() => {
+        window.__previewStarts = 0;
+        if (!window.__startsPatched) {
+          window.__startsPatched = true;
+          const real = AudioScheduledSourceNode.prototype.start;
+          AudioScheduledSourceNode.prototype.start = function (...a) { window.__previewStarts++; return real.apply(this, a); };
+        }
+      })()`);
+      if (!await cdp.evaluate(`!!document.querySelector('.lane .note')`)) throw new Error('no note to audition at depth 0');
+      await cdp.evaluate(`document.querySelector('.lane .note').click()`);
       await new Promise((r) => setTimeout(r, 600));
+      if (!(await cdp.evaluate(`window.__previewStarts`) > 0)) throw new Error('clicking the note auditioned nothing, so depth 0 went untested');
       const off = await cdp.evaluate(`window.__freqMod.slice()`);
       if (off.length !== 0) {
         throw new Error(`depth 0 should connect no vibrato LFO at all, saw ${JSON.stringify(off)}`);
@@ -3775,6 +3890,9 @@ async function main() {
       await new Promise((r) => setTimeout(r, 600));
       await cdp.evaluate(`document.querySelector('#stop').click()`);
       const after = await cdp.evaluate(`window.__sendWrites.slice()`);
+      // The replay has to have scheduled something, or "no 0.9 written" is
+      // what a Play that did nothing would also produce.
+      if (!after.length) throw new Error('the second playback wrote no AudioParam values at all — nothing was checked');
       if (has90(after)) {
         throw new Error(`a bypassed Delay send must not be re-armed by its own automation curve, saw ${JSON.stringify(after)}`);
       }
@@ -4839,6 +4957,9 @@ async function main() {
       await run('timing-humanize', '1', 'timing-amount');
       const scattered = await starts();
       if (scattered.length !== 4) throw new Error(`humanize should not lose notes, got ${JSON.stringify(scattered)}`);
+      // Without an error to correct, the 0% and 50% checks below hold for any
+      // quantize at all, including one that ignores its strength.
+      if (!(err(scattered) > 0)) throw new Error(`humanize at full amount moved nothing: ${JSON.stringify(scattered)}`);
 
       // Strength 0 is the sharp end: a quantize that ignores its strength
       // would snap everything here, and nothing else in this step would notice.
@@ -4868,33 +4989,41 @@ async function main() {
         throw new Error(`quantize at 100% should land every note on the grid: ${JSON.stringify(full)}`);
       }
 
-      // Quantizing a run at one pitch collapses it onto a single column, and
-      // two notes at the same pitch and column is a duplicate the app never
-      // allows anywhere else. Four notes were placed at four pitches above, so
-      // stack a same-pitch run and check it merges instead.
-      await cdp.evaluate(`(() => {
-        const lane = document.querySelector('.track[data-kind="pitch"] .lane');
-        const r = lane.getBoundingClientRect();
-        // Same row, three adjacent grid steps.
-        for (let i = 0; i < 3; i++) {
-          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 420 + i * 24, clientY: r.top + 60 }));
-        }
-      })()`);
-      await new Promise((r) => setTimeout(r, 400));
-      await run('timing-quantize', '1', 'timing-strength');
-      const merged = await cdp.evaluate(`(() => {
+      // Quantizing two same-pitch notes onto one grid line is a collision the
+      // app never allows anywhere else, so it must merge them. The notes this
+      // used to place sat on separate grid lines already, so quantize never
+      // moved them together and the check could not fail. Here: two short
+      // notes placed off-grid (Free) at 20.0 and 20.5, then quantized on a
+      // 1/4 grid, where both land on 20.
+      const setGridTo = (v) => cdp.evaluate(`(() => { const g = document.getElementById('grid-select'); g.value = '${v}'; g.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      // With the dialog closed: it is modal, and the lane behind it is inert.
+      await cdp.evaluate(`document.getElementById('timing-close').click()`);
+      await setGridTo('1/16T');
+      await setGridTo('free');
+      // Re-queried per click: each placement re-renders and replaces the lane.
+      for (const col of [20.05, 20.55]) {
+        await cdp.evaluate(`(() => {
+          const lane = document.querySelector('.track[data-kind="pitch"] .lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + ${col} * r.width / 64, clientY: r.top + 200 }));
+        })()`);
+      }
+      await new Promise((r) => setTimeout(r, 700));
+      const sameRow = `(() => {
         const k = Object.keys(localStorage).find(k => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
-        const seen = new Set(); let dupes = 0;
-        for (const n of window.__savedNotes(d, id)) {
-          const key = n.start + '@' + n.freq;
-          if (seen.has(key)) dupes++;
-          seen.add(key);
-        }
-        return dupes;
-      })()`);
-      if (merged) throw new Error(`quantize left ${merged} notes stacked at the same pitch and column`);
+        const notes = window.__savedNotes(d, id).filter(n => n.start >= 19 && n.start < 22);
+        return { n: notes.length, freqs: [...new Set(notes.map(n => n.freq))].length, starts: notes.map(n => n.start) };
+      })()`;
+      const placed = await cdp.evaluate(sameRow);
+      if (placed.n !== 2 || placed.freqs !== 1) throw new Error(`the setup should place two notes of one pitch near column 20, got ${JSON.stringify(placed)}`);
+      await setGridTo('1/4');
+      await openTiming();
+      await run('timing-quantize', '1', 'timing-strength');
+      await new Promise((r) => setTimeout(r, 400));
+      const merged = await cdp.evaluate(sameRow);
+      if (merged.n !== 1) throw new Error(`quantize put two notes of one pitch on one column and kept both: ${JSON.stringify(merged)}`);
 
       await cdp.evaluate(`document.getElementById('timing-close').click()`);
       await goto(APP_URL);
@@ -5118,7 +5247,9 @@ async function main() {
       const notes = (await savedItems(2)).map(n => ({ freq: Math.round(n.freq), vel: n.vel })).sort((a, b) => a.freq - b.freq);
       // 127 -> 1, and 51/127 = 0.401… -> 0.40 on the sliders' own 0.05 step.
       if (notes.length !== 2) throw new Error(`expected two recorded notes, got ${JSON.stringify(notes)}`);
-      if (notes[0].vel !== 1) throw new Error(`velocity 127 should land at full level, got ${JSON.stringify(notes[0])}`);
+      // Full may be stored as absent — the rule every other per-item default
+      // keeps — so this must not pin the explicit 1.
+      if ((notes[0].vel ?? 1) !== 1) throw new Error(`velocity 127 should land at full level, got ${JSON.stringify(notes[0])}`);
       if (Math.abs(notes[1].vel - 0.4) > 1e-9) {
         throw new Error(`velocity 51 should map to 0.40 (the Velocity slider's own step), got ${JSON.stringify(notes[1])}`);
       }
@@ -5328,6 +5459,17 @@ async function main() {
         const h = window.__savedNotes(d, id)[0];
         return h && Math.abs(h.vel - 0.45) < 1e-6;
       })()`, 4000);
+      // And back at full the property goes. This is the half the comment above
+      // promised and nothing checked: a regression that saved `vel: 1` on a
+      // reset passed.
+      await cdp.evaluate(`(() => { const s = document.querySelector('.inspector input[type=range]'); s.value = 1; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      const savedHit = `(() => {
+        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const d = JSON.parse(localStorage.getItem(k));
+        return window.__savedNotes(d, d.trackList.find(t => t.kind === 'rhythm').id)[0];
+      })()`;
+      await waitFor(`(() => { const h = ${savedHit}; return h && !('vel' in h); })()`, 4000)
+        .catch(async () => { throw new Error(`back at full velocity the hit should carry no vel at all, saved ${JSON.stringify(await cdp.evaluate(savedHit))}`); });
 
       // A single selected hit must nudge — this path used to assume a tonal
       // note and would have read len/freq off a hit.
@@ -8992,6 +9134,476 @@ async function main() {
       if (left !== 0) throw new Error(`the erased note came back when the take ended: ${left} note(s) in Bass`);
     });
 
+    step('Pluck: a note rings at the pitch it is written at', async () => {
+      await fresh();
+      // The Karplus-Strong loop used to be a DelayNode inside a feedback cycle,
+      // which Chromium lengthens by one render quantum: 110Hz rang at 84.5Hz,
+      // 440Hz at 200Hz. The level checks never noticed — only pitch shows it.
+      await cdp.evaluate(`(() => {
+        window.__pluckPitch = null;
+        const orig = OfflineAudioContext.prototype.startRendering;
+        OfflineAudioContext.prototype.startRendering = function () {
+          return orig.call(this).then((buf) => {
+            const d = buf.getChannelData(0), sr = buf.sampleRate;
+            let on = 0; while (on < d.length && Math.abs(d[on]) < 1e-3) on++;
+            const x = d.slice(on + Math.round(sr * 0.03), on + Math.round(sr * 0.13));
+            let best = -Infinity, lag = 0;
+            for (let L = Math.floor(sr / 2000); L < sr / 50; L++) {
+              let acc = 0; for (let i = 0; i + L < x.length; i++) acc += x[i] * x[i + L];
+              if (acc > best) { best = acc; lag = L; }
+            }
+            window.__pluckPitch = sr / lag;
+            return buf;
+          });
+        };
+      })()`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Near the top of the Lead lane: a high note, which is where the loop's
+      // floor had collapsed every pitch onto one.
+      await penAt('Lead', 40, 12);
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 1`);
+      await cdp.evaluate(`${trackRow('Lead')}.querySelector('.th-osc-trigger').click()`);
+      await waitFor(`!!document.querySelector('.th-osc-menu')`);
+      await cdp.evaluate(`document.querySelector('.th-osc-menu button[data-value="pluck"]').click()`);
+      await new Promise((r) => setTimeout(r, 700));
+      const d = await draft();
+      const freq = await cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        return window.__savedNotes(d, 'lead')[0].freq;
+      })()`);
+      if (!d || !(freq > 0)) throw new Error('no Lead note in the saved song to measure');
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('export-wav').click()`);
+      await waitFor(`window.__pluckPitch !== null`, 90000);
+      const measured = await cdp.evaluate(`window.__pluckPitch`);
+      const cents = 1200 * Math.log2(measured / freq);
+      if (Math.abs(cents) > 30) {
+        throw new Error(`a pluck note written at ${freq.toFixed(1)}Hz rings at ${measured.toFixed(1)}Hz (${cents.toFixed(0)} cents off)`);
+      }
+    });
+
+    // A song built from data rather than gestures, for states the UI takes a
+    // long way round to reach (clips, off-grid lengths, out-of-range values a
+    // bundled file carries). Loaded through the Songs dialog's local list, the
+    // same path a saved song takes.
+    const songData = (extra = {}) => ({
+      songName: 'Probe', tempo: 120, cols: 32,
+      trackList: [
+        { id: 'lead', name: 'Lead', color: '#33ccff', kind: 'tone' },
+        { id: 'bass', name: 'Bass', color: '#ff9933', kind: 'tone' },
+        { id: 'rhythm', name: 'Rhythm', color: '#888888', kind: 'rhythm' },
+      ],
+      tracks: { lead: [], bass: [], rhythm: [] },
+      gains: { lead: 0.9, bass: 1, rhythm: 1.2 },
+      waveform: { lead: 'square', bass: 'triangle', rhythm: 'kit' },
+      pan: { lead: 0, bass: 0, rhythm: 0 }, mute: {}, solo: {},
+      ...extra,
+    });
+    const note = (start, len, freq, more = {}) => ({ start, len, freq, vel: 1, ...more });
+    const loadSong = async (name, data) => {
+      await cdp.evaluate(`localStorage.setItem('music-studio-songs', JSON.stringify({ ${JSON.stringify(name)}: { data: ${JSON.stringify({ ...data, songName: name })}, savedAt: Date.now() } }))`);
+      await loadExample(name);
+    };
+    const savedNotes = (id) => cdp.evaluate(`(() => {
+      const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+      return window.__savedNotes(d, ${JSON.stringify(id)});
+    })()`);
+    const setGrid = (value) => cdp.evaluate(`(() => { const g = document.getElementById('grid-select');
+      g.value = ${JSON.stringify(value)}; g.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    const pressKey = (key, code = key) => cdp.evaluate(
+      `window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, code: ${JSON.stringify(code)}, bubbles: true }))`);
+    // A short, fast loop so a take runs in seconds — the overdub step's setup.
+    const shortFastLoop = async (bars, { loop = true } = {}) => {
+      await cdp.evaluate(`(() => { const t = document.getElementById('tempo'); t.value = 240; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await cdp.evaluate(`(() => {
+        const minus = document.getElementById('len-minus');
+        for (let i = 0; i < 64 && !/^${bars} bars?/.test(document.getElementById('len-bars').textContent); i++) minus.click();
+      })()`);
+      await waitFor(`/^${bars} bars?/.test(document.getElementById('len-bars').textContent)`);
+      await cdp.evaluate(`document.getElementById('loop-reset').click()`);
+      await cdp.evaluate(`(() => { const l = document.getElementById('loop'); if (l.checked !== ${loop}) l.click(); })()`);
+    };
+    const tapKey = async (code) => {
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: ${JSON.stringify(code)}, bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 120));
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keyup', { code: ${JSON.stringify(code)}, bubbles: true }))`);
+    };
+
+    step('Clips: a note drawn just before a clip gets a window that stops where the clip starts', async () => {
+      await fresh();
+      await loadSong('ClipGap', songData({
+        tracks: {
+          lead: [
+            { start: 0, len: 4, notes: [note(1, 1, 440)] },
+            { start: 8, len: 8, notes: [note(8, 0.5, 440), note(8.5, 0.5, 440), note(12, 1, 440)] },
+          ],
+          bass: [], rhythm: [],
+        },
+      }));
+      // A new note is two eighths long (1/4), and Free lets it start off the
+      // grid — at 7.2 on a snapped 1/4 grid it would land on 8, inside the clip.
+      await setGrid('1/4');
+      await setGrid('free');
+      const lanePx = await cdp.evaluate(`${trackRow('Lead')}.querySelector('.lane').getBoundingClientRect().width`);
+      const colPx = lanePx / 32;
+      // Starting just after column 7 and two long: rounded out to whole columns
+      // its window was [7, 10), reaching into the clip at 8.
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', Math.round(colPx * 7.2), 30);
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 5`)
+        .catch(async () => { throw new Error(`the new note should join the four there, the lane shows ${await notesIn('Lead')}`); });
+      const blocks = await cdp.evaluate(`[...${trackRow('Lead')}.querySelectorAll('.lane .clip')]
+        .map(c => { const r = c.getBoundingClientRect(); return [r.left, r.right]; }).sort((a, b) => a[0] - b[0])`);
+      for (let i = 1; i < blocks.length; i++) {
+        if (blocks[i][0] < blocks[i - 1][1] - 1) {
+          throw new Error(`two clip windows overlap (${JSON.stringify(blocks.map(b => b.map(Math.round)))}) — the next split or trim would hide the notes they share`);
+        }
+      }
+    });
+
+    step('Recording: moving the arm mid-take keeps each track\'s notes on that track', async () => {
+      await fresh();
+      await shortFastLoop(2);
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('button[aria-label^="Record-arm"]').click()`);
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      // Held through the switch: its key comes up after Lead is armed, and it
+      // used to be committed to Lead — the track armed at release, not the one
+      // it was played on.
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyZ', bubbles: true }))`);
+      await new Promise((r) => setTimeout(r, 150));
+      await cdp.evaluate(`${trackRow('Lead')}.querySelector('button[aria-label^="Record-arm"]').click()`);
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyZ', bubbles: true }))`);
+      await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 1`, 6000)
+        .catch(async () => { throw new Error(`the note held through the switch belongs to Bass; Bass shows ${await notesIn('Bass')}, Lead ${await notesIn('Lead')}`); });
+      await tapKey('KeyX');
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length >= 1`, 6000);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const [lead, bass] = [(await savedNotes('lead')).length, (await savedNotes('bass')).length];
+      if (lead !== 1 || bass !== 1) {
+        throw new Error(`one note was played on each track; the saved song has Lead ${lead}, Bass ${bass} — the take was filed into whichever track was armed at Stop`);
+      }
+    });
+
+    step('Recording: a note played just before the loop seam lands before the seam, not on beat one', async () => {
+      await fresh();
+      await shortFastLoop(2);
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('button[aria-label^="Record-arm"]').click()`);
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      // The next lap is scheduled 0.3s early (2.4 eighths at 240 BPM) and used
+      // to re-anchor the clock right then, so the playhead jumped back before
+      // the seam and anything played in that stretch was filed before it.
+      const colNow = `(() => {
+        const lane = ${trackRow('Bass')}.querySelector('.lane').getBoundingClientRect();
+        const ph = document.querySelector('.playhead').getBoundingClientRect();
+        return (ph.left - lane.left) / (lane.width / 16);
+      })()`;
+      // 15: past where the early jump lands at either 120 or 240 BPM (13.6 and
+      // 14.8), so without the fix the playhead never gets here.
+      await waitFor(`${colNow} > 15`, 8000)
+        .catch(() => { throw new Error('the playhead never reached the last eighth before the seam — it jumps back early'); });
+      await tapKey('KeyZ');
+      await new Promise((r) => setTimeout(r, 400));
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const notes = await savedNotes('bass');
+      if (notes.length !== 1 || !(notes[0].start > 12)) {
+        throw new Error(`a note played in the lap's last eighths should start there, got ${JSON.stringify(notes.map(n => n.start))}`);
+      }
+    });
+
+    step('Recording: a take that runs off the end of the song finishes like Stop', async () => {
+      await fresh();
+      await shortFastLoop(1, { loop: false });
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('button[aria-label^="Record-arm"]').click()`);
+      await cdp.evaluate(`document.getElementById('record-btn').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await tapKey('KeyZ');
+      await waitFor(`!document.body.classList.contains('playing')`, 8000)
+        .catch(() => { throw new Error('a one-bar song with Loop off should stop at its end'); });
+      await new Promise((r) => setTimeout(r, 400));
+      const pressed = await cdp.evaluate(`document.getElementById('record-btn').getAttribute('aria-pressed')`);
+      if (pressed !== 'false') throw new Error('the song ended but Record is still down — the take never finished');
+      if ((await savedNotes('bass')).length !== 1) throw new Error('the played note should be in the saved song once the take has finished');
+    });
+
+    step('Transpose: moving part of a chord onto another chord tone leaves that tone alone', async () => {
+      await withSelectedNote();
+      await openPalette('chord');
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj"]').click()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      // The middle tone alone, then up three semitones — onto the fifth.
+      await cdp.evaluate(`(() => {
+        const notes = [...document.querySelectorAll('.track.active .lane .note')]
+          .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+        notes[1].click();
+      })()`);
+      await waitFor(`!!document.querySelector('.track.active .lane .note.selected')`);
+      await cdp.evaluate(`document.getElementById('transpose-btn').click()`);
+      await waitFor(`document.getElementById('transpose-dialog').open`);
+      for (let i = 0; i < 3; i++) {
+        await cdp.evaluate(`document.getElementById('transpose-semi-up').click()`);
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      await cdp.evaluate(`document.getElementById('transpose-close').click()`);
+      const left = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
+      if (left !== 3) throw new Error(`the chord had three tones and ${left} are left: the moved note deleted the one it landed on`);
+    });
+
+    step('Length: changing the meter never shortens the song under its notes', async () => {
+      await fresh();
+      const opt = await cdp.evaluate(`[...document.getElementById('time-sig').options].some(o => o.value === '5/4')`);
+      if (!opt) throw new Error('no 5/4 in the meter picker to test with');
+      // 8 bars of 4/4 is 64 eighths; in 5/4 that is 6.4 bars, which rounded to
+      // 6 (60 eighths) and left the last four outside the song.
+      await cdp.evaluate(`(() => { const s = document.getElementById('time-sig'); s.value = '5/4'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await new Promise((r) => setTimeout(r, 200));
+      const bars = await cdp.evaluate(`document.getElementById('len-bars').textContent`);
+      if (!/^7 bars/.test(bars)) throw new Error(`64 eighths in 5/4 need 7 bars to keep them all, the length shows "${bars}"`);
+    });
+
+    step('Grab: touching the resize handle of a note shorter than the grid does not grow it into its neighbour', async () => {
+      await fresh();
+      await loadSong('ShortNotes', songData({ tracks: { lead: [note(0, 0.5, 440), note(0.5, 0.5, 440)], bass: [], rhythm: [] } }));
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await activateByName('Lead');
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note .handle').length === 2`);
+      await cdp.evaluate(`(() => {
+        const h = [...${trackRow('Lead')}.querySelectorAll('.lane .note')]
+          .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)[0].querySelector('.handle');
+        const r = h.getBoundingClientRect();
+        const at = (type, dx, target) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, button: 0, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 }));
+        at('pointerdown', 0, h); at('pointermove', 2, window); at('pointerup', 2, window);
+      })()`);
+      await new Promise((r) => setTimeout(r, 700));
+      const notes = (await savedNotes('lead')).sort((a, b) => a.start - b.start);
+      if (notes.length !== 2) throw new Error(`two notes expected, the song has ${notes.length}`);
+      if (notes[0].start + notes[0].len > notes[1].start + 1e-6) {
+        throw new Error(`the first note now runs to ${notes[0].start + notes[0].len}, over the next one of the same pitch at ${notes[1].start}`);
+      }
+    });
+
+    step('MIDI import: a re-struck note keeps both notes, and doubled kicks land as one', async () => {
+      await fresh();
+      // Format 0, 480 per quarter. A4 struck at 0 and again at 480 before the
+      // first note-off, then two offs — legal SMF. Plus GM 35 and 36 (both the
+      // kit's kick) on one tick.
+      const vlq = (n) => { const out = [n & 0x7f]; while ((n >>= 7)) out.unshift((n & 0x7f) | 0x80); return out; };
+      const ev = [];
+      const at = (dt, ...bytes) => ev.push(...vlq(dt), ...bytes);
+      at(0, 0x90, 69, 100); at(0, 0x99, 35, 100); at(0, 0x99, 36, 100);
+      at(60, 0x89, 35, 0); at(0, 0x89, 36, 0);
+      at(420, 0x90, 69, 100); at(0, 0x80, 69, 0);
+      at(480, 0x80, 69, 0);
+      at(0, 0xff, 0x2f, 0x00);
+      const trk = Buffer.from([0x4d, 0x54, 0x72, 0x6b, 0, 0, (ev.length >> 8) & 255, ev.length & 255, ...ev]);
+      const hdr = Buffer.from([0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xe0]);
+      const file = path.join(fs.mkdtempSync(path.join(require('os').tmpdir(), 'ms-midi-')), 'restrike.mid');
+      fs.writeFileSync(file, Buffer.concat([hdr, trk]));
+      const doc = await cdp.send('DOM.getDocument', {});
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#import-midi-input' });
+      await cdp.send('DOM.setFileInputFiles', { nodeId, files: [file] });
+      await waitFor(`document.querySelectorAll('#tracks > .track').length === 6`, 5000)
+        .catch(() => { throw new Error('the MIDI file did not add a track'); });
+      await new Promise((r) => setTimeout(r, 700));
+      const d = await draft();
+      const added = d.trackList.find((t) => !['lead', 'harmony', 'bass', 'pad', 'rhythm'].includes(t.id));
+      const notes = await savedNotes(added.id);
+      if (notes.length !== 2 || notes.some((n) => Math.abs(n.len - 2) > 1e-6)) {
+        throw new Error(`two A4s, each a quarter (2 eighths) long, expected; got ${JSON.stringify(notes.map(n => [n.start, n.len]))}`);
+      }
+      const kicks = (await savedNotes('rhythm')).filter((h) => h.type === 'kick' && h.start === 0);
+      if (kicks.length !== 1) throw new Error(`two kick notes on one tick are one kick hit, the kit has ${kicks.length} at column 0`);
+    });
+
+    step('Export code: a chord is reduced to one line with a warning, not spread into an arpeggio', async () => {
+      await withSelectedNote();
+      await openPalette('chord');
+      await cdp.evaluate(`document.querySelector('.preset-grid button[data-chord="maj"]').click()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 3`);
+      await cdp.evaluate(`(() => { document.querySelector('#file-menu-toggle').click(); document.getElementById('export').click(); })()`);
+      await waitFor(`document.getElementById('exportBox').style.display === 'block'`);
+      const code = await cdp.evaluate(`document.getElementById('exportBox').value`);
+      if (!/one note at a time only/.test(code)) throw new Error('exporting a chord should say, in the code, that the format holds one note at a time');
+      // The Lead line: one sounding note, not three in a row.
+      const lead = code.slice(code.indexOf("name: 'Lead'"), code.indexOf("name: 'Harmony'"));
+      const sounding = (lead.match(/\{ f: (?!0[ ,])/g) || []).length;
+      if (sounding !== 1) throw new Error(`the chord should export as one note on the Lead line, found ${sounding}: ${lead.slice(0, 200)}`);
+    });
+
+    step('Sidechain: a duck that straddles a chunk boundary keeps its release', async () => {
+      await fresh();
+      // 2/4 at 240 BPM: a scheduling chunk is 8 bars = 32 eighths = 4s. A kick
+      // at 31.5 ducks 62ms before the boundary, so its 150ms release ends
+      // inside the next chunk — which used to reset to 1 at its start and
+      // delete that release's end event.
+      await loadSong('DuckEdge', songData({
+        tempo: 240, cols: 64, timeSig: { num: 2, den: 4 },
+        tracks: { lead: [], bass: [], rhythm: [{ start: 31.5, type: 'kick' }] },
+        sidechain: { enabled: true, depth: 0.6 },
+      }));
+      await cdp.evaluate(`(() => {
+        window.__duckLog2 = []; window.__duckSeq2 = 0;
+        for (const [name, kind] of [['cancelScheduledValues', 'cancel'], ['setValueAtTime', 'set'], ['exponentialRampToValueAtTime', 'ramp']]) {
+          const real = AudioParam.prototype[name];
+          AudioParam.prototype[name] = function (...a) {
+            if (!this.__duckId2) this.__duckId2 = ++window.__duckSeq2;
+            window.__duckLog2.push(kind === 'cancel' ? { id: this.__duckId2, kind, time: a[0] } : { id: this.__duckId2, kind, value: a[0], time: a[1] });
+            return real.apply(this, a);
+          };
+        }
+      })()`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await new Promise((r) => setTimeout(r, 4300)); // past the second chunk's scheduling
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      const log = JSON.parse(await cdp.evaluate(`JSON.stringify(window.__duckLog2)`));
+      const release = log.find((e) => e.kind === 'ramp' && e.value === 1 && log.some((d) => d.id === e.id && d.kind === 'set' && Math.abs(d.time + 0.15 - e.time) < 1e-6));
+      if (!release) throw new Error('the kick scheduled no duck at all — is Sidechain on in the loaded song?');
+      const own = log.filter((e) => e.id === release.id);
+      if (own.filter((e) => e.kind === 'cancel').length < 2) throw new Error('the second chunk was never scheduled — the step did not wait long enough to test anything');
+      const alive = [];
+      for (const e of own) {
+        if (e.kind === 'cancel') { for (let i = alive.length - 1; i >= 0; i--) if (alive[i].time >= e.time - 1e-9) alive.splice(i, 1); }
+        else alive.push(e);
+      }
+      if (!alive.some((e) => e.kind === 'ramp' && Math.abs(e.time - release.time) < 1e-6)) {
+        throw new Error('the next chunk deleted the duck\'s release — the mix snaps back up at the boundary');
+      }
+    });
+
+    step('Rhythm: a vertical nudge leaves a late hit where it is on a coarser grid', async () => {
+      await fresh();
+      await loadSong('LateHit', songData({ tracks: { lead: [], bass: [], rhythm: [{ start: 31.5, type: 'kick' }] } }));
+      await setGrid('1/4');
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await activateByName('Rhythm');
+      await cdp.evaluate(`${trackRow('Rhythm')}.querySelector('.lane .hit').click()`);
+      await waitFor(`!!${trackRow('Rhythm')}.querySelector('.lane .hit.selected')`);
+      await pressKey('ArrowUp');
+      await new Promise((r) => setTimeout(r, 700));
+      const hits = await savedNotes('rhythm');
+      if (hits.length !== 1 || hits[0].start !== 31.5) {
+        throw new Error(`moving the hit up a row must not move it in time: ${JSON.stringify(hits)}`);
+      }
+    });
+
+    step('Velocity lane: a cancelled drag lets go of the item', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 100, 40);
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 1`);
+      await cdp.evaluate(`[...${trackRow('Lead')}.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click()`);
+      await waitFor(`!!document.querySelector('.vel-head')`);
+      const before = await cdp.evaluate(`Number(document.querySelector('.vel-head').getAttribute('aria-valuenow'))`);
+      await cdp.evaluate(`(() => {
+        const head = document.querySelector('.vel-head');
+        const r = head.getBoundingClientRect();
+        const lane = head.parentElement.getBoundingClientRect();
+        const opts = (y) => ({ bubbles: true, pointerId: 7, button: 0, clientX: r.left + r.width / 2, clientY: y });
+        head.dispatchEvent(new PointerEvent('pointerdown', opts(r.top + r.height / 2)));
+        // The browser took the gesture over (a scroll on touch): cancelled.
+        window.dispatchEvent(new PointerEvent('pointercancel', opts(r.top + r.height / 2)));
+        // A later, unrelated gesture near the bottom of the lane.
+        window.dispatchEvent(new PointerEvent('pointermove', opts(lane.bottom - 2)));
+      })()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const after = await cdp.evaluate(`Number(document.querySelector('.vel-head').getAttribute('aria-valuenow'))`);
+      if (Math.abs(after - before) > 0.05) throw new Error(`a pointer move after the drag was cancelled still set the velocity (${before} -> ${after})`);
+    });
+
+    step('Duplicate track: the copy keeps the original\'s clips', async () => {
+      await fresh();
+      await loadSong('TwoClips', songData({
+        tracks: {
+          lead: [{ start: 0, len: 4, notes: [note(1, 1, 440)] }, { start: 8, len: 8, notes: [note(8, 1, 440), note(20, 1, 440)] }],
+          bass: [], rhythm: [],
+        },
+      }));
+      await activateByName('Lead');
+      await clickTrackAction('Duplicate track');
+      await waitFor(`!!${trackRow('Lead copy')}`);
+      const [orig, copy] = [
+        await cdp.evaluate(`${trackRow('Lead')}.querySelectorAll('.lane .clip').length`),
+        await cdp.evaluate(`${trackRow('Lead copy')}.querySelectorAll('.lane .clip').length`),
+      ];
+      if (copy !== orig) throw new Error(`the original has ${orig} clip windows and the copy ${copy}`);
+      await new Promise((r) => setTimeout(r, 700));
+      const d = await draft();
+      const copyId = d.trackList.find((t) => t.name === 'Lead copy').id;
+      const hidden = (d.tracks[copyId] || []).flatMap((c) => c.notes || []).some((n) => n.start === 20);
+      if (!hidden) throw new Error('the note the second clip hides (at 20) should travel with the copy');
+    });
+
+    step('Song I/O: a grid the picker does not offer is ignored on load', async () => {
+      await fresh();
+      await loadSong('BadGrid', songData({ grid: 0.05 }));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 100, 40);
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 1`);
+      await new Promise((r) => setTimeout(r, 700));
+      const notes = await savedNotes('lead');
+      if (!notes.length || !Number.isFinite(notes[0].start)) throw new Error(`a grid of 0.05 became 0 and the note landed at ${notes.length ? notes[0].start : 'nothing'}`);
+    });
+
+    step('Note inspector: a duty the picker does not list is shown, not "Track default"', async () => {
+      await fresh();
+      await loadSong('OddDuty', songData({ tracks: { lead: [note(0, 2, 440, { duty: 0.3 })], bass: [], rhythm: [] } }));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`${trackRow('Lead')}.querySelector('.lane .note').click()`);
+      const dutySel = `[...document.querySelectorAll('.inspector select')].find(s => [...s.options].some(o => /Track default/.test(o.textContent)))`;
+      await waitFor(`!!(${dutySel})`);
+      const value = await cdp.evaluate(`(${dutySel}).value`);
+      if (parseFloat(value) !== 0.3) throw new Error(`the note plays at 30% and the picker shows ${JSON.stringify(value)}`);
+    });
+
+    step('Envelope panel: a value past the slider\'s usual range is shown as it is', async () => {
+      await fresh();
+      await loadSong('LongPad', songData({ adsr: { lead: { attack: 0.8, decay: 0.2, sustain: 0.7, release: 1.5 } } }));
+      await openEnvPanel();
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+      const [attack, release] = [await cdp.evaluate(`${envSlider('Attack')}.value`), await cdp.evaluate(`${envSlider('Release')}.value`)];
+      if (parseFloat(attack) !== 0.8 || parseFloat(release) !== 1.5) {
+        throw new Error(`attack 0.8 / release 1.5 should read as such, the sliders show ${attack} / ${release}`);
+      }
+    });
+
+    step('Pitch: a note below A1 survives a nudge down and back up', async () => {
+      await fresh();
+      await loadSong('LowBass', songData({ tracks: { lead: [], bass: [note(0, 2, 43.65)], rhythm: [] } }));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`${trackRow('Bass')}.querySelector('.lane .note').click()`);
+      await waitFor(`!!${trackRow('Bass')}.querySelector('.lane .note.selected')`);
+      await pressKey('ArrowDown'); await new Promise((r) => setTimeout(r, 150));
+      await pressKey('ArrowUp'); await new Promise((r) => setTimeout(r, 700));
+      const notes = await savedNotes('bass');
+      if (notes.length !== 1 || Math.abs(notes[0].freq - 43.65) > 0.05) {
+        throw new Error(`F1 down a semitone and back should be F1 again, got ${JSON.stringify(notes.map(n => n.freq))}`);
+      }
+    });
+
+    step('Harmonics panel: a quick-start clicked twice puts the sliders back after a drag', async () => {
+      await fresh();
+      await openEnvPanel();
+      await waitFor(`!!document.querySelector('.adsr-lane-el .mfx-cap')`);
+      await pickWaveform('/^Harmonics$/');
+      await waitFor(`!!document.querySelector('.harmonics-group')`);
+      const quick = (name) => cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === ${JSON.stringify(name)}).click()`);
+      await quick('Saw');
+      await new Promise((r) => setTimeout(r, 200));
+      const built = await cdp.evaluate(`${envSlider('H3 Amp')}.value`);
+      // A drag paints the slider in place without a render. Clicking Saw again
+      // puts state back to exactly what the row was built from, so the row
+      // cache used to hand back that same row — still showing the drag.
+      await setEnvSlider('H3 Amp', 0.9);
+      await quick('Saw');
+      await new Promise((r) => setTimeout(r, 200));
+      const shown = await cdp.evaluate(`${envSlider('H3 Amp')}.value`);
+      if (shown !== built) throw new Error(`Saw sets H3 to ${built}, the slider still shows the dragged ${shown}`);
+    });
+
     step('Transport: Play while already playing schedules nothing more', async () => {
       await fresh();
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
@@ -9016,6 +9628,7 @@ async function main() {
     });
 
     for (const s of steps) await s();
+    if (ONLY && !ran) errors.push(`--only ${JSON.stringify(ONLY)} matched no step, so nothing was checked`);
   } finally {
     if (cdp) cdp.close();
     if (launched) await launched.cleanup();

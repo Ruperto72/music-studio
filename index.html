@@ -669,6 +669,7 @@
   .vel-head {
     position: absolute; width: 9px; height: 9px; margin-left: -4.5px; margin-top: -4.5px;
     transform: rotate(45deg); cursor: ns-resize; border: 1px solid rgba(0,0,0,0.5);
+    touch-action: none; /* a drag on a head is a value change, not a scroll */
   }
   .vel-head:hover { filter: brightness(1.3); }
   .vel-head.selected { border-color: var(--sel-edge); box-shadow: 0 0 0 2px rgba(255,255,255,0.25); }
@@ -1616,7 +1617,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.1.3';
+const APP_VERSION = '1.1.4';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -1636,7 +1637,9 @@ function eighthsPerBar()  { return state.timeSig.num * 8 / state.timeSig.den; }
 function eighthsPerBeat() { return 8 / state.timeSig.den; }
 const tsId = (ts) => `${ts.num}/${ts.den}`;
 
-const MIDI_MIN = 33, MIDI_MAX = 96;
+// E1, the low string of a bass. Was A1, which put the Three Voices bassline
+// (F1, G1) on rows that could not show it and clamped it on the first drag.
+const MIDI_MIN = 28, MIDI_MAX = 96;
 const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
 // Which pitches the song is built out of. The lane stays chromatic — every row
@@ -2469,7 +2472,7 @@ const DEFAULT_VIBRATO = { rate: 5.5, depth: 0 }; // Hz, cents
 // what finally makes the inspector's previously-redundant "50%" option mean
 // something distinct from "standard" (see DUTY_OPTIONS).
 const DUTY_VALUES = [0.125, 0.25, 0.5, 0.75];
-const dutyLabel = (v) => (v * 100).toFixed(v === 0.125 ? 1 : 0) + '%';
+const dutyLabel = (v) => (v * 100).toFixed(Number.isInteger(v * 100) ? 0 : 1) + '%';
 // Per-track 3-band EQ insert (state.eq[track] absent -> this). Same bands and
 // ±12dB range as the master EQ, just one instance per channel and placed first
 // in the insert chain, so the compressor after it reacts to the shaped signal
@@ -2925,9 +2928,21 @@ function setTrackNotes(track, items) {
   // while the note sat in the file unreachable. Growing the nearest clip to
   // reach it fixes that but *also* reveals whatever that clip was hiding in
   // between, so placing one note made two unrelated ones reappear.
+  // The new window is bounded by its neighbours. Rounded out to whole columns
+  // without that, it could reach into the next clip (a long note placed just
+  // before one) or start inside the previous one (a clip trimmed to a
+  // fractional end) — clips must not overlap, and the next setClips() settled
+  // the dispute by cutting this one short, hiding the notes it had taken over.
+  // A later orphan the new window already covers goes into it.
   for (const item of orphans) {
-    const start = Math.floor(item.start);
-    clips.push(makeClip([item], { start, len: Math.max(1, Math.ceil(itemEnd(item)) - start) }));
+    const home = clips.find(c => clipHolds(c, item));
+    if (home) { home.notes.push(item); continue; }
+    let lo = Math.floor(item.start), hi = Math.ceil(itemEnd(item));
+    for (const c of clips) {
+      if (clipEnd(c) <= item.start) lo = Math.max(lo, clipEnd(c));
+      else if (c.start > item.start) hi = Math.min(hi, c.start);
+    }
+    clips.push(makeClip([item], { start: lo, len: hi - lo }));
   }
   if (orphans.length) clips.sort((a, b) => a.start - b.start);
   // Hidden notes kept their places and new ones were appended, so order is not
@@ -3122,7 +3137,13 @@ function applySavedMix(data) {
     for (const ch of ALL_TRACKS) if (typeof data.pan[ch] === 'number') state.pan[ch] = Math.max(-1, Math.min(1, data.pan[ch]));
   }
   if (typeof data.masterVol === 'number') state.masterVol = data.masterVol;
-  if (typeof data.grid === 'number' && data.grid > 0) state.grid = quant(data.grid);
+  // Only a value the grid picker offers. "> 0" let 0.05 through, which quant()
+  // turns into 0 — snapToGrid() then divides by zero and every pen click
+  // placed a note at NaN.
+  if (typeof data.grid === 'number') {
+    const step = GRID_STEPS.find((g) => Math.abs(g.eighths - data.grid) < 1e-6);
+    if (step) state.grid = quant(step.eighths);
+  }
   state.swing = (typeof data.swing === 'number') ? Math.max(0, Math.min(75, data.swing)) : DEFAULT_SWING;
   restoreTimeSig(data);
   restoreKey(data);
@@ -3458,7 +3479,7 @@ function restoreSnapshot(s) {
     for (const k of SPARSE_TRACK_MAPS) state[k] = (data[k] && typeof data[k] === 'object') ? data[k] : {};
     if (!trackOf(state.activeTrack)) activateTrack((state.trackList[0] || { id: 'rhythm' }).id);
     for (const t of state.trackList) ensureChannelNodes(t.id);
-    applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
+    applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq(); applyTrackFormant();
   }
   dropStaleRecTrack();
   state.tempo = data.tempo;
@@ -4279,7 +4300,17 @@ function buildTrackRows(t) {
     if (adsrOpen.has(t.id)) frag.appendChild(renderAdsrRow(t.id));
     if (velOpen.has(t.id)) frag.appendChild(renderVelocityRow(t.id, velOpen.get(t.id)));
   } finally { trackSink = null; }
-  return [...frag.children];
+  const els = [...frag.children];
+  // A slider or select in a row paints its own readout and writes state
+  // without a render(), so from then on the cached signature describes the
+  // row as it was built, not as it looks. Any later path that puts state back
+  // to the built value — Reset, a Harmonics quick-start, reloading the same
+  // preset, an undo — then matched the signature and reused a row still
+  // showing the dragged numbers. Dropping the entry on the first such edit
+  // means the next render rebuilds from state. It costs nothing a drag didn't
+  // already cost: the edit changes the signature anyway.
+  for (const el of els) for (const type of ['input', 'change']) el.addEventListener(type, () => rowCache.delete(t.id));
+  return els;
 }
 function renderTracks() {
   const want = [];
@@ -4410,7 +4441,10 @@ function duplicateTrack(track) {
   // Notes and hits are copied by value: sharing the objects would make the two
   // tracks the same part, so dragging a note in one would move it in both.
   // `arp` is the only array on a note, and it has to be copied too.
-  setTrackNotes(id, cloneItems(trackNotes(track) || []));
+  // Clip by clip, hidden material included: copying trackNotes() — what the
+  // windows show — gave the copy one whole-track clip, losing its splits and
+  // everything a trimmed edge was keeping.
+  setClips(id, clipsOf(track).map((c) => makeClip(cloneItems(c.notes), { start: c.start, len: c.len })));
   state.gains[id] = state.gains[track];
   state.waveform[id] = state.waveform[track];
   state.pan[id] = state.pan[track];
@@ -4426,7 +4460,7 @@ function duplicateTrack(track) {
   if (state.automation[track]) state.automation[id] = structuredClone(state.automation[track]);
   refreshTrackArrays();
   ensureChannelNodes(id);
-  applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq();
+  applyGains(); applyPan(); applyFxSend(); applyTrackComp(); applyTrackCrush(); applyTrackTremolo(); applyTrackEq(); applyTrackFormant();
   activateTrack(id);
   render(); autosave();
   announce(`${desc.name} added below ${src.name}`);
@@ -4978,10 +5012,17 @@ function startVelocityDrag(e, track, item, lane, yToValue, spec) {
     scheduleRender();
   };
   apply(e);
-  const move = (ev) => apply(ev);
-  const up = () => {
+  // Filtered to this pointer, and ended by pointercancel as well as pointerup:
+  // on touch a vertical drag can turn into a scroll, the browser cancels the
+  // pointer, and without this the listeners stayed attached — the next,
+  // unrelated gesture anywhere on the page rewrote this item's value.
+  const pointerId = e.pointerId;
+  const move = (ev) => { if (ev.pointerId === pointerId) apply(ev); };
+  const up = (ev) => {
+    if (ev.pointerId !== pointerId) return;
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
     previewItem(track, item);
     commitHistory();
     render();
@@ -4989,6 +5030,7 @@ function startVelocityDrag(e, track, item, lane, yToValue, spec) {
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
 }
 // Harmonics quick-start: fill the 8 amplitude/phase pairs with a classic
 // waveform's own partial series, then the sliders take over from there — the
@@ -5079,7 +5121,10 @@ function renderAdsrRow(track) {
     const field = el('div', 'adsr-field');
     const cap = fieldLabel(key, label);
     const slider = document.createElement('input');
-    slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step; slider.value = adsr[key];
+    // Stretched to fit a value set past the usual range (several bundled pads
+    // attack or release for longer than the slider went), rather than showing
+    // it pinned at the end as if that were the value.
+    slider.type = 'range'; slider.min = min; slider.max = Math.max(max, adsr[key]); slider.step = step; slider.value = adsr[key];
     slider.style.accentColor = trackColor(track);
     slider.title = key.charAt(0).toUpperCase() + key.slice(1);
     const val = el('span', 'adsr-val'); val.textContent = Math.round(adsr[key] * 100) + '%';
@@ -6916,6 +6961,13 @@ function cancelScheduledVoices() {
     // voices with it and the new generation starts with a fresh pool.
     voicePools.delete(node);
     voiceInChannel.delete(node);
+    for (const tap of Object.values(voiceSendTaps.get(node) || {})) {
+      tap.gain.cancelScheduledValues(now);
+      tap.gain.setValueAtTime(tap.gain.value, now);
+      tap.gain.linearRampToValueAtTime(0, now + VOICE_CUT_SEC);
+      setTimeout(() => { try { tap.disconnect(); } catch { /* context gone */ } }, 200);
+    }
+    voiceSendTaps.delete(node);
     // Orphan it once the fade is done: still-sounding sources hold it alive
     // until they end, and then the whole subgraph goes.
     setTimeout(() => { try { node.disconnect(); } catch { /* context gone */ } }, 200);
@@ -7371,7 +7423,10 @@ function nudgeSelection(dCol, dRow) {
       const minStart = Math.min(...sel.map(h => h.start));
       const maxStart = Math.max(...sel.map(h => h.start));
       const rows = sel.map(h => RHYTHM_ROWS.indexOf(h.type));
-      const dc = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, dCol));
+      // Never below zero: a hit placed on a finer grid can already sit past
+      // COLS - grid, and a negative bound pushed it left on a purely vertical
+      // nudge.
+      const dc = Math.max(-minStart, Math.min(Math.max(0, COLS - state.grid - maxStart), dCol));
       const dr = Math.max(Math.max(...rows) - (RHYTHM_ROWS.length - 1), Math.min(Math.min(...rows), dRow));
       sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
       const selSet = state.multiSelected;
@@ -7401,7 +7456,7 @@ function nudgeSelection(dCol, dRow) {
     // A hit has no length and no pitch: it moves by column, and by row through
     // the fixed 10-piece kit.
     const row = RHYTHM_ROWS.indexOf(item.type);
-    item.start = quant(Math.max(0, Math.min(COLS - state.grid, item.start + dCol)));
+    item.start = quant(Math.max(0, Math.min(Math.max(COLS - state.grid, item.start), item.start + dCol)));
     if (dRow) item.type = RHYTHM_ROWS[Math.max(0, Math.min(RHYTHM_ROWS.length - 1, row - dRow))];
     setTrackNotes(track, trackNotes(track).filter(h => h === item || !hitsConflict(h, item)));
     render();
@@ -7491,11 +7546,15 @@ function startResize(e, track, idx) {
     // lengths would keep snapping while starts stopped.
     const dCols = (ev.clientX - startX) / colPx;
     const deltaGrid = snapDelta(dCols);
-    const minLen = minDragLen();
-    const newLen = Math.max(minLen, startLen + deltaGrid);
+    // The floor never lifts a note above its own length: a note already
+    // shorter than one grid step (recorded, imported, or drawn on a finer
+    // grid) was grown to a full step by merely touching the handle. The
+    // ceiling is the next note it would collide with, and it wins — the floor
+    // used to override it and stack two notes of one pitch.
+    const floor = Math.min(minDragLen(), startLen);
     const others = notes.filter((n, i) => i !== idx && n.freq === note.freq);
     const maxLen = nextNoteStart(others, note.start) - note.start;
-    note.len = quant(Math.min(newLen, Math.max(minLen, maxLen)));
+    note.len = quant(Math.max(floor, Math.min(startLen + deltaGrid, maxLen)));
     scheduleRender();
   }
   function onUp(ev) {
@@ -7584,7 +7643,7 @@ function startMoveHit(e, track, hit) {
     // than via snapToGrid().
     const dCols = (ev.clientX - startX) / colPx;
     const step = snapDelta(dCols);
-    const deltaCols = Math.max(-minStart, Math.min(COLS - state.grid - maxStart, step));
+    const deltaCols = Math.max(-minStart, Math.min(Math.max(0, COLS - state.grid - maxStart), step));
     const deltaRows = Math.max(-minRow, Math.min(RHYTHM_ROWS.length - 1 - maxRow, Math.round((ev.clientY - startY) / RHY_H)));
     for (const { h, start, row } of startPositions) { h.start = quant(start + deltaCols); h.type = RHYTHM_ROWS[row + deltaRows]; }
     scheduleRender();
@@ -8018,8 +8077,13 @@ function renderInspector() {
     // first names whatever the track is set to, so the difference is visible.
     const trackDuty = getTrackDuty(track);
     dutySelect.title = 'Pulse width for this note. "Track default" follows the track\'s own Duty setting.';
+    // A note can carry a width the picker doesn't list (bundled songs use 30%
+    // and 37.5%, and they play); offered as its own entry, or the picker fell
+    // back to "Track default" for a note that was not using it.
+    const dutyChoices = note.duty != null && !DUTY_VALUES.includes(note.duty)
+      ? [...DUTY_VALUES, note.duty].sort((a, b) => a - b) : DUTY_VALUES;
     [[null, `Track default (${trackDuty == null ? '50%' : dutyLabel(trackDuty)})`],
-     ...DUTY_VALUES.map(v => [v, dutyLabel(v)])].forEach(([v, label]) => {
+     ...dutyChoices.map(v => [v, dutyLabel(v)])].forEach(([v, label]) => {
       const opt = document.createElement('option');
       opt.value = v ?? '';
       opt.textContent = label;
@@ -8590,7 +8654,11 @@ timeSigSelect.addEventListener('change', () => {
   state.timeSig = { num: ts.num, den: ts.den };
   // Re-round the song length to whole bars in the new meter and keep the
   // playhead/loop in range; note positions (in eighths) are unchanged.
-  COLS = clampCols(COLS);
+  // Rounded *up*: clampCols() rounds to the nearest bar, which can shorten the
+  // song (64 cols of 4/4 became 60 in 5/4), leaving the notes past the new end
+  // in the file but outside the song, the loop and every editing path.
+  const bar = eighthsPerBar();
+  COLS = clampCols(Math.ceil(COLS / bar) * bar);
   if (state.loopStart === 0 && state.loopEnd > COLS) state.loopEnd = COLS;
   state.loopEnd = Math.min(state.loopEnd, COLS);
   state.loopStart = Math.min(state.loopStart, Math.max(0, COLS - 1));
@@ -8732,6 +8800,17 @@ document.getElementById('repeat-loop').addEventListener('click', () => {
     const source = trackNotes(t).filter(n => n.start >= start && n.start < end);
     const rest = trackNotes(t).filter(n => !(n.start >= destStart && n.start < destEnd));
     const copies = source.map(n => ({ ...cloneItem(n), start: n.start - start + destStart }));
+    // Clearing the destination by start column alone left two kinds of
+    // same-pitch overlap: a note from before it still ringing into the first
+    // copy, and the last copy's tail running into a note after it. Whichever
+    // starts first ends where the other begins.
+    for (const c of copies) {
+      for (const o of rest) {
+        if (!notesConflict(o, c)) continue;
+        if (o.start < c.start) o.len = quant(c.start - o.start);
+        else c.len = quant(o.start - c.start);
+      }
+    }
     setTrackNotes(t, [...rest, ...copies]);
   }
   for (const id of RHYTHM_TRACK_IDS) {
@@ -8840,6 +8919,7 @@ function applySongData(data, name) {
   applyTrackCrush();
   applyTrackTremolo();
   applyTrackEq();
+  applyTrackFormant();
   if (masterFXNodes) applyMasterFX(masterFXNodes, getMasterEQ(), getMasterComp(), getMasterParallel());
   applyMasterCrush(getMasterCrush().amount);
   state.selected = null;
@@ -9061,20 +9141,25 @@ function importMidiIntoSong(buffer) {
   let importedRhythmHits = [];
 
   for (const track of parsed.tracks) {
-    const onNotes = new Map(); // "channel:note" -> start tick
+    // "channel:note" -> the note-ons still waiting for their note-off, oldest
+    // first. A single slot per key lost a re-struck note: on, on, off, off
+    // (legal, and some writers emit it) kept only the second note-on, closed
+    // it with the first note-off as a blip, and dropped the second note-off.
+    const onNotes = new Map();
     const notes = [], hits = [];
     for (const e of track.events) {
       if (e.type === 'on') {
         // Keep the velocity, not just the tick — it was parsed and then thrown
         // away here, so every imported note and hit came in at full level.
-        onNotes.set(e.channel + ':' + e.note, { tick: e.tick, velocity: e.velocity });
+        const key = e.channel + ':' + e.note;
+        if (!onNotes.has(key)) onNotes.set(key, []);
+        onNotes.get(key).push({ tick: e.tick, velocity: e.velocity });
       } else if (e.type === 'off') {
         const key = e.channel + ':' + e.note;
-        const on = onNotes.get(key);
+        const on = (onNotes.get(key) || []).shift();
         if (on == null) continue;
         const startTick = on.tick;
         const vel = midiVelToVel(on.velocity);
-        onNotes.delete(key);
         const startCol = quant(startTick / ticksPerEighth);
         const endCol = quant(e.tick / ticksPerEighth);
         const lenCol = Math.max(MICRO, endCol - startCol);
@@ -9090,7 +9175,18 @@ function importMidiIntoSong(buffer) {
         maxCol = Math.max(maxCol, startCol + lenCol);
       }
     }
-    if (notes.length) newTonalTracks.push({ name: track.name || ('Imported ' + (newTonalTracks.length + 1)), notes });
+    // Two channels on one pitch in a format-0 file, or a re-strike, can overlap
+    // on one pitch — which notesConflict() never lets a user create. Whichever
+    // starts first ends where the next begins; two on the same start are one.
+    notes.sort((a, b) => a.start - b.start);
+    const clean = [];
+    for (const n of notes) {
+      const clash = clean.find((o) => notesConflict(o, n));
+      if (clash && clash.start === n.start) continue;
+      if (clash) clash.len = quant(n.start - clash.start);
+      clean.push(n);
+    }
+    if (clean.length) newTonalTracks.push({ name: track.name || ('Imported ' + (newTonalTracks.length + 1)), notes: clean });
     if (hits.length) importedRhythmHits = importedRhythmHits.concat(hits);
   }
 
@@ -9116,7 +9212,12 @@ function importMidiIntoSong(buffer) {
   // event came from beyond the source MIDI track, which this doesn't track.
   const rhythmTargetId = (state.trackList.find(t => t.kind === 'rhythm') || {}).id;
   if (rhythmTargetId && importedRhythmHits.length) {
-    setTrackNotes(rhythmTargetId, trackNotes(rhythmTargetId).concat(importedRhythmHits));
+    // Through hitsConflict(), newest wins: importing the same file twice, GM 35
+    // and 36 (both kick) on one tick, or a flam that quantises onto one column
+    // stacked identical hits that played at double level and drew as one.
+    let merged = trackNotes(rhythmTargetId);
+    for (const h of importedRhythmHits) { merged = merged.filter((o) => !hitsConflict(o, h)); merged.push(h); }
+    setTrackNotes(rhythmTargetId, merged);
   }
   refreshTrackArrays();
   for (const t of state.trackList) ensureChannelNodes(t.id);
@@ -10337,7 +10438,7 @@ function applyGains() {
     const now = ctx.currentTime;
     const eighthSec = 60 / state.tempo / 2;
     if (audible(ch)) {
-      const nowCol = playStartCol + (now - playStartCtxTime) / eighthSec;
+      const nowCol = playStartCol + (now - playStartCtxTime) / eighthSec; // the new chunk's anchor, even inside the look-ahead: the ramps run to its end
       scheduleParamAutomation(chanGain[ch].gain, curve, state.gains[ch], now, eighthSec, nowCol, playChunkToCol);
     } else {
       chanGain[ch].gain.cancelScheduledValues(now);
@@ -10443,10 +10544,25 @@ function scheduleAutomationForChunk(startAt, eighthSec, fromCol, toCol) {
 // pump the rest of the mix. Works chunk-by-chunk like scheduleParamAutomation
 // above since the rhythm track's hit timing for [fromCol, toCol) is already
 // known ahead of playback.
+// Where the chunk scheduleDucking() last covered ends, and where the last
+// release it scheduled finishes — so the next chunk can tell a straight
+// continuation from a seek or a fresh start.
+let duckChunkEnd = null, duckReleaseEnd = 0;
 function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
   if (!duckGain) return;
-  duckGain.gain.cancelScheduledValues(startAt);
-  duckGain.gain.setValueAtTime(1, startAt);
+  // A hit in the previous chunk's last 150ms is still releasing when this one
+  // starts. Resetting to 1 at startAt deleted that release's end event and
+  // snapped the whole mix back up — a click at every 8-bar boundary and loop
+  // wrap that had a late kick. Carrying straight on, the release is left to
+  // finish; after a seek or a new play the reset is what is wanted.
+  const continuing = duckChunkEnd !== null && Math.abs(startAt - duckChunkEnd) < 1e-6;
+  duckChunkEnd = startAt + (toCol - fromCol) * eighthSec;
+  if (continuing && duckReleaseEnd > startAt) {
+    duckGain.gain.cancelScheduledValues(duckReleaseEnd + 1e-6);
+  } else {
+    duckGain.gain.cancelScheduledValues(startAt);
+    duckGain.gain.setValueAtTime(1, startAt);
+  }
   const { enabled, depth } = getSidechain();
   if (!enabled || !depth) return;
   const duckTo = Math.max(0.05, 1 - depth);
@@ -10470,6 +10586,7 @@ function scheduleDucking(startAt, eighthSec, fromCol, toCol) {
     duckGain.gain.cancelScheduledValues(at);
     duckGain.gain.setValueAtTime(duckTo, at);
     duckGain.gain.exponentialRampToValueAtTime(1, at + releaseSec);
+    duckReleaseEnd = at + releaseSec;
   }
 }
 
@@ -10586,7 +10703,21 @@ function bitcrushCurve() {
 // track's echo tail, not just its dry signal. (A single shared bus tapped
 // pre-fader would keep ringing after muting an echo-heavy track like the lead.)
 const chanDelays = new Map(); // destGain node -> { delay }
+// The echo and reverb buses hang off the channel gain, which outlives a seek,
+// so a tail already in them keeps ringing — that part is intended. But a note
+// scheduled ahead for the old position fed its send straight into the bus,
+// past the voice-in node cancelScheduledVoices() fades, and played wet-only
+// under the new position for up to eight bars. So a voice-in generation sends
+// through a tap of its own, and retiring the generation retires its taps.
+const voiceSendTaps = new Map(); // voice-in node -> { delay?, reverb? } GainNodes
+function sendTap(voiceIn, kind, busInput) {
+  let taps = voiceSendTaps.get(voiceIn);
+  if (!taps) voiceSendTaps.set(voiceIn, taps = {});
+  if (!taps[kind]) { taps[kind] = ctx.createGain(); taps[kind].connect(busInput); }
+  return taps[kind];
+}
 function ensureDelay(destGain) {
+  const voiceIn = voiceInChannel.has(destGain) ? destGain : null;
   destGain = voiceInChannel.get(destGain) || destGain;
   let d = chanDelays.get(destGain);
   if (!d) {
@@ -10601,7 +10732,7 @@ function ensureDelay(destGain) {
     chanDelays.set(destGain, d);
   }
   d.delay.delayTime.value = (60 / state.tempo / 2) * 1.5;
-  return d.delay;
+  return voiceIn ? sendTap(voiceIn, 'delay', d.delay) : d.delay;
 }
 // One reverb bus per channel, using a synthesized impulse response (no audio
 // files ship with this app, so the "space" is generated instead of sampled:
@@ -10691,6 +10822,7 @@ function ensureReverbImpulse() {
 }
 const chanReverbs = new Map(); // destGain -> { convolver }
 function ensureReverb(destGain) {
+  const voiceIn = voiceInChannel.has(destGain) ? destGain : null;
   destGain = voiceInChannel.get(destGain) || destGain;
   let r = chanReverbs.get(destGain);
   if (!r) {
@@ -10702,7 +10834,7 @@ function ensureReverb(destGain) {
     r = { convolver };
     chanReverbs.set(destGain, r);
   }
-  return r.convolver;
+  return voiceIn ? sendTap(voiceIn, 'reverb', r.convolver) : r.convolver;
 }
 // ---------- Voice pooling ----------
 // A fixed-size pool of persistent GainNodes per destination channel, reused
@@ -10805,12 +10937,16 @@ function resetAudioCaches() {
   crushCurve = null;
   nesTriWave = null;
   halfSineWave = null;
+  sawTriWave = null;
+  duckChunkEnd = null;
   noiseWaveBuffer = null;
   harmonicsWaveCache = new WeakMap();
   chanDelays.clear();
   reverbImpulse = null;
   chanReverbs.clear();
+  voiceSendTaps.clear();
   voicePools.clear();
+  pluckBuffers.clear();
 }
 // Shared voice building blocks used by both scheduleTone and schedulePortamentoTone.
 // `depthRatio` is the peak deviation as a fraction of the note's own frequency,
@@ -11130,101 +11266,84 @@ function createPwmSource(freq, sweepLfo) {
 // predictable, playable note, the same kind of compromise PWM's duty-doesn't-
 // track-bend already makes.
 const PLUCK_MIN_FREQ = 20;      // floor for the delay-length math, not a track limit
-const PLUCK_MAX_DELAY = 0.08;   // seconds — covers down past the lowest reachable note (55Hz)
 const PLUCK_DECAY_TIME = 1.6;   // seconds to ring down to -60dB, independent of pitch
 const PLUCK_DAMP_HZ = 3000;     // in-loop lowpass: purely timbral, the "twang settling dull" character
-const PLUCK_LEVEL = 0.35;       // levelled against the other waveforms — see verify.js's band check
+const PLUCK_LEVEL = 3.5;       // levelled against the other waveforms — see verify.js's band check
 // The per-note feedback gain that reaches -60dB after PLUCK_DECAY_TIME
 // seconds at this frequency: solve feedback^(time/period) = 0.001 for feedback.
 const pluckFeedback = (freq) => Math.exp(Math.log(0.001) / (PLUCK_DECAY_TIME * freq));
+// Karplus-Strong, computed in JS into a buffer rather than run as a DelayNode
+// feedback loop. The spec clamps a DelayNode inside a cycle to at least one
+// render quantum (128 frames), and Chromium adds that quantum to the loop:
+// measured at 48kHz, a loop tuned to 110Hz rang at 84.5Hz, 440Hz at 200Hz and
+// 880Hz at 258Hz — every pluck note was flat, and everything above ~F#4 sat
+// on about the same pitch. Computing the same loop sample by sample has no
+// such floor, and a buffer source's playbackRate is linear in frequency, so
+// bend, vibrato and chorus detune work on it the way they do on every other
+// source (toPitch below).
+//
+// The loop is the one the graph version had: excitation + feedback → delay of
+// one period → the same 2-pole lowpass (PLUCK_DAMP_HZ, Q 0.707) → out, and →
+// feedback gain back in. The excitation is seeded noise gated to a pick-sized
+// burst scaled to the period — a fixed ~15ms burst is one pluck at a bass
+// pitch but several cycles of continuous drive at a high one, which measured
+// peaks nearly 9dB over every other waveform. Rendered once per pitch and
+// sample rate, so a part that repeats a note costs one buffer.
+const pluckBuffers = new Map(); // `${sampleRate}:${freq}` -> AudioBuffer
+function pluckBuffer(f) {
+  const sr = ctx.sampleRate;
+  const key = sr + ':' + round2(f);
+  if (pluckBuffers.has(key)) return pluckBuffers.get(key);
+  const len = Math.ceil(sr * (PLUCK_DECAY_TIME + 0.3));
+  const buf = ctx.createBuffer(1, len, sr);
+  const out = buf.getChannelData(0);
+  const loop = new Float32Array(len);          // what enters the delay line
+  const g = pluckFeedback(f);
+  // RBJ lowpass, Q = 1/sqrt(2) — what a BiquadFilterNode 'lowpass' computes.
+  const w0 = 2 * Math.PI * PLUCK_DAMP_HZ / sr, cw = Math.cos(w0), alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
+  const a0 = 1 + alpha;
+  const b0 = (1 - cw) / 2 / a0, b1 = (1 - cw) / a0, b2 = b0, a1 = -2 * cw / a0, a2 = (1 - alpha) / a0;
+  // One period, less the lowpass's own phase delay at this pitch: the filter
+  // sits inside the loop, so it lengthens every trip — uncorrected, a D5 rang
+  // 68 cents flat.
+  const w = 2 * Math.PI * f / sr;
+  const phase = Math.atan2(-b1 * Math.sin(w) - b2 * Math.sin(2 * w), b0 + b1 * Math.cos(w) + b2 * Math.cos(2 * w))
+    - Math.atan2(-a1 * Math.sin(w) - a2 * Math.sin(2 * w), 1 + a1 * Math.cos(w) + a2 * Math.cos(2 * w));
+  const N = sr / f + phase / w;                // phase is negative: a lag, taken off the period
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0, ex = 0;
+  const rand = mulberry32(0x9E3779B9 ^ Math.round(f * 100));
+  for (let n = 0; n < len; n++) {
+    const pos = n - N;
+    let d = 0;
+    if (pos >= 0) {
+      const i = Math.floor(pos), fr = pos - i;
+      d = loop[i] * (1 - fr) + (i + 1 < n ? loop[i + 1] : 0) * fr;
+    }
+    const y = b0 * d + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = d; y2 = y1; y1 = y;
+    out[n] = y * PLUCK_LEVEL;
+    // One period of gently lowpassed noise — the classic "fill the string"
+    // excitation. Unfiltered, the in-loop lowpass stripped most of it on the
+    // first trips and the onset stood 16+dB over the ring.
+    if (n < N) ex += ((rand() * 2 - 1) - ex) * 0.35;
+    loop[n] = (n < N ? ex * 1.8 : 0) + g * y;
+  }
+  pluckBuffers.set(key, buf);
+  return buf;
+}
 function createPluckSource(freq) {
   const f = Math.max(freq, PLUCK_MIN_FREQ);
-  const period = 1 / f;
-
-  // The excitation: a burst of the same broadband noise the drum kit's
-  // snare/hihat/shaker already use (ensureNoiseBuffer(), 0.1s, seeded), gated
-  // down to a short pick-like transient rather than played at full length.
-  // Scaled to the note's own period rather than a fixed duration: a fixed
-  // ~15ms burst is one pluck at a low bass note's pitch but several cycles'
-  // worth of continuous excitation at a higher one, which drives the loop the
-  // way a sustained tone would rather than a single pluck — measured, that
-  // built up peaks nearly 9dB over every other waveform even after the loop's
-  // overall level was brought into line on RMS alone.
-  const exciteAttack = Math.min(period * 0.3, 0.004);
-  const exciteRelease = Math.min(period * 0.7, 0.01);
-  const burst = ctx.createBufferSource();
-  burst.buffer = ensureNoiseBuffer();
-  const burstGain = ctx.createGain();
-  burstGain.gain.value = 0;
-  burst.connect(burstGain);
-
-  const sum = ctx.createGain();
-  const delay = ctx.createDelay(PLUCK_MAX_DELAY);
-  delay.delayTime.value = period;
-  const damping = ctx.createBiquadFilter();
-  damping.type = 'lowpass';
-  damping.frequency.value = PLUCK_DAMP_HZ;
-  const feedback = ctx.createGain();
-  feedback.gain.value = pluckFeedback(f);
-
-  burstGain.connect(sum);
-  sum.connect(delay);
-  delay.connect(damping);
-  damping.connect(feedback);
-  feedback.connect(sum);
-
-  // A pluck's whole point is a loud onset over a quiet decay — a high crest
-  // factor by nature, unlike every other waveform here, which repeats the
-  // same cycle for as long as the note lasts, and levelling that onset down
-  // to match a sustained tone's peak would flatten the exact shape that makes
-  // it read as a plucked string rather than a hum. Both a DynamicsCompressor
-  // (envelope follower reacting over tens of milliseconds — longer than this
-  // loop's own period at a bass pitch, so it re-triggered on the ringing
-  // itself) and a static per-sample clip curve (the elevated amplitude lasts
-  // a sizeable fraction of the decay, not one spike, so a knee low enough to
-  // touch the peak crushed the tail too) ended up quieting the whole note by
-  // 15+dB rather than shaving the transient — see verify.js's own wider peak
-  // band for `pluck` and why.
-  const out = ctx.createGain();
-  out.gain.value = PLUCK_LEVEL;
-  damping.connect(out);
-
-  // A delay line's pitch has no native exponential-detune combination the
-  // way an oscillator's `frequency`/`detune` pair does (that multiply is
-  // built into the browser's oscillator; delayTime is just a plain seconds
-  // value with nothing else to combine it with). scheduleTone()'s chorus
-  // path sets `detune.value` unconditionally, so this stands in as a real,
-  // settable AudioParam that simply isn't wired to anything — chorus still
-  // thickens the loop's own two independent noise excitations, it just
-  // doesn't detune them apart.
-  const detuneNode = ctx.createGain();
-
+  const src = ctx.createBufferSource();
+  src.buffer = pluckBuffer(f);
   return {
-    out, pitch: delay.delayTime, toPitch: (hz) => 1 / Math.max(hz, PLUCK_MIN_FREQ), detune: detuneNode.gain,
-    start: (t) => {
-      burst.start(t);
-      burstGain.gain.setValueAtTime(0, t);
-      burstGain.gain.linearRampToValueAtTime(1, t + exciteAttack);
-      burstGain.gain.linearRampToValueAtTime(0, t + exciteAttack + exciteRelease);
-      // The loop rings on its own after the burst — cleaned up on `ended`
-      // below, not here, since the ring outlasts the excitation by design.
-      burst.stop(t + PLUCK_DECAY_TIME + 0.3);
-    },
-    // The note's own `dur` is deliberately not used to cut the ring short:
-    // the downstream per-note ADSR/release already shapes what the ear hears
-    // by the time the note is meant to end, the same way a real bass note
-    // keeps resonating after the string is released. This only tears the
-    // *loop's own nodes* down once that ring has actually decayed away —
-    // `ended` fires in real time when `burst.stop()` above is reached, unlike
-    // `stop(t)` itself, which runs at schedule time (see the PWM sweep's own
-    // tap-off for the same distinction and the leak that came from getting
-    // it backwards).
-    stop: () => {
-      burst.addEventListener('ended', () => {
-        try { sum.disconnect(); delay.disconnect(); damping.disconnect(); feedback.disconnect(); burstGain.disconnect(); out.disconnect(); detuneNode.disconnect(); }
-        catch { /* already gone */ }
-      });
-    },
+    out: src, pitch: src.playbackRate, toPitch: (hz) => Math.max(hz, PLUCK_MIN_FREQ) / f, detune: src.detune,
+    start: (t) => src.start(t),
+    // Stopped with the note. The per-note envelope has already released by
+    // then (envelopeTimes() ends it at startAt + dur), so nothing audible is
+    // cut — and a pooled voice reused after it no longer opens its envelope
+    // over the previous note's ring, which the loop version, left running for
+    // its whole decay, did.
+    stop: (t) => src.stop(t),
   };
 }
 // Builds a note's sound source. Oscillators carry pitch in Hz on `frequency`;
@@ -11868,6 +11987,10 @@ function playOnce(startAt, eighthSec, fromCol, toCol) {
 }
 let rafId = null, playStartCtxTime = 0, playStartCol = 0;
 let playChunkToCol = 0; // where the chunk loop() last scheduled ends — see applyGains()
+// The anchor before the current one. loop() schedules the next chunk
+// SCHEDULE_AHEAD_SEC before the current one ends and re-anchors straight away,
+// so for that last stretch the audio still playing belongs to the old anchor.
+let prevPlayStartCtxTime = null, prevPlayStartCol = 0;
 // Cap how much of the song gets scheduled in one synchronous burst. Without
 // this, "loop" defaulting to the full song range (or just pressing Play with
 // loop off) schedules every remaining note — for a long, dense song that can
@@ -11892,6 +12015,8 @@ const SCHEDULE_LOOKAHEAD_BARS = 8;
 const SCHEDULE_AHEAD_SEC = 0.3;
 function startPlaybackFrom(col) {
   playing = true;
+  prevPlayStartCtxTime = null;
+  let firstChunk = true;
   clearTimeout(loopTimer);
   function loop(fromCol, startAt) {
     if (!playing) return;
@@ -11903,6 +12028,8 @@ function startPlaybackFrom(col) {
     scheduleDucking(startAt, eighthSec, fromCol, toCol);
     scheduleMetronomeForChunk(startAt, eighthSec, fromCol, toCol);
     playOnce(startAt, eighthSec, fromCol, toCol);
+    if (!firstChunk) { prevPlayStartCtxTime = playStartCtxTime; prevPlayStartCol = playStartCol; }
+    firstChunk = false;
     playStartCtxTime = startAt;
     playStartCol = fromCol;
     playChunkToCol = toCol;
@@ -11912,7 +12039,12 @@ function startPlaybackFrom(col) {
     loopTimer = setTimeout(() => {
       if (toCol < loopEnd) loop(toCol, chunkEndAt);
       else if (looping) loop(state.loopStart, chunkEndAt);
-      else playing = false;
+      else {
+        playing = false;
+        // The song ran out under a recording: end the pass the way Stop would,
+        // or the take never became a clip and the Record button stayed down.
+        if (recording) stopRecording();
+      }
     }, delayMs);
   }
   loop(col, ctx.currentTime + 0.05);
@@ -11921,8 +12053,7 @@ function startPlaybackFrom(col) {
 function animatePlayhead() {
   function tick() {
     if (!playing) { rafId = null; document.body.classList.remove('playing'); return; }
-    const eighthSec = 60 / state.tempo / 2;
-    const col = playStartCol + (ctx.currentTime - playStartCtxTime) / eighthSec;
+    const col = ctxTimeToCol(ctx.currentTime);
     visualPlayhead = Math.min(col, COLS - 0.001);
     updatePlayheadPositions();
     followPlayhead();
@@ -11973,12 +12104,18 @@ const heldKeys = new Map();     // event.code -> { midi|type, startCol, voice }
 let stepAnchor = null;          // column the current step-entry chord is landing on
 
 function setRecTrack(id) {
+  // Close off what is in flight on the old track before the arm moves: a held
+  // key commits to the track it was pressed on, and a take running on it
+  // becomes its clip there. Moving the arm mid-take used to file the whole
+  // pass — drum hits included — into whichever track was armed at Stop, and
+  // disarming nulled the track before the held keys could be committed.
+  releaseAllKeys();
+  if (recording) finishTake();
   state.recTrack = id;
   // Arming also activates: you are about to type into this track, so the lane
   // the tools and inspector act on had better be the same one. (The R button
   // swallows its own mousedown, so the header's setActive never fires for it.)
   if (id) activateTrack(id);
-  else releaseAllKeys();
   stepAnchor = null;
   render();
 }
@@ -11993,6 +12130,10 @@ function setRecTrack(id) {
 // strength, so a take can be tidied without being flattened.
 function ctxTimeToCol(t) {
   const eighthSec = 60 / state.tempo / 2;
+  // Before the newest anchor starts, the old one still holds: the last
+  // SCHEDULE_AHEAD_SEC of every lap used to map to just *before* loopStart, so
+  // a note played there landed on beat one or in the bar before the loop.
+  if (t < playStartCtxTime && prevPlayStartCtxTime !== null) return prevPlayStartCol + (t - prevPlayStartCtxTime) / eighthSec;
   return playStartCol + (t - playStartCtxTime) / eighthSec;
 }
 // ---------- Step entry ----------
@@ -12395,8 +12536,13 @@ function transposeItems(track, items, mode, n) {
   // whole edit backing off or the note being dropped. Lowest first, so a
   // chord resolves from the bottom up and the outcome doesn't depend on the
   // order the notes were drawn in.
+  //
+  // "Taken" includes the notes that are not being moved. Checking only the
+  // moved ones let applyItemEdit() delete an unselected chord tone the moved
+  // note landed on — nudging the E of C-E-G up twice ate the G.
   const byItem = new Map();
-  const placed = [];
+  const moving = new Set(items);
+  const placed = trackNotes(track).filter((n) => !moving.has(n));
   for (const it of [...items].sort((a, b) => a.freq - b.freq)) {
     const probe = { ...it, freq: round2(midiToFreq(targetFor(it))) };
     const free = !placed.some((o) => notesConflict(o, probe));
@@ -12728,22 +12874,49 @@ function closeExportBox() {
   document.getElementById('exportBox').style.display = 'none';
   exportToolbar.style.display = 'none';
 }
+// The export format is one sequence of {f, d} per track — one note at a time.
+// Handed a chord, fromColumnNotes() wrote each tone as the next step, so a
+// C-E-G became an arpeggio and everything after it ran late by the chord's
+// length. Reduced here instead: the highest note at a start wins, and a note
+// ends where the next one begins. Copies, so the track itself is untouched.
+function monophonicForExport(notes) {
+  const sorted = [...notes].sort((a, b) => a.start - b.start || b.freq - a.freq);
+  const out = [];
+  let changed = 0;
+  for (const n of sorted) {
+    const prev = out[out.length - 1];
+    if (prev && Math.abs(prev.start - n.start) < EPS) { changed++; continue; }
+    if (prev && prev.start + prev.len > n.start + EPS) { prev.len = n.start - prev.start; changed++; }
+    out.push({ ...n });
+  }
+  return { notes: out, changed };
+}
 document.getElementById('export').addEventListener('click', () => {
   const box = document.getElementById('exportBox');
   if (box.style.display === 'block') { closeExportBox(); return; } // click again to close
+  // What the format cannot carry is said in the code itself, where whoever
+  // pastes it will read it, rather than lost without a word.
+  const warnings = [];
   const toneBlocks = state.trackList.filter(t => t.kind === 'tone').map(t => {
-    const notes = exportNotesArray(fromColumnNotes(trackNotes(t.id)), false, '  ');
+    const mono = monophonicForExport(trackNotes(t.id));
+    if (mono.changed) warnings.push(`// ${t.name}: one note at a time only — ${mono.changed} overlapping note(s) were left out or shortened.`);
+    const notes = exportNotesArray(fromColumnNotes(mono.notes), false, '  ');
     return `  { name: ${jsStr(t.name)}, osc: '${state.waveform[t.id]}', pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, notes: ${notes} }`;
   }).join(',\n');
   const tracksCode = `export const TRACKS = [\n${toneBlocks}\n];`;
   const rhythmBlocks = state.trackList.filter(t => t.kind === 'rhythm').map(t => {
+    const first = Math.min(...trackNotes(t.id).map(h => h.start));
+    if (Number.isFinite(first) && first > EPS) {
+      warnings.push(`// ${t.name}: the hits format has no leading rest, so this part starts at the top — ${round4(first)} eighths earlier than in the editor.`);
+    }
     const hits = exportNotesArray(fromColumnHits(trackNotes(t.id)), true, '  ');
     return `  { name: ${jsStr(t.name)}, pan: ${round2(state.pan[t.id])}, mix: ${state.gains[t.id]}, hits: ${hits} }`;
   }).join(',\n');
   const rhythmCode = `export const RHYTHM_TRACKS = [\n${rhythmBlocks}\n];`;
   box.value =
     `// Paste over the TRACKS and RHYTHM_TRACKS declarations in audio.js.\n` +
-    `// Tempo: ${state.tempo} BPM — also update TEMPO_BPM in audio.js if it changed.\n\n` +
+    `// Tempo: ${state.tempo} BPM — also update TEMPO_BPM in audio.js if it changed.\n` +
+    (warnings.length ? warnings.join('\n') + '\n' : '') + '\n' +
     `${tracksCode}\n\n${rhythmCode}`;
   box.style.display = 'block';
   exportToolbar.style.display = 'flex';

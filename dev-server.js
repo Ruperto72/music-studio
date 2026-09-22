@@ -20,7 +20,16 @@ const MIME = {
 };
 
 http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(req.url.split('?')[0]);
+  // A malformed escape (`/%E0%A4%A`) throws URIError, and a NUL makes
+  // fs.readFile throw synchronously — both used to take the whole server down
+  // on one bad request.
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); res.end(); return; }
+  if (urlPath.includes('\0')) { res.writeHead(400); res.end(); return; }
+  // Nothing whose path has a dot-segment: the repo root holds .git/, and this
+  // listens on every interface, so the whole history was one URL away from
+  // anyone on the network.
+  if (urlPath.split(/[\\/]/).some((seg) => seg.startsWith('.'))) { res.writeHead(403); res.end(); return; }
   const file = path.normalize(path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath));
   // Compare against ROOT + separator, not ROOT alone: a bare prefix check also
   // admits sibling directories whose name merely starts with it (a `..` path

@@ -104,7 +104,8 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   button, hit Record for a bar of count-in, and play: a tracker-style key
   layout (ZSXDCV… plus the row above for sharps, QWERTY an octave up, `[`/`]`
   to shift octave) on tonal tracks, the ten kit pieces on rhythm tracks.
-  Everything lands on the grid at the current snap resolution. A **metronome**
+  What you play is kept as played, not snapped to the grid — **Quantize**
+  (with a strength) tidies it afterwards. A **metronome**
   clicks on every beat, accented on the downbeat, and never reaches an
   exported WAV
 - **Overdub** — turn **Loop** on before you record and the transport keeps
@@ -138,22 +139,24 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - Per-track **waveform** — square, **PWM** (a pulse width that sweeps
   continuously across the part, so every note picks the sweep up where the
   last one left off), triangle, saw, sine, **half sine**, an **NES triangle**
-  wavetable, pitched **noise** (a chip's noise channel, so it buzzes at the
-  note rather than just hissing), **ring modulation**, and **FM** (with
-  modulator ratio/depth)
+  wavetable, **saw+tri**, **hard sync** (with a sweep), a Karplus-Strong
+  **pluck**, pitched **noise** (a chip's noise channel, so it buzzes at the
+  note rather than just hissing), **ring modulation**, **FM** (with
+  modulator ratio/depth), and additive **harmonics** (eight partials)
 - Per-track **ADSR envelope**, a resonant **lowpass filter** with its own
   envelope amount, and a **duty cycle** (pulse width) for square-wave tracks
   that any single note can override
-- **Instrument presets** — eight built-in starting points (electric piano,
-  bell, marimba, plucked string, brass, warm pad, round bass, chip lead) that
+- **Instrument presets** — nine built-in starting points (electric piano,
+  bell, marimba, plucked string, brass, warm pad, round bass, upright bass,
+  chip lead) that
   are pure settings for the synth already there: the electric piano is an FM
   patch, the plucked string is a filter envelope. Load one, tune it, and save
   the result as your own preset for any tonal track in any song. An acoustic
   piano is *not* among them — that needs samples, which is a separate
   question (`TODO.md`)
 - Per-track **FX**: continuous Delay / Chorus / Reverb sends, a 3-band
-  **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, and a
-  **vibrato** on tonal tracks — all neutral by default. The track header
+  **EQ**, a **compressor**, a **bitcrush** downsampler, a **tremolo**, a
+  **formant** filter (vowel shapes), and a **vibrato** on tonal tracks — all neutral by default. The track header
   shows them as compact **chips** (which effect, in what order, what's
   bypassed); the knobs live in the inspector column, which shows the active
   track's whole chain whenever no note is selected
@@ -185,7 +188,7 @@ visible at once. A chip is dimmed while its effect is doing nothing.</sub>
 ### Saving & exporting
 
 - **Song library** — bundled examples or your own songs saved in this browser
-- **Save file / Load file** save/open a song as `.json`. In Chrome/Edge this goes through
+- **Save as .json / Load .json** save/open a song as `.json`. In Chrome/Edge this goes through
   the browser's own file picker rather than always dropping into Downloads — pick a
   project folder once and Save/Load/Export MIDI/Export WAV all remember it together
   (Firefox/Safari fall back to the old auto-download)
@@ -275,7 +278,7 @@ node icons.js             # rewrites icons/*.png and icons/*.svg
 - **Your songs** are saved in the browser's `localStorage` — nothing is
   uploaded. Use **Songs → Save current** to store the current song under a
   name, and Load/Delete them from the same menu.
-- **Save file / Load file** in the menu save/open a song as a `.json` file — via
+- **Save as .json / Load .json** in the menu save/open a song as a `.json` file — via
   the browser's native file picker in Chrome/Edge (remembering one project
   folder across Save/Load/Export MIDI/Export WAV), or a plain download
   elsewhere.
@@ -287,7 +290,7 @@ as crash recovery — it's never restored automatically.
 
 ### Add an example song
 
-1. In the editor, build a song and click **Save file** to download its `.json`.
+1. In the editor, build a song and click **Save as .json** to download its `.json`.
 2. Drop the file into `songs/` (e.g. `songs/my-tune.json`).
 3. Add an entry to `songs/index.json`:
    ```json
@@ -295,10 +298,9 @@ as crash recovery — it's never restored automatically.
    ```
 4. Bump `CACHE_NAME` in `sw.js` so installed clients pick up the change.
 
-The bundled examples are `froggy-hop.json` (the game demo), `cinematic.json`,
-`techno.json`, `neon-drive.json`, `space-miner.json`, `neon-cathedral.json`,
-`rust-foundry.json`, and the two Space Miner game loops
-`space-miner-lobby.json` and `space-miner-shop.json`.
+The bundled examples are listed in `songs/index.json`, which is what the Songs
+menu reads — twenty of them at the time of writing, from `froggy-hop.json` (the
+game demo) to the SID-voiced Bach arrangements (`inventio.json`, `air.json`, …).
 
 ## Deploy to GitHub Pages
 

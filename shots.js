@@ -25,6 +25,7 @@ const SERVER_PORT = process.env.SHOTS_PORT || 8097;
 const APP_URL = `http://127.0.0.1:${SERVER_PORT}`;
 const OUT_DIR = path.join(__dirname, 'docs', 'img');
 const onlyIdx = process.argv.indexOf('--only');
+if (onlyIdx >= 0 && !process.argv[onlyIdx + 1]) { console.error('usage: node shots.js [--only <substring>]'); process.exit(1); }
 const ONLY = onlyIdx >= 0 ? process.argv[onlyIdx + 1].toLowerCase() : null;
 
 // Each shot names the viewport it is framed for, so a picture is never

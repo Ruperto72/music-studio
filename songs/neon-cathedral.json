@@ -1778,7 +1778,7 @@
         "freq": 246.94,
         "vel": 0.85,
         "duty": 0.15,
-        "bend": 2,
+        "bend": 277.18,
         "vib": true
       },
       {
@@ -2014,7 +2014,7 @@
         "freq": 196,
         "vel": 0.85,
         "duty": 0.15,
-        "bend": 2,
+        "bend": 220,
         "vib": true
       },
       {
@@ -2250,7 +2250,7 @@
         "freq": 293.66,
         "vel": 0.85,
         "duty": 0.15,
-        "bend": 2,
+        "bend": 329.62,
         "vib": true
       },
       {
@@ -2486,7 +2486,7 @@
         "freq": 220,
         "vel": 0.85,
         "duty": 0.15,
-        "bend": 2,
+        "bend": 246.94,
         "vib": true
       },
       {
@@ -2875,21 +2875,21 @@
         "len": 2,
         "freq": 110,
         "vel": 0.9,
-        "bend": -1
+        "bend": 103.83
       },
       {
         "start": 128,
         "len": 2,
         "freq": 164.81,
         "vel": 0.9,
-        "bend": -1
+        "bend": 155.56
       },
       {
         "start": 128,
         "len": 2,
         "freq": 220,
         "vel": 0.9,
-        "bend": -1
+        "bend": 207.65
       },
       {
         "start": 132,
@@ -2914,21 +2914,21 @@
         "len": 2,
         "freq": 87.31,
         "vel": 0.9,
-        "bend": -1
+        "bend": 82.41
       },
       {
         "start": 160,
         "len": 2,
         "freq": 130.81,
         "vel": 0.9,
-        "bend": -1
+        "bend": 123.47
       },
       {
         "start": 160,
         "len": 2,
         "freq": 174.61,
         "vel": 0.9,
-        "bend": -1
+        "bend": 164.81
       },
       {
         "start": 164,
@@ -2953,21 +2953,21 @@
         "len": 2,
         "freq": 130.81,
         "vel": 0.9,
-        "bend": -1
+        "bend": 123.47
       },
       {
         "start": 192,
         "len": 2,
         "freq": 196,
         "vel": 0.9,
-        "bend": -1
+        "bend": 185
       },
       {
         "start": 192,
         "len": 2,
         "freq": 261.63,
         "vel": 0.9,
-        "bend": -1
+        "bend": 246.95
       },
       {
         "start": 196,
@@ -2992,21 +2992,21 @@
         "len": 2,
         "freq": 98,
         "vel": 0.9,
-        "bend": -1
+        "bend": 92.5
       },
       {
         "start": 224,
         "len": 2,
         "freq": 146.83,
         "vel": 0.9,
-        "bend": -1
+        "bend": 138.59
       },
       {
         "start": 224,
         "len": 2,
         "freq": 196,
         "vel": 0.9,
-        "bend": -1
+        "bend": 185
       },
       {
         "start": 228,
@@ -3067,21 +3067,21 @@
         "len": 2,
         "freq": 123.47,
         "vel": 1,
-        "bend": -1
+        "bend": 116.54
       },
       {
         "start": 320,
         "len": 2,
         "freq": 185,
         "vel": 1,
-        "bend": -1
+        "bend": 174.62
       },
       {
         "start": 320,
         "len": 2,
         "freq": 246.94,
         "vel": 1,
-        "bend": -1
+        "bend": 233.08
       },
       {
         "start": 324,
@@ -3106,21 +3106,21 @@
         "len": 2,
         "freq": 98,
         "vel": 1,
-        "bend": -1
+        "bend": 92.5
       },
       {
         "start": 352,
         "len": 2,
         "freq": 146.83,
         "vel": 1,
-        "bend": -1
+        "bend": 138.59
       },
       {
         "start": 352,
         "len": 2,
         "freq": 196,
         "vel": 1,
-        "bend": -1
+        "bend": 185
       },
       {
         "start": 356,
@@ -3145,21 +3145,21 @@
         "len": 2,
         "freq": 146.83,
         "vel": 1,
-        "bend": -1
+        "bend": 138.59
       },
       {
         "start": 384,
         "len": 2,
         "freq": 220,
         "vel": 1,
-        "bend": -1
+        "bend": 207.65
       },
       {
         "start": 384,
         "len": 2,
         "freq": 293.66,
         "vel": 1,
-        "bend": -1
+        "bend": 277.18
       },
       {
         "start": 388,
@@ -3184,21 +3184,21 @@
         "len": 2,
         "freq": 110,
         "vel": 1,
-        "bend": -1
+        "bend": 103.83
       },
       {
         "start": 416,
         "len": 2,
         "freq": 164.81,
         "vel": 1,
-        "bend": -1
+        "bend": 155.56
       },
       {
         "start": 416,
         "len": 2,
         "freq": 220,
         "vel": 1,
-        "bend": -1
+        "bend": 207.65
       },
       {
         "start": 420,

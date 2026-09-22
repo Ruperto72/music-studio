@@ -2635,3 +2635,82 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   Vel-stegen körs nu på 1280 px med en kontroll att lanen faktiskt har en
   position. Samma sak förklarar sannolikt en stor del av de 29 steg som
   fallerar på den här maskinen — värt en egen omgång.
+
+- [x] **Resten av granskningen i ett svep — och testsviten som gick att lita
+  på först efter en rad.** Allt som återstod av de 57 fynden, i tre delar.
+  - **Testsviten först, eftersom den var trasig på ett sätt som dolde allt
+    annat.** Headless Chrome startar här i 750 px, under appens 760-brytpunkt,
+    så mobilspelaren tog över: editorn, verktygsraden och flytlagret var
+    `display:none` och varje rect var nollor. **Med `--window-size=1280,900`
+    gick sviten från 52 fallerande steg till 3** — och alla tre var svaga
+    steg som bara hade passerat för att allt mätte 0 (inspektörens höjd mot
+    en fast gräns som nu mäts mot en riktig 1366×768-skärm), för att ett
+    tidigare steg lämnat en palett öppen i `localStorage`, eller för att
+    Windows lämnar urklipp med CRLF. Samtidigt: ett konsolfel fäller nu
+    *det* steg där det uppstod, `fresh()` tömmer `localStorage`, och
+    `--only` utan träff är ett fel i stället för en grön körning av noll steg.
+  - **App-fixarna**, tjugotre stycken. De med mest att säga:
+    - **Pluck var falskt på varje ton, inte bara de höga.** Slingan var en
+      DelayNode i en återkopplingscykel, och Chromium lägger till ett render
+      quantum (128 samples) på den. Uppmätt vid 48 kHz: 110 Hz ringde på
+      84,5 Hz, 440 på 200, 880 på 258. Granskningen trodde att bara toner över
+      ~F#4 var drabbade; mätningen sa annat. Nu räknas samma slinga i JS till
+      en buffer per tonhöjd och samplingsfrekvens, och tonhöjden styrs av
+      `playbackRate`. Två saker kostade en omgång var: lågpassfiltret i
+      slingan har egen fasfördröjning (~3,6 samples vid D5), så en okorrigerad
+      slinga låg 68 cent lågt — nu dras den av, kvar är 6 cent, vilket är
+      autokorrelationens upplösning; och den gamla nivåkalibreringen byggde
+      på felet — en slinga som ringde lägre än den var stämd avklingade
+      långsammare, så crest factor hölls nere av en slump. Med rätt tonhöjd
+      krävdes en ny excitation (en period lågpassat brus, klassisk KS) och
+      en ny `PLUCK_LEVEL` för att hamna i nivåstegets band.
+    - **Klippfönster kunde överlappa.** Ett föräldralöst fönster avrundat
+      till hela kolumner räckte in i nästa klipp, och nästa `setClips()`
+      kapade det och dolde noterna det tagit över. Nu begränsas det av
+      grannarna.
+    - **Armbyte mitt i en tagning, en tagning som når låtens slut, och
+      sista 0,3 s före loopens söm.** Nästa varv schemaläggs 0,3 s tidigt
+      och flyttade klockans ankare direkt, så det som spelades där hamnade
+      före `loopStart`. `ctxTimeToCol()` använder det föregående ankaret tills
+      det nya faktiskt börjar — samma funktion ritar nu spelhuvudet, som
+      tidigare hoppade tillbaka för tidigt varje varv.
+    - **Eko och reverb spökade efter en seek**: noter schemalagda för den
+      gamla positionen skickade rakt in i kanalens buss, förbi det som tonas
+      ned. Varje generation av voice-in har nu egna send-kranar som pensioneras
+      med den; svansar som redan är i bussen klingar ut som förut.
+    - **Duck över en blockgräns** tappade sin release; nästa block fortsätter
+      nu en pågående release i stället för att nollställa.
+    - **Radcachen**, generellt: varje rad som byggs får en `input`/`change`-
+      lyssnare som släpper cacheposten. Förra omgångens Reset-fix var ett
+      specialfall; harmonics-snabbknappar och omladdade presets hade samma fel.
+    - Resten: transponering av en del av ett ackord åt upp den omarkerade
+      tonen; taktbyte kortade låten (avrundas nu uppåt); storleksändring
+      staplade noter av en tonhöjd; Region repeat och MIDI-import gick förbi
+      kollisionsreglerna, och MIDI-importen tappade en omslagen not
+      (FIFO per tangent nu); export som kod gjorde ackord till arpeggion
+      (reduceras nu till en stämma, med en varning i koden); rytm-nudge
+      flyttade sena slag; Vel-draget saknade `pointercancel`; duplicering
+      tappade klipp; `grid` validerades inte; formant återställdes inte vid
+      undo; `sawTriWave` nollställdes aldrig; duty- och ADSR-väljare visade
+      fel värden; `MIDI_MIN` sänkt till E1 för Three Voices basgång.
+  - **Låtdata, dokumentation och verktyg.** Neon Cathedral hade bends
+    skrivna som halvtoner i ett fält som är Hz (mässingen gled mot −1 Hz),
+    Techno åtta dubbla virveltrummor, Cinematic överlappande hornnoter;
+    `auditBundledSongs` fångar nu alla tre plus kit/sync/arpRate — kontrollerat
+    mot originalfilerna. `help.html` och README påstod att inspelningen
+    snappar, räknade 8 presets av 9 och 9 låtar av 20. `dev-server.js`
+    kraschade på `%E0%A4%A` och `%00` och serverade `.git/` till nätverket.
+  **Tjugo injektioner, en i taget, alla bet — tre först efter att stegen
+  skrivits om.** Klippsteget snappade noten till kolumn 8, alltså *in i*
+  klippet, så inget föräldralöst fönster uppstod; armbytessteget testade det
+  förra omgångens filter redan skyddade mot; sömsteget höll ett tempo som
+  inte slog igenom. Utöver det skärptes de svaga stegen granskningen hittade:
+  shaker-kontrollen i Rock (Rock har ingen shaker), merge-kontrollen i Timing
+  (noterna låg aldrig på samma rad), `vel: 1`-återställningen, "högst ett"
+  tabbstopp som tillät noll, ett förankrat reggae-regex som aldrig matchade
+  en accentuerad kick, pitch-taket som aldrig kontrollerade att det nått
+  taket, seed-steget som bara jämförde en av två buffrar, och läckagesteget
+  vars handskrivna lista hade halkat efter `SPARSE_TRACK_MAPS`.
+  **Inte täckt av något steg:** eko efter seek, formant vid undo och Region
+  repeat — de två första kräver att man följer ljudgrafen live, den tredje
+  att loopintervallet sätts genom handtagen. Läst och resonerat, inte mätt.
