@@ -1713,7 +1713,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -10590,7 +10590,7 @@ function previewChordPart(part, source) {
 function renderFollowList() {
   const target = state.activeTrack;
   const sources = PITCH_TRACKS.filter(t => t !== target);
-  const keep = followSourceEl.value;
+  const keep = followPicked;
   followSourceEl.innerHTML = '';
   for (const t of sources) {
     const opt = document.createElement('option');
@@ -10599,7 +10599,10 @@ function renderFollowList() {
     followSourceEl.appendChild(opt);
   }
   // A choice the user made stands, empty or not — snapping an "(empty)" pick
-  // back to the default hid the very message below that explains it.
+  // back to the default hid the very message below that explains it. Only a
+  // choice they *made*: the select's own value is also whatever the default
+  // was last time, and keeping that would pin the dialog to a track that was
+  // chosen for them before it had any chords.
   followSourceEl.value = sources.includes(keep) ? keep : (defaultChordSource(target) || sources[0] || '');
   const source = followSourceEl.value;
   const empty = !source || !(trackNotes(source) || []).length;
@@ -10639,7 +10642,8 @@ function renderFollowList() {
     followListEl.appendChild(row);
   }
 }
-followSourceEl.addEventListener('change', renderFollowList);
+let followPicked = null; // the source the user chose themselves, if any
+followSourceEl.addEventListener('change', () => { followPicked = followSourceEl.value; renderFollowList(); });
 document.getElementById('progression-close').addEventListener('click', () => progressionDialog.close());
 
 // ---------- Timing dialog (quantize / humanize) ----------
