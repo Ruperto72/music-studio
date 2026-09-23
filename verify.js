@@ -1729,7 +1729,7 @@ async function main() {
     step('help.html: every reference section is present, plus the Getting Started walkthrough', async () => {
       await goto(APP_URL + '/help.html');
       await waitFor(`!!document.getElementById('getting-started')`);
-      const ids = ['getting-started', 'idea-to-song', 'overview', 'tracks', 'chords', 'grooves', 'tools', 'arranging',
+      const ids = ['getting-started', 'idea-to-song', 'overview', 'tracks', 'chords', 'grooves', 'tools', 'shaping', 'recording', 'arranging',
         'clips', 'selecting', 'note-effects', 'bottom-bar', 'mixing', 'transport', 'saving', 'shortcuts', 'no-mouse', 'about'];
       const missing = await cdp.evaluate(`(${JSON.stringify(ids)}).filter(id => !document.getElementById(id))`);
       if (missing.length) throw new Error(`help.html is missing section(s): ${JSON.stringify(missing)}`);
@@ -1754,7 +1754,7 @@ async function main() {
       for (const f of ['follow-chords.png', 'ghost-notes.png', 'euclid-layer.png', 'variation-dialog.png', 'arrange-dialog.png']) {
         if (!walk.shots.includes(f)) throw new Error(`the walkthrough is missing its picture ${f}: ${JSON.stringify(walk.shots)}`);
       }
-      for (const id of ['#idea-to-song', '#chords', '#grooves', '#arranging']) {
+      for (const id of ['#idea-to-song', '#chords', '#grooves', '#shaping', '#recording', '#arranging']) {
         if (!walk.toc.includes(id)) throw new Error(`the table of contents has no link to ${id}`);
       }
       if (walk.noAlt) throw new Error(`${walk.noAlt} screenshot(s) have no alt text`);

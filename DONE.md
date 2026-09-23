@@ -761,6 +761,23 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   ("from its marker to the next one", fast sektioner går i hela takter sedan
   granskningen); den är rättad.
 
+- [x] **Hjälpen, genomgång av resten.** Efter genomgången "From idea to song"
+  lästes hela `help.html` mot appen. Det som saknades helt: **swing** (ett
+  reglage i nedre listen), **zoom** och **mushjulet** på pianorullen, som
+  byter oktav; utan det såg en tom Lead-rulle ut att bara täcka en oktav.
+  Tangentbordslistan saknade ↑/↓ i skalsteg, Alt+↑/↓ och Shift+klick.
+  Det som var fel: *Export code* lovade kod att klistra rakt in i spelets
+  `audio.js`, vilket inte stämmer sedan formatet blev `RHYTHM_TRACKS`
+  (se "I ett annat repo" i `TODO.md`); nedre listens rubrik räknade upp sex
+  av nio fält; listan över vad en `.json` innehåller utelämnade tonart,
+  effekter, kit och klipp; undo beskrevs snävare än det är; Master FX
+  beskrevs som en panel fast rattarna numera ligger i inspektorkolumnen.
+  Strukturen: Timing, Transpose, Dynamics och Variation är nu ett avsnitt,
+  *Shaping a part*, eftersom de är samma sorts dialog; inspelning,
+  overdub, stegvis inmatning och MIDI-klaviatur är *Recording*;
+  vågformsväljaren flyttades från *Mixing* till *Tracks*; Env-punkten är
+  uppdelad i underpunkter i stället för en mening om sex saker.
+
 ## Buggar hittade av rapporter
 
 - [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan
