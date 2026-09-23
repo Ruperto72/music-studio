@@ -6733,6 +6733,158 @@ async function main() {
       sameAsFile(await savedRaw(), file, { ...insertMap(0, 0, file.cols), withEnd: false }, 'after undoing Copy to end');
     });
 
+    const sectionTitles = () => cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-title')].map(t => t.textContent).join(',')`);
+    const selectOptions = (id) => cdp.evaluate(`[...document.getElementById('${id}').options].map(o => o.textContent)`);
+    const choose = async (id, text) => {
+      const miss = await cdp.evaluate(`(() => {
+        const sel = document.getElementById('${id}');
+        const o = [...sel.options].find(o => o.textContent === ${JSON.stringify(text)});
+        if (!o) return [...sel.options].map(o => o.textContent).join(' / ');
+        sel.value = o.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return null;
+      })()`);
+      if (miss) throw new Error(`#${id} has no ${JSON.stringify(text)}, only: ${miss}`);
+    };
+    const moveSection = async (what, to) => {
+      await choose('arrange-move-what', what);
+      await choose('arrange-move-to', to);
+      await cdp.evaluate(`document.getElementById('arrange-move').click()`);
+    };
+    const waitSavedMarker = (m) => waitFor(`(() => {
+      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      return k && JSON.parse(localStorage.getItem(k)).markers.some(x => x.col + '|' + x.name === ${JSON.stringify(m)});
+    })()`);
+    // Section [a, b) moved to start at `to`: the map for where the file's
+    // columns went, and its inverse for which column each one now sounds like.
+    const moveMap = (a, b, to, cols) => {
+      const len = b - a, lo = Math.min(a, to), hi = Math.max(b, to + len);
+      const fwd = (x) => (x < lo || x >= hi ? x : x >= a && x < b ? x - a + to : to < a ? x + len : x - len);
+      const back = (c) => (c < lo || c >= hi ? c : c >= to && c < to + len ? c - to + a : to < a ? c - len : c + len);
+      return { cols, withEnd: false, item: (it) => ({ ...it, s: fwd(it.s) }), source: { col: back, marker: fwd } };
+    };
+
+    step('Arrange: Move puts a section after another in one go, and the song keeps its length', async () => {
+      await fresh();
+      await loadExample('Cinematic');
+      const file = await fileRaw('cinematic.json');
+      await openArrange();
+      const titles = sectionTitles, options = selectOptions, move = moveSection;
+      // Only the places the Bridge is not already in.
+      await choose('arrange-move-what', 'Bridge');
+      const targets = (await options('arrange-move-to')).join(' / ');
+      if (targets !== 'to the start / after Intro / after Theme II / after Climax / after Outro') {
+        throw new Error(`the Bridge can go anywhere but where it is (after Theme, after itself): ${targets}`);
+      }
+      // Later, past one section: the Bridge and Theme II trade places.
+      await move('Bridge', 'after Theme II');
+      await waitSavedMarker('192|Bridge');
+      sameAsFile(await savedRaw(), file, moveMap(128, 192, 192, file.cols), 'after moving the Bridge after Theme II');
+      if ((await titles()) !== 'Intro,Theme,Theme II,Bridge,Climax,Outro') throw new Error(`the section list should follow the move: ${await titles()}`);
+      const still = await cdp.evaluate(`document.getElementById('arrange-move-what').selectedOptions[0].textContent`);
+      if (still !== 'Bridge') throw new Error(`the moved section should stay chosen, so it can be moved on: ${still}`);
+      // One undo is one move.
+      await cdp.evaluate(`document.getElementById('arrange-close').click()`);
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await waitSavedMarker('128|Bridge');
+      sameAsFile(await savedRaw(), file, moveMap(0, 0, 0, file.cols), 'after undoing the move');
+      // Earlier, past two sections — where the two maps stop being each other's
+      // inverse, so a source/destination mix-up cannot pass.
+      await openArrange();
+      await move('Climax', 'after Intro');
+      await waitSavedMarker('64|Climax');
+      sameAsFile(await savedRaw(), file, moveMap(256, 320, 64, file.cols), 'after moving the Climax after the Intro');
+      // At the 72-bar ceiling: the copy is briefly in the song beside its
+      // original, and that must not read as "no room" for a move.
+      await arrangeBars(49, 24, 'insert');
+      await waitSavedCols(576);
+      await move('Intro', 'after Climax');
+      await waitSavedMarker('64|Intro');
+      if ((await savedRaw()).cols !== 576) throw new Error('a move at the length ceiling changed the length');
+      if ((await titles()) !== 'Climax,Intro,Theme,Bridge,Theme II,Outro') throw new Error(`a move at the length ceiling did not happen: ${await titles()}`);
+      // Two sections with one name say which bar each starts on. Back under
+      // the ceiling first, so the duplicate has room.
+      await arrangeBars(65, 8, 'delete');
+      await waitSavedCols(512);
+      await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-item')].find(r => r.querySelector('.song-title').textContent === 'Theme').querySelector('button').click()`);
+      await waitSavedCols(576);
+      const named = (await options('arrange-move-what')).join(' / ');
+      if (!named.includes('Theme (bar 17)') || !named.includes('Theme (bar 25)')) throw new Error(`two sections called Theme should be told apart by bar: ${named}`);
+    });
+
+    step('Arrange: Move keeps its edges — a curve end it carries, a chord ringing into the gap, music before the first marker', async () => {
+      await fresh();
+      // Cinematic has a curve point on every section boundary and no note
+      // crossing one, which is exactly where a move's edges go wrong unseen.
+      // This copy has a Horn curve starting inside the Intro, a Strings curve
+      // ending inside the Climax, and the Strings' last Intro chord ringing a
+      // bar into the Theme — in pitches the Climax does not open with, so a
+      // same-pitch trim cannot hide a drone.
+      const data = await cdp.evaluate(`fetch('songs/cinematic.json').then(r => r.json())`);
+      data.songName = 'Cinematic edges';
+      data.automation.horn.gain = [{ col: 32, value: 0 }, { col: 160, value: 1 }];
+      data.automation.strings.gain = [{ col: 0, value: 0 }, { col: 288, value: 1 }];
+      const chord = data.tracks.strings.filter(n => n.start === 48);
+      if (chord.length !== 3 || chord.some(n => n.len !== 16)) throw new Error('Cinematic no longer has the three-note, two-bar Strings chord at column 48 this step rings across the Theme');
+      for (const n of chord) n.len = 24;
+      const loadData = async (d) => {
+        await cdp.evaluate(`(() => {
+          const input = document.getElementById('load-file-input');
+          const f = new File([${JSON.stringify(JSON.stringify(d))}], 'edges.json', { type: 'application/json' });
+          const dt = new DataTransfer(); dt.items.add(f);
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        })()`);
+        await waitFor(`(() => {
+          const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+          return k && JSON.parse(localStorage.getItem(k)).songName === ${JSON.stringify(d.songName)};
+        })()`);
+        return cdp.evaluate(`(${SONG_RAW})(${JSON.stringify(d)})`);
+      };
+      const file = await loadData(data);
+      const status = () => cdp.evaluate(`document.getElementById('arrange-status').textContent`);
+      // The Intro holds the Horn curve's first point: the Theme closing up
+      // behind it has to keep its ramp, not run flat from the moved point.
+      await openArrange();
+      await moveSection('Intro', 'after Theme');
+      await waitSavedMarker('64|Intro');
+      sameAsFile(await savedRaw(), file, moveMap(0, 64, 64, file.cols), 'after moving the Intro, which holds the Horn curve\'s first point');
+      if ((await status()) !== 'Moved Intro after Theme') throw new Error(`the status line should say what the move did: ${JSON.stringify(await status())}`);
+      await cdp.evaluate(`document.getElementById('arrange-close').click()`);
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await waitSavedMarker('0|Intro');
+      // The Climax holds the Strings curve's last point, and goes in where the
+      // chord at 48 rings across: the chord rings on a bar into it, as it did
+      // into the Theme, and not under all eight.
+      await openArrange();
+      await moveSection('Climax', 'after Intro');
+      await waitSavedMarker('64|Climax');
+      sameAsFile(await savedRaw(), file, moveMap(256, 320, 64, file.cols), 'after moving the Climax, which holds the Strings curve\'s last point');
+      const ends = (await savedRaw()).tracks.strings.filter(it => it.s === 48).map(it => it.e);
+      if (ends.length !== 3 || ends.some(e => e !== 72)) throw new Error(`the chord ringing into the gap should keep its end at 72, got ${JSON.stringify(ends)}`);
+      // Music before the first marker is no section: the front is after it,
+      // and nothing goes to column 0 to take it in.
+      const pickup = { ...data, songName: 'Cinematic pickup', markers: data.markers.filter(m => m.name !== 'Intro') };
+      await cdp.evaluate(`document.getElementById('arrange-close').click()`);
+      const file2 = await loadData(pickup);
+      await openArrange();
+      await choose('arrange-move-what', 'Bridge');
+      const targets = (await selectOptions('arrange-move-to')).join(' / ');
+      if (targets !== 'before Theme / after Theme II / after Climax / after Outro') throw new Error(`with unmarked music first, the front is "before Theme": ${targets}`);
+      await moveSection('Climax', 'before Theme');
+      await waitSavedMarker('64|Climax');
+      sameAsFile(await savedRaw(), file2, moveMap(256, 320, 64, file2.cols), 'after moving the Climax before the Theme');
+      if ((await sectionTitles()) !== 'Climax,Theme,Bridge,Theme II,Outro') throw new Error(`sections after the move: ${await sectionTitles()}`);
+      // A choice survives another edit made with the panel open: Duplicate
+      // the Theme and the Bridge moves on to bar 33, and is still the one chosen.
+      await choose('arrange-move-what', 'Bridge');
+      await choose('arrange-move-to', 'after Outro');
+      await cdp.evaluate(`[...document.querySelectorAll('#arrange-sections .song-item')].find(r => r.querySelector('.song-title').textContent === 'Theme').querySelector('button').click()`);
+      await waitSavedCols(file2.cols + 64);
+      const chosen = await cdp.evaluate(`['arrange-move-what', 'arrange-move-to'].map(id => document.getElementById(id).selectedOptions[0].textContent).join(' ')`);
+      if (chosen !== 'Bridge after Outro') throw new Error(`the chosen section and place should follow the Duplicate, got ${JSON.stringify(chosen)}`);
+    });
+
     step('Arrange: a section is whole bars, and a copy on a split track lands in one window', async () => {
       await fresh();
       // The playhead onto column `col` through the ruler, the way a click does.

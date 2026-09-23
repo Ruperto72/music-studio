@@ -92,6 +92,7 @@
   .euclid-row label { display: flex; align-items: center; gap: 5px; }
   .euclid-row input[type=number] { width: 52px; padding: 4px 6px; font-size: 12px; }
   .euclid-row select { padding: 4px 6px; font-size: 12px; }
+  #arrange-move-row[hidden] { display: none; }
   .euclid-view { display: flex; flex-wrap: wrap; gap: 3px; max-width: 100%; }
   .euclid-view span { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #55555f; }
   .euclid-view span.on { background: #ffcc00; border-color: #ffcc00; }
@@ -1457,6 +1458,11 @@
       </div>
       <h3 class="dialog-sub">Sections</h3>
       <p class="songs-note" id="arrange-sections-note">A section runs from one marker to the next (or to the end of the song). Name markers after the part of the song they start — Verse, Chorus — with the flag button by the transport, and they show up here.</p>
+      <div class="euclid-row" id="arrange-move-row">
+        <label>Move <select id="arrange-move-what" aria-label="Section to move"></select></label>
+        <select id="arrange-move-to" aria-label="Where to"></select>
+        <button id="arrange-move" title="Take the section out and put it back in here — what lay between closes up behind it, and the song keeps its length">Move</button>
+      </div>
       <div id="arrange-sections" class="song-list"></div>
       <p class="songs-note" id="arrange-status" role="status"></p>
     </div>
@@ -1739,7 +1745,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.5';
+const APP_VERSION = '1.5.0';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -9366,13 +9372,14 @@ function trimCopiesAgainst(rest, copies) {
 // Length control, the meter change, clampCols()), and a length that is not
 // one reloads rounded, dropping the music in the last part-bar. Returns false
 // (and changes nothing) for a delta that is not whole bars, or one that would
-// leave MAX_COLS or go under one bar.
-function shiftTime(at, delta) {
+// leave `maxCols` or go under one bar. `maxCols` is moveSpan()'s: its copy is
+// in the song for an instant before the original comes out.
+function shiftTime(at, delta, maxCols = MAX_COLS) {
   if (!delta) return true;
   const bar = eighthsPerBar();
   if (Math.abs(delta / bar - Math.round(delta / bar)) > EPS) return false;
   const newCols = COLS + delta;
-  if (newCols > MAX_COLS || newCols < bar) return false;
+  if (newCols > maxCols || newCols < bar) return false;
   const cut = delta < 0 ? -delta : 0;
   const mapStart = (c) => (c < at ? c : delta > 0 ? c + delta : c < at + cut ? at : c - cut);
   const mapEnd = (c) => (c <= at ? c : delta > 0 ? c + delta : c <= at + cut ? at : c - cut);
@@ -9432,7 +9439,11 @@ function dedupeCurve(pts) {
 // `at` through the new bars (an anchor on each side of the gap). A delete that
 // the curve spans keeps both sides exact with a step at the join: the left
 // side still arrives at the value it had at `at`, the right side leaves from
-// the value it had where the cut ended.
+// the value it had where the cut ended. A cut that takes the curve's first or
+// last point needs the join too, even with nothing left on that side: without
+// it the surviving side runs flat from its outermost point instead of ramping
+// in from the edge (moving an Intro that held the first point flattened the
+// section that closed up behind it).
 function shiftCurve(pts, at, delta, mapStart, inCut) {
   if (!pts.length) return pts;
   const val = (c) => roundAuto(automationValueAt(pts, c, 0));
@@ -9448,9 +9459,9 @@ function shiftCurve(pts, at, delta, mapStart, inCut) {
   const cut = -delta;
   const before = pts.filter(p => p.col < at);
   const after = pts.filter(p => !inCut(p.col) && p.col >= at).map(p => ({ ...p, col: mapStart(p.col) }));
-  if (!before.length || !after.length) return [...before, ...after];
+  if ((!before.length || !after.length) && !pts.some(p => inCut(p.col))) return [...before, ...after];
   const join = [{ col: at, value: val(at) }];
-  if (after[0].col !== at) join.push({ col: at, value: val(at + cut) });
+  if (!after.length || after[0].col !== at) join.push({ col: at, value: val(at + cut) });
   return dedupeCurve([...before, ...join, ...after]);
 }
 // A song's sections are its markers: each one runs from its marker's bar to
@@ -9497,7 +9508,7 @@ function coverWithWindow(track, from, to) {
 // opened at `dest`. Nothing is overwritten: everything from `dest` on moves
 // later by the section's length, which is what "put another chorus here"
 // means. `dest` may be anywhere, including inside the section itself.
-function duplicateSpan(start, end, dest) {
+function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
   const len = end - start;
   if (len <= 0) return false;
   // Copied *before* time moves, at the positions they will have in the gap:
@@ -9528,7 +9539,20 @@ function duplicateSpan(start, end, dest) {
     }
   }
   const markerCopies = state.markers.filter(m => inSrc(m.col)).map(m => ({ ...m, col: place(m.col) }));
-  if (!shiftTime(dest, len)) return false;
+  // A note ringing across `dest` keeps its length. shiftTime() sustains it
+  // through the gap, which is right for empty bars but here left it droning
+  // under the whole copy (a pad chord at the end of an Intro, under every bar
+  // of a Climax moved after it). It rings on into the copy the way it rang
+  // into whatever followed it. Every clip's notes, hidden ones too, since
+  // shiftTime() stretches those as well.
+  const ringing = [];
+  for (const t of state.trackList) {
+    for (const clip of clipsOf(t.id)) {
+      for (const it of clip.notes) if (typeof it.len === 'number' && it.start < dest && it.start + it.len > dest) ringing.push([it, it.len]);
+    }
+  }
+  if (!shiftTime(dest, len, maxCols)) return false;
+  for (const [it, l] of ringing) it.len = l;
   for (const [track, list] of copies) {
     coverWithWindow(track, dest, dest + len);
     const items = trackNotes(track);
@@ -9546,10 +9570,24 @@ function duplicateSpan(start, end, dest) {
   state.markers.push(...markerCopies);
   return true;
 }
+// Takes [start, end) out and puts it back in at `dest`, a section boundary
+// outside it; what lay between closes up behind it, and the length does not
+// change. A copy at `dest` and a cut at the original, so automation, markers
+// and clip windows travel exactly as they do for Duplicate and Delete — the
+// source is cut *after* the copy, from wherever the copy's gap pushed it.
+// Returns the section's new start, or null for a `dest` inside it.
+function moveSpan(start, end, dest) {
+  const len = end - start;
+  if (len <= 0 || (dest > start && dest < end)) return null;
+  if (dest === start || dest === end) return start;
+  if (!duplicateSpan(start, end, dest, MAX_COLS + len)) return null;
+  shiftTime(dest < start ? start + len : start, -len);
+  return dest < start ? dest : dest - len;
+}
 function arrangeDone(what) {
   commitHistory(); render(); autosave();
-  announce(what);
   refreshArrangeDialog();
+  arrangeSay(what); // and replaces whatever an earlier refusal left there
 }
 const barOf = (col) => Math.floor(col / eighthsPerBar()) + 1;
 
@@ -10945,9 +10983,72 @@ function refreshArrangeDialog() {
     list.appendChild(row);
   }
   document.getElementById('arrange-sections-note').textContent = sections.length
-    ? 'A section runs from the bar its marker is in to the next marker\'s bar, or to the end of the song. Duplicate and Delete move everything after it.'
+    ? 'A section runs from the bar its marker is in to the next marker\'s bar, or to the end of the song. Duplicate and Delete move everything after it; Move puts it somewhere else and the song keeps its length.'
     : 'No sections yet. A section runs from one marker to the next (or to the end of the song) — put a marker where each part of the song starts with the flag button by the transport, click it to name it Verse, Chorus…, and it shows up here.';
+  refreshArrangeMove(sections);
 }
+// Move: the two selects offer sections by their start column and places by
+// the column they are at. The choice is kept here rather than read back off
+// the selects, since every render() rebuilds them — as a column *and* the
+// label it had, because any other edit made with the panel open (a
+// Duplicate, an undo) moves sections under a remembered column. A choice
+// whose column no longer carries its label follows the label instead, so the
+// Bridge stays chosen wherever it went; the moved section itself stays
+// chosen, so it can be moved on again.
+const arrangeMoveWhatEl = document.getElementById('arrange-move-what');
+const arrangeMoveToEl = document.getElementById('arrange-move-to');
+let moveWhat = null, moveTo = null; // { col, label }
+// Where `sec` can go: straight after any section, or to the front — less the
+// two boundaries it already sits between. Music before the first marker is
+// no section, so with some there the front is *after* it ("before Verse"):
+// a section put at column 0 would put its marker there and take that
+// unmarked music in as its own, for the next Delete to remove with it. A
+// song whose length is not whole bars in its meter (a meter change at the
+// 72-bar ceiling) has a last boundary no whole-bar edit can reach.
+function moveTargets(sections, sec, label) {
+  const first = sections[0];
+  const out = [first.start > 0 ? { col: first.start, label: `before ${label(first)}` } : { col: 0, label: 'to the start' }];
+  for (const s of sections) out.push({ col: s.end, label: `after ${label(s)}` });
+  return out.filter(t => t.col !== sec.start && t.col !== sec.end && t.col % eighthsPerBar() === 0);
+}
+function fillColSelect(sel, opts, value) {
+  sel.innerHTML = '';
+  for (const o of opts) { const op = el('option'); op.value = String(o.col); op.textContent = o.label; sel.appendChild(op); }
+  sel.value = value ? String(value.col) : '';
+}
+// The remembered choice among `opts`: same column and label, else the same
+// label (unique, since a shared section name carries its bar), else `fallback`.
+const pickChoice = (opts, want, fallback) => (want && (opts.find(o => o.col === want.col && o.label === want.label)
+  || opts.find(o => o.label === want.label))) || fallback;
+function refreshArrangeMove(sections) {
+  // Every section has somewhere to go once there are two; one alone has
+  // nowhere, even after unmarked music (its only places are its own ends).
+  document.getElementById('arrange-move-row').hidden = sections.length < 2;
+  if (sections.length < 2) return;
+  // A Duplicate leaves two sections with one name, so a shared name says which bar.
+  const count = new Map();
+  for (const s of sections) count.set(s.name, (count.get(s.name) || 0) + 1);
+  const label = (s) => (count.get(s.name) > 1 ? `${s.name} (bar ${barOf(s.start)})` : s.name);
+  const whats = sections.map(s => ({ col: s.start, label: label(s), sec: s }));
+  moveWhat = pickChoice(whats, moveWhat, whats.find(o => state.playhead >= o.sec.start && state.playhead < o.sec.end) || whats[0]);
+  fillColSelect(arrangeMoveWhatEl, whats, moveWhat);
+  const targets = moveTargets(sections, moveWhat.sec, label);
+  moveTo = pickChoice(targets, moveTo, targets[0]);
+  fillColSelect(arrangeMoveToEl, targets, moveTo);
+  document.getElementById('arrange-move').disabled = !moveTo;
+}
+arrangeMoveWhatEl.addEventListener('change', () => { moveWhat = { col: Number(arrangeMoveWhatEl.value), label: arrangeMoveWhatEl.selectedOptions[0].textContent }; refreshArrangeMove(songSections()); });
+arrangeMoveToEl.addEventListener('change', () => { moveTo = { col: Number(arrangeMoveToEl.value), label: arrangeMoveToEl.selectedOptions[0].textContent }; });
+document.getElementById('arrange-move').addEventListener('click', () => {
+  const sec = moveWhat && songSections().find(s => s.start === moveWhat.col);
+  if (!sec || !moveTo) return;
+  const to = moveSpan(sec.start, sec.end, moveTo.col);
+  if (to == null) { arrangeSay(`${moveWhat.label} can't move: the song's length isn't a whole number of bars in this meter.`); return; }
+  const what = `Moved ${moveWhat.label} ${moveTo.label}`;
+  moveWhat = { col: to, label: sec.name };
+  state.playhead = visualPlayhead = Math.min(to, COLS - 1); // on the moved section, to hear it where it went
+  arrangeDone(what);
+});
 function arrangeBars() {
   const bar = Math.max(1, Math.min(totalBars() + 1, parseInt(arrangeBarEl.value, 10) || 1));
   const count = Math.max(1, parseInt(arrangeCountEl.value, 10) || 1);
@@ -10956,6 +11057,7 @@ function arrangeBars() {
 document.getElementById('arrange-btn').addEventListener('click', () => {
   closeFileMenu();
   arrangeBarEl.value = String(barOf(state.playhead));
+  moveWhat = moveTo = null; // the playhead's section, like At bar
   document.getElementById('arrange-status').textContent = '';
   openToolPanel(arrangeDialog, refreshArrangeDialog);
 });

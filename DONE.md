@@ -683,6 +683,64 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   Verify-stegen använder Cinematic (sex sektioner, 21 automationspunkter)
   och jämför hela låten mot filen: varje spår, markör och automationspunkt
   efter varje operation, och infoga följt av ta bort måste ge filen tillbaka.
+- [x] **Flytta en sektion.** Duplicera + ta bort gjorde det redan i två steg,
+  men "flytta Bridge efter andra refrängen" är ett drag man vill göra i ett.
+  Arrange har nu en rad *Move [sektion] [vart] Move*. `moveSpan()` är
+  `duplicateSpan()` till målet följt av `shiftTime()` bakåt på källan — från
+  `start + len` om målet låg före källan, eftersom kopians lucka då sköt
+  källan framåt. Inget eget sätt att flytta automation, markörer eller
+  klippfönster: kopian bär dem som Duplicate gör och snittet tar dem som
+  Delete gör, så kurvan hamnar exakt på båda sidor om både lucka och skarv.
+  **Fällan var längdtaket.** Kopian ligger i låten ett ögonblick bredvid
+  originalet, så en låt på 72 takter fick "No room" för en flytt som inte
+  ändrar längden. `shiftTime()`/`duplicateSpan()` tar därför ett valfritt
+  `maxCols`, som bara `moveSpan()` höjer med sektionens längd.
+  Vart en sektion kan flyttas är varje sektionsgräns utom de två den redan
+  står mellan: *to the start*, *after X*, och *before* den första sektionen
+  när det finns omarkerad musik före den. Två sektioner med samma namn (efter
+  en Duplicate) särskiljs med takten de börjar på. Valen hålls i variabler
+  och inte i selecten, eftersom varje `render()` bygger om dem; den flyttade
+  sektionen förblir vald och spelhuvudet går till dess nya start, som för
+  Insert/Delete bars. Loopen följer *inte* med en flyttad sektion — den
+  återställs till hela låten, som när sektionen tas bort.
+  Verify-steget flyttar Bridge ett steg framåt och Climax två steg bakåt i
+  Cinematic och jämför hela låten mot filen (bakåt är fallet där de två
+  avbildningarna slutar vara varandras invers, så en förväxling av källa och
+  mål kan inte passera), flyttar vid 72 takter och kontrollerar
+  namnsärskiljningen. Felinjicerat tre gånger: snitt alltid vid `start`,
+  inget `maxCols`, och målen oförfiltrerade — alla tre röda.
+  **Granskningen hittade det steget inte kunde se**, eftersom Cinematic har
+  en kurvpunkt på varje sektionsgräns och ingen not som korsar någon:
+  - *En kurva plattades ut* när den flyttade sektionen bar kurvans första
+    eller sista punkt. `shiftCurve()` lade bara in skarven när det fanns
+    punkter på båda sidor om snittet, så den kvarvarande sidan löpte platt
+    från sin yttersta punkt i stället för att ramp in från kanten. Felet
+    fanns redan i Delete av en första eller sista sektion; Move gjorde det
+    vanligt. Skarven läggs nu in så fort snittet tar en punkt.
+  - *En not som klingade över målpunkten blev en drönare* under hela den
+    infogade sektionen: `shiftTime()` förlänger en sådan not genom luckan,
+    vilket är rätt för tomma takter men fel när luckan fylls med musik.
+    `duplicateSpan()` ger den tillbaka sin längd, så den klingar in i kopian
+    som den klingade in i det som följde. Gällde Duplicate lika mycket.
+  - *Valen följde kolumnen, inte sektionen.* En Duplicate med panelen öppen
+    flyttade sektionerna under ett ihågkommet kolumnnummer. Valet sparar nu
+    sin etikett också och följer den när kolumnen inte längre bär den.
+  - *"To the start" slukade en omarkerad upptakt*: sektionens markör hamnade
+    på kolumn 0 och upptakten blev en del av den, för nästa Delete att ta
+    med sig. Med omarkerad musik först är främsta platsen nu "before Verse".
+  - Mindre: ett misslyckat drag sa ingenting (en meterbyte vid 72 takter
+    ger en längd som inte är hela takter; mål som inte ligger på en taktgräns
+    erbjuds inte längre), statusraden behöll ett gammalt "No room" efter en
+    lyckad åtgärd, meddelandet sa bara "Theme" när två hette så, och
+    sektionsvalet hette "Move" precis som knappen bredvid.
+  Ett nytt steg laddar en Cinematic-variant med de fallen inbyggda. Alla fem
+  fixarna felinjicerade var för sig mot det — alla röda.
+  **Avböjt:** att ta bort `maxCols` genom att skära källan först. Det kräver
+  att `duplicateSpan()` delas i fånga/lägg med omräknade koordinater (och
+  kurvvärdet vid målet läst *efter* snittet), eller att längdtaket flyttas ut
+  till varje anropare som växer låten — båda sämre än en explicit parameter
+  med `MAX_COLS` som förval. **Uppskjutet:** dolt material under trimmade
+  klippfönster i en flyttad sektion, se `TODO.md`.
 - [x] **Granskningen av omgången (code review).** Fjorton fynd, alla
   åtgärdade, och alla felinjicerade mot sina steg efteråt:
   - *Undo glömde markörerna.* Arrange flyttar markörer, men undo-bilden bar
