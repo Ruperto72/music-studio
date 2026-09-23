@@ -1713,7 +1713,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -10865,7 +10865,7 @@ function refreshArrangeDialog() {
     list.appendChild(row);
   }
   document.getElementById('arrange-sections-note').textContent = sections.length
-    ? 'A section runs from its marker to the next one, or to the end of the song. Duplicate and Delete move everything after it.'
+    ? 'A section runs from the bar its marker is in to the next marker\'s bar, or to the end of the song. Duplicate and Delete move everything after it.'
     : 'No sections yet. A section runs from one marker to the next (or to the end of the song) — put a marker where each part of the song starts with the flag button by the transport, click it to name it Verse, Chorus…, and it shows up here.';
 }
 function arrangeBars() {

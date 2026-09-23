@@ -115,6 +115,72 @@ const SHOTS = [
       await page.waitFor(`!document.querySelector('.inspector.empty')`);
     },
   },
+  // ---- The "From idea to song" walkthrough. These start from the starter
+  // layout rather than a bundled song, because that is where the walkthrough
+  // starts: an empty Lead/Harmony/Bass/Pad and a kit. ----
+  {
+    file: 'help/follow-chords.png',
+    width: 1200, height: 800,
+    caption: 'Chords & parts, opened from the Bass track, following Harmony',
+    async setup(page) {
+      await page.setKey(0, 'major');
+      await page.insertProgression('Harmony', 'I–V–vi–IV');
+      await page.openChords('Bass');
+      // The dialog opens at its top, on the progressions; the picture is of
+      // its second half.
+      await page.evaluate(`document.querySelector('#progression-dialog .dialog-sub').scrollIntoView({ block: 'start' })`);
+    },
+  },
+  {
+    file: 'help/ghost-notes.png',
+    width: 1200, height: 800,
+    caption: 'ghost notes: Harmony and Bass drawn faintly in the Lead roll',
+    async setup(page) {
+      await page.setKey(0, 'major');
+      await page.insertProgression('Harmony', 'I–V–vi–IV');
+      await page.insertPart('Bass', 'Root–fifth');
+      // A short melody on the Lead, placed through the lane like a click, so
+      // the picture shows your notes over the ghosts rather than ghosts alone.
+      await page.activate('Lead');
+      for (const [midi, col] of [[72, 0], [71, 2], [72, 4], [76, 6], [74, 8], [71, 10], [67, 12], [69, 16], [72, 18], [74, 20], [72, 22]]) {
+        await page.placeNote('Lead', midi, col);
+      }
+      await page.evaluate(`document.getElementById('daw').scrollTop = 0`);
+    },
+  },
+  {
+    file: 'help/euclid-layer.png',
+    width: 1200, height: 800,
+    caption: 'the euclidean layer in the Patterns dialog, on the tresillo',
+    async setup(page) {
+      await page.evaluate(`[...document.querySelectorAll('.track-header button')].find(b => (b.title || '').startsWith('Rhythm patterns')).click()`);
+      await page.waitFor(`document.getElementById('pattern-dialog').open`);
+      await page.evaluate(`document.querySelector('#euclid-presets button[data-euclid="Tresillo"]').click()`);
+      await page.evaluate(`document.querySelector('#pattern-dialog .dialog-sub').scrollIntoView({ block: 'start' })`);
+    },
+  },
+  {
+    file: 'help/variation-dialog.png',
+    width: 1200, height: 800,
+    caption: 'the Variation dialog',
+    async setup(page) {
+      await page.loadSong('Neon Drive');
+      await page.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await page.evaluate(`document.getElementById('vary-btn').click()`);
+      await page.waitFor(`document.getElementById('vary-dialog').open`);
+    },
+  },
+  {
+    file: 'help/arrange-dialog.png',
+    width: 1200, height: 800,
+    caption: "the Arrange dialog, listing Cinematic's sections",
+    async setup(page) {
+      await page.loadSong('Cinematic');
+      await page.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await page.evaluate(`document.getElementById('arrange-btn').click()`);
+      await page.waitFor(`document.getElementById('arrange-dialog').open`);
+    },
+  },
 ];
 
 async function main() {
@@ -184,6 +250,52 @@ async function main() {
           daw.scrollLeft = Math.max(0, n.offsetLeft - 120);
         })()`);
         await new Promise((r) => setTimeout(r, 300));
+      },
+      // The rest drive the starter layout by track *name*, through the same
+      // buttons and dialogs a person uses.
+      row: (name) => `[...document.querySelectorAll('#tracks > .track[data-kind="pitch"]')].find(t => t.querySelector('.th-name')?.textContent === ${JSON.stringify(name)})`,
+      async setKey(root, scale) {
+        await cdp.evaluate(`(() => {
+          const sc = document.getElementById('key-scale'); sc.value = ${JSON.stringify(scale)}; sc.dispatchEvent(new Event('change', { bubbles: true }));
+          const k = document.getElementById('key-root'); k.value = ${JSON.stringify(String(root))}; k.dispatchEvent(new Event('change', { bubbles: true }));
+        })()`);
+      },
+      async activate(name) {
+        await cdp.evaluate(`${page.row(name)}.querySelector('.track-header').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+        await page.waitFor(`${page.row(name)}.classList.contains('active')`);
+      },
+      async openChords(name) {
+        await cdp.evaluate(`[...${page.row(name)}.querySelectorAll('.th-tool-btn')].find(b => /progression/i.test(b.title)).click()`);
+        await page.waitFor(`document.getElementById('progression-dialog').open`);
+      },
+      async insertFrom(listId, title) {
+        await cdp.evaluate(`(() => {
+          const row = [...document.querySelectorAll('#${listId} .song-item')].find(r => r.querySelector('.song-title').textContent === ${JSON.stringify(title)});
+          [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
+        })()`);
+      },
+      async insertProgression(name, title) {
+        await page.openChords(name);
+        await page.insertFrom('progression-list', title);
+        await page.waitFor(`${page.row(name)}.querySelectorAll('.lane .note').length > 0`);
+      },
+      async insertPart(name, title) {
+        await page.openChords(name);
+        await page.insertFrom('follow-list', title);
+        await page.waitFor(`${page.row(name)}.querySelectorAll('.lane .note').length > 0`);
+      },
+      // A click on the lane at the row of the gutter's own key for `midi`.
+      async placeNote(name, midi, col) {
+        const before = await cdp.evaluate(`${page.row(name)}.querySelectorAll('.lane .note').length`);
+        await cdp.evaluate(`(() => {
+          const row = ${page.row(name)};
+          const key = row.querySelector('.pkey[data-midi="${midi}"]');
+          const lane = row.querySelector('.lane');
+          const k = key.getBoundingClientRect(), l = lane.getBoundingClientRect();
+          const colPx = l.width / parseInt(lane.style.gridTemplateColumns.split('(')[1], 10);
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: l.left + colPx * ${col} + 2, clientY: k.top + k.height / 2 }));
+        })()`);
+        await page.waitFor(`${page.row(name)}.querySelectorAll('.lane .note').length > ${before}`);
       },
       async waitFor(expr, timeoutMs = 8000) {
         const deadline = Date.now() + timeoutMs;
