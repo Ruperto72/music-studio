@@ -743,6 +743,24 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   mål är upptaget står kvar). Samma scope-regel som de tre andra dialogerna
   (`timingTargets()`).
 
+- [x] **Hjälpen för omgången, pedagogiskt.** Allt nytt fanns i `help.html`,
+  men som täta referenspunkter på fel ställen: stämmorna som följer ackorden
+  och spöknoterna under *Tracks*, Arrange och Variation bredvid Pen och
+  Eraser under *Tools*, tap tempo som en bisats om nedre listen. Och ingenting
+  sa i vilken ordning man använder dem, vilket är hela poängen med dem.
+  Nu finns en andra genomgång, **"From idea to song"**, i åtta numrerade
+  steg i den ordning verktygen är byggda för: tonart och tempo → ackordföljd
+  → en bas som följer den → melodin över spöknoterna → trummor och ett
+  euklidiskt lager → markörer → Variation → Arrange. Varje steg säger vad man
+  gör, och de flesta har en *Try*- och en *Listen for*-ruta: vad man ska
+  prova, och vad man ska höra när det fungerade. Referenspunkterna flyttades
+  till tre avsnitt ordnade efter uppgift (*Writing with chords*, *Drum
+  grooves*, *Arranging*), och tap tempo fick en egen rad under *Transport*.
+  Fem nya skärmbilder i `shots.js`, tagna från startlayouten genom appens
+  egna dialoger. Arrange-bilden visade en inaktuell text i appen själv
+  ("from its marker to the next one", fast sektioner går i hela takter sedan
+  granskningen); den är rättad.
+
 ## Buggar hittade av rapporter
 
 - [x] **PWM-svepets avtappning kopplades bort i fel ände — grafen växte utan

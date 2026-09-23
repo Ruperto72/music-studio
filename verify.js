@@ -1729,12 +1729,35 @@ async function main() {
     step('help.html: every reference section is present, plus the Getting Started walkthrough', async () => {
       await goto(APP_URL + '/help.html');
       await waitFor(`!!document.getElementById('getting-started')`);
-      const ids = ['getting-started', 'overview', 'tracks', 'tools', 'clips', 'selecting',
-        'note-effects', 'bottom-bar', 'mixing', 'transport', 'saving', 'shortcuts', 'no-mouse', 'about'];
+      const ids = ['getting-started', 'idea-to-song', 'overview', 'tracks', 'chords', 'grooves', 'tools', 'arranging',
+        'clips', 'selecting', 'note-effects', 'bottom-bar', 'mixing', 'transport', 'saving', 'shortcuts', 'no-mouse', 'about'];
       const missing = await cdp.evaluate(`(${JSON.stringify(ids)}).filter(id => !document.getElementById(id))`);
       if (missing.length) throw new Error(`help.html is missing section(s): ${JSON.stringify(missing)}`);
-      const stepCount = await cdp.evaluate(`document.querySelectorAll('.steps > li').length`);
+      const stepCount = await cdp.evaluate(`document.querySelectorAll('#getting-started .steps > li').length`);
       if (stepCount < 4) throw new Error(`Getting Started should walk through several steps, found ${stepCount}`);
+      // The idea-to-song walkthrough is the guide's account of how the
+      // composing tools fit together, in order. Each step needs its own
+      // heading, and every tool it teaches has to be reachable from the TOC
+      // and pictured — a section nobody can find is not help.
+      const walk = await cdp.evaluate(`(() => {
+        const sec = document.getElementById('idea-to-song');
+        const steps = [...sec.querySelectorAll('.steps > li')];
+        return {
+          steps: steps.length,
+          untitled: steps.filter(li => !li.querySelector('h3')).length,
+          shots: [...sec.querySelectorAll('img.shot')].map(i => i.getAttribute('src').split('/').pop()),
+          toc: [...document.querySelectorAll('nav.toc a')].map(a => a.getAttribute('href')),
+          noAlt: [...document.querySelectorAll('img.shot')].filter(i => !(i.getAttribute('alt') || '').trim()).length,
+        };
+      })()`);
+      if (walk.steps < 7 || walk.untitled) throw new Error(`From idea to song should be a titled walkthrough of at least 7 steps: ${JSON.stringify(walk)}`);
+      for (const f of ['follow-chords.png', 'ghost-notes.png', 'euclid-layer.png', 'variation-dialog.png', 'arrange-dialog.png']) {
+        if (!walk.shots.includes(f)) throw new Error(`the walkthrough is missing its picture ${f}: ${JSON.stringify(walk.shots)}`);
+      }
+      for (const id of ['#idea-to-song', '#chords', '#grooves', '#arranging']) {
+        if (!walk.toc.includes(id)) throw new Error(`the table of contents has no link to ${id}`);
+      }
+      if (walk.noAlt) throw new Error(`${walk.noAlt} screenshot(s) have no alt text`);
       const shotCount = await cdp.evaluate(`document.querySelectorAll('img.shot').length`);
       if (shotCount < 4) throw new Error(`expected several screenshots on the guide, found ${shotCount}`);
       // Every image should have actually loaded — a bad path fails silently

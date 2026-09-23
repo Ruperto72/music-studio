@@ -85,6 +85,18 @@
     align-items: center; justify-content: center;
   }
   .steps h3 { margin: 2px 0 4px; font-size: 14px; color: var(--ink); }
+  /* The walkthrough's two recurring asides: what to do, and what you should
+     hear when it worked. Set apart so a reader skimming for the next action
+     finds it without reading the explanation around it. */
+  .try, .listen {
+    margin: 8px 0; padding: 7px 12px; border-radius: 6px; font-size: 13px; color: #c7c7d0;
+    border-left: 3px solid var(--accent); background: var(--panel);
+  }
+  .listen { border-left-color: #7dffa8; }
+  .try b.lbl, .listen b.lbl { display: inline-block; min-width: 74px; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .try b.lbl { color: var(--accent); }
+  .listen b.lbl { color: #7dffa8; }
+  .steps p { color: #c7c7d0; font-size: 13px; margin: 0 0 8px; }
 
   .kbd-grid { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; align-items: center; font-size: 12.5px; color: #c7c7d0; margin: 4px 0 10px; }
   .kbd-grid > span:nth-child(odd) { text-align: right; }
@@ -101,10 +113,14 @@
   <nav class="toc" aria-label="Guide sections">
     <div class="toc-cap">Getting started</div>
     <a href="#getting-started">Five steps to a song</a>
+    <a href="#idea-to-song">From idea to song</a>
     <div class="toc-cap">Reference</div>
     <a href="#overview">Overview</a>
     <a href="#tracks">Tracks &amp; channel strips</a>
+    <a href="#chords">Writing with chords</a>
+    <a href="#grooves">Drum grooves</a>
     <a href="#tools">Tools</a>
+    <a href="#arranging">Arranging</a>
     <a href="#clips">Clips</a>
     <a href="#selecting">Selecting several notes</a>
     <a href="#note-effects">Note effects</a>
@@ -178,6 +194,116 @@
       </ol>
     </section>
 
+    <section id="idea-to-song">
+      <h2>From idea to song</h2>
+      <p>The five steps above show where things are. This is how they fit together: one way from an empty
+      project to a finished arrangement, in the order the tools were built to be used. Every step writes
+      real notes you can edit afterwards, so nothing here locks you in — and every one of them is one
+      <b>Undo</b> away. Start from the menu's <b>Songs… → Starter tracks</b>: Lead, Harmony, Bass, Pad and a kit.</p>
+      <ol class="steps">
+        <li>
+          <h3>Pick a key and a tempo</h3>
+          <p>In the bottom bar, set <b>Key</b> to a tonic and a scale — <b>C Major</b> or <b>A Minor</b> are good
+          first choices. The piano roll now shades every row outside the scale, so you can <i>see</i> the notes
+          that will sound wrong before you play them. Nothing is forbidden; the shading is a map, not a fence.</p>
+          <p>For the tempo, you don't need to know a number. Tap the <b>Tap</b> button beside the tempo in time
+          with the song in your head — four taps or more — and the tempo follows you. Stop for two seconds to
+          start counting again. It also works while the song plays, if you want to tap along to what you hear.</p>
+          <p class="try"><b class="lbl">Try</b> Tap along to something you know, then compare the number with what it says it is.</p>
+        </li>
+        <li>
+          <h3>Lay down the chords</h3>
+          <p>On the <b>Harmony</b> track, press the <b>Chords</b> button (the staircase icon in its header). Pick a
+          progression — <b>I–V–vi–IV</b> is behind a huge number of songs — press <b>▶</b> to hear it on the
+          track's own sound, then <b>Insert</b>. You get one chord per bar, from the playhead to the end.</p>
+          <p>The progression is stored as <i>steps of the scale</i>, not as fixed chords, which is why the same one
+          comes out bright in a major key and dark in a minor one. Change the key and insert again to hear it.</p>
+          <p class="listen"><b class="lbl">Listen for</b> the pull back to the first chord every four bars. That is what "home" sounds like in this key.</p>
+        </li>
+        <li>
+          <h3>Let the bass follow the chords</h3>
+          <p>Now press <b>Chords</b> on the <b>Bass</b> track and scroll down to <b>Follow another track's chords</b>.
+          It has already picked Harmony, the track with chords in it. Choose a figure and press <b>Insert</b>:
+          <b>Roots</b> holds the root of each chord, <b>Root–fifth</b> bounces between root and fifth,
+          <b>Octaves</b> is a disco bass. The same list has arpeggios, for a Lead or Pad that should spell the
+          chords out one note at a time.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/follow-chords.png" alt="The Chords & parts dialog opened from the Bass track, scrolled to Follow another track's chords, with Harmony picked and a list of bass figures and arpeggios, each with a preview and Insert button">
+            <figcaption>Opened from the Bass track: follow Harmony, pick a figure.</figcaption>
+          </figure>
+          <p>It reads the chords that are actually <i>sounding</i> on the other track — so it works just as well
+          on chords you wrote yourself, inversions and chords from outside the key included. The part is written
+          once, not linked: if you change the chords later, insert the bass again.</p>
+          <p class="try"><b class="lbl">Try</b> Insert Roots, listen, then insert Root–fifth over it. Each insert replaces the last.</p>
+        </li>
+        <li>
+          <h3>Write the melody over the chords</h3>
+          <p>Click the <b>Lead</b> track to make it active. The notes of every other tonal track now show in its
+          piano roll as faint, dashed <b>ghost notes</b>, each in its own track's colour. They can't be clicked —
+          a click on one puts a note on the Lead, at that pitch — so they are a guide, not an obstacle.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/ghost-notes.png" alt="The Lead track active, with a short melody in cyan and the Harmony track's chords drawn behind it as dashed pink outlines">
+            <figcaption>The Lead's melody over the Harmony chords, drawn as dashed ghost notes.</figcaption>
+          </figure>
+          <p>The simplest melody that always works: on each chord change, land on a note that is <i>in</i> the ghost
+          chord under it, and move by step in between. Turn on <b>Keep to scale</b> (beside the Key) and the notes
+          you place with the mouse snap into the key for you.</p>
+          <p class="listen"><b class="lbl">Listen for</b> the difference between a note that sits in the chord (settled) and one beside it (tension that wants to move). Both are useful; the ghosts show you which is which.</p>
+        </li>
+        <li>
+          <h3>Add a beat — then a layer on top</h3>
+          <p>On the <b>Rhythm</b> track press <b>Patterns</b> and insert a groove: every hit has its own velocity, and
+          every fourth bar is a fill that hands over to a crash. Then scroll down to <b>Euclidean layer</b>. Pick a
+          kit piece, say how many <b>Hits</b> over how many <b>Steps</b>, and the hits are spread as evenly as they
+          will go. The buttons are famous rhythms: <b>Tresillo</b> is three over eight, the pulse under half of
+          pop and most of Latin music.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/euclid-layer.png" alt="The Rhythm patterns dialog scrolled to the Euclidean layer: preset buttons Tresillo to 5 against 4, Piece Kick, Hits 3, Steps 8, and a row of boxes with three lit">
+            <figcaption>The euclidean layer on the tresillo: three hits over eight steps, drawn as the boxes you'll hear.</figcaption>
+          </figure>
+          <p><b>Insert layer</b> replaces only <i>that</i> piece, so you can build a groove one piece at a time —
+          the pattern's kick and snare stay, and your tom figure plays over them.</p>
+          <p class="try"><b class="lbl">Try</b> Steps that don't divide the bar — <b>5 against 4</b> — and the figure drifts across the bar line and comes back. That is a polyrhythm, and it is two numbers.</p>
+        </li>
+        <li>
+          <h3>Name the parts of the song</h3>
+          <p>Move the playhead to where the chorus should start and press the <b>flag</b> button by the transport.
+          Click the new flag and name it — <i>Chorus</i>. Do the same for <i>Intro</i>, <i>Verse</i>, <i>Bridge</i>.
+          These markers are the song's <b>sections</b>: each one runs from its marker's bar to the next marker.</p>
+        </li>
+        <li>
+          <h3>Make the repeat different</h3>
+          <p>A verse that comes back note for note sounds like a loop. Select the notes of the second verse (drag a
+          box with the <b>Grab</b> tool) and open <b>Variation…</b> in the menu. Each button changes a share of the
+          notes — <b>Amount</b> — and leaves the rest alone:</p>
+          <ul>
+            <li><b>Neighbour tones</b> moves a note one step up or down, inside the key.</li>
+            <li><b>Octave jumps</b> moves one an octave, which changes the line's shape and nothing else.</li>
+            <li><b>Thin out</b> leaves notes out but never the one on a bar's downbeat, so the part still lands where it did. It works on drums too.</li>
+          </ul>
+          <figure>
+            <img class="shot" src="docs/img/help/variation-dialog.png" alt="The Variation dialog: an Amount slider at 25% and the three buttons Neighbour tones, Octave jumps and Thin out, each with a one-line explanation">
+            <figcaption>Variation — the same part, not exactly the same.</figcaption>
+          </figure>
+          <p class="try"><b class="lbl">Try</b> 25% neighbour tones, listen, and press again if you don't like it — every press is a new answer, and Undo takes it back.</p>
+        </li>
+        <li>
+          <h3>Arrange the song</h3>
+          <p>Open <b>Arrange…</b> in the menu. It lists your sections, and each one can be <b>Duplicate</b>d (the
+          copy goes straight after it and everything later moves along), copied to the end, or deleted. At the
+          top, <b>Insert empty bars</b> and <b>Delete bars</b> open or close time across the <i>whole</i> song —
+          every track, its automation and the markers move together, so nothing is left behind.</p>
+          <figure>
+            <img class="shot" src="docs/img/help/arrange-dialog.png" alt="The Arrange dialog on the Cinematic example: At bar and Bars fields with Insert empty bars and Delete bars, and a list of sections Intro, Theme, Bridge, Theme II, Climax, Outro, each with Duplicate, Copy to end and Delete">
+            <figcaption>The Arrange dialog on the Cinematic example — six sections, one row each.</figcaption>
+          </figure>
+          <p>A typical shape to build towards: <i>Intro – Verse – Chorus – Verse – Chorus – Bridge – Chorus – Chorus</i>.
+          Duplicate the chorus, duplicate the verse, and use Variation on the second copy of each.</p>
+          <p class="listen"><b class="lbl">Listen for</b> the song as a whole now: where it builds, where it rests. One empty bar before the last chorus (Insert empty bars) is often all a song needs to land.</p>
+        </li>
+      </ol>
+    </section>
+
     <section id="overview">
       <h2>Overview</h2>
       <p>
@@ -207,16 +333,35 @@
         <li>The <b>Auto</b> button opens a curve editor for that track's <b>Volume</b>, <b>Pan</b>, or <b>Delay/Chorus/Reverb send</b> over time (pick which from the dropdown): click empty space to add a point, drag a point to move it, double-click to delete it. Without any points, the channel strip's / <b>FX</b> panel's slider value is used for the whole song (as before).</li>
         <li>The <b>Env</b> button opens that track's <b>ADSR</b> — Attack/Decay/Sustain/Release, shaping how a note's volume rises and fades — plus a per-track resonant <b>lowpass filter</b> (cutoff, resonance, and an envelope amount that sweeps the cutoff using the same ADSR shape). Tracks using the <b>FM</b> waveform get extra ratio/depth sliders here too, <b>Ring</b> gets the same ratio (how far above the note the modulator sits — a small whole number rings like a bell, anything else goes metallic), and tracks on <b>Square</b> get a <b>Duty</b> (pulse width) for the whole track. <b>PWM</b> is that same pulse width set <i>sweeping</i> — the width moves back and forth through each note, which is the sound that makes a chip lead sing rather than sit still. Attack/Decay/Release are a percentage of each note's own length (so they scale with short vs. long notes); Sustain is the held level. <b>Reset</b> restores every default.</li>
         <li>The <b>Preset</b> button saves a track's waveform and everything in its <b>Env</b> panel — envelope, filter, FM/ring ratio, duty, harmonics, the hard-sync sweep and the arpeggio speed — as a named preset you can reuse on any tonal track, in any song (saved in this browser).</li>
-        <li>The <b>Chords</b> button (tonal tracks) writes a built-in <b>chord progression</b> into that track — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp, or a 12-bar blues — one chord per bar, from the playhead's bar to the end of the song, exactly like <b>Patterns</b> does for drums. The chords come from the song's <b>Key</b>: a progression is stored as scale <i>degrees</i>, so the same one is major or minor depending on the scale you picked. <b>▶</b> auditions it in the current key on that track's own sound before you commit.</li>
-        <li>The same dialog's second half, <b>Follow another track's chords</b>, writes a <b>bass line</b> (roots, root–fifth, eighth pulse, octaves, a chord walk) or an <b>arpeggio</b> (up, down, up-down, broken chord, fast 7ths) into this track, built from the chords another track plays — by default the one that holds the most chords. Put a progression into Harmony, then open Chords from Bass and pick a figure. It reads whatever chords are there, including ones you wrote yourself, and the figure starts over on every chord change. It is written once, not linked: change the chords and insert it again.</li>
-        <li><b>Ghost notes</b>: the other tonal tracks' notes show faintly, dashed, in the active track's piano roll, so you can see the chords while you write a melody over them. They cannot be clicked — a click on one places a note on your own track. The button beside the <b>Grid</b> picker turns them off.</li>
         <li>The <b>Track</b> box at the bottom of the inspector column holds the two things you do to a track as a whole. <b>Duplicate track</b> makes a copy of the part <i>and</i> the whole voice — waveform, envelope, filter, inserts, sends, kit — directly below it, independent afterwards. <b>Remove track</b> deletes it and its part. <b>Both ask first</b>.</li>
         <li>A rhythm track has a <b>Kit</b> picker in its header, the same picker a tonal track uses for its waveform: <b>Retro</b> (the tight, dry 8-bit kit — the default), <b>80s</b> (a big gated snare, long crash, wide clap) and <b>Acoustic-ish</b> (lower, rounder kick and a snare with more skin in it). Same ten pieces throughout, synthesised with different numbers, so switching is instant and never touches what you've written. Each rhythm track picks its own, saved with the song.</li>
         <li>The <b>Inserts</b> section (every track, rhythm included) shows one chip per effect the track is using — a letter and an icon, so you can see what's on a track and what's bypassed at a glance. The knobs are in the <b>inspector column</b> on the right: click a chip and the whole chain shows there, every effect at once. <b>+</b> reveals an effect the track isn't using yet, <b>Reset</b> clears the lot. The effects: continuous <b>Delay</b>, <b>Chorus</b> and <b>Reverb</b> sends, a 3-band <b>EQ</b>, a <b>Compressor</b>, a <b>Bitcrush</b> downsampler, a <b>Tremolo</b> and a <b>Formant</b> filter (vowel shapes). Tonal tracks also get a <b>Vibrato</b> — pitch wobble on every note of the track.</li>
-        <li>The <b>Patterns</b> button (rhythm tracks only) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back. Each pattern also has a <b>fill</b> bar on the last bar of each phrase — set how long a phrase is with <b>Fill every</b> — and the bar after a fill opens with a crash. The kit is spread across the stereo field as it goes in; <b>Spread the kit in stereo</b> turns that off. <b>▶</b> auditions the groove bar and <b>▶ fill</b> the fill bar.</li>
-        <li>Under the grooves, <b>Euclidean layer</b> spreads a number of <b>Hits</b> as evenly as they go over a number of <b>Steps</b> on one kit <b>Piece</b>, with <b>Rotate</b> to shift where the cycle starts and <b>Step</b> set to 1/8 or 1/16. The buttons above it load known rhythms: the tresillo, the cinquillo, the bossa clave and more. <b>Insert layer</b> replaces only that piece's hits from the playhead's bar on, so you can build a groove one piece at a time or lay one over a pattern. The cycle runs on across bar lines, so five steps against a bar of eight drift against the bar as a polyrhythm. <b>▶</b> plays two bars of the layer together with what the track already has.</li>
+        <li>Two header buttons write whole parts for you: <b>Chords</b> on a tonal track (progressions, and bass lines or arpeggios that follow another track — see <a href="#chords">Writing with chords</a>) and <b>Patterns</b> on a rhythm track (grooves and euclidean layers — see <a href="#grooves">Drum grooves</a>).</li>
         <li>Click a strip (or into its lane) to make it the <b>active</b> track that the tools edit.</li>
         <li>Pitch lanes auto-fit to the notes they contain, so tracks stay compact.</li>
+      </ul>
+    </section>
+
+    <section id="chords">
+      <h2>Writing with chords</h2>
+      <ul>
+        <li>The <b>Key</b> (bottom bar) is what the rest of this section reads. With a key set, the lane shades the rows outside the scale, <b>Keep to scale</b> moves notes you place with the mouse into it, and the chord tools below build their chords from it. <b>Chromatic</b> turns all of that off.</li>
+        <li>The <b>Chords</b> button on a tonal track opens <b>Chords &amp; parts</b>. Its first half writes a built-in <b>chord progression</b> — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp or a 12-bar blues — one chord per bar, from the playhead's bar to the end, replacing what was there. A progression is stored as <i>scale degrees</i>, so the same one is major or minor depending on the key. <b>▶</b> plays it in the current key on the track's own sound.</li>
+        <li>Its second half, <b>Follow another track's chords</b>, writes a <b>bass line</b> (Roots, Root–fifth, Eighth pulse, Octaves, Chord walk) or an <b>arpeggio</b> (up, down, up-down, broken chord, fast 7ths) built from the chords another track plays. The track to follow is pre-picked as the one holding the most chords; pick another in <b>Follow</b>. The figure restarts on every chord change, stays on the song's beat under a chord that arrives off it, and sits in a register of its own — around the notes the track already had, or low for a bass and middle for an arpeggio. ▶ plays the first two bars.</li>
+        <li>How a chord is read: <b>the notes that are sounding decide</b>. An inversion (E-G-C) is still a C chord, and a chord from outside the key (G-B-D in C minor) is played as what it is. The key only fills in what the notes don't say — a lone root, or a root and fifth without a third.</li>
+        <li>Both halves are <b>written once, not linked</b>. Change the chords and insert the part again; nothing you edited by hand is ever rewritten behind your back. If the track you follow has no chords from the playhead on, Insert says so rather than doing nothing.</li>
+        <li><b>Ghost notes</b>: every other tonal track's notes show faintly, dashed and in their own colour, in the <i>active</i> track's piano roll. They are only a guide — a click on one places a note on your own track — and they are left out of the other lanes so the view doesn't fill up. The button beside <b>Grid</b> turns them off (remembered in this browser).</li>
+        <li>The note inspector's <b>Chord</b> panel adds chord tones above a selected note — with a key set, labelled by the chord the key builds there (<b>ii</b>, <b>V</b>, …).</li>
+      </ul>
+    </section>
+
+    <section id="grooves">
+      <h2>Drum grooves</h2>
+      <ul>
+        <li>The <b>Patterns</b> button (rhythm tracks) inserts a built-in groove — Rock, Techno, Disco, Swing, Hip-Hop, House, Breakbeat, Funk, Half-time, Bossa Nova, Reggae, Trap — tiled from the playhead's bar to the end of the song. Every hit carries its own <b>velocity</b>, so the backbeat lands full while the off-beat hats sit back. Each pattern has a <b>fill</b> on the last bar of each phrase — set the phrase length with <b>Fill every</b> — and the bar after a fill opens with a crash. <b>Spread the kit in stereo</b> places each piece where it sits on a real kit. <b>▶</b> plays the groove bar, <b>▶ fill</b> the fill.</li>
+        <li>Under the grooves, the <b>Euclidean layer</b> spreads a number of <b>Hits</b> as evenly as they go over a number of <b>Steps</b>, on one kit <b>Piece</b>. <b>Rotate</b> shifts where the cycle starts; <b>Step</b> is 1/8 or 1/16. The row of boxes shows the pattern, and the text beside it says whether it repeats inside a bar, spans whole bars, or drifts across the bar line.</li>
+        <li>The preset buttons are known rhythms: <b>Tresillo</b> (3 over 8), <b>Cinquillo</b> (5 over 8), <b>Bossa</b> (5 over 16), <b>Samba</b>, the West African <b>Bell 12</b>, <b>Four on the floor</b> and <b>5 against 4</b>.</li>
+        <li><b>Insert layer</b> replaces only the chosen piece's hits, from the playhead's bar to the end — so layers stack, one piece at a time, on their own or over a pattern. The cycle runs on across bar lines, which is what makes a step count that doesn't divide the bar a polyrhythm. <b>▶</b> plays two bars of the layer together with what the track already has there.</li>
       </ul>
     </section>
 
@@ -229,8 +374,6 @@
         <li><b>Timing</b> in the menu <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse. Recording no longer snaps as you play — a take keeps the timing you gave it, and correcting it is a separate decision you make with a strength.</li>
         <li><b>Transpose</b> in the menu is the same idea on the <i>pitch</i> axis. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i>. <b>Fit to the scale</b> pulls everything onto the nearest scale tone. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put. The arrow keys use the same walk: with <b>Keep to scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
         <li><b>Dynamics</b> in the menu is the third axis, with the same scope rule again. <b>Vary</b> is a random walk around each note's <i>current</i> level. <b>Accent the beat</b> plays the notes that land on a beat harder, read off the meter. Only velocity is touched.</li>
-        <li><b>Variation</b> in the menu gives you the same part, not exactly the same — for the second time a bar comes round. <b>Amount</b> is the share of notes each press touches; the rest stay as you wrote them. <b>Neighbour tones</b> moves a note one step up or down (a scale step when the song has a key), <b>Octave jumps</b> moves it an octave, and <b>Thin out</b> leaves notes out but never one on a bar's downbeat — which also works on drums. Press again for a different answer, or undo.</li>
-        <li><b>Arrange</b> in the menu works on the whole song at once. <b>Insert empty bars</b> opens a gap at a bar and <b>Delete bars</b> closes one, and every track, its clips, its automation and the markers move together. Your <b>markers</b> are also the song's <b>sections</b>: each runs from the bar its marker is in to the next marker's bar, so name them Verse, Chorus and so on. Everything moves in whole bars; a note that rings across the point sustains through inserted bars, and automation holds its value there. Each section can be <b>Duplicate</b>d (a copy right after it, everything later moves on), copied to the end (<b>Copy to end</b>) or <b>Delete</b>d.</li>
         <li>The <b>Grid</b> menu also has <b>Free</b> — placing, dragging and resizing stop snapping and land wherever you put them (on the app's finest lattice, a sixth of an eighth). The grid still sets how long a new note is. Remembered per browser rather than saved with the song.</li>
         <li>The <b>Grid</b> menu sets the snap resolution: 1/4, 1/8, 1/16, or triplets (1/8&nbsp;T, 1/16&nbsp;T). New notes take the grid length, and moving/resizing/nudging snaps to it.</li>
         <li>Placing or selecting a note/hit plays it, so you hear the pitch or drum as you edit.</li>
@@ -238,6 +381,18 @@
         <li><b>Overdub.</b> Turn <b>Loop</b> on before you hit Record and the transport keeps going round: the count-in happens once, and each lap <i>adds</i> to what is already there instead of replacing it. Playing the same pitch in the same place again replaces just that note, so you can fix one hit without losing the lap it sits in.</li>
         <li><b>Step entry.</b> With a track armed and the transport <i>stopped</i>, the same keys write into the song a step at a time: each one places a note at the playhead and moves it on one grid step. Keys pressed together land as a chord on one column. <kbd>→</kbd> leaves a rest, <kbd>←</kbd> goes back, <kbd>↑</kbd>/<kbd>↓</kbd> move to the track above or below, <kbd>Home</kbd>/<kbd>End</kbd> jump to the start of the song or the end of this track's part, and <kbd>Backspace</kbd> steps back and clears what's there. Every move is spoken with the position <i>and</i> what's already there.</li>
         <li>Clicking a note <i>or a drum hit</i> opens it in the inspector on the right. A hit has <b>Velocity</b> (10–100%) and <b>Pan</b>. Velocity changes the <i>tone</i> as well as the level — a soft hit is darker, the way a real drum struck gently gives less of the sharp top end. Quieter notes and hits are drawn dimmer.</li>
+      </ul>
+    </section>
+
+    <section id="arranging">
+      <h2>Arranging</h2>
+      <ul>
+        <li><b>Arrange…</b> (menu) works on time itself, across the whole song. <b>Insert empty bars</b> opens a gap of that many bars at <b>At bar</b>; <b>Delete bars</b> removes them and closes the gap. Every track, its clips, its automation and the markers move together.</li>
+        <li>Everything moves in <b>whole bars</b>, so the song always stays a whole number of bars long. A note that rings across the point where bars go in sustains through them, and an automation curve holds its value there — so inserting bars and deleting them again gives you back exactly what you had.</li>
+        <li>Your <b>markers</b> are the song's <b>sections</b>: each runs from the bar its marker is in to the next marker's bar (or to the end). Name them after the part of the song they start. Each section can be <b>Duplicate</b>d (the copy goes straight after it, and everything later moves on), copied to the end (<b>Copy to end</b>) or <b>Delete</b>d. A copy brings its automation and its marker with it, so a duplicated chorus is listed as a section of its own.</li>
+        <li><b>Undo</b> takes back any of these in one step, markers included.</li>
+        <li><b>Repeat</b> (by the transport) is the quick version for a loop: it stamps the loop range's notes into the bars right after it, overwriting rather than moving anything.</li>
+        <li><b>Variation…</b> (menu) makes a repeat different. It acts on the selection, or the whole active track. <b>Amount</b> is the share of notes each press changes; the rest stay as you wrote them. <b>Neighbour tones</b> moves a note one step up or down (a scale step when the song has a key, a semitone without), <b>Octave jumps</b> moves one an octave, and <b>Thin out</b> leaves notes out — never one on a bar's downbeat, so the part still lands where it did. Thin out works on drums too. Every press is a new random answer; Undo takes it back.</li>
       </ul>
     </section>
 
@@ -315,7 +470,7 @@
       <p>
         The strip under the tracks holds the <b>Song</b> name (click it to rename), <b>Tempo</b>,
         <b>Length</b>, <b>Key</b> (the tonic and scale), <b>Grid</b> (the note snap resolution) and the
-        <b>Master</b> volume. <b>Tap</b> beside the tempo sets it from your own taps: tap four or more times in time and the tempo follows; stop for two seconds to start a new count. The <b>▾</b> button collapses it to a slim bar to free up space (remembered
+        <b>Master</b> volume. <b>Tap</b> beside the tempo sets it from your own taps (see <a href="#transport">Transport</a>). The <b>▾</b> button collapses it to a slim bar to free up space (remembered
         between sessions). <b>Length</b> makes the song longer/shorter one bar at a time: <b>+</b> appends
         an empty bar, <b>−</b> removes the last bar (dropping any notes/hits past the new end); the length is
         saved with your file and exported so the game loops it.
@@ -344,6 +499,7 @@
         <li>Transport: return-to-start, stop, play, and a loop on/off toggle; the LCD shows Bars&nbsp;|&nbsp;Beats and Min:Sec.</li>
         <li>Click the timeline (or drag the playhead) to set where playback starts; the view auto-scrolls to follow the playhead.</li>
         <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
+        <li><b>Tap</b> (beside the tempo) sets the tempo from your own taps: tap four or more times in time and the tempo follows the average of your recent taps. Stop for two seconds and the next tap starts a new count. It works while the song plays, too — the playback carries on from where it was, at the new tempo.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
         <li>The <b>Key</b> cell (bottom bar) sets the song's tonic and scale. Every row outside the scale is <b>shaded</b> in the piano roll and its key dimmed on the keyboard, and the tonic is marked. <b>Keep to scale</b> goes further and moves a note you place or drag with the mouse to the nearest pitch in the scale — it only affects the <i>mouse</i>, what you <b>play</b> is never corrected. <b>Chromatic</b> turns the whole thing off.</li>
         <li>The <b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
