@@ -7150,7 +7150,51 @@ async function main() {
       }
     });
 
-    step('Overdub: recording round a loop layers laps instead of replacing them', async () => {
+    step('Tool panels: Transpose & co. stay open without blocking the roll, and follow the selection', async () => {
+      await fresh();
+      await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      const scope = `document.getElementById('transpose-scope').textContent`;
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('transpose-btn').click()`);
+      await waitFor(`document.getElementById('transpose-dialog').open`);
+      if (await cdp.evaluate(`document.getElementById('transpose-dialog').matches(':modal')`)) {
+        throw new Error('Transpose opened modal — the piano roll is unreachable behind it');
+      }
+      if (!/all 0 notes/.test(await cdp.evaluate(scope))) throw new Error(`empty track, scope reads "${await cdp.evaluate(scope)}"`);
+      // A point on the roll well clear of the panel must be the roll itself, not
+      // a backdrop — and a click there must place a note with the panel open.
+      const reached = await cdp.evaluate(`(() => {
+        const lane = document.querySelector('.track.active .lane');
+        const r = lane.getBoundingClientRect(), x = r.left + 30, y = r.top + 60;
+        if (!document.elementFromPoint(x, y)?.closest('.lane')) return false;
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+        return true;
+      })()`);
+      if (!reached) throw new Error('the roll under the open panel is covered');
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 1`);
+      // The scope line is not only painted on open: it follows the selection.
+      await waitFor(`/the 1 selected note/.test(${scope})`);
+      const before = await cdp.evaluate(`document.querySelector('.track.active .lane .note').getAttribute('aria-label').split(',')[0]`);
+      await cdp.evaluate(`document.getElementById('transpose-oct-up').click()`);
+      await waitFor(`document.querySelector('.track.active .lane .note').getAttribute('aria-label').split(',')[0] !== ${JSON.stringify(before)}`);
+      if (!await cdp.evaluate(`document.getElementById('transpose-dialog').open`)) throw new Error('pressing a button closed the panel');
+      // Escape inside the panel closes it; Escape on the page clears the selection.
+      await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await waitFor(`/all 1 note/.test(${scope})`);
+      await cdp.evaluate(`document.getElementById('transpose-dialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      await waitFor(`!document.getElementById('transpose-dialog').open`);
+      // The same for every tool the menu opens this way.
+      for (const id of ['timing', 'dynamics', 'vary', 'arrange']) {
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        await cdp.evaluate(`document.getElementById('${id}-btn').click()`);
+        await waitFor(`document.getElementById('${id}-dialog').open`);
+        if (await cdp.evaluate(`document.getElementById('${id}-dialog').matches(':modal')`)) throw new Error(`${id} opened modal`);
+        await cdp.evaluate(`document.getElementById('${id}-close').click()`);
+      }
+    });
+
+    step('Overdub:recording round a loop layers laps instead of replacing them', async () => {
       await fresh();
       await waitFor(`document.querySelectorAll('.track').length === 5`);
       // A short song at a fast tempo, so two laps take seconds rather than
