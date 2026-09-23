@@ -7194,7 +7194,7 @@ async function main() {
       }
     });
 
-    step('Overdub:recording round a loop layers laps instead of replacing them', async () => {
+    step('Overdub: recording round a loop layers laps instead of replacing them', async () => {
       await fresh();
       await waitFor(`document.querySelectorAll('.track').length === 5`);
       // A short song at a fast tempo, so two laps take seconds rather than

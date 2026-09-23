@@ -1103,6 +1103,11 @@
       box-shadow: 0 -8px 24px rgba(0,0,0,0.55);
     }
     .inspector.empty { display: none; }
+    /* The note inspector is a bottom sheet here, and selecting notes is what a
+       tool panel is for — so the panel moves to the top half, above the sheet
+       and its close button, rather than being slid over by them. */
+    dialog.tool-panel { top: 8px; max-height: calc(52vh - 60px); z-index: 47; }
+    dialog.tool-panel.front { z-index: 48; }
     body.has-sel #insp-close {
       display: block; position: fixed; right: 12px; bottom: calc(48vh + 8px); z-index: 46;
       background: #24242c; border: 1px solid #454550; color: #e8e8ee; padding: 8px 14px; border-radius: 20px;
