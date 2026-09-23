@@ -620,20 +620,21 @@ async function main() {
       throw new Error(`Timed out waiting for: ${expr}`);
     }
 
-    // The inspector's preset palettes collapse by default and remember it, so
-    // their buttons aren't in the DOM until disclosed. Open one before clicking
-    // through it — otherwise these checks would exercise buttons no user could
-    // actually reach (element.click() works on hidden nodes, and would have
-    // worked on detached-by-default markup too, quietly proving nothing).
+    // The inspector's preset grids are not in the DOM until asked for: the
+    // chord grid sits behind Add chord (collapsed by default, remembered), and
+    // the arpeggio grid shows only while the note's pitch movement is
+    // Arpeggio. Reach one the way a user does before clicking through it —
+    // otherwise these checks would exercise buttons no user could actually
+    // reach (element.click() works on hidden nodes, and would have worked on
+    // detached-by-default markup too, quietly proving nothing). Choosing
+    // Arpeggio gives the note its starting arpeggio, which a preset replaces.
+    const CHORD_TOGGLE = `document.querySelector('.inspector [data-palette="chord"]')`;
     async function openPalette(kind) {
       const attr = kind === 'chord' ? 'data-chord' : 'data-arp';
       if (await cdp.evaluate(`!!document.querySelector('.preset-grid button[${attr}]')`)) return;
-      const cap = kind === 'chord' ? 'Chord' : 'Pitch';
-      await cdp.evaluate(`(() => {
-        const panel = Array.from(document.querySelectorAll('.insp-panel'))
-          .find((p) => p.querySelector('.insp-cap')?.textContent === ${JSON.stringify(cap)});
-        panel.querySelector('.palette-toggle').click();
-      })()`);
+      const trigger = kind === 'chord' ? CHORD_TOGGLE : `document.querySelector('.inspector [data-move="arp"]')`;
+      await waitFor(`!!${trigger}`);
+      await cdp.evaluate(`${trigger}.click()`);
       await waitFor(`!!document.querySelector('.preset-grid button[${attr}]')`);
     }
 
@@ -1053,43 +1054,147 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
     });
 
-    step('Note inspector: both preset palettes start collapsed', async () => {
+    step('Note inspector: Add chord starts collapsed, and the inspector fits a small laptop even with the arpeggio presets showing', async () => {
       await withSelectedNote();
-      // Expanded, the two ten-button grids were 384px of a 745px inspector,
-      // which pushed the panels below them off a 1366x768 screen. They collapse
-      // by default and remember the choice; this must run before any other step
-      // discloses one. A palette renders no buttons at all while collapsed —
-      // element.click() would happily fire on merely-hidden ones.
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
-      const toggles = await cdp.evaluate(`document.querySelectorAll('.palette-toggle').length`);
-      if (toggles !== 2) throw new Error(`expected an Arpeggio and a Chord disclosure, got ${toggles}`);
+      // Expanded, the old pair of ten-button grids were 384px of a 745px
+      // inspector, which pushed the panels below them off a 1366x768 screen.
+      // The chord grid collapses by default behind Add chord and remembers the
+      // choice; this must run before any other step discloses it. A collapsed
+      // grid renders no buttons at all — element.click() would happily fire on
+      // merely-hidden ones.
+      await waitFor(`!!${CHORD_TOGGLE}`);
+      const toggles = await cdp.evaluate(`document.querySelectorAll('.inspector .palette-toggle').length`);
+      if (toggles !== 1) throw new Error(`expected one disclosure, Add chord, got ${toggles}`);
       const grids = await cdp.evaluate(`document.querySelectorAll('.inspector .preset-grid').length`);
-      if (grids !== 0) throw new Error(`expected both palettes collapsed by default, ${grids} were open`);
-      const collapsed = await cdp.evaluate(`Array.from(document.querySelectorAll('.palette-toggle')).every(b => b.getAttribute('aria-expanded') === 'false')`);
-      if (!collapsed) throw new Error('collapsed palettes should report aria-expanded="false"');
-      // And the inspector now fits without scrolling on a small laptop —
-      // measured against that screen rather than a fixed pixel count, which
-      // only ever passed because the suite's old 750px window hid the editor
-      // and every height read zero.
-      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
-      try {
-        await new Promise((r) => setTimeout(r, 200));
-        const fits = await cdp.evaluate(`(() => {
-          const col = document.querySelector('.inspector-column');
-          return { content: document.querySelector('.inspector').scrollHeight, visible: col.clientHeight };
-        })()`);
-        if (!(fits.visible > 0)) throw new Error('the inspector column has no height — it is not on screen to measure');
-        if (fits.content > fits.visible) {
-          throw new Error(`collapsed inspector should fit a 1366x768 screen: ${fits.content}px of content in ${fits.visible}px`);
+      if (grids !== 0) throw new Error(`expected no preset grid on a plain note, ${grids} were open`);
+      const collapsed = await cdp.evaluate(`${CHORD_TOGGLE}.getAttribute('aria-expanded')`);
+      if (collapsed !== 'false') throw new Error('a collapsed Add chord should report aria-expanded="false"');
+      // And the inspector fits without scrolling on a small laptop — measured
+      // against that screen rather than a fixed pixel count, which only ever
+      // passed because the suite's old 750px window hid the editor and every
+      // height read zero. Measured twice: on a plain note, and with the
+      // arpeggio presets showing, which they now do without being asked for.
+      const measure = async (what) => {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+        try {
+          await new Promise((r) => setTimeout(r, 200));
+          const fits = await cdp.evaluate(`(() => {
+            const col = document.querySelector('.inspector-column');
+            return { content: document.querySelector('.inspector').scrollHeight, visible: col.clientHeight };
+          })()`);
+          if (!(fits.visible > 0)) throw new Error('the inspector column has no height — it is not on screen to measure');
+          if (fits.content > fits.visible) {
+            throw new Error(`${what}: the inspector should fit a 1366x768 screen, ${fits.content}px of content in ${fits.visible}px`);
+          }
+        } finally {
+          await cdp.send('Emulation.clearDeviceMetricsOverride', {});
         }
-      } finally {
-        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      };
+      await measure('a plain note');
+      await openPalette('arp');
+      await measure('an arpeggio with its presets');
+    });
+
+    step('Note inspector: pitch movement is one visible choice, and the sound toggles are one group', async () => {
+      await withSelectedNote();
+      // Bend, Arpeggio and Glide (portamento) always replaced each other, but
+      // two of them sat under Pitch and the third under Modulation, so turning
+      // one on silently cleared another you could not see. They are one
+      // choice now, and each one the others replace is visibly unchosen.
+      const lead = () => cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        const n = d && window.__savedNotes(d, 'lead')[0];
+        return n ? { bend: n.bend || null, arp: n.arp && n.arp.length ? n.arp.join(',') : null, porta: !!n.porta, freq: n.freq } : null;
+      })()`);
+      const waitLead = (cond) => waitFor(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        const n = d && window.__savedNotes(d, 'lead')[0];
+        if (!n) return false;
+        const bend = n.bend || null, arp = n.arp && n.arp.length ? n.arp.join(',') : null, porta = !!n.porta;
+        return ${cond};
+      })()`);
+      const movement = () => cdp.evaluate(`(() => {
+        const g = document.querySelector('.inspector [role="radiogroup"]');
+        return g ? g.getAttribute('aria-label') + ': ' + [...g.querySelectorAll('[role="radio"]')]
+          .map(b => b.textContent.trim() + (b.getAttribute('aria-checked') === 'true' ? '*' : '')).join(' ') : null;
+      })()`);
+      const fields = () => cdp.evaluate(`[...document.querySelectorAll('.inspector .insp-field > span:first-child')].map(s => s.textContent).join('|')`);
+      const choose = (move) => cdp.evaluate(`document.querySelector('.inspector [data-move="${move}"]').click()`);
+      const expectMovement = async (want, what) => {
+        const got = await movement();
+        if (got !== `Pitch movement: ${want}`) throw new Error(`${what}: the movement should read "${want}", got ${JSON.stringify(got)}`);
+      };
+      await expectMovement('None* Bend Arpeggio Glide', 'a plain note');
+      // Modulation and Texture/FX are one Sound group; Duty (a square track's
+      // pulse width) is timbre, so it moved there from Pitch. Chord is no
+      // panel of its own any more.
+      const layout = await cdp.evaluate(`(() => {
+        const panels = [...document.querySelectorAll('.inspector .insp-panel')];
+        const sound = panels.find(p => p.querySelector('.insp-cap')?.textContent === 'Sound');
+        return {
+          caps: panels.map(p => p.querySelector('.insp-cap')?.textContent).join('|'),
+          toggles: sound ? [...sound.querySelectorAll('.fx-toggle')].map(b => b.textContent.trim()).join(' ') : null,
+          duty: !!(sound && sound.querySelector('select')),
+        };
+      })()`);
+      if (layout.caps !== 'Selected note|Pitch|Sound') throw new Error(`the panels should be Selected note, Pitch and Sound: ${layout.caps}`);
+      if (layout.toggles !== 'Vibrato Tremolo Bitcrush Echo Chorus Reverb' || !layout.duty) {
+        throw new Error(`Sound should hold the six toggles and a square track's Duty: ${JSON.stringify(layout)}`);
       }
+      if ((await fields()) !== 'Velocity|Pan|Duty cycle') throw new Error(`a plain note shows no Bend or Arpeggio field: ${await fields()}`);
+      // Each choice starts from something audible and clears the other two.
+      await choose('bend');
+      await waitLead(`bend && !arp && !porta`);
+      await expectMovement('None Bend* Arpeggio Glide', 'after choosing Bend');
+      const n = await lead();
+      if (Math.abs(n.bend - n.freq * Math.pow(2, 2 / 12)) > 0.02) throw new Error(`Bend should start two semitones up: ${JSON.stringify(n)}`);
+      if ((await fields()) !== 'Velocity|Pan|Bend (semitones)|Duty cycle') throw new Error(`Bend shows only its own field: ${await fields()}`);
+      await choose('arp');
+      await waitLead(`arp === '4,7' && !bend && !porta`);
+      await expectMovement('None Bend Arpeggio* Glide', 'after choosing Arpeggio');
+      if ((await fields()) !== 'Velocity|Pan|Arpeggio|Duty cycle') throw new Error(`Arpeggio shows only its own field: ${await fields()}`);
+      const presets = await cdp.evaluate(`document.querySelectorAll('.inspector .preset-grid button[data-arp]').length`);
+      if (presets !== 10) throw new Error(`the arpeggio presets show with Arpeggio, without being disclosed: ${presets}`);
+      await choose('porta');
+      await waitLead(`porta && !arp && !bend`);
+      await expectMovement('None Bend Arpeggio Glide*', 'after choosing Glide');
+      await choose('none');
+      await waitLead(`!porta && !arp && !bend`);
+      await expectMovement('None* Bend Arpeggio Glide', 'after choosing None');
+      // Emptying a movement's own value is choosing None.
+      await choose('bend');
+      await waitLead(`bend && !arp && !porta`);
+      await cdp.evaluate(`(() => {
+        const f = [...document.querySelectorAll('.inspector .insp-field')].find(x => x.textContent.includes('Bend'));
+        const input = f.querySelector('input');
+        input.value = '0';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitLead(`!bend && !arp && !porta`);
+      await expectMovement('None* Bend Arpeggio Glide', 'after setting Bend to 0');
+      // A note carrying more than one (a file written by hand, or before they
+      // excluded each other) shows the one playback uses: glide, then arpeggio.
+      const draft = await cdp.evaluate(`JSON.parse(localStorage.getItem('frogger-music-editor-autosave'))`);
+      const clips = draft.tracks.lead;
+      const note = Array.isArray(clips[0] && clips[0].notes) ? clips[0].notes[0] : clips[0];
+      Object.assign(note, { arp: [4, 7], porta: true, bend: null });
+      draft.songName = 'Two movements';
+      await cdp.evaluate(`(() => {
+        const input = document.getElementById('load-file-input');
+        const f = new File([${JSON.stringify(JSON.stringify(draft))}], 'two.json', { type: 'application/json' });
+        const dt = new DataTransfer(); dt.items.add(f);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.querySelector('#song-name-display').textContent === 'Two movements'`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="pitch"] .lane .note').click()`);
+      await waitFor(`!!document.querySelector('.inspector [role="radiogroup"]')`);
+      await expectMovement('None Bend Arpeggio Glide*', 'a note carrying both an arpeggio and a glide');
     });
 
     step('Note inspector: the maj chord button adds two real notes and multi-selects the whole chord', async () => {
       await withSelectedNote();
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await waitFor(`!!${CHORD_TOGGLE}`);
       await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
@@ -1129,7 +1234,7 @@ async function main() {
         const chord = Array.from(document.querySelectorAll('.track.active .lane .note.multi-selected'));
         chord.sort((a, b) => parseFloat(b.style.top) - parseFloat(a.style.top))[0].click();
       }`);
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await waitFor(`!!${CHORD_TOGGLE}`);
       const before = await cdp.evaluate(`document.querySelectorAll('.track.active .lane .note').length`);
       await openPalette('chord');
       await cdp.evaluate(`
@@ -1173,7 +1278,7 @@ async function main() {
       // tones like anywhere else and every check below passes untested.
       const rootLabel = await cdp.evaluate(`document.querySelector('.track.active .lane .note.selected').getAttribute('aria-label')`);
       if (!/^C7(,|$)/.test(rootLabel)) throw new Error(`the root should sit on the ceiling (C7, MIDI_MAX), it is "${rootLabel}"`);
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await waitFor(`!!${CHORD_TOGGLE}`);
       await openPalette('chord');
       await cdp.evaluate(`
         document.querySelector('.preset-grid button[data-chord="maj"]').click();
@@ -1905,12 +2010,13 @@ async function main() {
       })()`);
       // .every() is true for an empty list, so an inspector that rendered no
       // pills at all would otherwise sail through every check above.
-      if (pills.count !== 7) throw new Error(`expected 7 per-note effect pills, got ${pills.count}`);
-      const wantPills = ['Bitcrush', 'Chorus', 'Echo', 'Portamento', 'Reverb', 'Tremolo', 'Vibrato'];
+      // Six: Portamento is not a pill any more but one of the pitch movements.
+      if (pills.count !== 6) throw new Error(`expected 6 per-note effect pills, got ${pills.count}`);
+      const wantPills = ['Bitcrush', 'Chorus', 'Echo', 'Reverb', 'Tremolo', 'Vibrato'];
       if (pills.names.join('|') !== wantPills.join('|')) {
         throw new Error(`per-note pills lost their labels: ${JSON.stringify(pills.names)}`);
       }
-      if (!pills.drawn || pills.pressed !== 7) {
+      if (!pills.drawn || pills.pressed !== 6) {
         throw new Error(`pills must keep their glyph and aria-pressed: ${JSON.stringify(pills)}`);
       }
 
@@ -3472,7 +3578,7 @@ async function main() {
         lane.querySelector('.note').click();
       })()`);
       await waitFor(`!!document.querySelector('.inspector .fx-toggle')`);
-      await cdp.evaluate(`[...document.querySelectorAll('.inspector .fx-toggle')].find(b => /Portamento/.test(b.textContent)).click()`);
+      await cdp.evaluate(`document.querySelector('.inspector [data-move="porta"]').click()`);
       await new Promise((r) => setTimeout(r, 300));
       // Play, don't preview. Clicking a note auditions it through scheduleTone;
       // schedulePortamentoTone only runs from actual playback, so a preview
@@ -6059,7 +6165,7 @@ async function main() {
         lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 60, clientY: kr.top + 4 }));
       })()`);
       await waitFor(`!!document.querySelector('.track.active .lane .note')`);
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await waitFor(`!!${CHORD_TOGGLE}`);
       await openPalette('chord');
       const inKey = await cdp.evaluate(
         `[...document.querySelectorAll('.preset-grid button.in-key')].map(b => b.textContent)`);
@@ -6080,7 +6186,7 @@ async function main() {
       // than present and wrong.
       await setKey(0, 'chromatic');
       await cdp.evaluate(`document.querySelector('.track.active .lane .note').click()`);
-      await waitFor(`!!Array.from(document.querySelectorAll('.insp-cap')).find(c => c.textContent === 'Chord')`);
+      await waitFor(`!!${CHORD_TOGGLE}`);
       await openPalette('chord');
       const none = await cdp.evaluate(`document.querySelectorAll('.preset-grid button.in-key').length`);
       if (none !== 0) throw new Error(`chromatic has no degrees, so no in-key buttons: found ${none}`);

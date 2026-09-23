@@ -113,6 +113,10 @@ const SHOTS = [
       // which is the default) — a plain .click() fires it directly.
       await page.evaluate(`document.querySelector('.track .lane .note').click()`);
       await page.waitFor(`!document.querySelector('.inspector.empty')`);
+      // With Arpeggio chosen, so the picture shows what a movement brings with
+      // it — its own field and presets — rather than four bare choices.
+      await page.evaluate(`document.querySelector('.inspector [data-move="arp"]').click()`);
+      await page.waitFor(`!!document.querySelector('.inspector .preset-grid button[data-arp]')`);
     },
   },
   // ---- The "From idea to song" walkthrough. These start from the starter
