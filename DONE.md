@@ -19,6 +19,58 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
 
 ---
 
+## Från UI-granskningen (2026-09-23)
+
+De punkter ur granskningen som inte ändrar något flöde, gjorda i ett svep
+eftersom de rör var sin del av skalet och inte krockar med varandra. Kvar i
+`TODO.md` står de som hänger ihop (spara, osparat arbete, menyns uppdelning,
+dialogerna) och bör göras tillsammans.
+
+- [x] **"Back to the player" syntes på desktop och gjorde ingenting.**
+  `.file-menu-item { display: flex }` vann över `hidden`-attributets
+  UA-regel, så knappen stod i varje meny medan `.hidden` var sann — och
+  Mobile-steget läste just `.hidden`, därför passerade det. Nu en global
+  `[hidden] { display: none !important; }`, och de tre handskrivna
+  `…[hidden]`-reglerna (`#arrange-move-row`, `.file-menu`, `#player`) som var
+  lappar för samma fälla är borta. Steget frågar `getClientRects()` i båda
+  riktningarna; mot gammal kod faller det på "should not show on a
+  desktop-width editor".
+- [x] **Chords och Patterns har text, och Chords en egen glyf.** De var de
+  enda ikonknapparna i spårhuvudets rad; Chords ritade dessutom `scale`, som
+  Transpose och Keep to scale också ritar. Ny glyf `chords` (tre nothuvuden i
+  ters på en hals). Preset förblir ikon — den kritiserades inte och raden
+  rymmer inte en fjärde etikett till utan att trängas.
+- [x] **Raderna under spårhuvudet: ett stängkryss, rubriker som stämmer.**
+  Huvudet är en kolumn, så ✕ blev en fullbreddsstapel på Auto- och Env-raden
+  men en liten knapp på notlanen, som hade en egen regel. Nu `.row-close` på
+  alla tre, absolut uppe till höger, med `aria-label`. Env-radens rubrik
+  **byggs från radens egna gruppetiketter** i stället för en handskriven
+  lista per vågform — den gamla glömde Arpeggio, som alla vågformer har.
+  Knappen *Vel* heter nu **Note**, som lanen den öppnar (den visar pan och
+  bend också, inte bara velocity).
+- [x] **En på-färg.** Blått (verktyg, nottoggles, M/S), lila (Auto/Note/Env)
+  och grönt (Loop, Ghost notes, Master FX, metronom) blev
+  `--on-bg`/`--on-edge`/`--on-ink`/`--on-glow` på `:root`, blått. Rött är
+  kvar för Record och Arm; gröna Play är transportläge, inte en växel.
+- [x] **Bottenraden.** *Master*-reglaget heter **Monitor** — det är
+  förhandslyssningens volym och följer varken med låten eller exporten.
+  Keep to scale, Ghost notes och Master FX har korta textetiketter (*In
+  scale*, *Ghosts*, *Master FX*); `aria-label` togs bort där den synliga
+  texten nu är namnet, så namn och etikett inte kan gå isär.
+- [x] **Småsaker.** Inserts *Reset* döljs när racket är tomt. Gruppen
+  "Loop & Zoom" heter "Loop, markers & zoom".
+- [x] **Skärmbilderna tagna om** (`node shots.js`) — `menu-open.png` saknade
+  Variation och Arrange, och alla bilder med spårhuvud eller bottenrad visade
+  de gamla etiketterna och färgerna.
+
+Verify: ett nytt steg (*Track header: Chords and Patterns are named, and
+every row under it closes from one corner*) kontrollerar verktygsradens
+etiketter på båda spårsorterna, att Chords inte delar glyf med Keep to scale,
+att alla tre ✕ är små och sitter i hörnet, att Env-rubriken nämner Arpeggio
+och att Reset bara syns med inserts. Kört mot gammal kod: rött. Hela sviten:
+155 gröna, ett rött — Overdub, som spelar in i realtid runt en loop och föll
+under last; ensamt grönt tre gånger av tre, och inget här rör inspelningen.
+
 ## Punkter från CoPilot GitHub
 
 ### Fas 1: Grundkvalitet (snabb)

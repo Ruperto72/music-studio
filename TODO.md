@@ -13,15 +13,11 @@ En genomgång av menyer, spårhuvud, inspektor, bottenrad, dialoger och
 verktygspaneler (skärmbilder i 1440×900 av startlayouten och en laddad låt,
 plus koden). Notinspektorn gjordes om i samma omgång, se `DONE.md`. Inte
 granskat: redigeraren i mobilläge, MIDI-import och exportflödena. Ordnat
-efter allvar.
+efter allvar. Felet, ikon- och färgpunkterna, raderna under spårhuvudet,
+bottenraden, småsakerna och menybilden är gjorda (se `DONE.md`); kvar är de som ändrar
+flöden — spara, osparat arbete, menyns uppdelning, dialogerna — och som
+därför hänger ihop med varandra.
 
-- [ ] **Fel: "Back to the player" syns i menyn på desktop och gör ingenting.**
-  `.file-menu-item { display: flex }` vinner över `hidden`-attributet, så
-  knappen visas alltid. Verify-steget (Mobile) läser `.hidden`-egenskapen,
-  som är sann, i stället för om knappen syns — därför passerade det. En
-  global `[hidden] { display: none !important; }` stänger hela den klassen av
-  fel (samma fälla fick `#arrange-move-row` en egen regel för), och steget
-  bör kontrollera renderingen (`offsetParent`/`getClientRects()`).
 - [ ] **Osparat arbete kan försvinna utan varning.** Att ladda en låt, starta
   en ny eller stänga/ladda om fliken sker utan fråga. `autosave()` skriver ett
   utkast, men ingenting i appen läser tillbaka det — skyddsnätet går bara att
@@ -37,10 +33,6 @@ efter allvar.
   är Chromatic, så alla progressioner är avstängda, och texten hänvisar till
   bottenraden — som ligger bakom den modala dialogen. Förslag: tonart och
   skala direkt i dialogen, samma kontroller som i bottenraden.
-- [ ] **Chords och Patterns är ikonknappar utan text** sist i spårhuvudets rad,
-  medan Auto/Vel/Env har text. Chords delar dessutom glyfen `scale` med
-  Transpose och Keep to scale — mot regeln att olika saker inte delar ikon.
-  Förslag: texten "Chords"/"Patterns" och en egen glyf för Chords.
 - [ ] **Menyns mittsektion blandar tre sorter.** Split/Heal clip, de fem
   redigeringsverktygen och Add track ligger i en lista utan rubriker, och Add
   track (en grundhandling) finns bara där. Förslag: underrubriker *Noter*
@@ -52,24 +44,6 @@ efter allvar.
   designmotivering ("this is the third axis…"). Förslag: samma mönster i alla
   fyra — räckviddsraden, sedan per handling reglage + knapp + en kort rad —
   och motiveringarna till hjälpen.
-- [ ] **Raderna under spårhuvudet är inkonsekventa.** Stäng är ett nakent ✕
-  på full bredd i Env och Auto men ett litet ✕ i Vel-lanen; Env-radens
-  rubrik "Envelope, Filter & Duty" nämner inte Arpeggio Speed som också ligger
-  där; knappen heter *Vel* men lanen den öppnar heter *Note*. Förslag: ett
-  stäng-kryss uppe till höger överallt, rubriker som stämmer med knapparna.
-- [ ] **Tre färger betyder "på".** Blått (verktyg, nottoggles), lila
-  (Auto/Vel/Env) och grönt (Loop, Ghost notes, Master FX). Förslag: en
-  på-färg för växlingsknappar; rött kvar för inspelning.
-- [ ] **Bottenraden:** *Master*-reglaget är bara förhandslyssningens volym
-  (påverkar inte exporten) men står bredvid mastereffekterna — döp om till
-  *Monitor*. Keep to scale, Ghost notes och Master FX är bara ikoner; ge dem
-  en kort textetikett.
-- [ ] **Småsaker:** Inserts *Reset* visas även utan inserts och tar bort alla
-  utan fråga — dölj den när det inte finns något att nollställa.
-  Markörknappen ligger under "Loop & Zoom" fast markörer nu styr sektionerna —
-  döp om gruppen till "Loop, markers & zoom".
-- [ ] **Hjälpens menybild är inaktuell** — `menu-open.png` saknar Variation
-  och Arrange. Tas om med `node shots.js --only menu-open`.
 
 ## Arrangering, uppföljning
 

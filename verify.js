@@ -3933,6 +3933,58 @@ async function main() {
       if (masterDupes.length) throw new Error(`master chips need their own glyphs too: ${JSON.stringify(masterDupes)}`);
     });
 
+    step('Track header: Chords and Patterns are named, and every row under it closes from one corner', async () => {
+      // From the UI review: Chords and Patterns were the only header tools
+      // without text, Chords drew the same glyph as Transpose and Keep to
+      // scale, and the ✕ was a full-width bar on the Auto and Env rows but a
+      // small button on the note lane.
+      await fresh();
+      await waitFor(`document.querySelectorAll('#tracks > .track').length === 5`);
+      const tools = await cdp.evaluate(`(() => {
+        const names = (kind) => [...document.querySelector('#tracks > .track[data-kind="' + kind + '"] .th-tools').querySelectorAll('button')]
+          .map(b => b.textContent.trim()).filter(Boolean);
+        const d = (b) => [...b.querySelectorAll('svg.glyph path')].map(p => p.getAttribute('d')).join('|');
+        const chords = [...document.querySelector('#tracks > .track[data-kind="pitch"]').querySelectorAll('.th-tool-btn')].find(b => /progression/i.test(b.title));
+        return { pitch: names('pitch'), rhythm: names('rhythm'),
+                 sharesScale: d(chords) === d(document.getElementById('key-snap')) };
+      })()`);
+      if (JSON.stringify(tools.pitch) !== JSON.stringify(['Auto', 'Note', 'Env', 'Chords'])) {
+        throw new Error(`tonal header tools should read Auto/Note/Env/Chords: ${JSON.stringify(tools.pitch)}`);
+      }
+      if (JSON.stringify(tools.rhythm) !== JSON.stringify(['Auto', 'Note', 'Patterns'])) {
+        throw new Error(`rhythm header tools should read Auto/Note/Patterns: ${JSON.stringify(tools.rhythm)}`);
+      }
+      if (tools.sharesScale) throw new Error('Chords must not draw the Keep to scale glyph');
+
+      // Open all three rows on the first track, then measure each ✕.
+      await cdp.evaluate(`(() => {
+        const t = document.querySelector('#tracks > .track[data-kind="pitch"]');
+        for (const name of ['Auto', 'Note', 'Env']) [...t.querySelectorAll('.th-tool-btn')].find(b => b.textContent.trim() === name).click();
+      })()`);
+      await waitFor(`document.querySelectorAll('.automation-header .row-close').length === 3`);
+      const closes = await cdp.evaluate(`[...document.querySelectorAll('.automation-header')].map(h => {
+        const b = h.querySelector('.row-close'); const hr = h.getBoundingClientRect(); const r = b.getBoundingClientRect();
+        return { title: h.querySelector('.automation-title').textContent, w: Math.round(r.width),
+                 fromRight: Math.round(hr.right - r.right), fromTop: Math.round(r.top - hr.top), label: b.getAttribute('aria-label') };
+      })`);
+      if (closes.length !== 3) throw new Error(`expected three rows, got ${JSON.stringify(closes)}`);
+      for (const c of closes) {
+        if (c.w > 30) throw new Error(`a row's ✕ should be a small button, not a bar: ${JSON.stringify(c)}`);
+        if (c.fromRight > 16 || c.fromTop > 12) throw new Error(`a row's ✕ belongs in the top-right corner: ${JSON.stringify(c)}`);
+        if (!c.label) throw new Error(`a bare ✕ needs an aria-label: ${JSON.stringify(c)}`);
+      }
+      // The Env row's title names every group in it — Arpeggio included,
+      // which the hand-kept per-waveform titles all left out.
+      const env = closes.find(c => /^Envelope/.test(c.title));
+      if (!env || !/Arpeggio/.test(env.title)) throw new Error(`the Env row's title should list its groups: ${JSON.stringify(closes)}`);
+
+      // Inserts Reset only when there is something to reset.
+      const resetShown = () => cdp.evaluate(`document.querySelector('#tracks > .track[data-kind="pitch"] .th-fx-reset').getClientRects().length > 0`);
+      if (await resetShown()) throw new Error('Inserts Reset should be hidden on a track with no inserts');
+      await addFxEffect('EQ');
+      if (!await resetShown()) throw new Error('Inserts Reset should show once the track has an insert');
+    });
+
     step('Track header: the chip row stays compact with every effect in use', async () => {
       // The whole point of moving editing into the strip: a chip is a letter
       // and an icon, so eight of them wrap onto two-three short lines instead
@@ -4883,7 +4935,7 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track[data-kind="pitch"] .note').length === 3`);
       await cdp.evaluate(`(() => {
         const h = document.querySelector('.track[data-kind="pitch"] .track-header');
-        [...h.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click();
+        [...h.querySelectorAll('.th-tool-btn')].find(b => /^Note$/.test(b.textContent)).click();
       })()`);
       await waitFor(`!!document.querySelector('.vel-lane-el')`);
       const drawn = await cdp.evaluate(`({
@@ -5331,7 +5383,9 @@ async function main() {
         // ...and a way back in again, from the menu. Without it the only
         // route to the player was clearing site data, saved songs included.
         await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-        if (await cdp.evaluate(`document.getElementById('player-mode-btn').hidden`)) {
+        // Rendered, not the property: `.hidden` read true on desktop while a
+        // class rule's `display: flex` kept the button on screen regardless.
+        if (!await cdp.evaluate(`document.getElementById('player-mode-btn').getClientRects().length > 0`)) {
           throw new Error('the menu should offer "Back to the player" on a phone that opted into the editor');
         }
         await cdp.evaluate(`document.getElementById('player-mode-btn').click()`);
@@ -5345,7 +5399,7 @@ async function main() {
         await goto(APP_URL);
         await waitFor(`!!document.querySelector('.th-osc-trigger')`);
         await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
-        if (!await cdp.evaluate(`document.getElementById('player-mode-btn').hidden`)) {
+        if (await cdp.evaluate(`document.getElementById('player-mode-btn').getClientRects().length > 0`)) {
           throw new Error('"Back to the player" should not show on a desktop-width editor');
         }
         await cdp.evaluate(`localStorage.removeItem('music-studio-mobile-editor')`);
@@ -9061,7 +9115,7 @@ async function main() {
       if (before < 5) throw new Error(`expected the starter layout, got ${before}`);
       const toggleVelOnFirst = () => cdp.evaluate(`(() => {
         const t = document.querySelectorAll('#tracks > .track')[0];
-        [...t.querySelectorAll('button')].find(b => b.textContent.trim() === 'Vel').click();
+        [...t.querySelectorAll('button')].find(b => b.textContent.trim() === 'Note').click();
       })()`);
       // The first track, not the last: closing the last row's extra lane only
       // ever removes from the end, which the broken version handled fine.
@@ -10151,7 +10205,7 @@ async function main() {
         await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
         await penAt('Bass', 100, 40);
         await waitFor(`${trackRow('Bass')}.querySelectorAll('.lane .note').length === 1`);
-        await cdp.evaluate(`[...${trackRow('Bass')}.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click()`);
+        await cdp.evaluate(`[...${trackRow('Bass')}.querySelectorAll('.th-tool-btn')].find(b => /^Note$/.test(b.textContent)).click()`);
         await waitFor(`!!document.querySelector('.vel-head')`);
         await activateByName('Lead');
         await waitFor(`document.querySelector('.track.active .th-name')?.textContent === 'Lead'`);
@@ -10619,7 +10673,7 @@ async function main() {
       await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
       await penAt('Lead', 100, 40);
       await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 1`);
-      await cdp.evaluate(`[...${trackRow('Lead')}.querySelectorAll('.th-tool-btn')].find(b => /Vel/.test(b.textContent)).click()`);
+      await cdp.evaluate(`[...${trackRow('Lead')}.querySelectorAll('.th-tool-btn')].find(b => /^Note$/.test(b.textContent)).click()`);
       await waitFor(`!!document.querySelector('.vel-head')`);
       const before = await cdp.evaluate(`Number(document.querySelector('.vel-head').getAttribute('aria-valuenow'))`);
       await cdp.evaluate(`(() => {
