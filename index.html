@@ -52,6 +52,23 @@
   }
   dialog#songs-dialog::backdrop, dialog#preset-dialog::backdrop, dialog#pattern-dialog::backdrop { background: rgba(0,0,0,0.65); }
   .songs-body { padding: 4px 20px 18px; overflow-y: auto; max-height: calc(86vh - 60px); }
+  /* The menu's editing tools (Timing, Transpose, Dynamics, Variation, Arrange)
+     open as non-modal panels rather than modal dialogs: each is used in a loop
+     of select — press — listen — select again, which a modal backdrop over the
+     piano roll made impossible. Pinned beside the inspector by default and
+     draggable by its title bar (openToolPanel()). Below the toolbar's z-index
+     (30) so the ☰ menu still opens over one. */
+  dialog.tool-panel {
+    position: fixed; inset: auto; top: var(--sticky-top, 110px); right: 16px; margin: 0;
+    width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - var(--sticky-top, 110px) - 12px);
+    padding: 0; overflow-y: auto; z-index: 25;
+    background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  }
+  dialog.tool-panel.front { z-index: 26; }
+  dialog.tool-panel .help-head { cursor: move; touch-action: none; padding: 10px 14px; position: sticky; top: 0; z-index: 1; }
+  dialog.tool-panel .help-head h2 { font-size: 14px; }
+  dialog.tool-panel .songs-body { padding: 4px 14px 14px; max-height: none; overflow: visible; }
   .songs-body h3 { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #8f8f9b; margin: 16px 0 8px; }
   .songs-note { color: #b7b7c2; font-size: 12px; line-height: 1.55; margin: 10px 0 4px; }
   .songs-sub { text-transform: none; letter-spacing: 0; color: #8f8f9c; font-weight: 400; }
@@ -1086,6 +1103,11 @@
       box-shadow: 0 -8px 24px rgba(0,0,0,0.55);
     }
     .inspector.empty { display: none; }
+    /* The note inspector is a bottom sheet here, and selecting notes is what a
+       tool panel is for — so the panel moves to the top half, above the sheet
+       and its close button, rather than being slid over by them. */
+    dialog.tool-panel { top: 8px; max-height: calc(52vh - 60px); z-index: 47; }
+    dialog.tool-panel.front { z-index: 48; }
     body.has-sel #insp-close {
       display: block; position: fixed; right: 12px; bottom: calc(48vh + 8px); z-index: 46;
       background: #24242c; border: 1px solid #454550; color: #e8e8ee; padding: 8px 14px; border-radius: 20px;
@@ -1107,7 +1129,8 @@
   body.player-mode .editor-layout,
   body.player-mode #hscroll,
   body.player-mode #rotate-hint,
-  body.player-mode #floating-layer { display: none !important; }
+  body.player-mode #floating-layer,
+  body.player-mode dialog.tool-panel { display: none !important; }
   /* The percentage chain #player hangs off. Scoped to player mode: the editor
      wants the page to grow and scroll normally. */
   html.player-shell, html.player-shell body { height: 100%; }
@@ -1319,9 +1342,9 @@
     </div>
   </dialog>
 
-  <dialog id="timing-dialog">
+  <dialog id="timing-dialog" class="tool-panel" aria-labelledby="timing-title">
     <div class="help-head">
-      <h2><span data-glyph="quantize"></span> Timing</h2>
+      <h2 id="timing-title"><span data-glyph="quantize"></span> Timing</h2>
       <button id="timing-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -1343,9 +1366,9 @@
     </div>
   </dialog>
 
-  <dialog id="transpose-dialog">
+  <dialog id="transpose-dialog" class="tool-panel" aria-labelledby="transpose-title">
     <div class="help-head">
-      <h2><span data-glyph="scale"></span> Transpose</h2>
+      <h2 id="transpose-title"><span data-glyph="scale"></span> Transpose</h2>
       <button id="transpose-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -1366,9 +1389,9 @@
     </div>
   </dialog>
 
-  <dialog id="dynamics-dialog">
+  <dialog id="dynamics-dialog" class="tool-panel" aria-labelledby="dynamics-title">
     <div class="help-head">
-      <h2><span data-glyph="velocity"></span> Dynamics</h2>
+      <h2 id="dynamics-title"><span data-glyph="velocity"></span> Dynamics</h2>
       <button id="dynamics-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -1390,9 +1413,9 @@
     </div>
   </dialog>
 
-  <dialog id="vary-dialog">
+  <dialog id="vary-dialog" class="tool-panel" aria-labelledby="vary-title">
     <div class="help-head">
-      <h2><span data-glyph="vary"></span> Variation</h2>
+      <h2 id="vary-title"><span data-glyph="vary"></span> Variation</h2>
       <button id="vary-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -1418,9 +1441,9 @@
     </div>
   </dialog>
 
-  <dialog id="arrange-dialog">
+  <dialog id="arrange-dialog" class="tool-panel" aria-labelledby="arrange-title">
     <div class="help-head">
-      <h2><span data-glyph="arrange"></span> Arrange</h2>
+      <h2 id="arrange-title"><span data-glyph="arrange"></span> Arrange</h2>
       <button id="arrange-close">Close ✕</button>
     </div>
     <div class="songs-body">
@@ -1713,7 +1736,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.4.4';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -4409,6 +4432,7 @@ function render() {
   renderFloatingLayer();
   positionOverlays();
   renderInspector();
+  refreshToolPanels();
   autosave();
   checkpointHistory();
 }
@@ -10644,6 +10668,65 @@ let followPicked = null; // the source the user chose themselves, if any
 followSourceEl.addEventListener('change', () => { followPicked = followSourceEl.value; renderFollowList(); });
 document.getElementById('progression-close').addEventListener('click', () => progressionDialog.close());
 
+// ---------- Tool panels (non-modal menu dialogs) ----------
+// Timing, Transpose, Dynamics, Variation and Arrange open with show(), not
+// showModal(): each is used in a loop — select some notes, press, listen,
+// select others — and a modal backdrop over the piano roll made the roll
+// unreachable while the tool was open. A panel stays open beside the roll
+// instead, so its "acts on …" line has to follow the selection live: the
+// refresh function is kept on the element and render() re-runs it for every
+// open panel (see refreshToolPanels()). Looked up from the DOM there rather
+// than from a list here, since render() runs during boot, before this point.
+function openToolPanel(dlg, refresh) {
+  dlg.refreshPanel = refresh;
+  refresh();
+  if (!dlg.open) dlg.show();
+  bringToolPanelToFront(dlg);
+  // A panel dragged near an edge, then a smaller window: pull it back in so
+  // its title bar (the only way to move it) is always reachable.
+  if (dlg.style.left) placeToolPanel(dlg, parseFloat(dlg.style.left), parseFloat(dlg.style.top));
+}
+function refreshToolPanels() {
+  for (const dlg of document.querySelectorAll('dialog.tool-panel[open]')) if (dlg.refreshPanel) dlg.refreshPanel();
+}
+function bringToolPanelToFront(dlg) {
+  for (const d of document.querySelectorAll('dialog.tool-panel')) d.classList.toggle('front', d === dlg);
+}
+function placeToolPanel(dlg, x, y) {
+  const w = dlg.offsetWidth;
+  dlg.style.left = Math.max(0, Math.min(window.innerWidth - w, x)) + 'px';
+  dlg.style.top = Math.max(0, Math.min(window.innerHeight - 40, y)) + 'px';
+  dlg.style.right = 'auto';
+}
+for (const dlg of document.querySelectorAll('dialog.tool-panel')) {
+  const head = dlg.querySelector('.help-head');
+  head.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button, input, select')) return;
+    e.preventDefault();
+    const r = dlg.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    head.setPointerCapture(e.pointerId);
+    const move = (ev) => placeToolPanel(dlg, ev.clientX - dx, ev.clientY - dy);
+    const up = () => {
+      head.removeEventListener('pointermove', move);
+      head.removeEventListener('pointerup', up);
+      head.removeEventListener('pointercancel', up);
+    };
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up);
+    head.addEventListener('pointercancel', up);
+  });
+  dlg.addEventListener('pointerdown', () => bringToolPanelToFront(dlg));
+  // A non-modal dialog gets no Escape-to-close from the browser. Only while
+  // focus is inside it: Escape on the roll still clears the selection, which
+  // is exactly what a user of these panels will be doing between presses.
+  dlg.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    dlg.close();
+  });
+}
+
 // ---------- Timing dialog (quantize / humanize) ----------
 const timingDialog = document.getElementById('timing-dialog');
 const timingStrength = document.getElementById('timing-strength');
@@ -10704,8 +10787,7 @@ document.getElementById('heal-clip-btn').addEventListener('click', () => {
 });
 document.getElementById('timing-btn').addEventListener('click', () => {
   closeFileMenu();
-  refreshTimingScope();
-  timingDialog.showModal();
+  openToolPanel(timingDialog, refreshTimingScope);
 });
 document.getElementById('timing-close').addEventListener('click', () => timingDialog.close());
 document.getElementById('timing-quantize').addEventListener('click', () => {
@@ -10744,8 +10826,7 @@ function refreshTransposeScope() {
 }
 document.getElementById('transpose-btn').addEventListener('click', () => {
   closeFileMenu();
-  refreshTransposeScope();
-  transposeDialog.showModal();
+  openToolPanel(transposeDialog, refreshTransposeScope);
 });
 document.getElementById('transpose-close').addEventListener('click', () => transposeDialog.close());
 for (const [id, mode, n] of [
@@ -10776,8 +10857,7 @@ dynamicsAmount.addEventListener('input', () => {
 });
 document.getElementById('dynamics-btn').addEventListener('click', () => {
   closeFileMenu();
-  refreshDynamicsScope();
-  dynamicsDialog.showModal();
+  openToolPanel(dynamicsDialog, refreshDynamicsScope);
 });
 document.getElementById('dynamics-close').addEventListener('click', () => dynamicsDialog.close());
 document.getElementById('dynamics-vary').addEventListener('click', () => {
@@ -10811,8 +10891,7 @@ varyAmount.addEventListener('input', () => {
 });
 document.getElementById('vary-btn').addEventListener('click', () => {
   closeFileMenu();
-  refreshVaryScope();
-  varyDialog.showModal();
+  openToolPanel(varyDialog, refreshVaryScope);
 });
 document.getElementById('vary-close').addEventListener('click', () => varyDialog.close());
 for (const [id, what] of [['vary-neighbour', 'neighbour'], ['vary-octave', 'octave'], ['vary-thin', 'thin']]) {
@@ -10875,8 +10954,7 @@ document.getElementById('arrange-btn').addEventListener('click', () => {
   closeFileMenu();
   arrangeBarEl.value = String(barOf(state.playhead));
   document.getElementById('arrange-status').textContent = '';
-  refreshArrangeDialog();
-  arrangeDialog.showModal();
+  openToolPanel(arrangeDialog, refreshArrangeDialog);
 });
 document.getElementById('arrange-close').addEventListener('click', () => arrangeDialog.close());
 document.getElementById('arrange-insert').addEventListener('click', () => {
