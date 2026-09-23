@@ -14,7 +14,7 @@ verktygspaneler (skärmbilder i 1440×900 av startlayouten och en laddad låt,
 plus koden). Notinspektorn gjordes om i samma omgång, se `DONE.md`. Inte
 granskat: redigeraren i mobilläge, MIDI-import och exportflödena. Ordnat
 efter allvar. Felet, ikon- och färgpunkterna, raderna under spårhuvudet,
-bottenraden och småsakerna är gjorda (se `DONE.md`); kvar är de som ändrar
+bottenraden, småsakerna och menybilden är gjorda (se `DONE.md`); kvar är de som ändrar
 flöden — spara, osparat arbete, menyns uppdelning, dialogerna — och som
 därför hänger ihop med varandra.
 
@@ -44,8 +44,6 @@ därför hänger ihop med varandra.
   designmotivering ("this is the third axis…"). Förslag: samma mönster i alla
   fyra — räckviddsraden, sedan per handling reglage + knapp + en kort rad —
   och motiveringarna till hjälpen.
-- [ ] **Hjälpens menybild är inaktuell** — `menu-open.png` saknar Variation
-  och Arrange. Tas om med `node shots.js --only menu-open`.
 
 ## Arrangering, uppföljning
 

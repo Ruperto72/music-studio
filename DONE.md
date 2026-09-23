@@ -59,12 +59,17 @@ dialogerna) och bör göras tillsammans.
   texten nu är namnet, så namn och etikett inte kan gå isär.
 - [x] **Småsaker.** Inserts *Reset* döljs när racket är tomt. Gruppen
   "Loop & Zoom" heter "Loop, markers & zoom".
+- [x] **Skärmbilderna tagna om** (`node shots.js`) — `menu-open.png` saknade
+  Variation och Arrange, och alla bilder med spårhuvud eller bottenrad visade
+  de gamla etiketterna och färgerna.
 
 Verify: ett nytt steg (*Track header: Chords and Patterns are named, and
 every row under it closes from one corner*) kontrollerar verktygsradens
 etiketter på båda spårsorterna, att Chords inte delar glyf med Keep to scale,
 att alla tre ✕ är små och sitter i hörnet, att Env-rubriken nämner Arpeggio
-och att Reset bara syns med inserts. Kört mot gammal kod: rött.
+och att Reset bara syns med inserts. Kört mot gammal kod: rött. Hela sviten:
+155 gröna, ett rött — Overdub, som spelar in i realtid runt en loop och föll
+under last; ensamt grönt tre gånger av tre, och inget här rör inspelningen.
 
 ## Punkter från CoPilot GitHub
 
