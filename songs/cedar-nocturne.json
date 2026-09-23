@@ -50,43 +50,32 @@
       "name": "Thumb (p)",
       "color": "#b0703a",
       "kind": "tone"
-    },
-    {
-      "id": "rhythm",
-      "name": "(unused)",
-      "color": "#7a7a86",
-      "kind": "rhythm"
     }
   ],
   "gains": {
     "melody": 0.95,
     "fingers": 0.62,
-    "thumb": 0.85,
-    "rhythm": 1
+    "thumb": 0.85
   },
   "waveform": {
     "melody": "pluck",
     "fingers": "pluck",
-    "thumb": "pluck",
-    "rhythm": "kit"
+    "thumb": "pluck"
   },
   "pan": {
     "melody": 0.1,
     "fingers": 0.04,
-    "thumb": -0.08,
-    "rhythm": 0
+    "thumb": -0.08
   },
   "mute": {
     "melody": false,
     "fingers": false,
-    "thumb": false,
-    "rhythm": false
+    "thumb": false
   },
   "solo": {
     "melody": false,
     "fingers": false,
-    "thumb": false,
-    "rhythm": false
+    "thumb": false
   },
   "tracks": {
     "melody": [
@@ -1770,14 +1759,6 @@
             "vel": 0.62
           }
         ]
-      }
-    ],
-    "rhythm": [
-      {
-        "start": 0,
-        "len": null,
-        "source": "c9",
-        "notes": []
       }
     ]
   },
