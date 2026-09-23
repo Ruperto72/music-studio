@@ -184,7 +184,6 @@ function auditBundledSongs(repoRoot) {
 
     if (!list.length) add('no trackList');
     if (new Set(ids).size !== ids.length) add('duplicate track ids in trackList');
-    if (!list.some((t) => t.kind === 'rhythm')) add('no rhythm track');
     if (typeof song.masterVol !== 'number') add('no masterVol');
 
     for (const id of Object.keys(song.tracks || {})) {
@@ -6987,6 +6986,39 @@ async function main() {
       } finally {
         await cdp.send('Emulation.clearDeviceMetricsOverride', {});
       }
+    });
+
+    step('Tracks: the last rhythm track can be removed, the last track cannot, and a song may have no drums', async () => {
+      await fresh();
+      const activate = (sel) => cdp.evaluate(`document.querySelector(${JSON.stringify(sel)}).querySelector('.th-top')`
+        + `.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      const actions = `[...document.querySelectorAll('.inspector .th-strip-actions button')].map(b => b.textContent.replace(/^[^A-Za-z]+/, ''))`;
+      const rhythmCount = `document.querySelectorAll('.track[data-kind="rhythm"]').length`;
+      if (await cdp.evaluate(rhythmCount) !== 1) throw new Error('the starter layout should have exactly one rhythm track');
+      // It used to be the one track with no Remove at all.
+      await activate('.track[data-kind="rhythm"]');
+      await waitFor(`${actions}.includes('Remove track')`);
+      await clickTrackAction('Remove track');
+      await waitFor(`${rhythmCount} === 0`);
+      await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
+      const saved = await draft();
+      if (saved.trackList.some((t) => t.kind === 'rhythm')) throw new Error('the saved song still lists a rhythm track');
+      // Still one track left over, though: remove down to it and the button goes.
+      while (await cdp.evaluate(`document.querySelectorAll('.track').length`) > 1) {
+        const n = await cdp.evaluate(`document.querySelectorAll('.track').length`);
+        await activate('.track');
+        await waitFor(`${actions}.includes('Remove track')`);
+        await clickTrackAction('Remove track');
+        await waitFor(`document.querySelectorAll('.track').length === ${n - 1}`);
+      }
+      await activate('.track');
+      await waitFor(`${actions}.length > 0`);
+      if ((await cdp.evaluate(actions)).includes('Remove track')) throw new Error('the only track left still offers Remove');
+      // A song saved without drums loads without drums — the loader used to add
+      // an empty rhythm track to any song that lacked one.
+      await loadExample('Cedar Nocturne');
+      await waitFor(`document.querySelectorAll('.track').length === 3`);
+      if (await cdp.evaluate(rhythmCount) !== 0) throw new Error('Cedar Nocturne loaded with a rhythm track');
     });
 
     step('Transpose: scale steps move inside the key, semitones do not, and Fit repairs a take', async () => {

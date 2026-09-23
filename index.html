@@ -1713,7 +1713,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.3';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3117,15 +3117,16 @@ function autosave() {
   }, 400);
 }
 // A saved song (file, autosave draft, or local slot) is valid if it has at
-// least one rhythm-kind track with an array of hits — either declared in its
-// trackList, or (old files with no trackList) the legacy fixed `rhythm` key.
-function hasRhythmTrackData(data) {
+// least one track with an array of notes/hits — declared in its trackList, or
+// (old files with no trackList) any key of its track data. A song without a
+// rhythm track is valid: a piece for guitar or piano has no drums to hold.
+function hasTrackData(data) {
   const t = data && data.tracks;
   if (!t || typeof t !== 'object') return false;
   if (Array.isArray(data.trackList) && data.trackList.length) {
-    return data.trackList.some(tr => tr && tr.kind === 'rhythm' && Array.isArray(t[tr.id]));
+    return data.trackList.some(tr => tr && typeof tr.id === 'string' && Array.isArray(t[tr.id]));
   }
-  return Array.isArray(t.rhythm);
+  return Object.values(t).some(Array.isArray);
 }
 // Blank starting project (just the Rhythm track) — see the boot-time block
 // below (right after applySavedMix()) for why the page always starts here
@@ -3678,9 +3679,8 @@ function restoreKey(data) {
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Rebuild the track list and per-track maps from saved data, tolerating old
-// files that had no trackList (derive it from the track data keys). At least
-// one rhythm track is guaranteed to exist, but a saved file's own rhythm-kind
-// entries (there can be more than one) are otherwise preserved as-is. Mix
+// files that had no trackList (derive it from the track data keys). A file's
+// own rhythm-kind entries — none, one or several — are preserved as-is. Mix
 // values are seeded to defaults here and overridden by applySavedMix.
 // Refreshes PITCH_TRACKS/RHYTHM_TRACK_IDS/ALL_TRACKS.
 function restoreTrackList(data) {
@@ -3696,11 +3696,11 @@ function restoreTrackList(data) {
         kind: t.kind === 'rhythm' ? 'rhythm' : 'tone'
       }));
   }
-  if (!list.length) { // old file: infer tonal tracks from the data keys
+  if (!list.length) { // old file: infer tonal tracks from the data keys; `rhythm` was the fixed drum key
     const tonal = Object.keys(src).filter(k => k !== 'rhythm');
     list = tonal.map((id, i) => ({ id, name: cap(id), color: TRACK_PALETTE[i % TRACK_PALETTE.length], kind: 'tone' }));
+    if (Array.isArray(src.rhythm)) list.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
   }
-  if (!list.some(t => t.kind === 'rhythm')) list.push({ id: 'rhythm', name: 'Rhythm', color: RHYTHM_COLOR, kind: 'rhythm' });
   state.trackList = list;
   refreshTrackArrays();
   const tracks = {}, gains = {}, waveform = {}, pan = {}, mute = {}, solo = {};
@@ -4862,12 +4862,10 @@ function renameTrack(id) {
   const trimmed = name.trim();
   if (trimmed) { t.name = trimmed; render(); autosave(); }
 }
-// A track can always be removed, except the very last remaining rhythm track
-// — at least one rhythm-kind track must always exist.
+// Any track can be removed — rhythm tracks included — except the very last
+// one: activeTrack, the inspector and every editing path assume some track.
 function canRemoveTrack(id) {
-  const t = trackOf(id);
-  if (!t) return false;
-  return t.kind !== 'rhythm' || state.trackList.filter(x => x.kind === 'rhythm').length > 1;
+  return !!trackOf(id) && state.trackList.length > 1;
 }
 function removeTrack(id) {
   const t = trackOf(id);
@@ -8339,8 +8337,8 @@ function buildTrackActionsSection(track) {
   addBtn('', '⧉', 'Duplicate track',
     'Duplicate this track — a copy of the part and the whole voice, below this one',
     () => duplicateTrack(track));
-  // Same rule the header button followed: the last rhythm track has no Remove
-  // at all, rather than one that asks and then declines.
+  // The last track has no Remove at all, rather than one that asks and then
+  // declines.
   if (canRemoveTrack(track)) {
     addBtn('danger', '✕', 'Remove track', 'Remove this track and its part',
       () => removeTrack(track));
@@ -9627,7 +9625,7 @@ document.getElementById('load-file').addEventListener('click', async () => {
 // `name` overrides data.songName — used when the song's name lives outside
 // the file itself (an example's index.json entry, or a local save's slot key).
 function applySongData(data, name) {
-  if (!hasRhythmTrackData(data)) return false;
+  if (!hasTrackData(data)) return false;
   stopPlayback(); // audio graph is keyed by track id — rebuild it after a load
   state.songName = name || (typeof data.songName === 'string' && data.songName) || 'Untitled Song';
   updateSongNameUI();
