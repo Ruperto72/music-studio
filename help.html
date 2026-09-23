@@ -294,11 +294,11 @@
         <li>
           <h3>Arrange the song</h3>
           <p>Open <b>Arrange…</b> in the menu. It lists your sections, and each one can be <b>Duplicate</b>d (the
-          copy goes straight after it and everything later moves along), copied to the end, or deleted. At the
-          top, <b>Insert empty bars</b> and <b>Delete bars</b> open or close time across the <i>whole</i> song —
+          copy goes straight after it and everything later moves along), copied to the end, deleted, or
+          <b>Move</b>d after another section in one step. At the top, <b>Insert empty bars</b> and <b>Delete bars</b> open or close time across the <i>whole</i> song —
           every track, its automation and the markers move together, so nothing is left behind.</p>
           <figure>
-            <img class="shot" src="docs/img/help/arrange-dialog.png" alt="The Arrange dialog on the Cinematic example: At bar and Bars fields with Insert empty bars and Delete bars, and a list of sections Intro, Theme, Bridge, Theme II, Climax, Outro, each with Duplicate, Copy to end and Delete">
+            <img class="shot" src="docs/img/help/arrange-dialog.png" alt="The Arrange dialog on the Cinematic example: At bar and Bars fields with Insert empty bars and Delete bars, a Move row with a section and a place to put it, and a list of sections Intro, Theme, Bridge, Theme II, Climax, Outro, each with Duplicate, Copy to end and Delete">
             <figcaption>The Arrange dialog on the Cinematic example — six sections, one row each.</figcaption>
           </figure>
           <p>A typical shape to build towards: <i>Intro – Verse – Chorus – Verse – Chorus – Bridge – Chorus – Chorus</i>.
@@ -419,6 +419,7 @@
         <li><b>Arrange…</b> (menu) works on time itself, across the whole song. <b>Insert empty bars</b> opens a gap of that many bars at <b>At bar</b>; <b>Delete bars</b> removes them and closes the gap. Every track, its clips, its automation and the markers move together.</li>
         <li>Everything moves in <b>whole bars</b>, so the song always stays a whole number of bars long. A note that rings across the point where bars go in sustains through them, and an automation curve holds its value there — so inserting bars and deleting them again gives you back exactly what you had.</li>
         <li>Your <b>markers</b> are the song's <b>sections</b>: each runs from the bar its marker is in to the next marker's bar (or to the end). Name them after the part of the song they start. Each section can be <b>Duplicate</b>d (the copy goes straight after it, and everything later moves on), copied to the end (<b>Copy to end</b>) or <b>Delete</b>d. A copy brings its automation and its marker with it, so a duplicated chorus is listed as a section of its own.</li>
+        <li><b>Move</b> takes a section out and puts it back in somewhere else — pick it, then where it goes (<i>to the start</i>, or <i>after</i> another section — with unmarked music ahead of your first marker, the front is <i>before</i> that section, so the unmarked bars stay where they are), and press <b>Move</b>. What lay between closes up behind it and the song keeps its length, so "the Bridge after the second chorus" is one step rather than a Duplicate and a Delete. Two sections with the same name are told apart by the bar they start on.</li>
         <li><b>Undo</b> takes back any of these in one step, markers included.</li>
         <li><b>Repeat</b> (by the transport) is the quick version for a loop: it stamps the loop range's notes into the bars right after it, overwriting rather than moving anything.</li>
       </ul>
