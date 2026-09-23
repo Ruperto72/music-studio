@@ -211,6 +211,9 @@ async function main() {
       args: ['--hide-scrollbars', '--force-device-scale-factor=2', '--font-render-hinting=none'],
     });
     cdp = await openPage(launched.httpBase);
+    // Accept the app's own questions ("unsaved changes — load anyway?") the way a
+    // person setting up the shot would; unanswered, one stalls every evaluate.
+    cdp.on('Page.javascriptDialogOpening', () => { cdp.send('Page.handleJavaScriptDialog', { accept: true }); });
 
     const page = {
       evaluate: (e) => cdp.evaluate(e),
@@ -318,6 +321,10 @@ async function main() {
     for (const shot of toShoot) {
       const setupAt = shot.loadAt || shot;
       await viewport(setupAt.width, setupAt.height);
+      // Same reasoning as verify.js's goto(): a shot's setup may leave the
+      // song with unsaved changes, and the app's leave-page prompt must not
+      // stall the next navigation.
+      await cdp.evaluate(`window.addEventListener('beforeunload', (e) => e.stopImmediatePropagation(), true)`).catch(() => {});
       await cdp.send('Page.navigate', { url: APP_URL });
       await page.waitFor(`!!document.querySelector('.th-osc-trigger') || document.getElementById('player')?.hidden === false`);
       if (shot.setup) await shot.setup(page);

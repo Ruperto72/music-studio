@@ -577,6 +577,16 @@ async function main() {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SAVED_NOTES_INSTALL });
 
     async function goto(url) {
+      // The app asks before unloading a song with unsaved changes. Every step
+      // leaves the editor in whatever state it made, so without this a
+      // navigation after any edit can open that prompt, and one such
+      // navigation never completed (the Waveforms step, then the PWM step's
+      // fresh()) even with the dialog handler above accepting dialogs — the
+      // whole suite hung there. Not traced further. A capture
+      // listener on window runs before the app's own, and stopping it there
+      // is a test-side decision that leaves the app's prompt untouched. The
+      // Unsaved-work step tests the prompt's condition (isDirty) directly.
+      await cdp.evaluate(`window.addEventListener('beforeunload', (e) => e.stopImmediatePropagation(), true)`).catch(() => {});
       const loaded = new Promise((resolve) => cdp.on('Page.loadEventFired', resolve));
       await cdp.send('Page.navigate', { url });
       await loaded;
