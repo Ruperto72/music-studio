@@ -1508,6 +1508,9 @@
           <button id="fullscreen-btn" class="file-menu-item" data-glyph="fullscreen" aria-pressed="false">Fullscreen</button>
         </div>
         <div class="file-menu-section">
+          <!-- The way back from "Open the editor anyway": shown only where the
+               player would otherwise take over (see syncPlayerMode()). -->
+          <button id="player-mode-btn" class="file-menu-item" data-glyph="songs" title="Go back to the phone player: song list and transport only" hidden>Back to the player</button>
           <button id="help-btn" class="file-menu-item" data-glyph="help">Help</button>
         </div>
       </div>
@@ -1736,7 +1739,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.4.4';
+const APP_VERSION = '1.4.5';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -14246,6 +14249,7 @@ function syncPlayerMode() {
   document.documentElement.classList.toggle('player-shell', on);
   document.body.classList.toggle('player-mode', on);
   playerEl.hidden = !on;
+  document.getElementById('player-mode-btn').hidden = !(isMobileLayout() && mobileEditorOptIn);
   if (on) { renderPlayerHead(); renderPlayerList(); }
 }
 // The transport buttons are the editor's own, clicked rather than
@@ -14256,6 +14260,16 @@ document.getElementById('player-rtz').addEventListener('click', () => document.g
 document.getElementById('player-editor-link').addEventListener('click', () => {
   mobileEditorOptIn = true;
   try { localStorage.setItem(MOBILE_EDITOR_KEY, '1'); } catch { /* ignore */ }
+  syncPlayerMode();
+  render();
+});
+// The opt-in above is remembered, so without this a phone that once chose
+// the editor could only get the player back by clearing site data — which
+// also deletes every saved song.
+document.getElementById('player-mode-btn').addEventListener('click', () => {
+  closeFileMenu();
+  mobileEditorOptIn = false;
+  try { localStorage.removeItem(MOBILE_EDITOR_KEY); } catch { /* ignore */ }
   syncPlayerMode();
   render();
 });

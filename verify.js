@@ -5222,6 +5222,26 @@ async function main() {
         if (await cdp.evaluate(`document.body.classList.contains('player-mode')`)) {
           throw new Error('the editor opt-in should be remembered across a reload');
         }
+        // ...and a way back in again, from the menu. Without it the only
+        // route to the player was clearing site data, saved songs included.
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        if (await cdp.evaluate(`document.getElementById('player-mode-btn').hidden`)) {
+          throw new Error('the menu should offer "Back to the player" on a phone that opted into the editor');
+        }
+        await cdp.evaluate(`document.getElementById('player-mode-btn').click()`);
+        await waitFor(`document.body.classList.contains('player-mode')`);
+        if (await cdp.evaluate(`localStorage.getItem('music-studio-mobile-editor')`) !== null) {
+          throw new Error('going back to the player should forget the editor opt-in');
+        }
+        await goto(APP_URL);
+        await waitFor(`document.getElementById('player')?.hidden === false`);
+        await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+        await goto(APP_URL);
+        await waitFor(`!!document.querySelector('.th-osc-trigger')`);
+        await cdp.evaluate(`document.querySelector('#file-menu-toggle').click()`);
+        if (!await cdp.evaluate(`document.getElementById('player-mode-btn').hidden`)) {
+          throw new Error('"Back to the player" should not show on a desktop-width editor');
+        }
         await cdp.evaluate(`localStorage.removeItem('music-studio-mobile-editor')`);
       } finally {
         await cdp.send('Emulation.clearDeviceMetricsOverride', {});
