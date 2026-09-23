@@ -56,7 +56,7 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   column of note names — press a key to hear it through that track's own
   instrument, drag down the keys to glissando. Rhythm tracks keep their ten
   piece names
-- A **note lane** per track (the **Vel** button): one stem per note or hit with
+- A **note lane** per track (the **Note** button): one stem per note or hit with
   a diamond head to drag, showing **velocity**, **pan** or **bend** — pick which
   from its header. The grid dims a quiet item, but *which of these is loudest*
   is a comparison, and heights compare better than shades of one colour

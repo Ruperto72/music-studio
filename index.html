@@ -37,7 +37,18 @@
     --sel-fill: linear-gradient(#2b2b34, #23232b); --sel-edge: rgba(255,255,255,0.35);
     --subgrid: rgba(120, 200, 255, 0.16);
     --header-w: 260px; --gutter-w: 42px;
+    /* "This switch is on" — one colour for every toggle, whatever kind of
+       thing it switches. There were three (blue tools and note flags, purple
+       Auto/Note/Env, green Loop/Ghost/Master FX), which read as three
+       meanings where there is one. Red stays Record's and Arm's alone; the
+       green Play is transport state, not a switch. */
+    --on-bg: #3a6bd6; --on-edge: #2a55b5; --on-ink: #fff; --on-glow: 0 0 6px rgba(58,107,214,0.4);
   }
+  /* `hidden` always wins. A class rule such as `.file-menu-item { display:
+     flex }` otherwise beats the attribute's UA `display: none`, and the
+     element shows while its `.hidden` property still reads true — which is
+     how "Back to the player" sat in every desktop menu doing nothing. */
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; }
   body {
     background: var(--bg); color: var(--ink);
@@ -46,6 +57,9 @@
   }
   h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
   .icon-btn { padding: 6px 9px; font-size: 14px; line-height: 1; min-width: 34px; text-align: center; }
+  /* The bottom bar's switches name themselves: a picture alone was the only
+     name Keep to scale, Ghost notes and Master FX had on screen. */
+  .icon-btn.labelled { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; white-space: nowrap; }
   dialog#songs-dialog, dialog#preset-dialog, dialog#pattern-dialog {
     background: var(--panel); color: #e8e8ee; border: 1px solid #444; border-radius: 10px;
     max-width: 560px; width: calc(100vw - 40px); max-height: 86vh; padding: 0; overflow: hidden;
@@ -92,7 +106,6 @@
   .euclid-row label { display: flex; align-items: center; gap: 5px; }
   .euclid-row input[type=number] { width: 52px; padding: 4px 6px; font-size: 12px; }
   .euclid-row select { padding: 4px 6px; font-size: 12px; }
-  #arrange-move-row[hidden] { display: none; }
   .euclid-view { display: flex; flex-wrap: wrap; gap: 3px; max-width: 100%; }
   .euclid-view span { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #55555f; }
   .euclid-view span.on { background: #ffcc00; border-color: #ffcc00; }
@@ -184,8 +197,9 @@
   .tp-btn.play { color: #7dffa8; font-size: 13px; }
   body.playing .tp-btn.play { background: #23c257; color: #04210f; border-color: #14a544; box-shadow: 0 0 10px rgba(57,255,106,0.5); }
   .tp-btn.stop { color: #ff8f7d; }
-  .tp-btn.toggle[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
-  .icon-btn[aria-pressed="true"] { background: #2a5f3c; color: #7dffa8; border-color: #14a544; }
+  .tp-btn.toggle[aria-pressed="true"], .icon-btn[aria-pressed="true"] {
+    background: var(--on-bg); color: var(--on-ink); border-color: var(--on-edge); box-shadow: var(--on-glow);
+  }
 
   #song-name-display {
     font-size: 13px; font-weight: 700; color: var(--ink); max-width: 220px;
@@ -218,8 +232,7 @@
     background: #22222a; padding: 6px 9px; font-size: 13px; line-height: 1;
   }
   .segmented button:last-child { border-right: none; }
-  .segmented button.active { background: #3a6bd6; color: #fff; }
-  .segmented.tool-group button.active { background: #3a6bd6; }
+  .segmented button.active { background: var(--on-bg); color: var(--on-ink); }
   #zoom-level, #len-bars { font-size: 11px; color: var(--muted); min-width: 40px; text-align: center;
     background: #101014; padding: 6px 4px; align-self: stretch; display: flex; align-items: center; justify-content: center; }
   #len-bars { min-width: 54px; }
@@ -489,9 +502,9 @@
     border-radius: 4px; background: #2c2c33; color: #b8b8c2; line-height: 1;
   }
   .th-btns button.m.on, .th-btns button.s.on {
-    background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4);
+    background: var(--on-bg); color: var(--on-ink); border-color: var(--on-edge); box-shadow: var(--on-glow);
   }
-  /* Armed is red rather than the green M/S use: it is the one state where
+  /* Armed is red rather than the on-colour M/S use: it is the one state where
      typing does something destructive, so it should not look like the others. */
   .th-btns button.r.on { background: #6a1620; color: #ffb3bd; border-color: #c2283c; }
   .tp-btn.rec { color: #ff8f9d; }
@@ -504,7 +517,7 @@
     border-radius: 4px; background: #2c2c33; color: #b8b8c2; line-height: 1;
   }
   .th-tool-btn.on {
-    background: #7a4fd1; color: #fff; border-color: #5c3aa8; box-shadow: 0 0 6px rgba(122,79,209,0.4);
+    background: var(--on-bg); color: var(--on-ink); border-color: var(--on-edge); box-shadow: var(--on-glow);
   }
   .th-tool-btn.icon { flex: 0 0 22px; font-size: 11px; }
   .th-vol { display: flex; align-items: center; gap: 6px; }
@@ -705,9 +718,15 @@
   /* Centre line for the signed values (pan, bend), so a stem reads as an
      offset from neutral rather than as a quantity. */
   .vel-zero { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.18); }
-  /* The velocity header has one button where the others have two, so without
-     this it stretches across the whole 260px column. */
-  .automation-header .vel-close { flex: 0 0 auto; align-self: center; margin-left: auto; }
+  /* One close control for every row under a header, in the same place: the
+     top-right corner. The header is a column, so as a flex child the ✕ was a
+     full-width bar on the Auto and Env rows and a small one on the note lane,
+     which had a rule of its own. The title leaves room for it. */
+  .automation-header .row-close {
+    position: absolute; top: 6px; right: 8px; width: 20px; height: 20px; padding: 0;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .automation-header .automation-title { padding-right: 26px; }
   .automation-svg { position: absolute; left: 0; top: 0; pointer-events: none; }
   .automation-zero-line { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.15); pointer-events: none; }
   .automation-point {
@@ -961,7 +980,6 @@
     max-height: calc(100vh - var(--sticky-top, 110px) - 10px);
     overflow-y: auto;
   }
-  .file-menu[hidden] { display: none; }
   .file-menu-section { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
   .file-menu-section + .file-menu-section { border-top: 1px solid #2a2a33; margin-top: 4px; padding-top: 8px; }
   .file-menu-item {
@@ -1043,7 +1061,7 @@
   .fx-toggle .glyph { width: 100%; max-width: 34px; height: 12px; }
   .fx-toggle-label { line-height: 1.1; }
   .fx-toggle:hover { border-color: #55555f; }
-  .fx-toggle.on { background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4); }
+  .fx-toggle.on { background: var(--on-bg); color: var(--on-ink); border-color: var(--on-edge); box-shadow: var(--on-glow); }
   .insp-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .insp-field > span { color: var(--muted); font-size: 11px; }
   /* The same look as the number fields beside it: a bare text input kept the
@@ -1176,7 +1194,6 @@
     display: flex; flex-direction: column; gap: 14px; padding: 16px 14px 12px;
     height: 100%; overflow: hidden;
   }
-  #player[hidden] { display: none; }
   #player-card, #player-list-cap, #player-editor-link { flex: 0 0 auto; }
   #player-card {
     background: var(--strip); border: 1px solid #26262e; border-radius: 12px;
@@ -1589,7 +1606,7 @@
 
     <!-- Loop / zoom -->
     <div class="panel tb-extra" id="view-panel">
-      <div class="panel-cap">Loop &amp; Zoom</div>
+      <div class="panel-cap">Loop, markers &amp; zoom</div>
       <div class="panel-body">
         <button id="loop-reset" title="Reset the loop range to the full song">Full range</button>
         <button id="repeat-loop" data-glyph="repeat" title="Duplicate the loop range's notes/hits into the region right after it — click again to keep stamping forward">Repeat</button>
@@ -1624,10 +1641,14 @@
                (see selectMaster()). Tempo/Meter/Length/Grid/Swing deliberately
                do not — they belong to the song, not to this channel. -->
           <div class="mstrip-cell mstrip-master-cell" title="Master bus — click to show its effects in the inspector">
-            <span class="mstrip-cap">Master</span>
+            <!-- "Monitor", not "Master": this is how loud you hear the editor,
+                 and neither the song file nor an export ever sees it. Beside
+                 the master bus's effects it read as part of the mix. -->
+            <span class="mstrip-cap">Monitor</span>
             <div class="th-vol">
               <span class="mv-ico" data-glyph="wav"></span>
-              <input id="master-vol" type="range" min="0" max="1" step="0.02" title="Master preview volume (editor only)">
+              <input id="master-vol" type="range" min="0" max="1" step="0.02" aria-label="Monitor volume"
+                     title="Monitor volume: how loud you hear the editor. Not saved with the song and not part of an export.">
               <span id="master-vol-val" class="vol-val"></span>
             </div>
           </div>
@@ -1661,9 +1682,8 @@
             <div class="mstrip-row">
               <select id="key-root" title="The song's tonic — which note the scale is built from"></select>
               <select id="key-scale" title="Shades the rows outside the scale and dims their keys. Chromatic turns it off."></select>
-              <button id="key-snap" class="icon-btn" data-glyph="scale" aria-pressed="false"
-                      aria-label="Keep placed notes in the scale"
-                      title="Keep to scale: a note placed or dragged with the mouse moves to the nearest pitch in the scale. Playing is never corrected."></button>
+              <button id="key-snap" class="icon-btn labelled" data-glyph="scale" aria-pressed="false"
+                      title="Keep to scale: a note placed or dragged with the mouse moves to the nearest pitch in the scale. Playing is never corrected.">In scale</button>
             </div>
           </div>
           <div class="mstrip-cell">
@@ -1677,9 +1697,8 @@
                 <option value="1/16T">1/16 T</option>
                 <option value="free">Free</option>
               </select>
-              <button id="ghost-notes" class="icon-btn" data-glyph="ghost" aria-pressed="true"
-                      aria-label="Show other tracks' notes in the active track"
-                      title="Ghost notes: the other tonal tracks' notes show faintly in the active track's piano roll, so you can see the chords while you write the melody. They cannot be clicked."></button>
+              <button id="ghost-notes" class="icon-btn labelled" data-glyph="ghost" aria-pressed="true"
+                      title="Ghost notes: the other tonal tracks' notes show faintly in the active track's piano roll, so you can see the chords while you write the melody. They cannot be clicked.">Ghosts</button>
             </div>
           </div>
           <div class="mstrip-cell">
@@ -1690,7 +1709,7 @@
             </div>
           </div>
           <div class="mstrip-cell">
-            <button id="master-fx-toggle" class="icon-btn" data-glyph="master" aria-label="Master FX" title="Master EQ &amp; compression" aria-pressed="false"></button>
+            <button id="master-fx-toggle" class="icon-btn labelled" data-glyph="master" title="Master EQ &amp; compression" aria-pressed="false">Master FX</button>
           </div>
         </div>
         <div id="master-fx-panel" class="master-fx-panel" style="display:none">
@@ -1766,7 +1785,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -2061,6 +2080,13 @@ const GLYPHS = {
   // A rising staircase of unequal steps: what a scale is, as opposed to the
   // twelve equal ones the lane draws. The tall first riser is the tonic.
   scale:    { box: '0 0 24 24', paths: ['M3 21V9', 'M3 19h4v-4h4v-4h4V7h4V4', 'M20 4v17'] },
+  // Three note heads stacked in thirds on one stem: a triad as written. The
+  // Chords button used to borrow `scale`, which Transpose and Keep to scale
+  // also draw — three different things behind one picture.
+  chords:   { box: '0 0 24 24', paths: ['M6.4 18.5a2.6 2.2 0 1 0 5.2 0a2.6 2.2 0 1 0-5.2 0z',
+                                        'M6.4 13a2.6 2.2 0 1 0 5.2 0a2.6 2.2 0 1 0-5.2 0z',
+                                        'M6.4 7.5a2.6 2.2 0 1 0 5.2 0a2.6 2.2 0 1 0-5.2 0z',
+                                        'M11.6 18.5V3', 'M11.6 3c2 1 5 2 5 5'] },
   // A solid note block in front of a dashed one: your part over another's.
   ghost:    { box: '0 0 24 24', paths: ['M3 13h11v6H3z', 'M9 5h3', 'M15 5h3', 'M21 5v3', 'M21 11h-2', 'M9 5v4'] },
   sparkle:  { box: '0 0 24 24', paths: ['M12 4l1.7 4.8L18.5 10.5 13.7 12.2 12 17l-1.7-4.8L5.5 10.5l4.8-1.7z', 'M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z'] },
@@ -5140,7 +5166,8 @@ function renderAutomationRow(track, param) {
   const clearBtn = el('button'); clearBtn.textContent = 'Clear'; clearBtn.title = 'Remove all points for this parameter';
   clearBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   clearBtn.addEventListener('click', (e) => { e.stopPropagation(); setAutomationPoints(track, param, null); render(); autosave(); });
-  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close automation lane';
+  const closeBtn = el('button', 'row-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close automation lane';
+  closeBtn.setAttribute('aria-label', 'Close automation lane');
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); automationOpen.delete(track); render(); });
   header.append(title, select, clearBtn, closeBtn);
@@ -5338,7 +5365,8 @@ function renderVelocityRow(track, param) {
   }
   select.addEventListener('mousedown', (e) => e.stopPropagation());
   select.addEventListener('change', (e) => { e.stopPropagation(); velOpen.set(track, select.value); render(); });
-  const closeBtn = el('button', 'vel-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close this lane';
+  const closeBtn = el('button', 'row-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close note lane';
+  closeBtn.setAttribute('aria-label', 'Close note lane');
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); velOpen.delete(track); render(); });
   header.append(title, select, closeBtn);
@@ -5486,10 +5514,10 @@ function renderAdsrRow(track) {
   row.style.width = (LANE_ORIGIN + COLS * colPx) + 'px';
 
   const header = el('div', 'track-header automation-header');
-  const title = el('span', 'automation-title'); title.textContent = state.waveform[track] === 'fm' ? 'Envelope, Filter & FM'
-    : state.waveform[track] === 'ringmod' ? 'Envelope, Filter & Ring'
-    : state.waveform[track] === 'harmonics' ? 'Envelope, Filter & Harmonics'
-    : state.waveform[track] === 'square' ? 'Envelope, Filter & Duty' : 'Envelope & Filter';
+  // Filled in from the lane's own group captions once they exist (see the
+  // end of this function): a hand-kept list per waveform had already left out
+  // Arpeggio, which every waveform gets.
+  const title = el('span', 'automation-title');
   const resetBtn = el('button'); resetBtn.textContent = 'Reset'; resetBtn.title = 'Reset everything in this panel to its default';
   resetBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   // rowCache.delete() because this row's fields paint their own readouts and
@@ -5505,7 +5533,8 @@ function renderAdsrRow(track) {
     rowCache.delete(track);
     render(); autosave();
   });
-  const closeBtn = el('button'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
+  const closeBtn = el('button', 'row-close'); closeBtn.textContent = '✕'; closeBtn.title = 'Close envelope panel';
+  closeBtn.setAttribute('aria-label', 'Close envelope panel');
   closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   closeBtn.addEventListener('click', (e) => { e.stopPropagation(); adsrOpen.delete(track); render(); });
   header.append(title, resetBtn, closeBtn);
@@ -5866,6 +5895,8 @@ function renderAdsrRow(track) {
     lane.appendChild(arpGroup);
   }
 
+  const caps = [...lane.querySelectorAll('.mfx-cap')].map((c) => c.textContent);
+  title.textContent = caps.length > 1 ? caps.slice(0, -1).join(', ') + ' & ' + caps.at(-1) : caps.join('');
   row.append(header, gutter, lane);
   return row;
 }
@@ -6125,6 +6156,9 @@ function buildFxPanel(track) {
   panel.appendChild(resetWrap);
 
   const visible = visibleFxFor(track);
+  // Nothing to reset is nothing to offer: on an empty rack the button only
+  // looked like it did something, next to the + that actually does.
+  resetBtn.hidden = visible.length === 0;
   const chipRow = el('div', 'th-fx-chip-row');
   // A, B, C… by current position only — not a stored slot id. Recomputed
   // fresh every render from visibleFxFor()'s current length, so removing
@@ -6395,8 +6429,10 @@ function buildHeader(track) {
   });
   tools.append(autoBtn);
   const velBtn = el('button', 'th-tool-btn' + (velOpen.has(track) ? ' on' : ''));
-  setGlyphLabel(velBtn, 'velocity', 'Vel');
-  velBtn.title = 'Velocity lane — how hard each note or hit is played';
+  // Named after the lane it opens. It said "Vel" over a lane headed "Note"
+  // that shows pan and bend as well as velocity.
+  setGlyphLabel(velBtn, 'velocity', 'Note');
+  velBtn.title = 'Note lane — velocity, pan or bend of each note or hit';
   velBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (velOpen.has(track)) velOpen.delete(track); else velOpen.set(track, 'vel');
@@ -6422,8 +6458,8 @@ function buildHeader(track) {
     // track, because insertProgression() works on state.activeTrack and the
     // stopPropagation here is what stops the header's own mousedown from
     // setting it.
-    const chordsBtn = el('button', 'th-tool-btn icon');
-    setGlyphLabel(chordsBtn, 'scale', '');
+    const chordsBtn = el('button', 'th-tool-btn');
+    setGlyphLabel(chordsBtn, 'chords', 'Chords');
     chordsBtn.title = 'Chord progressions — write a built-in progression into this track, in the song\'s key, or a bass/arpeggio that follows another track\'s chords';
     chordsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -6434,8 +6470,8 @@ function buildHeader(track) {
     });
     tools.append(presetBtn, chordsBtn);
   } else {
-    const patternsBtn = el('button', 'th-tool-btn icon');
-    setGlyphLabel(patternsBtn, 'drums', '');
+    const patternsBtn = el('button', 'th-tool-btn');
+    setGlyphLabel(patternsBtn, 'drums', 'Patterns');
     patternsBtn.title = 'Rhythm patterns — insert a built-in groove with accents and fills (Rock, Techno, Funk, Bossa Nova, ...)';
     patternsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
