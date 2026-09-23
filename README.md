@@ -231,7 +231,7 @@ visible at once. A chip is dimmed while its effect is doing nothing.</sub>
   since listening is what a phone is actually for here. The controls stay
   pinned at the top and only the list scrolls, so you don't lose Play while
   thumbing for the next song. "Open the editor anyway" is there if you
-  disagree, and is remembered
+  disagree, and is remembered; the ☰ menu's "Back to the player" undoes it
 
 <img src="docs/img/player.png" alt="The phone player: song name, position bar,
 transport and level meter pinned at the top, with a scrolling list of songs
