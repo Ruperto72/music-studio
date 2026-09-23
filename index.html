@@ -83,6 +83,17 @@
   dialog.tool-panel .help-head { cursor: move; touch-action: none; padding: 10px 14px; position: sticky; top: 0; z-index: 1; }
   dialog.tool-panel .help-head h2 { font-size: 14px; }
   dialog.tool-panel .songs-body { padding: 4px 14px 14px; max-height: none; overflow: visible; }
+  /* One shape for every tool panel: the scope line, a shared control if the
+     panel has one, then one block per action — its button first, its own
+     control on the same line, one short line under it. Timing used to put
+     both sliders first and both buttons last, so which slider went with
+     which button had to be guessed. */
+  .tool-action { border-top: 1px solid #2c2c35; padding: 9px 0 7px; }
+  .tool-action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: #b7b7c2; }
+  .tool-action-row input[type=range] { width: 120px; }
+  .tool-shared { margin: 2px 0 8px; }
+  .tool-note { margin: 5px 0 0; font-size: 11px; color: #8f8f9c; line-height: 1.4; }
+  .tool-shared .tool-note { margin: 0; }
   .songs-body h3 { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #8f8f9b; margin: 16px 0 8px; }
   .songs-note { color: #b7b7c2; font-size: 12px; line-height: 1.55; margin: 10px 0 4px; }
   .songs-sub { text-transform: none; letter-spacing: 0; color: #8f8f9c; font-weight: 400; }
@@ -263,6 +274,16 @@
     max-height: calc(100vh - var(--sticky-top, 110px) - var(--daw-footer-h, 90px) - 12px);
   }
   .daw::-webkit-scrollbar { height: 0; display: none; }
+  .add-track-row {
+    position: sticky; left: 0; z-index: 11; width: var(--header-w); box-sizing: border-box;
+    display: flex; gap: 6px; padding: 8px;
+  }
+  .add-track-row button {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 5px 9px;
+    background: transparent; border: 1px dashed #44444e; color: var(--muted); border-radius: 5px;
+  }
+  .add-track-row button:hover { color: var(--ink); border-color: #66666f; }
+  .add-track-row .glyph-sq { width: 14px; height: 14px; }
 
   /* Custom horizontal scrollbar whose track begins at the note grid (after the
      channel-strip headers + note gutter) instead of spanning the full width. */
@@ -988,6 +1009,17 @@
     padding: 7px 10px; border-radius: 5px; font-size: 12px;
   }
   .file-menu-item:hover { background: #26262e; border-color: #3a3a42; }
+  .file-menu-head {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+    color: #7c7c88; padding: 2px 10px 3px;
+  }
+  .file-menu-kbd { margin-left: auto; font-size: 10px; color: #7c7c88; }
+  #save-toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+    background: #22222a; color: var(--ink); border: 1px solid #3a3a44; border-radius: 6px;
+    padding: 8px 14px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.45); pointer-events: none;
+  }
+  .song-item.song-recovered { border-color: #6a5a1e; background: #221f12; }
   .inspector {
     background: linear-gradient(#1b1b20, #141418); padding: 8px; border-radius: 8px;
     border: 1px solid #34343c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
@@ -1280,7 +1312,7 @@
       <button id="songs-close">Close ✕</button>
     </div>
     <div class="songs-body">
-      <p class="songs-note">Examples load from this site. Your own songs are saved in this browser (nothing is uploaded). Loading a song replaces what's currently in the editor — save first if you want to keep it.</p>
+      <p class="songs-note">Your own songs are saved in this browser (nothing is uploaded); <b>Save</b> in the menu, or Ctrl+S, keeps the current one here under its name. Loading a song replaces what is in the editor, and asks first if that has changes you haven't saved.</p>
       <section>
         <h3>New song</h3>
         <div class="song-save-row">
@@ -1290,16 +1322,17 @@
         </div>
       </section>
       <section>
-        <h3>Examples</h3>
-        <div id="songs-examples" class="song-list"><div class="song-empty">Loading…</div></div>
-      </section>
-      <section>
         <h3>My songs <span class="songs-sub">(this browser)</span></h3>
+        <div id="songs-recovered" class="song-list" hidden></div>
         <div class="song-save-row">
-          <input id="song-name" type="text" placeholder="Name this song…" maxlength="60">
-          <button id="song-save-local" data-glyph="save">Save current</button>
+          <input id="song-name" type="text" placeholder="Save the current song as…" maxlength="60">
+          <button id="song-save-local" data-glyph="save">Save as</button>
         </div>
         <div id="songs-local" class="song-list"></div>
+      </section>
+      <section>
+        <h3>Examples</h3>
+        <div id="songs-examples" class="song-list"><div class="song-empty">Loading…</div></div>
       </section>
     </div>
   </dialog>
@@ -1369,7 +1402,16 @@
     </div>
     <div class="songs-body">
       <p class="songs-note">Writes one chord per bar into this track, from the playhead's bar through the end of the song (replacing whatever was there). The chords come from the song's <b>key</b> — the same progression is major or minor depending on the scale you picked, so change the key and press Insert again to hear it somewhere else entirely.</p>
-      <p class="songs-note" id="progression-key">Key: —</p>
+      <!-- The song's key, right here: the starter layout is Chromatic, where
+           every progression is disabled, and the only key controls used to be
+           in the bottom bar — behind this modal dialog. These drive the bottom
+           bar's own selects, so there is still one place the key is set. -->
+      <div class="pattern-opt">
+        <label for="progression-key-root">Key</label>
+        <select id="progression-key-root" title="The song's tonic"></select>
+        <select id="progression-key-scale" aria-label="Scale" title="The song's scale — the progressions below are degrees of it"></select>
+        <span class="pattern-opt-note" id="progression-key"></span>
+      </div>
       <div id="progression-list" class="song-list"></div>
       <h3 class="dialog-sub">Follow another track's chords</h3>
       <p class="songs-note">Writes a bass line or an arpeggio into this track that follows the chords another track is playing — same range as above, from the playhead's bar to the end. It reads whatever that track has, so insert a progression there first (or write your own chords) and come back here from the track that should follow it. Change the chords later and insert again: the part is written once, not linked.</p>
@@ -1388,19 +1430,23 @@
     </div>
     <div class="songs-body">
       <p class="songs-note" id="timing-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
-      <label class="pattern-opt" for="timing-strength">Strength
-        <input type="range" id="timing-strength" min="0" max="1" step="0.05" value="1">
-        <output id="timing-strength-val">100%</output>
-        <span class="pattern-opt-note">— how far of the way to the grid each note moves. 100% lands it dead on the grid; 50% halves the error, which tightens a take without flattening it.</span>
-      </label>
-      <label class="pattern-opt" for="timing-amount">Humanize amount
-        <input type="range" id="timing-amount" min="0.17" max="1" step="0.17" value="0.33">
-        <output id="timing-amount-val">1/3 of an eighth</output>
-        <span class="pattern-opt-note">— how far a note may drift either way. The opposite operation, for a part that came out too stiff.</span>
-      </label>
-      <div class="pattern-opt">
-        <button id="timing-quantize">Quantize to the grid</button>
-        <button id="timing-humanize">Humanize</button>
+      <div class="tool-action">
+        <div class="tool-action-row">
+          <button id="timing-quantize">Quantize</button>
+          <label for="timing-strength">Strength</label>
+          <input type="range" id="timing-strength" min="0" max="1" step="0.05" value="1">
+          <output id="timing-strength-val" for="timing-strength">100%</output>
+        </div>
+        <p class="tool-note">Moves each note that share of the way to the grid. 50% halves the error.</p>
+      </div>
+      <div class="tool-action">
+        <div class="tool-action-row">
+          <button id="timing-humanize">Humanize</button>
+          <label for="timing-amount">Amount</label>
+          <input type="range" id="timing-amount" min="0.17" max="1" step="0.17" value="0.33">
+          <output id="timing-amount-val" for="timing-amount">1/3 of an eighth</output>
+        </div>
+        <p class="tool-note">Lets each note drift up to that far either way.</p>
       </div>
     </div>
   </dialog>
@@ -1412,18 +1458,27 @@
     </div>
     <div class="songs-body">
       <p class="songs-note" id="transpose-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
-      <p class="songs-note">Quantize fixes a take's <i>timing</i> after the fact; this is the same idea for its <i>pitch</i>. Recording never corrects what you play, so both live here rather than in the recorder.</p>
-      <div class="pattern-opt">
-        <button id="transpose-oct-down">− Octave</button>
-        <button id="transpose-semi-down">− Semitone</button>
-        <button id="transpose-semi-up">+ Semitone</button>
-        <button id="transpose-oct-up">+ Octave</button>
+      <div class="tool-action">
+        <div class="tool-action-row">
+          <button id="transpose-semi-down">− Semitone</button>
+          <button id="transpose-semi-up">+ Semitone</button>
+          <button id="transpose-oct-down">− Octave</button>
+          <button id="transpose-oct-up">+ Octave</button>
+        </div>
+        <p class="tool-note">Every note moves the same distance.</p>
       </div>
-      <div class="pattern-opt">
-        <button id="transpose-step-down">− Scale step</button>
-        <button id="transpose-step-up">+ Scale step</button>
-        <button id="transpose-fit">Fit to the scale</button>
-        <span class="pattern-opt-note" id="transpose-key-note">— needs a key.</span>
+      <div class="tool-action">
+        <div class="tool-action-row">
+          <button id="transpose-step-down">− Scale step</button>
+          <button id="transpose-step-up">+ Scale step</button>
+        </div>
+        <p class="tool-note">Each note moves to the next note of the key, so the part stays in it. <span id="transpose-key-note"></span></p>
+      </div>
+      <div class="tool-action">
+        <div class="tool-action-row">
+          <button id="transpose-fit">Fit to the scale</button>
+        </div>
+        <p class="tool-note">Notes outside the key move to the nearest note in it; the rest stay put.</p>
       </div>
     </div>
   </dialog>
@@ -1435,19 +1490,19 @@
     </div>
     <div class="songs-body">
       <p class="songs-note" id="dynamics-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
-      <p class="songs-note">Quantize shapes a part's <i>timing</i> and Transpose its <i>pitch</i>; this is the third axis. Only velocity is touched — every note stays exactly where it is, at exactly the pitch you put it — so trying one costs an undo at worst.</p>
-      <label class="pattern-opt" for="dynamics-amount">Amount
+      <div class="tool-action-row tool-shared">
+        <label for="dynamics-amount">Amount</label>
         <input type="range" id="dynamics-amount" min="0.05" max="0.6" step="0.05" value="0.2">
-        <output id="dynamics-amount-val">20%</output>
-        <span class="pattern-opt-note">— how far a level may move.</span>
-      </label>
-      <div class="pattern-opt">
-        <button id="dynamics-vary">Vary</button>
-        <span class="pattern-opt-note">— a random walk around each note's <i>current</i> level, so a part you already shaped keeps its shape and just stops being mechanical about it. Press it again for a different answer.</span>
+        <output id="dynamics-amount-val" for="dynamics-amount">20%</output>
+        <span class="tool-note">for both buttons below</span>
       </div>
-      <div class="pattern-opt">
-        <button id="dynamics-accent">Accent the beat</button>
-        <span class="pattern-opt-note">— notes that land on a beat get played harder than the ones between them. Read off the meter, not guessed.</span>
+      <div class="tool-action">
+        <div class="tool-action-row"><button id="dynamics-vary">Vary</button></div>
+        <p class="tool-note">Nudges each note's level up or down from where it is now. Press again for a different result.</p>
+      </div>
+      <div class="tool-action">
+        <div class="tool-action-row"><button id="dynamics-accent">Accent the beat</button></div>
+        <p class="tool-note">Notes on a beat get louder than the ones between beats.</p>
       </div>
     </div>
   </dialog>
@@ -1459,23 +1514,23 @@
     </div>
     <div class="songs-body">
       <p class="songs-note" id="vary-scope">Acts on the selection, or on the whole active track when nothing is selected.</p>
-      <p class="songs-note">The same bar again, but not exactly the same. Each button changes a share of the notes — <b>Amount</b> — and leaves the rest as you wrote them, so the part stays recognisably yours. Press again for a different answer; undo if you don't like it.</p>
-      <label class="pattern-opt" for="vary-amount">Amount
+      <div class="tool-action-row tool-shared">
+        <label for="vary-amount">Amount</label>
         <input type="range" id="vary-amount" min="0" max="1" step="0.05" value="0.25">
-        <output id="vary-amount-val">25%</output>
-        <span class="pattern-opt-note">— the share of notes each press touches.</span>
-      </label>
-      <div class="pattern-opt">
-        <button id="vary-neighbour">Neighbour tones</button>
-        <span class="pattern-opt-note">— a note moves one step up or down: a scale step with a key set, a semitone without. The melody keeps its shape and its key.</span>
+        <output id="vary-amount-val" for="vary-amount">25%</output>
+        <span class="tool-note">the share of notes each press changes</span>
       </div>
-      <div class="pattern-opt">
-        <button id="vary-octave">Octave jumps</button>
-        <span class="pattern-opt-note">— a note jumps an octave up or down. Same notes, a different line.</span>
+      <div class="tool-action">
+        <div class="tool-action-row"><button id="vary-neighbour">Neighbour tones</button></div>
+        <p class="tool-note">A note moves one step up or down: a scale step with a key set, a semitone without.</p>
       </div>
-      <div class="pattern-opt">
-        <button id="vary-thin">Thin out</button>
-        <span class="pattern-opt-note">— notes are left out, but never the ones on a bar's downbeat, so the part still lands where it did. Works on drums too.</span>
+      <div class="tool-action">
+        <div class="tool-action-row"><button id="vary-octave">Octave jumps</button></div>
+        <p class="tool-note">A note jumps an octave up or down.</p>
+      </div>
+      <div class="tool-action">
+        <div class="tool-action-row"><button id="vary-thin">Thin out</button></div>
+        <p class="tool-note">Notes are left out, never the one on a bar's downbeat. Works on drums too.</p>
       </div>
     </div>
   </dialog>
@@ -1510,6 +1565,8 @@
   <a class="skip-link" href="#daw">Skip to the track grid</a>
   <!-- Announces what keyboard navigation just selected; see announce(). -->
   <p id="a11y-status" class="sr-only" role="status" aria-live="polite"></p>
+  <!-- Visible confirmation of Save; the same text also goes through announce(). -->
+  <div id="save-toast" aria-hidden="true" hidden></div>
 
   <div id="rotate-hint">Turn your phone sideways for more room to edit.<button id="rotate-dismiss" aria-label="Dismiss">✕</button></div>
 
@@ -1524,8 +1581,17 @@
         <button id="file-menu-toggle" class="icon-btn" data-glyph="menu" aria-label="Menu" title="File, project info &amp; help" aria-haspopup="true" aria-expanded="false"></button>
       </div>
       <div id="file-menu" class="file-menu" hidden>
-        <div class="file-menu-section">
+        <!-- Grouped by what each item works on, under a heading each: the
+             middle of this menu used to be one unheaded list mixing clip
+             edits, note tools and track creation. -->
+        <div class="file-menu-section" role="group" aria-labelledby="fm-h-song">
+          <div class="file-menu-head" id="fm-h-song">Song</div>
           <button id="songs-btn" class="file-menu-item" data-glyph="songs">Songs…</button>
+          <button id="save-song-btn" class="file-menu-item" data-glyph="save" aria-keyshortcuts="Control+S"
+                  title="Save this song in My songs, in this browser, under its name">Save<span class="file-menu-kbd" aria-hidden="true">Ctrl+S</span></button>
+        </div>
+        <div class="file-menu-section" role="group" aria-labelledby="fm-h-file">
+          <div class="file-menu-head" id="fm-h-file">Files</div>
           <button id="save-file" class="file-menu-item" data-glyph="save">Save as .json</button>
           <button id="load-file" class="file-menu-item" data-glyph="load">Load .json</button>
           <input type="file" id="load-file-input" accept="application/json,.json" style="display:none">
@@ -1535,14 +1601,21 @@
           <input type="file" id="import-midi-input" accept="audio/midi,.mid,.midi" style="display:none">
           <button id="export-wav" class="file-menu-item" data-glyph="wav">Export WAV</button>
         </div>
-        <div class="file-menu-section">
-          <button id="split-clip-btn" class="file-menu-item" data-glyph="scissors" title="Cut the active track's clip in two at the playhead">Split clip at playhead</button>
-          <button id="heal-clip-btn" class="file-menu-item" data-glyph="heal" title="Join the two clips meeting at the playhead back into one">Heal clips at playhead</button>
+        <div class="file-menu-section" role="group" aria-labelledby="fm-h-notes">
+          <div class="file-menu-head" id="fm-h-notes">Notes</div>
           <button id="timing-btn" class="file-menu-item" data-glyph="quantize" title="Quantize or humanize the selection, or the whole active track">Timing…</button>
           <button id="transpose-btn" class="file-menu-item" data-glyph="scale" title="Transpose the selection, or the whole active track, by semitones, octaves or scale steps">Transpose…</button>
           <button id="dynamics-btn" class="file-menu-item" data-glyph="velocity" title="Shape the velocity of the selection, or the whole active track">Dynamics…</button>
           <button id="vary-btn" class="file-menu-item" data-glyph="vary" title="Make a variation of the selection, or the whole active track: neighbour tones, octave jumps, fewer notes">Variation…</button>
+        </div>
+        <div class="file-menu-section" role="group" aria-labelledby="fm-h-arrange">
+          <div class="file-menu-head" id="fm-h-arrange">Arrangement</div>
           <button id="arrange-btn" class="file-menu-item" data-glyph="arrange" title="Insert or delete bars across every track, and duplicate, copy or delete the sections your markers mark">Arrange…</button>
+          <button id="split-clip-btn" class="file-menu-item" data-glyph="scissors" title="Cut the active track's clip in two at the playhead">Split clip at playhead</button>
+          <button id="heal-clip-btn" class="file-menu-item" data-glyph="heal" title="Join the two clips meeting at the playhead back into one">Heal clips at playhead</button>
+        </div>
+        <div class="file-menu-section" role="group" aria-labelledby="fm-h-tracks">
+          <div class="file-menu-head" id="fm-h-tracks">Tracks</div>
           <button id="add-track-btn" class="file-menu-item" data-glyph="addTrack" title="Add a new tonal track">Add track</button>
           <button id="add-rhythm-track-btn" class="file-menu-item" data-glyph="addDrums" title="Add a new rhythm track (same ten pieces; it picks its own kit sound)">Add rhythm track</button>
         </div>
@@ -1626,6 +1699,13 @@
       <div class="daw" id="daw" tabindex="-1">
         <div class="timeline" id="timeline"></div>
         <div id="tracks"></div>
+        <!-- Adding a track is a basic act, so it sits where the next track
+             would appear rather than only in the menu. Outside #tracks, which
+             holds track rows and nothing else. -->
+        <div class="add-track-row">
+          <button id="add-track-inline" data-glyph="addTrack" title="Add a new tonal track">Add track</button>
+          <button id="add-rhythm-inline" data-glyph="addDrums" title="Add a new rhythm track">Add rhythm track</button>
+        </div>
       </div>
       <div id="hscroll"><div id="hscroll-track"><div id="hscroll-thumb"></div></div></div>
       <div id="master-track">
@@ -1641,14 +1721,15 @@
                (see selectMaster()). Tempo/Meter/Length/Grid/Swing deliberately
                do not — they belong to the song, not to this channel. -->
           <div class="mstrip-cell mstrip-master-cell" title="Master bus — click to show its effects in the inspector">
-            <!-- "Monitor", not "Master": this is how loud you hear the editor,
-                 and neither the song file nor an export ever sees it. Beside
-                 the master bus's effects it read as part of the mix. -->
-            <span class="mstrip-cap">Monitor</span>
+            <!-- The master bus's own level: saved with the song (masterVol)
+                 and applied by buildMasterBus(), which Export WAV shares. The
+                 UI review took it for a preview-only volume and it was briefly
+                 renamed "Monitor" on that basis — it is not one. -->
+            <span class="mstrip-cap">Master</span>
             <div class="th-vol">
               <span class="mv-ico" data-glyph="wav"></span>
-              <input id="master-vol" type="range" min="0" max="1" step="0.02" aria-label="Monitor volume"
-                     title="Monitor volume: how loud you hear the editor. Not saved with the song and not part of an export.">
+              <input id="master-vol" type="range" min="0" max="1" step="0.02" aria-label="Master volume"
+                     title="Master volume: the level of the whole mix. Saved with the song and used by Export WAV.">
               <span id="master-vol-val" class="vol-val"></span>
             </div>
           </div>
@@ -1785,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3183,6 +3264,23 @@ function colsFromSaved(data, tracks) {
 
 // ---------- Autosave (localStorage) ----------
 const AUTOSAVE_KEY = 'frogger-music-editor-autosave';
+// Beside the draft: whether it held changes nobody saved, and when. The draft
+// itself is overwritten by the next session's first edit (and by any load), so
+// a page that boots after an unsaved session moves that draft aside into
+// RECOVER_KEY first — that copy is what the Songs dialog offers back as
+// "Unsaved", and it survives until it is loaded or discarded. A session that
+// ended saved leaves an earlier recovery alone rather than replacing it with
+// something already kept in My songs.
+const AUTOSAVE_META_KEY = 'music-studio-autosave-meta';
+const RECOVER_KEY = 'music-studio-recovered';
+try {
+  const meta = JSON.parse(localStorage.getItem(AUTOSAVE_META_KEY) || 'null');
+  const draft = localStorage.getItem(AUTOSAVE_KEY);
+  if (meta && meta.dirty && draft) {
+    localStorage.setItem(RECOVER_KEY, JSON.stringify({ at: meta.at || 0, data: JSON.parse(draft) }));
+    localStorage.removeItem(AUTOSAVE_META_KEY);
+  }
+} catch { /* best-effort, like the draft itself */ }
 let autosaveTimer = null;
 function autosave() {
   clearTimeout(autosaveTimer);
@@ -3191,9 +3289,31 @@ function autosave() {
       // The draft is currentSongData()'s own payload rather than a second copy
       // of that field list — the crash-recovery net is worth nothing if it
       // quietly saves less than a save does.
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentSongData()));
+      const json = JSON.stringify(currentSongData());
+      localStorage.setItem(AUTOSAVE_KEY, json);
+      localStorage.setItem(AUTOSAVE_META_KEY, JSON.stringify({ dirty: json !== savedState, at: Date.now() }));
     } catch { /* best-effort */ }
   }, 400);
+}
+// ---------- Unsaved changes ----------
+// "Saved" means the editor holds exactly what was last loaded, started, saved
+// to My songs or written to a file: the serialised song is compared with the
+// one taken at that moment, in the same format a save writes, so anything a
+// save would keep counts and nothing else does. null is "never saved" — a
+// recovered draft. resetHistory() takes the snapshot, since loading a song and
+// starting a new one are exactly the moments the undo history starts over too.
+let savedState = null;
+// The My songs entry this document came from or was last saved to, so Save
+// overwrites it without asking and asks before overwriting any other one.
+let savedSlot = null;
+function markClean() { savedState = JSON.stringify(currentSongData()); }
+function isDirty() { return savedState === null || JSON.stringify(currentSongData()) !== savedState; }
+// Asked before anything replaces the song in the editor. `what` names the
+// action, so the question says what is about to happen rather than "are you
+// sure?".
+function confirmDiscard(what) {
+  if (!isDirty()) return true;
+  return confirm(`“${state.songName}” has changes you haven't saved. ${what} anyway and lose them?\n\nCancel, then Save (Ctrl+S) to keep them.`);
 }
 // A saved song (file, autosave draft, or local slot) is valid if it has at
 // least one track with an array of notes/hits — declared in its trackList, or
@@ -3472,7 +3592,7 @@ const state = {
   tempo: 120,
   songName: 'Untitled Song', // current project's display name — not song "content", so it's
                              // not part of undo history (see snapshotSong())
-  masterVol: 0.45,           // editor preview master level (not part of the game)
+  masterVol: 0.45,           // the master bus's level — saved with the song, applied by Export WAV too
   kit: {},                   // rhythm track id -> drum kit id; absent = DEFAULT_KIT (see DRUM_KITS)
   activeTrack: BOOT.trackList[0].id, // the Lead track — the first thing you'd write
   // Which track the computer keyboard plays into, and whether the metronome
@@ -3962,6 +4082,7 @@ function resetHistory() {
   redoStack.length = 0;
   lastCommitted = snapshotSong();
   updateHistoryButtons();
+  markClean();
 }
 // An armed track that no longer exists keeps the keyboard in note mode and
 // files what is played into state.tracks under an id nothing draws. Removing
@@ -9065,6 +9186,8 @@ window.addEventListener('keydown', (e) => {
 
 document.getElementById('add-track-btn').addEventListener('click', addTrack);
 document.getElementById('add-rhythm-track-btn').addEventListener('click', addRhythmTrack);
+document.getElementById('add-track-inline').addEventListener('click', addTrack);
+document.getElementById('add-rhythm-inline').addEventListener('click', addRhythmTrack);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 
@@ -9408,10 +9531,14 @@ function resetMasterFx() {
   state.masterCrush = { ...DEFAULT_MASTER_CRUSH };
 }
 document.getElementById('new-song-starter').addEventListener('click', () => {
+  if (!confirmDiscard('Start a new song')) return;
   createNewSong(true, document.getElementById('new-song-name').value.trim() || 'Untitled Song');
+  savedSlot = null;
 });
 document.getElementById('new-song-empty').addEventListener('click', () => {
+  if (!confirmDiscard('Start a new song')) return;
   createNewSong(false, document.getElementById('new-song-name').value.trim() || 'Untitled Song');
+  savedSlot = null;
 });
 
 document.getElementById('loop-reset').addEventListener('click', () => {
@@ -9757,22 +9884,26 @@ async function saveBlobAs(blob, filename, description, extensions) {
       const w = await handle.createWritable();
       await w.write(blob);
       await w.close();
-      return;
-    } catch (err) { if (err.name === 'AbortError') return; /* else fall through to the download below */ }
+      return true;
+    } catch (err) { if (err.name === 'AbortError') return false; /* else fall through to the download below */ }
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  return true; // as far as a page can tell: the download was handed over
 }
-document.getElementById('save-file').addEventListener('click', () => {
+document.getElementById('save-file').addEventListener('click', async () => {
   const data = currentSongData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
-  saveBlobAs(blob, slug + '.json', 'Song file', ['.json']);
+  // A song written to a file is saved; what was written is `data`, not
+  // whatever the editor holds by the time a native picker returns.
+  if (await saveBlobAs(blob, slug + '.json', 'Song file', ['.json'])) { savedState = JSON.stringify(data); autosave(); }
 });
 const loadInput = document.getElementById('load-file-input');
 document.getElementById('load-file').addEventListener('click', async () => {
+  if (!confirmDiscard('Open a file')) return;
   if (window.showOpenFilePicker) {
     try {
       const [handle] = await window.showOpenFilePicker({
@@ -9838,6 +9969,7 @@ async function loadSongFile(file) {
   // Fall back to the filename (minus extension) if the file predates songName.
   const fallbackName = file.name.replace(/\.json$/i, '');
   if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing a rhythm track).');
+  else savedSlot = null;
 }
 loadInput.addEventListener('change', async () => {
   const file = loadInput.files[0];
@@ -10269,8 +10401,85 @@ const songNameInput = document.getElementById('song-name');
 
 const readLocalSongs = () => { try { return JSON.parse(localStorage.getItem(SONGS_KEY)) || {}; } catch { return {}; } };
 function writeLocalSongs(obj) {
-  try { localStorage.setItem(SONGS_KEY, JSON.stringify(obj)); }
-  catch { alert('Could not save — this browser\'s storage may be full.'); }
+  try { localStorage.setItem(SONGS_KEY, JSON.stringify(obj)); return true; }
+  catch { alert('Could not save — this browser\'s storage may be full.'); return false; }
+}
+const UNTITLED = 'Untitled Song';
+// Save: into My songs, under the song's own name. The one save a person
+// reaches for — the .json file is an export beside it, not the way to keep
+// work. Asks for a name only when the song has none, and before overwriting
+// a *different* saved song of the same name; saving over the one this
+// document came from is what Save means and does not ask.
+function saveSong(asName) {
+  let name = (asName || '').trim();
+  if (!name) name = state.songName && state.songName !== UNTITLED ? state.songName : '';
+  if (!name) {
+    const typed = prompt('Save this song as:', '');
+    if (!typed || !typed.trim()) return false;
+    name = typed.trim().slice(0, 60);
+  }
+  const songs = readLocalSongs();
+  if (songs[name] && name !== savedSlot && !confirm(`“${name}” is already in My songs. Overwrite it?`)) return false;
+  state.songName = name;
+  updateSongNameUI();
+  const data = currentSongData();
+  songs[name] = { savedAt: Date.now(), data };
+  if (!writeLocalSongs(songs)) return false;
+  savedSlot = name;
+  savedState = JSON.stringify(data);
+  autosave(); // so the draft's meta stops calling this unsaved
+  showSaveToast(`Saved “${name}” in My songs`);
+  if (songsDialog.open) renderLocalSongs();
+  return true;
+}
+let saveToastTimer = null;
+function showSaveToast(message) {
+  announce(message);
+  const t = document.getElementById('save-toast');
+  t.textContent = message;
+  t.hidden = false;
+  clearTimeout(saveToastTimer);
+  saveToastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+}
+function loadLocalSong(name, data) {
+  if (!confirmDiscard(`Load “${name}”`)) return false;
+  if (!applySongData(data, name)) return false;
+  savedSlot = name;
+  return true;
+}
+function readRecovered() {
+  try { const r = JSON.parse(localStorage.getItem(RECOVER_KEY)); return r && hasTrackData(r.data) ? r : null; } catch { return null; }
+}
+// The one place the autosave draft is read back: a row at the top of My songs.
+// Loading it leaves the song unsaved (savedState null), because it is.
+function renderRecovered() {
+  const box = document.getElementById('songs-recovered');
+  const rec = readRecovered();
+  box.innerHTML = '';
+  box.hidden = !rec;
+  if (!rec) return;
+  const name = (typeof rec.data.songName === 'string' && rec.data.songName) || UNTITLED;
+  const row = songRow({
+    title: `Unsaved: ${name}`,
+    desc: 'Changes that were never saved' + (rec.at ? ', last edited ' + new Date(rec.at).toLocaleString() : '') + '. Load it to carry on, then Save.',
+    onLoad: () => {
+      if (!confirmDiscard(`Load the unsaved “${name}”`)) return;
+      if (!applySongData(rec.data, name)) return;
+      savedSlot = null;
+      savedState = null;
+      try { localStorage.removeItem(RECOVER_KEY); } catch { /* best-effort */ }
+      autosave();
+      songsDialog.close();
+    },
+    onDelete: () => {
+      if (!confirm(`Discard the unsaved “${name}” for good?`)) return;
+      try { localStorage.removeItem(RECOVER_KEY); } catch { /* best-effort */ }
+      renderRecovered();
+    },
+  });
+  row.classList.add('song-recovered');
+  row.querySelector('.song-del').textContent = 'Discard';
+  box.appendChild(row);
 }
 function songRow({ title, desc, onLoad, onDelete }) {
   const row = el('div', 'song-item');
@@ -10291,7 +10500,7 @@ function renderLocalSongs() {
     localSongsEl.appendChild(songRow({
       title: name,
       desc: songs[name].savedAt ? 'Saved ' + new Date(songs[name].savedAt).toLocaleString() : '',
-      onLoad: () => { if (applySongData(songs[name].data, name)) songsDialog.close(); },
+      onLoad: () => { if (loadLocalSong(name, songs[name].data)) songsDialog.close(); },
       onDelete: () => { if (confirm(`Delete “${name}”?`)) { const s = readLocalSongs(); delete s[name]; writeLocalSongs(s); renderLocalSongs(); } }
     }));
   }
@@ -10306,16 +10515,17 @@ async function renderExamples() {
     examplesEl.appendChild(songRow({
       title: entry.name, desc: entry.desc,
       onLoad: async () => {
+        if (!confirmDiscard(`Load “${entry.name}”`)) return;
         try {
           const data = await (await fetch('songs/' + entry.file, { cache: 'no-cache' })).json();
-          if (applySongData(data, entry.name)) songsDialog.close(); else alert('That example is in the wrong format.');
+          if (applySongData(data, entry.name)) { savedSlot = null; songsDialog.close(); } else alert('That example is in the wrong format.');
         } catch { alert('Could not load that example.'); }
       }
     }));
   }
 }
 document.getElementById('songs-btn').addEventListener('click', () => {
-  renderExamples(); renderLocalSongs(); songNameInput.value = '';
+  renderExamples(); renderRecovered(); renderLocalSongs(); songNameInput.value = '';
   document.getElementById('new-song-name').value = '';
   songsDialog.showModal();
 });
@@ -10323,14 +10533,24 @@ document.getElementById('songs-close').addEventListener('click', () => songsDial
 document.getElementById('song-save-local').addEventListener('click', () => {
   const name = songNameInput.value.trim();
   if (!name) { songNameInput.focus(); return; }
-  const songs = readLocalSongs();
-  if (songs[name] && !confirm(`Overwrite “${name}”?`)) return;
-  state.songName = name;
-  updateSongNameUI();
-  songs[name] = { savedAt: Date.now(), data: currentSongData() };
-  writeLocalSongs(songs);
-  songNameInput.value = '';
-  renderLocalSongs();
+  if (saveSong(name)) songNameInput.value = '';
+});
+document.getElementById('save-song-btn').addEventListener('click', () => saveSong());
+// Ctrl+S / Cmd+S from anywhere, text fields included — saving while the
+// cursor sits in the tempo box should still save, and the browser's own
+// "save page as" is never what someone in an editor means.
+window.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.code !== 'KeyS') return;
+  e.preventDefault();
+  if (!e.repeat) saveSong();
+}, true);
+// Closing or reloading the tab with unsaved changes asks first. The draft
+// would survive it (see RECOVER_KEY), but a question at the door is better
+// than a row in a dialog nobody knows to look in.
+window.addEventListener('beforeunload', (e) => {
+  if (!isDirty()) return;
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 // ---------- Instrument presets (waveform + envelope, shared across tracks/songs) ----------
@@ -10698,11 +10918,27 @@ function previewProgression(prog) {
     });
   } catch { /* audio unavailable */ }
 }
+const progKeyRoot = document.getElementById('progression-key-root');
+const progKeyScale = document.getElementById('progression-key-scale');
+progKeyRoot.append(...[...keyRootSelect.options].map((o) => o.cloneNode(true)));
+progKeyScale.append(...[...keyScaleSelect.options].map((o) => o.cloneNode(true)));
+// Through the bottom bar's own select and its change handler, so the key has
+// one setter however it is reached.
+function setKeyFromDialog(target, value) {
+  target.value = value;
+  target.dispatchEvent(new Event('change'));
+  renderProgressionList();
+}
+progKeyRoot.addEventListener('change', () => setKeyFromDialog(keyRootSelect, progKeyRoot.value));
+progKeyScale.addEventListener('change', () => setKeyFromDialog(keyScaleSelect, progKeyScale.value));
 function renderProgressionList() {
   const off = scaleIsOff();
+  progKeyRoot.value = String(state.key);
+  progKeyScale.value = state.scale;
+  progKeyRoot.disabled = off;
   document.getElementById('progression-key').textContent = off
-    ? 'Pick a key and scale in the bottom bar first — a progression is a set of degrees, and without a scale there is nothing for them to be degrees of.'
-    : `Key: ${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}`;
+    ? '— pick a scale: a progression is a set of degrees, and Chromatic has none for them to be degrees of.'
+    : '';
   progressionListEl.innerHTML = '';
   for (const prog of PROGRESSIONS) {
     const row = el('div', 'song-item');
@@ -10956,8 +11192,8 @@ function refreshTransposeScope() {
       ? `Acts on the ${items.length} selected note${items.length === 1 ? '' : 's'}.`
       : `Acts on all ${items.length} note${items.length === 1 ? '' : 's'} on ${trackName(track)}.`);
   document.getElementById('transpose-key-note').textContent = off
-    ? '— needs a key: pick a tonic and scale in the bottom bar.'
-    : `— in ${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}.`;
+    ? 'Needs a key: pick a tonic and scale in the bottom bar.'
+    : `Key: ${NOTE_NAMES[state.key]} ${scaleOf(state.scale).name.toLowerCase()}.`;
   for (const id of ['transpose-step-down', 'transpose-step-up', 'transpose-fit']) {
     document.getElementById(id).disabled = off || drum;
   }
@@ -14415,14 +14651,17 @@ async function renderPlayerList() {
     const list = await (await fetch('songs/index.json', { cache: 'no-cache' })).json();
     for (const entry of list) {
       rows.push({ name: entry.name, desc: entry.desc, load: async () => {
+        if (!confirmDiscard(`Load “${entry.name}”`)) return false;
         const data = await (await fetch('songs/' + entry.file, { cache: 'no-cache' })).json();
-        applySongData(data, entry.name);
+        if (!applySongData(data, entry.name)) return false;
+        savedSlot = null;
+        return true;
       } });
     }
   } catch { /* offline: the saved songs below still work */ }
   const local = readLocalSongs();
   for (const name of Object.keys(local).sort()) {
-    rows.push({ name, desc: 'Saved in this browser', load: async () => applySongData(local[name].data, name) });
+    rows.push({ name, desc: 'Saved in this browser', load: async () => loadLocalSong(name, local[name].data) });
   }
   playerListEl.innerHTML = '';
   if (!rows.length) { playerListEl.innerHTML = '<div class="song-empty">No songs found (offline?).</div>'; return; }
@@ -14434,7 +14673,7 @@ async function renderPlayerList() {
     if (row.desc) { const d = document.createElement('span'); d.textContent = row.desc; btn.appendChild(d); }
     btn.addEventListener('click', async () => {
       stopPlayback();
-      try { await row.load(); } catch { announce('Could not load that song'); return; }
+      try { if (await row.load() === false) return; } catch { announce('Could not load that song'); return; }
       renderPlayerHead();
       for (const b of playerListEl.querySelectorAll('button')) b.classList.toggle('current', b.firstChild.textContent === state.songName);
       document.getElementById('player-play').click();
@@ -14506,6 +14745,9 @@ document.getElementById('player-mode-btn').addEventListener('click', () => {
 window.addEventListener('resize', syncPlayerMode);
 onPlayheadMove = updatePlayerProgress; // see the hook's own comment above
 syncPlayerMode();
+// Last, once every piece of boot state is in place: the page starts on the
+// starter layout, which is nothing anyone needs to be asked about losing.
+markClean();
 </script>
 </body>
 </html>

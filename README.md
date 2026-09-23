@@ -66,7 +66,7 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
   by **scale steps**, which move each note to the next pitch *in the key*, so a
   melody nudged upward stays in the key instead of landing on the note between.
   **Fit to the scale** pulls a take onto the nearest scale tones, and never
-  merges two notes into one. With Keep to scale on, **↑/↓** move by a scale
+  merges two notes into one. With **In scale** on, **↑/↓** move by a scale
   step and **Alt+↑/↓** stay chromatic
 - **Dynamics** (menu → Dynamics) — the third axis. **Vary** walks each note's
   velocity randomly around where it already is, so a stamped-in groove stops
@@ -82,7 +82,7 @@ chips in its header; the knobs live in the inspector column on the right.</sub>
 - **Key and scale** — pick a tonic and a scale in the bottom bar and the lane
   shades every row outside it, dims those keys on the keyboard, and marks the
   tonic. Nothing is forbidden; you can just *see* where the wrong notes are
-  before you hear them. Turn on **Keep to scale** and a note placed or dragged
+  before you hear them. Turn on **In scale** and a note placed or dragged
   with the mouse moves to the nearest pitch in the scale — playing is never
   corrected, the same way recording never quantises as you play
 - **Chord progressions** — a built-in progression (I–V–vi–IV, ii–V–I, the
@@ -301,8 +301,11 @@ node icons.js             # rewrites icons/*.png and icons/*.svg
 - **Examples** live in `songs/` and are listed in `songs/index.json`. They load
   over the network (from this site) via the **Songs** menu.
 - **Your songs** are saved in the browser's `localStorage` — nothing is
-  uploaded. Use **Songs → Save current** to store the current song under a
-  name, and Load/Delete them from the same menu.
+  uploaded. **Save** in the menu (or **Ctrl+S**) stores the current song
+  under its name; **Songs** lists them first, with Load/Delete and a *Save as*.
+  Changes you haven't saved are asked about before a load or a new song
+  replaces them, and a session that ended unsaved comes back at the top of
+  the list as *Unsaved*.
 - **Save as .json / Load .json** in the menu save/open a song as a `.json` file — via
   the browser's native file picker in Chrome/Edge (remembering one project
   folder across Save/Load/Export MIDI/Export WAV), or a plain download

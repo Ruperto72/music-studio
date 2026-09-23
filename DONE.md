@@ -22,9 +22,9 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
 ## Från UI-granskningen (2026-09-23)
 
 De punkter ur granskningen som inte ändrar något flöde, gjorda i ett svep
-eftersom de rör var sin del av skalet och inte krockar med varandra. Kvar i
-`TODO.md` står de som hänger ihop (spara, osparat arbete, menyns uppdelning,
-dialogerna) och bör göras tillsammans.
+eftersom de rör var sin del av skalet och inte krockar med varandra. De som
+hängde ihop (spara, osparat arbete, menyns uppdelning, dialogerna) gjordes i
+omgången efter, längre ned.
 
 - [x] **"Back to the player" syntes på desktop och gjorde ingenting.**
   `.file-menu-item { display: flex }` vann över `hidden`-attributets
@@ -52,8 +52,15 @@ dialogerna) och bör göras tillsammans.
   och grönt (Loop, Ghost notes, Master FX, metronom) blev
   `--on-bg`/`--on-edge`/`--on-ink`/`--on-glow` på `:root`, blått. Rött är
   kvar för Record och Arm; gröna Play är transportläge, inte en växel.
-- [x] **Bottenraden.** *Master*-reglaget heter **Monitor** — det är
-  förhandslyssningens volym och följer varken med låten eller exporten.
+- [x] **Bottenraden.** ~~*Master*-reglaget heter **Monitor**~~ — **återställt
+  i omgången efter.** Granskningen påstod att reglaget bara är
+  förhandslyssningens volym; det stämmer inte. `masterVol` ligger i
+  `currentSongData()`, läses tillbaka av `applySavedMix()` och sätts i
+  `buildMasterBus()`, som Export WAV delar. Namnbytet gjordes på granskningens
+  ord utan att koden kontrollerades, och hjälpen fick en mening om att värdet
+  varken sparas eller exporteras. Nu heter det **Master** igen, med en titel som
+  säger vad det gör. Lärdomen: en granskning är en hypotes om koden, inte
+  ett faktum om den.
   Keep to scale, Ghost notes och Master FX har korta textetiketter (*In
   scale*, *Ghosts*, *Master FX*); `aria-label` togs bort där den synliga
   texten nu är namnet, så namn och etikett inte kan gå isär.
@@ -70,6 +77,53 @@ att alla tre ✕ är små och sitter i hörnet, att Env-rubriken nämner Arpeggi
 och att Reset bara syns med inserts. Kört mot gammal kod: rött. Hela sviten:
 155 gröna, ett rött — Overdub, som spelar in i realtid runt en loop och föll
 under last; ensamt grönt tre gånger av tre, och inget här rör inspelningen.
+
+
+### Andra omgången: flödena
+
+De fem punkter som ändrade hur man sparar, laddar och når verktygen — gjorda
+tillsammans eftersom spara, osparat arbete och menyn rör samma knappar.
+
+- [x] **Osparat arbete försvinner inte utan fråga.** "Sparat" är en enda
+  jämförelse: `savedState` är den serialiserade `currentSongData()` från
+  senaste laddning, ny låt, sparning i My songs eller skrivning till fil
+  (`resetHistory()` anropar `markClean()`, eftersom det är samma ögonblick
+  som undo börjar om), och `isDirty()` jämför mot den. Allt som en sparning
+  skulle behålla räknas alltså, och inget annat. `confirmDiscard()` frågas
+  av varje väg som ersätter låten — Songs-laddningar, New song, Load .json och
+  mobilspelarens lista — och `beforeunload` frågar vid stängning. MIDI-import
+  frågar inte: den lägger till spår, den ersätter inget.
+  **Utkastet läses nu tillbaka.** `autosave()` skriver en metapost bredvid
+  utkastet (osparat eller inte, och när). En sida som startar efter en osparad
+  session flyttar utkastet till `RECOVER_KEY` innan något hinner skriva över
+  det, och Songs visar det som *Unsaved: namn* överst i My songs, med Load och
+  Discard. En session som slutade sparad rör inte en äldre återställning.
+  Sidan startar fortfarande alltid på startlayouten.
+- [x] **Spara samlat.** *Save* (Ctrl+S) först i menyn sparar i My songs under
+  låtens namn: frågar efter namn bara om låten saknar ett, och frågar innan
+  en *annan* sparad låt med samma namn skrivs över — `savedSlot` är posten
+  dokumentet kom från, och den skrivs över utan fråga, för det är vad Spara
+  betyder. En kort bekräftelse visas och annonseras. I Songs ligger My songs
+  före Examples, och "Save current" heter *Save as*. Filexport och -import
+  står under rubriken *Files*.
+- [x] **Chords-dialogen har tonart och skala.** De två väljarna driver
+  bottenradens egna selects via deras change-hanterare, så tonarten har
+  fortfarande en enda setter.
+- [x] **Menyn har rubriker** — Song, Files, Notes, Arrangement, Tracks — och
+  *Add track* / *Add rhythm track* finns också under sista spåret, utanför
+  `#tracks` så att den bara innehåller spårrader.
+- [x] **Verktygspanelerna har samma form.** Räckviddsraden, en delad kontroll
+  om panelen har en, sedan ett block per handling: knappen först, dess egen
+  kontroll på samma rad, en kort rad under. Designmotiveringarna ("the third
+  axis…") är borta ur panelerna; hjälpen hade dem redan.
+- [x] **Master-reglaget återställt** — se Bottenraden ovan.
+
+Verify: fyra nya steg — Ctrl+S och frågan före laddning (att avböja lämnar
+låten orörd, att spara gör att nästa laddning inte frågar), att ett osparat
+utkast kommer tillbaka efter omladdning och inte erbjuds igen när det har
+laddats, att tonarten kan sättas i Chords-dialogen, och menyrubrikerna,
+Add track under spåren och panelernas form. Alla fyra röda mot föregående
+version.
 
 ## Punkter från CoPilot GitHub
 
