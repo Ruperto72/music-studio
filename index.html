@@ -1046,7 +1046,13 @@
   .fx-toggle.on { background: #3a6bd6; color: #fff; border-color: #2a55b5; box-shadow: 0 0 6px rgba(58,107,214,0.4); }
   .insp-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .insp-field > span { color: var(--muted); font-size: 11px; }
-  .insp-field input[type=text] { width: 84px; text-align: center; }
+  /* The same look as the number fields beside it: a bare text input kept the
+     browser's own lighter box, so Arpeggio looked like a different kind of
+     control from Bend. */
+  .insp-field input[type=text] {
+    width: 84px; text-align: center; font: inherit; font-size: 12px; padding: 6px 4px; cursor: text;
+    background: var(--panel2); color: var(--ink); border: 1px solid #3a3a42; border-radius: 5px;
+  }
   .insp-field select { padding: 6px 6px; }
   /* Shared by the Arpeggio and Chord rows — both offer the same ten CHORD_PRESETS
      voicings, so they get the same compact grid of short labels. auto-fill lets
@@ -1063,6 +1069,21 @@
     font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
   }
   .palette-toggle:hover:not(:disabled) { color: var(--ink); border-color: transparent; }
+  /* Pitch movement is one of four, so it borrows the tool group's segmented
+     look, stretched to the panel's width. */
+  .move-group { display: flex; }
+  .move-group button { flex: 1 1 auto; font-size: 11px; padding: 7px 4px; }
+  /* Six toggles as two rows of three, rather than whatever the width wraps. */
+  .sound-row { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .sound-row .fx-toggle { min-width: 0; }
+  /* Add chord is an action, so it is drawn as a button rather than as the
+     small caption-style disclosure it replaced. */
+  .insp-chord { display: flex; flex-direction: column; gap: 6px; }
+  .insp-chord .palette-toggle {
+    align-self: stretch; text-align: left; padding: 7px 10px; font-size: 12px; text-transform: none; letter-spacing: 0;
+    background: var(--panel2); color: var(--ink); border: 1px solid #3a3a42;
+  }
+  .insp-chord .palette-toggle:hover:not(:disabled) { border-color: #55555f; }
   .insp-field input[type=range] { flex: 1; min-width: 0; margin: 0 8px; cursor: pointer; }
   .insp-velval { min-width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   .insp-del { background: #3a1414; border-color: #5a1e1e; color: #ff9a9a; }
@@ -1745,7 +1766,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -4954,12 +4975,13 @@ function toggleTrackCollapsed(track) {
   render();
 }
 
-// The inspector's two ten-button palettes (Arpeggio and Chord) are picked from
-// once while building a part, unlike the effect toggles around them, which are
-// read at a glance the whole time. Together they were 384px of a 745px panel —
-// enough to push the rest off-screen on a 1366x768 laptop — so they collapse by
-// default and remember it per browser, the same view-preference treatment
-// per-track collapse gets above.
+// The inspector's Add chord grid is picked from once while building a part,
+// unlike the controls around it, which are read at a glance the whole time.
+// It and the arpeggio grid together were 384px of a 745px panel — enough to
+// push the rest off-screen on a 1366x768 laptop — so it collapses by default
+// and remembers it per browser, the same view-preference treatment per-track
+// collapse gets above. The arpeggio grid needs no disclosure any more: it
+// shows only while the note's movement is Arpeggio, which is when it is used.
 const OPEN_PALETTES_KEY = 'music-studio-open-palettes';
 let openPalettes = new Set();
 try { openPalettes = new Set(JSON.parse(localStorage.getItem(OPEN_PALETTES_KEY) || '[]')); } catch { /* ignore */ }
@@ -4968,13 +4990,13 @@ function togglePalette(name) {
   try { localStorage.setItem(OPEN_PALETTES_KEY, JSON.stringify([...openPalettes])); } catch { /* ignore */ }
   renderInspector(); // nothing outside the inspector changes — skip the full grid rebuild
 }
-// Builds "▸ presets" / "▾ presets" plus the grid it discloses, and appends both
+// Builds "▸ label" / "▾ label" plus the grid it discloses, and appends both
 // to `parent`. `fill(grid)` adds the buttons.
-function appendPalette(parent, name, fill) {
+function appendPalette(parent, name, label, fill) {
   const open = openPalettes.has(name);
   const toggle = el('button', 'palette-toggle');
-  toggle.textContent = (open ? '▾' : '▸') + ' presets';
-  toggle.title = (open ? 'Hide' : 'Show') + ' the chord presets';
+  toggle.textContent = (open ? '▾ ' : '▸ ') + label;
+  toggle.dataset.palette = name;
   toggle.setAttribute('aria-expanded', String(open));
   toggle.addEventListener('click', () => togglePalette(name));
   parent.appendChild(toggle);
@@ -8531,30 +8553,118 @@ function renderInspector() {
   panField.append(panLbl, panInput, panVal);
   head.appendChild(panField);
 
-  // --- Modulation ---
-  const mod = panel('Modulation');
-  const modRow = el('div', 'fx-row');
-  addFxToggle(modRow, 'Vibrato', 'vib');
-  addFxToggle(modRow, 'Tremolo', 'trem');
-  addFxToggle(modRow, 'Portamento', 'porta', 'Glides unbroken into the next note in this track, without a new attack.',
-    (on) => { if (on) { note.bend = null; note.arp = null; } });
-  mod.appendChild(modRow);
-
-  // --- Pitch ---
+  // --- Pitch: how the note's pitch moves ---
+  // Bend, Arpeggio and Glide (portamento) have always replaced each other —
+  // turning one on cleared the others — but Glide sat under Modulation and the
+  // other two under Pitch, so a choice silently undid one you could not see.
+  // One visible choice now, with only the chosen one's own control showing.
+  // Read in the order playback resolves a note carrying more than one (a file
+  // written by hand, or from before they excluded each other): a glide wins,
+  // then an arpeggio, then a bend. (A glide with no next note to glide into
+  // plays as a plain note — its hint says what it needs.)
   const pitch = panel('Pitch');
-  const bendField = el('div', 'insp-field');
-  const bendLbl = el('span'); bendLbl.textContent = 'Bend (semitones)';
-  const bendInput = document.createElement('input');
-  bendInput.type = 'number'; bendInput.min = -24; bendInput.max = 24; bendInput.step = 1;
-  bendInput.value = note.bend ? Math.round(12 * Math.log2(note.bend / note.freq)) : 0;
-  bendInput.addEventListener('change', () => {
-    const semitones = parseInt(bendInput.value, 10) || 0;
-    note.bend = semitones === 0 ? null : round2(note.freq * Math.pow(2, semitones / 12));
-    if (note.bend) { note.arp = null; note.porta = false; }
+  const move = note.porta ? 'porta' : note.arp && note.arp.length ? 'arp' : note.bend ? 'bend' : 'none';
+  // Each choice starts from something audible, and emptying its value is
+  // choosing None again, so the choice and the note cannot disagree.
+  const setMove = (m) => {
+    note.porta = m === 'porta';
+    if (m !== 'bend') note.bend = null; else if (!note.bend) note.bend = round2(note.freq * Math.pow(2, 2 / 12));
+    if (m !== 'arp') note.arp = null; else if (!(note.arp && note.arp.length)) note.arp = [4, 7];
     render();
-  });
-  bendField.append(bendLbl, bendInput);
-  pitch.appendChild(bendField);
+  };
+  const moveGroup = el('div', 'segmented move-group');
+  moveGroup.setAttribute('role', 'radiogroup');
+  moveGroup.setAttribute('aria-label', 'Pitch movement');
+  for (const [m, label, title] of [
+    ['none', 'None', 'The note holds its pitch'],
+    ['bend', 'Bend', 'Slides to another pitch over the second half of the note'],
+    ['arp', 'Arpeggio', 'Sweeps this one note through a chord'],
+    ['porta', 'Glide', 'Portamento: glides unbroken into the next note in this track, without a new attack'],
+  ]) {
+    const b = el('button', m === move ? 'active' : '');
+    b.textContent = label;
+    b.title = title;
+    b.dataset.move = m;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(m === move));
+    b.addEventListener('click', () => { if (m !== move) setMove(m); });
+    moveGroup.appendChild(b);
+  }
+  pitch.appendChild(moveGroup);
+
+  if (move === 'bend') {
+    const bendField = el('div', 'insp-field');
+    const bendLbl = el('span'); bendLbl.textContent = 'Bend (semitones)';
+    const bendInput = document.createElement('input');
+    bendInput.type = 'number'; bendInput.min = -24; bendInput.max = 24; bendInput.step = 1;
+    bendInput.value = Math.round(12 * Math.log2(note.bend / note.freq));
+    bendInput.addEventListener('change', () => {
+      const semitones = parseInt(bendInput.value, 10) || 0;
+      note.bend = semitones === 0 ? null : round2(note.freq * Math.pow(2, semitones / 12));
+      if (note.bend) { note.arp = null; note.porta = false; }
+      render();
+    });
+    bendField.append(bendLbl, bendInput);
+    pitch.appendChild(bendField);
+  }
+
+  if (move === 'arp') {
+    const arpField = el('div', 'insp-field');
+    const arpLbl = el('span'); arpLbl.textContent = 'Arpeggio';
+    const arpInput = document.createElement('input');
+    arpInput.type = 'text'; arpInput.placeholder = 'e.g. 4,7';
+    arpInput.title = 'Extra semitones above the root, comma-separated.';
+    arpInput.value = note.arp.join(',');
+    arpInput.addEventListener('change', () => {
+      const parsed = arpInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      note.arp = parsed.length ? parsed : null;
+      if (note.arp) { note.bend = null; note.porta = false; }
+      render();
+    });
+    arpField.append(arpLbl, arpInput);
+    pitch.appendChild(arpField);
+    // Same CHORD_PRESETS palette as Add chord below, and the same convention:
+    // both hold semitone offsets *above* the root, since scheduleTone prepends
+    // note.freq itself when it cycles an arpeggio. The two differ only in what
+    // they do with the voicing — one note sweeping through it here, real
+    // separate notes there. Shown without a disclosure: it is the usable way
+    // to fill the field above, and it only appears once Arpeggio is chosen.
+    const arpHint = el('div', 'insp-sub');
+    arpHint.textContent = 'Sweeps this one note through the chord.';
+    const grid = el('div', 'preset-grid');
+    for (const preset of CHORD_PRESETS) {
+      const btn = document.createElement('button');
+      btn.textContent = preset.label;
+      btn.dataset.arp = preset.label;
+      btn.title = `${preset.name} — sweeps this one note through the chord`;
+      btn.addEventListener('click', () => {
+        note.arp = [...preset.intervals]; // copied: the preset table must stay immutable
+        note.bend = null; note.porta = false;
+        render();
+      });
+      grid.appendChild(btn);
+    }
+    pitch.append(arpHint, grid);
+  }
+
+  if (move === 'porta') {
+    const glideHint = el('div', 'insp-sub');
+    glideHint.textContent = 'Glides into the next note on this track, without a new attack.';
+    pitch.appendChild(glideHint);
+  }
+
+  // --- Sound: everything that changes the note's timbre ---
+  // What used to be Modulation and Texture/FX, all on/off, plus a square
+  // track's Duty — pulse width is timbre, not pitch, which is where it sat.
+  const sound = panel('Sound');
+  const soundRow = el('div', 'fx-row sound-row');
+  addFxToggle(soundRow, 'Vibrato', 'vib');
+  addFxToggle(soundRow, 'Tremolo', 'trem');
+  addFxToggle(soundRow, 'Bitcrush', 'crush');
+  addFxToggle(soundRow, 'Echo', 'echo');
+  addFxToggle(soundRow, 'Chorus', 'chorus');
+  addFxToggle(soundRow, 'Reverb', 'reverb');
+  sound.appendChild(soundRow);
 
   if (state.waveform[track] === 'square') {
     const dutyField = el('div', 'insp-field');
@@ -8581,57 +8691,18 @@ function renderInspector() {
     });
     dutySelect.addEventListener('change', () => { note.duty = dutySelect.value === '' ? null : parseFloat(dutySelect.value); render(); });
     dutyField.append(dutyLbl, dutySelect);
-    pitch.appendChild(dutyField);
+    sound.appendChild(dutyField);
   }
 
-  const arpField = el('div', 'insp-field');
-  const arpLbl = el('span'); arpLbl.textContent = 'Arpeggio';
-  const arpInput = document.createElement('input');
-  arpInput.type = 'text'; arpInput.placeholder = 'e.g. 4,7';
-  arpInput.title = 'Extra semitones above the root, comma-separated.';
-  arpInput.value = note.arp ? note.arp.join(',') : '';
-  arpInput.addEventListener('change', () => {
-    const parsed = arpInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
-    note.arp = parsed.length ? parsed : null;
-    if (note.arp) { note.bend = null; note.porta = false; }
-    render();
-  });
-  arpField.append(arpLbl, arpInput);
-  pitch.appendChild(arpField);
-
-  // Same CHORD_PRESETS palette as the Chord panel below, and the same
-  // convention: both hold semitone offsets *above* the root, since scheduleTone
-  // prepends note.freq itself when it cycles an arpeggio. The two rows differ
-  // only in what they do with the voicing — one note sweeping through it here,
-  // real separate notes there.
-  appendPalette(pitch, 'arp', (grid) => {
-    // The Chord panel below discloses an identical-looking grid, so say what
-    // this one does — otherwise the only cue is the heading it sits under.
-    const arpHint = el('div', 'insp-sub');
-    arpHint.textContent = 'Sweeps this one note through the chord.';
-    grid.before(arpHint);
-    for (const preset of CHORD_PRESETS) {
-      const btn = document.createElement('button');
-      btn.textContent = preset.label;
-      btn.dataset.arp = preset.label;
-      btn.title = `${preset.name} — sweeps this one note through the chord`;
-      btn.addEventListener('click', () => {
-        note.arp = [...preset.intervals]; // copied: the preset table must stay immutable
-        note.bend = null; note.porta = false;
-        render();
-      });
-      grid.appendChild(btn);
-    }
-  });
-
-  // --- Chord ---
-  // Unlike the Arpeggio presets above (which just flag this single note to
-  // play its notes in quick succession), these add real, separate notes at
-  // the same start/len in this track — a true simultaneous chord, the way
-  // e.g. songs/cinematic.json's Strings track is authored. The voicings come
-  // from CHORD_PRESETS; addChordAbove() below is generic over the interval
-  // list, so adding one is a table row rather than another button here.
-  const chordPanel = panel('Chord');
+  // --- Add chord ---
+  // Unlike Arpeggio above (which just flags this single note to play its
+  // notes in quick succession), these add real, separate notes at the same
+  // start/len in this track — a true simultaneous chord, the way e.g.
+  // songs/cinematic.json's Strings track is authored. It is the one control
+  // here that *does* something rather than setting a property, so it is an
+  // action beside Delete rather than a panel among the properties. The
+  // voicings come from CHORD_PRESETS; addChordAbove() below is generic over
+  // the interval list, so adding one is a table row rather than another button.
   const addChordAbove = (semitoneIntervals) => {
     const rootMidi = freqToMidi(note.freq);
     // Clamping at MIDI_MAX can collapse an interval onto a pitch that's
@@ -8672,7 +8743,9 @@ function renderInspector() {
     state.selected = null;
     render();
   };
-  appendPalette(chordPanel, 'chord', (grid) => {
+  const chordBox = el('div', 'insp-chord');
+  inspector.appendChild(chordBox);
+  appendPalette(chordBox, 'chord', 'Add chord', (grid) => {
     const chordHint = el('div', 'insp-sub');
     chordHint.textContent = 'Adds the chord\'s other notes above this one, in this track.';
     grid.before(chordHint);
@@ -8709,15 +8782,6 @@ function renderInspector() {
       grid.appendChild(btn);
     }
   });
-
-  // --- Texture / FX ---
-  const fx = panel('Texture / FX');
-  const fxRow = el('div', 'fx-row');
-  addFxToggle(fxRow, 'Bitcrush', 'crush');
-  addFxToggle(fxRow, 'Echo', 'echo');
-  addFxToggle(fxRow, 'Chorus', 'chorus');
-  addFxToggle(fxRow, 'Reverb', 'reverb');
-  fx.appendChild(fxRow);
 
   const del = el('button', 'insp-del');
   setGlyphLabel(del, 'trash', 'Delete note');

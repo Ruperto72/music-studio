@@ -72,7 +72,11 @@ hur roligt det vore att bygga.
 ## Inte planerat
 
 - [ ] **Fliksystem i inspektorn** — avfärdat: det finns gott om plats när man
-  kör på dator, och vid fem grupper vinner flikar ingenting. Om panelen
+  kör på dator, och vid tre grupper vinner flikar ingenting. Grupperingen ur
+  skissen nedan är sedan gjord *utan* flikar (Pitch, Sound och Add chord som
+  handling, se `DONE.md`), med två avvikelser: portamento hör till Pitch,
+  eftersom det utesluter bend och arpeggio, och duty till Sound, eftersom
+  pulsbredd är klang. Om panelen
   någon gång växer till 8–10 grupper är det värt att ta upp igen, eftersom
   man då scrollar förbi en växande hög med stängda rubriker. Skissen som
   togs fram: `Selected note` och `Delete` ligger kvar utanför flikarna

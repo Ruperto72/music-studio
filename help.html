@@ -179,7 +179,7 @@
           sends, bitcrush, tremolo) shows in that same column whenever nothing is selected — click any
           <b>Insert</b> chip on a track to see its whole chain.</p>
           <figure>
-            <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note — Velocity and Pan sliders, Modulation (Vibrato/Tremolo/Portamento), Pitch (Bend/Arpeggio), Chord presets and Texture/FX (Bitcrush/Echo/Chorus/Reverb)">
+            <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note — Velocity and Pan sliders; Pitch with None, Bend, Arpeggio and Glide, Arpeggio chosen and its chord buttons showing; Sound with Vibrato, Tremolo, Bitcrush, Echo, Chorus and Reverb; an Add chord button and Delete note">
             <figcaption>A selected note in the inspector — every per-note effect in one place.</figcaption>
           </figure>
         </li>
@@ -364,7 +364,7 @@
         <li>How a chord is read: <b>the notes that are sounding decide</b>. An inversion (E-G-C) is still a C chord, and a chord from outside the key (G-B-D in C minor) is played as what it is. The key only fills in what the notes don't say — a lone root, or a root and fifth without a third.</li>
         <li>Both halves are <b>written once, not linked</b>. Change the chords and insert the part again; nothing you edited by hand is ever rewritten behind your back. If the track you follow has no chords from the playhead on, Insert says so rather than doing nothing.</li>
         <li><b>Ghost notes</b>: every other tonal track's notes show faintly, dashed and in their own colour, in the <i>active</i> track's piano roll. They are only a guide — a click on one places a note on your own track — and they are left out of the other lanes so the view doesn't fill up. The button beside <b>Grid</b> turns them off (remembered in this browser).</li>
-        <li>The note inspector's <b>Chord</b> panel adds chord tones above a selected note — with a key set, labelled by the chord the key builds there (<b>ii</b>, <b>V</b>, …).</li>
+        <li>The note inspector's <b>Add chord</b> adds chord tones above a selected note — with a key set, labelled by the chord the key builds there (<b>ii</b>, <b>V</b>, …).</li>
       </ul>
     </section>
 
@@ -419,6 +419,7 @@
         <li><b>Arrange…</b> (menu) works on time itself, across the whole song. <b>Insert empty bars</b> opens a gap of that many bars at <b>At bar</b>; <b>Delete bars</b> removes them and closes the gap. Every track, its clips, its automation and the markers move together.</li>
         <li>Everything moves in <b>whole bars</b>, so the song always stays a whole number of bars long. A note that rings across the point where bars go in sustains through them, and an automation curve holds its value there — so inserting bars and deleting them again gives you back exactly what you had.</li>
         <li>Your <b>markers</b> are the song's <b>sections</b>: each runs from the bar its marker is in to the next marker's bar (or to the end). Name them after the part of the song they start. Each section can be <b>Duplicate</b>d (the copy goes straight after it, and everything later moves on), copied to the end (<b>Copy to end</b>) or <b>Delete</b>d. A copy brings its automation and its marker with it, so a duplicated chorus is listed as a section of its own.</li>
+        <li>Deleting a <b>marker</b> is not deleting its section. Click the flag and clear its name, and only the marker goes: the music stays where it is and joins the section before it. To remove the music as well, use <b>Delete</b> on the section's row in Arrange.</li>
         <li><b>Move</b> takes a section out and puts it back in somewhere else — pick it, then where it goes (<i>to the start</i>, or <i>after</i> another section — with unmarked music ahead of your first marker, the front is <i>before</i> that section, so the unmarked bars stay where they are), and press <b>Move</b>. What lay between closes up behind it and the song keeps its length, so "the Bridge after the second chorus" is one step rather than a Duplicate and a Delete. Two sections with the same name are told apart by the bar they start on.</li>
         <li><b>Undo</b> takes back any of these in one step, markers included.</li>
         <li><b>Repeat</b> (by the transport) is the quick version for a loop: it stamps the loop range's notes into the bars right after it, overwriting rather than moving anything.</li>
@@ -463,30 +464,41 @@
     <section id="note-effects">
       <h2>Note effects</h2>
       <p>
-        Select a single note to edit vibrato, tremolo, bend, duty cycle, arpeggio, portamento,
-        bitcrush, echo, chorus and reverb in the inspector on the right.
+        Select a single note to edit it in the inspector on the right, in three groups:
       </p>
+      <ul>
+        <li><b>Selected note</b> — its <b>Velocity</b> and <b>Pan</b>.</li>
+        <li><b>Pitch</b> — how the pitch <i>moves</i>, one of four: <b>None</b>, <b>Bend</b> (slides to
+          another pitch over the second half of the note — set how many semitones), <b>Arpeggio</b>
+          (sweeps the note through a chord) or <b>Glide</b> (portamento: glides unbroken into the next
+          note on the track, without a new attack). They replace each other, so choosing one clears
+          the others — and only the chosen one's own setting shows. Each starts from something you can
+          hear (Bend two semitones up, Arpeggio a major chord); setting Bend to 0 or emptying the
+          Arpeggio box is the same as choosing None.</li>
+        <li><b>Sound</b> — <b>Vibrato</b>, <b>Tremolo</b>, <b>Bitcrush</b>, <b>Echo</b>, <b>Chorus</b>
+          and <b>Reverb</b>, each on or off, plus <b>Duty cycle</b> (pulse width) on a Square track.</li>
+      </ul>
       <figure>
-        <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note's Velocity/Pan, Modulation, Pitch, Chord and Texture/FX sections">
-        <figcaption>Everything a single note can carry, all in the inspector column.</figcaption>
+        <img class="shot" src="docs/img/help/note-inspector.png" alt="The inspector column showing a selected note's Velocity and Pan, the Pitch movement with Arpeggio chosen and its chord buttons, the Sound toggles, Add chord and Delete note">
+        <figcaption>Everything a single note can carry, all in the inspector column — here with Arpeggio chosen.</figcaption>
       </figure>
       <p>
-        Two rows in the inspector offer the same ten chords — <b>5</b> (power chord), <b>maj</b>,
+        Two places offer the same ten chords — <b>5</b> (power chord), <b>maj</b>,
         <b>min</b>, <b>dim</b>, <b>aug</b>, <b>sus2</b>, <b>sus4</b>, <b>7</b>, <b>maj7</b> and
-        <b>m7</b> (hover a button for its full name). Click <b>▸ presets</b> under
-        <b>Arpeggio</b> or <b>Chord</b> to show them; they stay hidden until you ask, and each remembers
+        <b>m7</b> (hover a button for its full name). Under <b>Arpeggio</b> they show as soon as you
+        choose it; <b>▸ Add chord</b>, above Delete, opens its set when you click it and remembers
         whether you left it open. They differ in what you get:
       </p>
       <ul>
         <li><b>Arpeggio</b> keeps <i>one</i> note and sweeps it through the chord's tones in quick
           succession — the classic chiptune way to imply a chord on a single voice. It fills in the
           Arpeggio box, which you can then edit by hand.</li>
-        <li><b>Chord</b> adds the chord's other notes as <i>real</i>, separate notes above the
+        <li><b>Add chord</b> adds the chord's other notes as <i>real</i>, separate notes above the
           selected one, in the same track and at the same length. They start with no effects of
           their own, so each can be tweaked afterwards.</li>
       </ul>
       <p>
-        With a <b>Key</b> set (bottom bar), the Chord row is led by two more buttons: the triad
+        With a <b>Key</b> set (bottom bar), Add chord is led by two more buttons: the triad
         and the seventh chord <i>this key</i> builds on the selected note. They're labelled by
         <b>degree</b> — <b>ii</b>, <b>V7</b> — rather than by quality, because which chords belong
         together is exactly what a key tells you. The quality isn't written down anywhere: it's read off

@@ -2532,6 +2532,38 @@ med pan per not på plats är asymmetrierna i den här listan slut.
   steg stänger inspektorn (ackordknappen nollar `state.selected`), så båda
   listorna var tomma och likhetstestet höll av fel anledning. Steget markerar
   nu en not först och kräver att listan inte är tom.
+- [x] **Notinspektorn omgrupperad: Pitch, Sound och Add chord.** En
+  designgranskning av panelen hittade att grupperingen, inte utseendet, var
+  problemet. **Bend, Arpeggio och Portamento har alltid uteslutit varandra** —
+  att slå på en nollade de andra — men Portamento låg under *Modulation* och
+  de två andra under *Pitch*, så ett val raderade tyst ett annat man inte såg.
+  Duty cycle låg under Pitch fast pulsbredd är klang, och *Chord* var en panel
+  som bara innehöll en hopfälld länk, trots att det är den enda kontrollen som
+  *skapar* noter.
+  Nu tre grupper: **Pitch** är ett `role="radiogroup"`-val av hur tonhöjden
+  rör sig — None / Bend / Arpeggio / Glide — där bara det valdas eget reglage
+  syns. Valet läses ur noten i uppspelningens ordning (glide, arpeggio, bend)
+  och lagras inte separat, så val och not kan inte gå isär; varje val startar
+  från något hörbart (Bend +2, Arpeggio 4,7), och att tömma värdet är att
+  välja None. Arpeggio-förvalen visas direkt när Arpeggio är valt, utan
+  fällning. **Sound** är de sex på/av-knapparna (två rader om tre, så Reverb
+  inte längre står ensam) plus Duty på square-spår. **Add chord** är en knapp
+  vid Delete, med samma ihågkomna fällning som förut. Arpeggio-fältet fick
+  samma stil som Bend-fältet (ett nakent textfält behöll webbläsarens ljusare
+  ruta). Datamodellen och sparformatet är orörda.
+  Skissen i TODO.md:s avfärdade fliksystem hade samma gruppindelning; den är
+  gjord utan flikar, eftersom flikar hade gömt ett påslaget Vibrato — samma
+  skäl som när fliksystemet avfärdades. Två avvikelser från skissen:
+  portamento hör till Pitch (det utesluter bend och arpeggio) och duty till
+  Sound.
+  Verify: ett nytt steg går igenom alla fyra val mot den sparade noten, att
+  de andra två nollas, att Bend 0 är None, att en handskriven not med både
+  arpeggio och glide visar Glide, och att Sound håller rätt knappar och Duty.
+  Fällningssteget kräver nu en enda fällning och mäter 1366×768-passningen
+  både på en vanlig not och med arpeggio-förvalen synliga. Sex
+  felinjiceringar (fel läsordning, val som inte nollar, Duty kvar i Pitch,
+  förval bakom fällning, inget startvärde, Add chord öppen från början) — alla
+  röda.
 - [x] **Tillgänglighetsgenomgång** — mätte först i webbläsaren i stället för att
   gissa. Utfallet var blandat: alla 14 reglage, 7 selects och alla knappar
   hade redan tillgängliga namn (via `title`), alla fyra dialoger hade
