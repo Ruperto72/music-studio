@@ -924,7 +924,7 @@ async function main() {
       // Round-trip through the song payload the same way a save/load would.
       await new Promise((r) => setTimeout(r, 500)); // autosave is debounced
       const stored = await cdp.evaluate(`(() => {
-        const key = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const key = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!key) return null;
         const eq = (JSON.parse(localStorage.getItem(key)) || {}).eq || {};
         return eq[Object.keys(eq)[0]] || null;
@@ -4349,7 +4349,7 @@ async function main() {
       const amp1 = () => `[...document.querySelectorAll('.harmonics-group .adsr-field')]
         .find(f => f.querySelector('.adsr-label').textContent === 'H1 Amp').querySelector('input[type=range]')`;
       const savedAmps = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -4363,7 +4363,7 @@ async function main() {
       // Saw quick-start fills all 8 amplitudes with a 1/n falloff.
       await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Saw').click()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -4374,7 +4374,7 @@ async function main() {
       // A direct slider drag reaches the file too.
       await cdp.evaluate(`(() => { const s = ${amp1()}; s.value = 0.4; s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -4397,7 +4397,7 @@ async function main() {
       await waitFor(`!!document.querySelector('.harmonics-group')`);
       await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Square').click()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -4438,7 +4438,7 @@ async function main() {
       // in what was already written.
       await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Triangle').click()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -4466,14 +4466,14 @@ async function main() {
       })()`);
       await waitFor(`document.getElementById('preset-dialog').open === false`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
         return d.waveform[id] === 'harmonics';
       })()`);
       const reapplied = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
         return (d.harmonics || {})[id];
@@ -5160,7 +5160,7 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 600));
       const saved = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
@@ -5231,7 +5231,7 @@ async function main() {
       })()`);
       await new Promise((r) => setTimeout(r, 600));
       const wrote = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
         return window.__savedNotes(d, id).filter(n => n.pan != null).length;
@@ -5293,7 +5293,7 @@ async function main() {
       }
       // Editor state, not song content: it must not ride along in the file.
       const inSong = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         return 'snap' in d || 'snapOn' in d;
       })()`);
@@ -5325,7 +5325,7 @@ async function main() {
       await cdp.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
 
       const starts = async () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
         return window.__savedNotes(d, id).map(n => n.start).sort((a, b) => a - b);
@@ -5411,7 +5411,7 @@ async function main() {
       }
       await new Promise((r) => setTimeout(r, 700));
       const sameRow = `(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind !== 'rhythm').id;
         const notes = window.__savedNotes(d, id).filter(n => n.start >= 19 && n.start < 22);
@@ -5875,7 +5875,7 @@ async function main() {
       // lookup started reading the wrong object as soon as another step saved
       // a song.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
@@ -5887,7 +5887,7 @@ async function main() {
       // reset passed.
       await cdp.evaluate(`(() => { const s = document.querySelector('.inspector input[type=range]'); s.value = 1; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
       const savedHit = `(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         return window.__savedNotes(d, d.trackList.find(t => t.kind === 'rhythm').id)[0];
       })()`;
@@ -6187,7 +6187,7 @@ async function main() {
       // after the 350ms this step already waits sees the *previous* draft and
       // fails on a kit map that is about to be written correctly.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         try {
           const kit = JSON.parse(localStorage.getItem(k)).kit;
@@ -6793,7 +6793,7 @@ async function main() {
       if (jump < -0.5 || jump > 1) throw new Error(`changing the tempo mid-playback moved the playhead by ${jump.toFixed(2)} columns`);
       // It is a song value like any other: it reaches the autosaved song.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         return k && JSON.parse(localStorage.getItem(k)).tempo === 60;
       })()`);
     });
@@ -6810,13 +6810,13 @@ async function main() {
         [...row.querySelectorAll('button')].find(b => b.textContent === 'Insert').click();
       })()`);
       const saved = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return window.__savedNotes(d, id);
       })()`);
-      await waitFor(`(() => { const k = Object.keys(localStorage).find(k => k.includes('autosave')); return !!k; })()`);
+      await waitFor(`(() => { const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined); return !!k; })()`);
       await new Promise(r => setTimeout(r, 600));
       const rock = await saved();
       const rockKicks = rock.filter(h => h.type === 'kick').map(h => h.start);
@@ -6903,7 +6903,7 @@ async function main() {
       return { cols: d.cols, tracks, markers: (d.markers || []).map(m => m.col + '|' + m.name).sort(), curves };
     }`;
     const savedRaw = () => cdp.evaluate(`(() => {
-      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
       return k ? (${SONG_RAW})(JSON.parse(localStorage.getItem(k))) : null;
     })()`);
     const fileRaw = (file) => cdp.evaluate(`fetch('songs/${file}').then(r => r.json()).then(d => (${SONG_RAW})(d))`);
@@ -6970,7 +6970,7 @@ async function main() {
       await waitFor(`document.getElementById('arrange-dialog').open`);
     };
     const waitSavedCols = (cols) => waitFor(`(() => {
-      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
       return k && JSON.parse(localStorage.getItem(k)).cols === ${cols};
     })()`);
     const arrangeBars = (bar, count, which) => cdp.evaluate(`(() => {
@@ -7012,7 +7012,7 @@ async function main() {
       // behind at 16 shows the very notes the first one should have. The
       // windows themselves have to be where the bar moved them.
       const windows = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const split = Object.values(d.tracks).find(p => p.length > 1);
         return split ? split.map(c => [c.start, c.len]) : null;
@@ -7114,7 +7114,7 @@ async function main() {
       await cdp.evaluate(`document.getElementById('arrange-move').click()`);
     };
     const waitSavedMarker = (m) => waitFor(`(() => {
-      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
       return k && JSON.parse(localStorage.getItem(k)).markers.some(x => x.col + '|' + x.name === ${JSON.stringify(m)});
     })()`);
     // Section [a, b) moved to start at `to`: the map for where the file's
@@ -7198,7 +7198,7 @@ async function main() {
           input.dispatchEvent(new Event('change', { bubbles: true }));
         })()`);
         await waitFor(`(() => {
-          const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+          const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
           return k && JSON.parse(localStorage.getItem(k)).songName === ${JSON.stringify(d.songName)};
         })()`);
         return cdp.evaluate(`(${SONG_RAW})(${JSON.stringify(d)})`);
@@ -7247,6 +7247,105 @@ async function main() {
       if (chosen !== 'Bridge after Outro') throw new Error(`the chosen section and place should follow the Duplicate, got ${JSON.stringify(chosen)}`);
     });
 
+    step('Arrange: Move carries clip structure and what a window hides, and cuts nothing hidden', async () => {
+      // Move and Duplicate used to copy what trackNotes() showed: the section's
+      // clip boundaries were lost in the copy, what a trimmed window hid in it
+      // was not copied, and the cut then took the originals — so hidden
+      // material in a moved section was gone for good, with nothing on screen
+      // to say so. And material hidden by a window *outside* the section went
+      // with the cut too.
+      await fresh();
+      const R = `document.querySelector('.track[data-kind="rhythm"]')`;
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // A kick on each of the first sixteen columns (bars 1 and 2).
+      await cdp.evaluate(`(() => {
+        for (let i = 0; i < 16; i++) {
+          const lane = ${R}.querySelector('.lane');
+          const r = lane.getBoundingClientRect();
+          lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+        }
+      })()`);
+      await waitFor(`${R}.querySelectorAll('.lane .hit').length === 16`);
+      await cdp.evaluate(`document.querySelector('.track[data-kind="rhythm"] .track-header').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+      const seek = (col) => cdp.evaluate(`(() => {
+        const cell = document.querySelectorAll('.ruler-cell')[${col}];
+        const r = cell.getBoundingClientRect();
+        const at = { bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 };
+        cell.dispatchEvent(new PointerEvent('pointerdown', at));
+        window.dispatchEvent(new PointerEvent('pointerup', at));
+      })()`);
+      // Sections: bar 1, and bars 2 to the end.
+      await seek(0); await cdp.evaluate(`document.getElementById('add-marker').click()`);
+      await seek(8); await cdp.evaluate(`document.getElementById('add-marker').click()`);
+      // Split at column 4 and pull the left clip's end in to column 2: it now
+      // hides kicks 2 and 3 inside bar 1, and — like every split half — holds
+      // bar 2's kicks hidden past its end.
+      await seek(4);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click(); document.getElementById('split-clip-btn').click()`);
+      await waitFor(`${R}.querySelectorAll('.lane .clip').length === 2`);
+      await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+      await waitFor(`!!${R}.querySelector('.lane .clip .clip-edge.end')`);
+      await cdp.evaluate(`(() => {
+        const edge = ${R}.querySelectorAll('.lane .clip')[0].querySelector('.clip-edge.end');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 41, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 41, clientX: x - 32, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 41, clientX: x - 32, clientY: y }));
+      })()`);
+      await waitFor(`${R}.querySelectorAll('.lane .hit').length === 14`);
+      const rhythm = () => cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        return JSON.stringify(d.tracks.rhythm.map(c => [c.start, c.len, c.notes.map(n => n.start)]));
+      })()`);
+      await new Promise((r) => setTimeout(r, 600));
+      const before = JSON.parse(await rhythm());
+      if (JSON.stringify(before.map(c => [c[0], c[1]])) !== '[[0,2],[4,null]]') throw new Error(`setup: expected windows [0,2) and [4,end): ${JSON.stringify(before)}`);
+
+      const moveFirstTo = (last) => cdp.evaluate(`(() => {
+        const w = document.getElementById('arrange-move-what'); w.selectedIndex = ${last ? 0 : 1}; w.dispatchEvent(new Event('change', { bubbles: true }));
+        const t = document.getElementById('arrange-move-to'); t.selectedIndex = ${last ? 't.options.length - 1' : 0}; t.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('arrange-move').click();
+      })()`);
+      const savedMarkers = (cols) => waitFor(`JSON.stringify(JSON.parse(localStorage.getItem('frogger-music-editor-autosave')).markers.map(m => m.col).sort((a, b) => a - b)) === ${JSON.stringify(JSON.stringify(cols))}`);
+
+      // 1. Bar 1 to the end of the song (8 bars, so it lands at 56).
+      await openArrange();
+      await moveFirstTo(true);
+      await savedMarkers([0, 56]);
+      await new Promise((r) => setTimeout(r, 600));
+      const after = JSON.parse(await rhythm());
+      // Bar 2 closed up to the start; bar 1's two windows arrived at 56 with
+      // the hole between them.
+      const windows = after.map(c => [c[0], c[1]]);
+      if (JSON.stringify(windows.filter(w => w[0] >= 56)) !== '[[56,2],[60,4]]') {
+        throw new Error(`the moved section should keep its own two windows and the hole between them: ${JSON.stringify(after)}`);
+      }
+      // The window at 56 still holds the kicks it hid inside the section, so
+      // pulling its edge back out gives them back — and, lying wholly inside
+      // the section, it brought its hidden tail (bar 2's kicks) along too.
+      const w56 = after.find(c => c[0] === 56);
+      if (!w56[2].includes(58) || !w56[2].includes(59)) throw new Error(`what the trimmed window hid must travel with it: ${JSON.stringify(w56)}`);
+      if (w56[2].filter(s => s >= 64).length !== 8) throw new Error(`a clip wholly inside the section travels whole, hidden tail included: ${JSON.stringify(w56)}`);
+
+      // 2. Undo, then the other way round: bars 2 on to the start. The
+      // window [0,2) is outside that section, but hides bar 2's kicks inside
+      // it — nothing of the section shows them, and the cut used to take them.
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await savedMarkers([0, 8]);
+      await moveFirstTo(false);
+      await savedMarkers([0, 56]);
+      await new Promise((r) => setTimeout(r, 600));
+      const back = JSON.parse(await rhythm());
+      const trimmed = back.find(c => c[1] === 2);
+      if (!trimmed || trimmed[0] !== 56) throw new Error(`bar 1's trimmed window should now sit at 56: ${JSON.stringify(back)}`);
+      // All sixteen: bar 1's (a split half holds the whole material) and bar
+      // 2's hidden tail, eight columns past the window's edge as before.
+      if (JSON.stringify(trimmed[2]) !== JSON.stringify(Array.from({ length: 16 }, (_, i) => 56 + i))) {
+        throw new Error(`the window's hidden material must survive a move of the section it lies under, at the same distance from its edge: ${JSON.stringify(trimmed)}`);
+      }
+    });
+
     step('Arrange: a section is whole bars, and a copy on a split track lands in one window', async () => {
       await fresh();
       // The playhead onto column `col` through the ruler, the way a click does.
@@ -7291,7 +7390,7 @@ async function main() {
       // a window per note.
       await new Promise(r => setTimeout(r, 600));
       const lead = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         return JSON.parse(localStorage.getItem(k)).tracks.lead.map(c => [c.start, c.len]);
       })()`);
       if (lead.length !== 3) throw new Error(`the Lead should have its two clips plus one for the copy, got ${JSON.stringify(lead)}`);
@@ -7309,7 +7408,7 @@ async function main() {
       await insertRow('follow-list', 'Arp up');
       await waitFor(`${pitchRowByName('Lead')}.querySelectorAll('.lane .note').length > 0`);
       const leadByStart = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return null;
         const d = JSON.parse(localStorage.getItem(k));
         const out = {};
@@ -7365,7 +7464,7 @@ async function main() {
       })()`);
       await new Promise(r => setTimeout(r, 600));
       const hits = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return window.__savedNotes(d, id).map(h => h.start + '|' + h.type).sort();
@@ -8324,7 +8423,7 @@ async function main() {
       // autosave() is debounced, so wait for the draft to carry the split
       // rather than reading it the instant the DOM shows two blocks.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8335,7 +8434,7 @@ async function main() {
       // must be unchanged (all six hits, same columns), while each clip must
       // still be holding all six in its own content.
       const shape = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         const clips = d.tracks[id];
@@ -8409,7 +8508,7 @@ async function main() {
       })()`);
       await waitFor(`document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit').length === 5`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8417,7 +8516,7 @@ async function main() {
       })()`);
 
       const after = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify({
@@ -8518,14 +8617,14 @@ async function main() {
       // The material must still be in the file — that is the difference
       // between hiding and deleting, and it is invisible from the DOM.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
         return !!t && (d.tracks[t.id] || []).length === 2 && d.tracks[t.id][0].len === 1;
       })()`);
       const kept = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify({
@@ -8555,14 +8654,14 @@ async function main() {
       // version of this step left the rule uncovered without looking like it.
       await dragEnd(10, 13);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
         return !!t && d.tracks[t.id].length === 2;
       })()`);
       const clamped = await cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify(d.tracks[id].map(c => ({ start: c.start, len: c.len })));
@@ -8632,7 +8731,7 @@ async function main() {
         `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
            .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
       const savedClips = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify(d.tracks[id].map(c => ({
@@ -8642,7 +8741,7 @@ async function main() {
       // Move the right clip four columns later.
       await dragGrip(1, 4, 21);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8681,7 +8780,7 @@ async function main() {
       // returned instantly and the assertion ran against a stale song in both
       // the real and the broken build. It passed either way, proving nothing.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8699,7 +8798,7 @@ async function main() {
       // itself: waiting for the right answer turns a real failure into a bare
       // timeout message that names no symptom.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8745,7 +8844,7 @@ async function main() {
         `JSON.stringify([...document.querySelectorAll('.track[data-kind="rhythm"] .lane .hit')]
            .map(h => parseFloat(h.style.left) / 16).sort((a, b) => a - b))`);
       const savedClips = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify(d.tracks[id].map(c => ({
@@ -8761,17 +8860,17 @@ async function main() {
       // timeout naming no symptom.
       const settledChange = async (prev) => {
         await waitFor(`(() => {
-          const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+          const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
           if (!k) return false;
           return localStorage.getItem(k) !== ${JSON.stringify(prev)};
         })()`);
       };
       const rawDraft = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         return k ? localStorage.getItem(k) : '';
       })()`);
       const settled = (n) => waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8784,7 +8883,7 @@ async function main() {
       // from an empty song and the round-trip comparison below would be
       // between two different things.
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -8888,7 +8987,7 @@ async function main() {
         }
       })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.name === 'Bass');
@@ -8904,14 +9003,14 @@ async function main() {
       const key = (code, type) => cdp.evaluate(
         `window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)}, { code: ${JSON.stringify(code)}, bubbles: true }))`);
       const bassClips = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Bass') || {}).id;
         return JSON.stringify((d.tracks[id] || []).map(c => ({
           start: c.start, len: c.len, source: c.source, held: c.notes.length })));
       })()`);
       const rawDraft = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         return k ? localStorage.getItem(k) : '';
       })()`);
       const recordPass = async (play, atCol = null) => {
@@ -8958,7 +9057,7 @@ async function main() {
       const draftBeforeTake = await rawDraft();
       await recordPass(true);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeTake)};
       })()`);
@@ -9005,7 +9104,7 @@ async function main() {
       const draftBeforeSecond = await rawDraft();
       await recordPass(true);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeSecond)};
       })()`);
@@ -9036,7 +9135,7 @@ async function main() {
       const midSources = new Set(afterSecond.map(c => c.source));
       await recordPass(true, 12);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         return localStorage.getItem(k) !== ${JSON.stringify(draftBeforeThird)};
       })()`);
@@ -9492,13 +9591,13 @@ async function main() {
       // that and passed against the unreconciled build. The real symptom is
       // that arrow keys go on nudging the item nobody can see.
       const saved = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         const d = JSON.parse(localStorage.getItem(k));
         const id = d.trackList.find(t => t.kind === 'rhythm').id;
         return JSON.stringify(d.tracks[id].map(c => c.notes.map(n => n.start).sort((a, b) => a - b)));
       })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const t = d && d.trackList && d.trackList.find(t => t.kind === 'rhythm');
@@ -9583,7 +9682,7 @@ async function main() {
         [...head.querySelectorAll('.th-tool-btn')].find(b => /Env/.test(b.textContent)).click();
       })()`);
       const saved = () => cdp.evaluate(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return '{}';
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -9609,7 +9708,7 @@ async function main() {
       await cdp.evaluate(`(() => { const s = ${slider('Speed')}; s.value = 50;
         s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -9620,7 +9719,7 @@ async function main() {
       await cdp.evaluate(`(() => { const s = ${slider('Speed')}; s.value = 33;
         s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -9657,7 +9756,7 @@ async function main() {
       await cdp.evaluate(`(() => { const s = ${slider('Sweep')}; s.value = 6;
         s.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -9708,7 +9807,7 @@ async function main() {
       await openPalette('arp');
       await cdp.evaluate(`document.querySelector('.preset-grid button[data-arp]').click()`);
       await waitFor(`(() => {
-        const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+        const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
         if (!k) return false;
         const d = JSON.parse(localStorage.getItem(k));
         const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
@@ -10005,7 +10104,7 @@ async function main() {
     // The Lead track's row in the autosave, as an expression `body` can read
     // `d` (the saved song) and `id` (the track) out of.
     const leadRow = (body) => `(() => {
-      const k = Object.keys(localStorage).find(k => k.includes('autosave'));
+      const k = (localStorage.getItem('frogger-music-editor-autosave') !== null ? 'frogger-music-editor-autosave' : undefined);
       if (!k) return false;
       const d = JSON.parse(localStorage.getItem(k));
       const id = (d.trackList.find(t => t.name === 'Lead') || {}).id;
