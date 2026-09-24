@@ -2483,6 +2483,62 @@ async function main() {
       if (await cdp.evaluate(`window.__asked.length`) !== 1) throw new Error('a recovered song is unsaved, so New song should ask first');
     });
 
+    step('Unsaved work: a second unsaved session does not replace the first one\'s', async () => {
+      // The recovery slot used to hold one draft, so a later session that
+      // also ended unsaved overwrote the earlier one before anyone looked.
+      const placeNoteAt = (x) => cdp.evaluate(`(() => {
+        document.querySelector('[data-tool="pen"]').click();
+        const lane = document.querySelector('.track.active .lane');
+        const rect = lane.getBoundingClientRect();
+        lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: rect.left + ${x}, clientY: rect.top + 40 }));
+      })()`);
+      const endSession = async () => {
+        await waitFor(`JSON.parse(localStorage.getItem('music-studio-autosave-meta') || '{}').dirty === true`);
+        await goto(APP_URL);
+        await waitFor(`document.querySelectorAll('.track').length >= 5`);
+      };
+      await fresh();
+      await placeNoteAt(60);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 1`);
+      await endSession();
+      await placeNoteAt(60); await placeNoteAt(200);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
+      await endSession();
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click(); document.getElementById('songs-btn').click();`);
+      await waitFor(`document.getElementById('songs-dialog').open`);
+      const rows = await cdp.evaluate(`document.querySelectorAll('#songs-recovered .song-item').length`);
+      if (rows !== 2) throw new Error(`both unsaved sessions should be offered back, found ${rows} row(s)`);
+      // Discarding one leaves the other.
+      await cdp.evaluate(`[...document.querySelectorAll('#songs-recovered .song-item')][1].querySelector('.song-del').click()`);
+      await waitFor(`document.querySelectorAll('#songs-recovered .song-item').length === 1`);
+      await cdp.evaluate(`[...document.querySelectorAll('#songs-recovered button')].find(b => b.textContent === 'Load').click()`);
+      await waitFor(`document.querySelectorAll('.track.active .lane .note').length === 2`);
+    });
+
+    step('Unsaved work: edits discarded by a load are not offered back', async () => {
+      // A load never rewrote the draft, so it stayed marked unsaved: close the
+      // tab after "load anyway and lose them" and the next page offered the
+      // discarded edits back as Unsaved. No waiting after the load — the draft
+      // has to be right the moment the load is done.
+      await withSelectedNote();
+      await waitFor(`JSON.parse(localStorage.getItem('music-studio-autosave-meta') || '{}').dirty === true`);
+      await cdp.evaluate(`document.querySelector('#file-menu-toggle').click(); document.getElementById('songs-btn').click();`);
+      await waitFor(`[...document.querySelectorAll('.song-item .song-title')].some(t => t.textContent === 'Techno')`);
+      await cdp.evaluate(`[...[...document.querySelectorAll('.song-item')].find(r => r.querySelector('.song-title').textContent === 'Techno').querySelectorAll('button')].find(b => b.textContent === 'Load').click()`);
+      // Read in the same poll that sees the load land: in the old code a
+      // debounced autosave some 400ms later happened to correct the meta, so
+      // the bug was a window — a tab closed inside it — and only a read with
+      // no wait in between can see a window.
+      await waitFor(`document.getElementById('song-name-display').textContent === 'Techno'
+        && (window.__metaAtLoad = localStorage.getItem('music-studio-autosave-meta'), true)`);
+      const meta = JSON.parse(await cdp.evaluate(`window.__metaAtLoad`) || '{}');
+      if (meta.dirty !== false) throw new Error(`the moment a load is done the draft must stop being unsaved: ${JSON.stringify(meta)}`);
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length >= 5`);
+      const left = await cdp.evaluate(`localStorage.getItem('music-studio-recovered')`);
+      if (left) throw new Error(`a discarded edit should not come back as Unsaved: ${left.slice(0, 120)}…`);
+    });
+
     step('Chords dialog: the key can be set inside it', async () => {
       // The starter layout is Chromatic, where every progression is disabled,
       // and the key used to be set only in the bottom bar — behind this modal.
