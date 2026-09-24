@@ -7346,6 +7346,107 @@ async function main() {
       }
     });
 
+    step('Arrange: a moved section leaves no stacked hidden hits, heals as it did, and copies a hole as a hole', async () => {
+      // Three findings from reviewing the clip-structure change, each walked
+      // through by hand before it was fixed.
+      const R = `document.querySelector('.track[data-kind="rhythm"]')`;
+      const KEY = 'frogger-music-editor-autosave';
+      const setup = async (kicks, markers) => {
+        await fresh();
+        await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+        await cdp.evaluate(`(() => {
+          for (let i = 0; i < ${kicks}; i++) {
+            const lane = ${R}.querySelector('.lane');
+            const r = lane.getBoundingClientRect();
+            lane.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 4 + i * 16, clientY: r.top + 8 }));
+          }
+        })()`);
+        await waitFor(`${R}.querySelectorAll('.lane .hit').length === ${kicks}`);
+        for (const col of markers) {
+          await seekCol(col);
+          await cdp.evaluate(`document.getElementById('add-marker').click()`);
+        }
+        await seekCol(4);
+        await cdp.evaluate(`document.getElementById('file-menu-toggle').click(); document.getElementById('split-clip-btn').click()`);
+        await waitFor(`${R}.querySelectorAll('.lane .clip').length === 2`);
+        await cdp.evaluate(`document.querySelector('[data-tool="grab"]').click()`);
+        await waitFor(`!!${R}.querySelector('.lane .clip .clip-edge.end')`);
+      };
+      const seekCol = (col) => cdp.evaluate(`(() => {
+        const cell = document.querySelectorAll('.ruler-cell')[${col}];
+        const r = cell.getBoundingClientRect();
+        const at = { bubbles: true, pointerId: 3, clientX: r.left + 1, clientY: r.top + 6 };
+        cell.dispatchEvent(new PointerEvent('pointerdown', at));
+        window.dispatchEvent(new PointerEvent('pointerup', at));
+      })()`);
+      const dragEdge = (clipIndex, which, cols) => cdp.evaluate(`(() => {
+        const edge = ${R}.querySelectorAll('.lane .clip')[${clipIndex}].querySelector('.clip-edge.${which}');
+        const r = edge.getBoundingClientRect();
+        const x = r.left + 3, y = r.top + 10;
+        edge.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 51, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 51, clientX: x + ${cols} * 16, clientY: y }));
+        window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 51, clientX: x + ${cols} * 16, clientY: y }));
+      })()`);
+      // Picks the section by its marker's number and the destination by its option's text.
+      const move = async (bar, to) => {
+        const miss = await cdp.evaluate(`(() => {
+          const w = document.getElementById('arrange-move-what');
+          const o = [...w.options].find(o => o.textContent === 'Marker ${bar}');
+          if (!o) return 'what: ' + [...w.options].map(o => o.textContent).join(' / ');
+          w.value = o.value; w.dispatchEvent(new Event('change', { bubbles: true }));
+          const t = document.getElementById('arrange-move-to');
+          const d = [...t.options].find(o => o.textContent.includes(${JSON.stringify(to)}));
+          if (!d) return 'to: ' + [...t.options].map(o => o.textContent).join(' / ');
+          t.value = d.value; t.dispatchEvent(new Event('change', { bubbles: true }));
+          document.getElementById('arrange-move').click();
+          return null;
+        })()`);
+        if (miss) throw new Error(`no such option — ${miss}`);
+      };
+      const rhythm = async () => {
+        await new Promise((r) => setTimeout(r, 600));
+        return cdp.evaluate(`JSON.parse(localStorage.getItem('${KEY}')).tracks.rhythm.map(c => ({ s: c.start, l: c.len, src: c.source, n: c.notes.map(n => n.start) }))`);
+      };
+
+      // 1. Kicks on bars 1–3, the left half trimmed to two columns: it hides
+      // everything from column 2 on. Moving bar 2 away closes bar 3 up behind
+      // it, and putting the lifted bar-2 kicks back beside that stacked two on
+      // every column of bar 2.
+      await setup(24, [0, 8, 16]);
+      await dragEdge(0, 'end', -2);
+      await waitFor(`${R}.querySelectorAll('.lane .hit').length === 22`);
+      await openArrange();
+      await move(2, 'after Marker 3');
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.col === 56)`);
+      const one = await rhythm();
+      const trimmed = one.find(c => c.l === 2);
+      if (!trimmed) throw new Error(`the trimmed window should still be there: ${JSON.stringify(one)}`);
+      const dup = trimmed.n.filter((c, i) => trimmed.n.indexOf(c) !== i);
+      if (dup.length) throw new Error(`a clip must not hold two kicks on one column after a move — stacked on ${JSON.stringify(dup)}`);
+      if (trimmed.n.length !== 24) throw new Error(`the trimmed clip should still hold all 24 kicks: ${JSON.stringify(trimmed)}`);
+
+      // 2. Undo, and move bar 1 — both halves of the split are in it — to the
+      // end. The two copies came from one clip, so heal has to still see that.
+      await cdp.evaluate(`document.getElementById('undo-btn').click()`);
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.col === 8)`);
+      await move(1, 'after Marker 3');
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.col === 56)`);
+      const two = (await rhythm()).filter(c => c.s >= 56);
+      if (two.length !== 2 || two[0].src !== two[1].src) throw new Error(`the two halves of a split should still share a source after a move: ${JSON.stringify(two)}`);
+
+      // 3. A section this track has no clip in, moved to a boundary that falls
+      // inside one of its clips: the copy is a hole, not a stretch of that clip.
+      await setup(8, [0, 8, 16, 24]);
+      await dragEdge(1, 'start', 16);           // the right half now starts at 20
+      await openArrange();
+      await move(2, 'after Marker 3');          // bar 2 to column 24, inside [20, end)
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.filter(m => m.col === 16).length === 1
+        && (JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.col === 8)`);
+      const three = await rhythm();
+      const covering = three.filter(c => c.s < 24 && (c.l == null || c.s + c.l > 16));
+      if (covering.length) throw new Error(`bar 3 now holds the moved empty section, so no window should cover it: ${JSON.stringify(three.map(c => [c.s, c.l]))}`);
+    });
+
     step('Arrange: a section is whole bars, and a copy on a split track lands in one window', async () => {
       await fresh();
       // The playhead onto column `col` through the ruler, the way a click does.

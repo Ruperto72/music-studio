@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.2';
+const APP_VERSION = '1.6.3';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -9781,13 +9781,23 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
       continue;
     }
     const windows = [];
+    // The halves of one split share a `source`, which is what heal joins on.
+    // The copies get a fresh one per original — shared among themselves, so a
+    // split inside the section can still be healed after it has moved, but not
+    // with the originals, which are separate material from here on.
+    const sources = new Map();
     for (const clip of clips) {
       const s = Math.max(clip.start, start), e = Math.min(clipEnd(clip), end);
       if (e <= s) continue;
       const whole = clip.start >= start && clipEnd(clip) <= end;
-      windows.push(makeClip((whole ? clip.notes : clip.notes.filter(it => inSrc(it.start))).map(placed), { start: place(s), len: e - s }));
+      if (!sources.has(clip.source)) sources.set(clip.source, newClipSource());
+      windows.push(makeClip((whole ? clip.notes : clip.notes.filter(it => inSrc(it.start))).map(placed),
+        { start: place(s), len: e - s, source: sources.get(clip.source) }));
     }
-    if (windows.length) copies.set(t.id, { windows });
+    // Recorded even with no windows: a section this track has no clip in is a
+    // hole, and the copy has to be a hole too, not the stretch of whatever
+    // window rang across `dest`.
+    copies.set(t.id, { windows });
   }
   // A curve's copy is the section's *values*, not only the points that happen
   // to fall inside it: a section with no point at its start begins mid-ramp,
@@ -9859,6 +9869,11 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
 // But the cut would still take it, as it takes everything that starts in the
 // span. So it is lifted out of its clip first and put back afterwards at the
 // same distance from that clip's edge, wherever the clip itself ended up.
+// *All* of such a clip's hidden material is lifted, not only what lies in the
+// section: the cut also closes up what lies beyond it, and restoring only the
+// section's part then put it back on columns the clip's own later material
+// had just been moved onto — two kicks per column. Pinned to the clip's edge
+// as a whole, the material keeps its own layout exactly.
 // The clip is found again by a symbol key, which the `{ ...clip }` copies
 // shiftTime() and clearClipRange() make carry along.
 const MOVE_KEEP = Symbol('moveKeep');
@@ -9870,7 +9885,7 @@ function liftHiddenOutside(start, end) {
       const mark = {};
       const s0 = clip.start, e0 = clipEnd(clip);
       clip.notes = clip.notes.filter((n) => {
-        if (n.start < start || n.start >= end) return true;
+        if (clipHolds(clip, n)) return true; // shown, so it moves with its window
         lifted.push({ track: t.id, mark, n, tail: n.start >= e0, off: n.start >= e0 ? n.start - e0 : n.start - s0 });
         return false;
       });
