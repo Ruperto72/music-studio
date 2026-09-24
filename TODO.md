@@ -7,19 +7,6 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
-## Arrangering, uppföljning
-
-- [ ] **Move och Duplicate flyttar material, inte klippstruktur.**
-  `duplicateSpan()` kopierar det som syns (`trackNotes()`), och kopian läggs
-  i de fönster som täcker målet. Klippgränser inne i sektionen följer inte
-  med, och det ett trimmat fönster döljer inne i sektionen kopieras inte.
-  För Duplicate är det ofarligt (originalet behåller sitt), men Move skär
-  sedan bort källan med allt i den, så **dolt material i en flyttad sektion
-  försvinner** — att dra ut fönsterkanten efteråt visar ingenting. Undo tar
-  tillbaka det. Rätt lösning är att kopiera fönstren inom spannet med sina
-  noter (dolda inräknade) i stället för de synliga objekten, vilket också
-  skulle låta en delad sektion behålla sina delningar när den flyttas.
-
 ## Framskjutet (medvetet, inte glömt)
 
 - [ ] **Sampling** — uppspelning av egna ljudfiler och granular syntes

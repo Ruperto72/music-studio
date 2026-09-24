@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.6.2';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -9744,24 +9744,6 @@ function songSections() {
   return starts.map((sec, i) => ({ ...sec, end: i + 1 < starts.length ? starts[i + 1].start : COLS }))
     .filter(sec => sec.end > sec.start);
 }
-// Gives `track` a window over whatever part of [from, to) no window covers,
-// so material filed there lands in one window rather than one each. Without
-// it, setTrackNotes() makes a window per orphaned note — a duplicated section
-// of eighth notes on a split track came out as sixty-four one-note clips.
-function coverWithWindow(track, from, to) {
-  const clips = clipsOf(track);
-  if (isWholeTrackClip(clips)) return;
-  const gaps = [];
-  let cursor = from;
-  for (const c of [...clips].sort((a, b) => a.start - b.start)) {
-    if (clipEnd(c) <= cursor) continue;
-    if (c.start >= to) break;
-    if (c.start > cursor) gaps.push([cursor, c.start]);
-    cursor = Math.max(cursor, clipEnd(c));
-  }
-  if (cursor < to) gaps.push([cursor, to]);
-  if (gaps.length) setClips(track, [...clips, ...gaps.map(([s, e]) => makeClip([], { start: s, len: e - s }))]);
-}
 // Copies the whole song between [start, end) — every track, its automation
 // and the markers inside it, the section's own marker included — into a gap
 // opened at `dest`. Nothing is overwritten: everything from `dest` on moves
@@ -9777,10 +9759,35 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
   // would have to undo the shift for a section that straddles `dest`.
   const inSrc = (c) => c >= start && c < end;
   const place = (c) => quant(dest + (c - start));
+  const placed = (it) => ({ ...cloneItem(it), start: place(it.start) });
+  // A track that is one window over everything hides nothing, so its visible
+  // items are the whole section. A split track is copied as *clip structure*:
+  // each window that reaches into the section, cut to it, with every note of
+  // that clip that starts inside the section — the ones its window hides
+  // included. Copying only what trackNotes() shows lost both: the copy came
+  // out as one window with the section's clip boundaries gone, and what a
+  // trimmed window hid was not copied at all, which Move then cut from the
+  // source for good. A clip that lies wholly inside the section travels
+  // whole, hidden material outside the section included: it is that clip's,
+  // and the cut drops the original clip entirely. One that crosses a section
+  // edge is cut there, and what it hides outside stays with the half that
+  // stays.
   const copies = new Map();
   for (const t of state.trackList) {
-    const list = trackNotes(t.id).filter(it => inSrc(it.start)).map(it => ({ ...cloneItem(it), start: place(it.start) }));
-    if (list.length) copies.set(t.id, list);
+    const clips = clipsOf(t.id);
+    if (isWholeTrackClip(clips)) {
+      const items = trackNotes(t.id).filter(it => inSrc(it.start)).map(placed);
+      if (items.length) copies.set(t.id, { items });
+      continue;
+    }
+    const windows = [];
+    for (const clip of clips) {
+      const s = Math.max(clip.start, start), e = Math.min(clipEnd(clip), end);
+      if (e <= s) continue;
+      const whole = clip.start >= start && clipEnd(clip) <= end;
+      windows.push(makeClip((whole ? clip.notes : clip.notes.filter(it => inSrc(it.start))).map(placed), { start: place(s), len: e - s }));
+    }
+    if (windows.length) copies.set(t.id, { windows });
   }
   // A curve's copy is the section's *values*, not only the points that happen
   // to fall inside it: a section with no point at its start begins mid-ramp,
@@ -9812,10 +9819,21 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
   }
   if (!shiftTime(dest, len, maxCols)) return false;
   for (const [it, l] of ringing) it.len = l;
-  for (const [track, list] of copies) {
-    coverWithWindow(track, dest, dest + len);
-    const items = trackNotes(track);
-    setTrackNotes(track, [...items, ...(isRhythm(track) ? list : trimCopiesAgainst(items, list))]);
+  for (const [track, { items: list, windows }] of copies) {
+    if (list) {
+      const items = trackNotes(track);
+      setTrackNotes(track, [...items, ...(isRhythm(track) ? list : trimCopiesAgainst(items, list))]);
+      continue;
+    }
+    // The gap is covered by whatever window rang across `dest` (shiftTime()
+    // stretches it through); cut that out and lay the copied windows in, so the
+    // gap holds exactly the section's structure — its holes included.
+    const copied = new Set(windows.flatMap(w => w.notes));
+    setClips(track, [...clearClipRange(clipsOf(track), dest, dest + len), ...windows]);
+    if (!isRhythm(track)) {
+      const shown = trackNotes(track);
+      trimCopiesAgainst(shown.filter(n => !copied.has(n)), shown.filter(n => copied.has(n)));
+    }
   }
   for (const { track, param, vd, vs, ve, inner } of curves) {
     const pts = state.automation[track][param];
@@ -9835,12 +9853,58 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
 // and clip windows travel exactly as they do for Duplicate and Delete — the
 // source is cut *after* the copy, from wherever the copy's gap pushed it.
 // Returns the section's new start, or null for a `dest` inside it.
+// Material a window *outside* the section hides inside it — a clip trimmed
+// short at the end of the Verse, its tail lying under the Chorus — is not the
+// section's: nothing of the section shows it, so Duplicate does not copy it.
+// But the cut would still take it, as it takes everything that starts in the
+// span. So it is lifted out of its clip first and put back afterwards at the
+// same distance from that clip's edge, wherever the clip itself ended up.
+// The clip is found again by a symbol key, which the `{ ...clip }` copies
+// shiftTime() and clearClipRange() make carry along.
+const MOVE_KEEP = Symbol('moveKeep');
+function liftHiddenOutside(start, end) {
+  const lifted = [];
+  for (const t of state.trackList) {
+    for (const clip of clipsOf(t.id)) {
+      if (Math.max(clip.start, start) < Math.min(clipEnd(clip), end)) continue; // its window is in the section
+      const mark = {};
+      const s0 = clip.start, e0 = clipEnd(clip);
+      clip.notes = clip.notes.filter((n) => {
+        if (n.start < start || n.start >= end) return true;
+        lifted.push({ track: t.id, mark, n, tail: n.start >= e0, off: n.start >= e0 ? n.start - e0 : n.start - s0 });
+        return false;
+      });
+      if (lifted.some((l) => l.mark === mark)) clip[MOVE_KEEP] = mark;
+    }
+  }
+  return lifted;
+}
+function restoreLifted(lifted) {
+  for (const l of lifted) {
+    const homes = clipsOf(l.track).filter((c) => c[MOVE_KEEP] === l.mark);
+    if (!homes.length) continue; // its clip went with a cut; so does the note
+    // A tail rides the right-most piece's end, a head the left-most's start —
+    // the clip may have been split by the gap opened inside it.
+    const home = l.tail ? homes[homes.length - 1] : homes[0];
+    l.n.start = quant((l.tail ? clipEnd(home) : home.start) + l.off);
+    home.notes.push(l.n);
+  }
+  for (const t of state.trackList) {
+    for (const c of clipsOf(t.id)) {
+      if (!c[MOVE_KEEP]) continue;
+      delete c[MOVE_KEEP];
+      c.notes.sort((a, b) => a.start - b.start);
+    }
+  }
+}
 function moveSpan(start, end, dest) {
   const len = end - start;
   if (len <= 0 || (dest > start && dest < end)) return null;
   if (dest === start || dest === end) return start;
-  if (!duplicateSpan(start, end, dest, MAX_COLS + len)) return null;
+  const lifted = liftHiddenOutside(start, end);
+  if (!duplicateSpan(start, end, dest, MAX_COLS + len)) { restoreLifted(lifted); return null; }
   shiftTime(dest < start ? start + len : start, -len);
+  restoreLifted(lifted);
   return dest < start ? dest : dest - len;
 }
 function arrangeDone(what) {

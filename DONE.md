@@ -870,7 +870,36 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   kurvvärdet vid målet läst *efter* snittet), eller att längdtaket flyttas ut
   till varje anropare som växer låten — båda sämre än en explicit parameter
   med `MAX_COLS` som förval. **Uppskjutet:** dolt material under trimmade
-  klippfönster i en flyttad sektion, se `TODO.md`.
+  klippfönster i en flyttad sektion — gjort senare, se nästa punkt.
+- [x] **Move och Duplicate flyttar klippstruktur, inte bara det som syns.**
+  `duplicateSpan()` kopierade `trackNotes()` — det synliga — och lade kopian
+  i ett fönster över luckan. Sektionens klippgränser försvann i kopian, det
+  ett trimmat fönster dolde inne i sektionen kopierades inte, och Move skar
+  sedan bort källan med allt i den: **dolt material i en flyttad sektion
+  försvann**, utan att något på skärmen sa det. Nu kopieras ett delat spår
+  som klippstruktur: varje fönster som når in i sektionen, kapat vid den,
+  med alla noter i klippet som börjar inne i sektionen (dolda inräknade).
+  Luckan skärs ur fönstret som klingade över `dest` (`clearClipRange()`) och
+  kopiorna läggs in, så sektionens hål följer med. Två fall till kom fram
+  under arbetet, båda med ett verify-steg som sprang på dem:
+  - *Ett klipp helt inne i sektionen* har material utanför den också — varje
+    delad halva håller hela materialet. Originalet släpps helt av snittet,
+    så det dolda utanför sektionen försvann ändå. Ett sådant klipp följer nu
+    med i sin helhet.
+  - *Ett fönster utanför sektionen* kan dölja material inne i den (ett klipp
+    trimmat kort i slutet av versen, svansen under refrängen). Det är inte
+    sektionens — inget i sektionen visar det — men snittet tog det ändå.
+    `moveSpan()` lyfter nu ut det före och lägger tillbaka det efter, på
+    samma avstånd från klippets kant, var klippet än hamnade. Klippet hittas
+    igen via en symbolnyckel (`MOVE_KEEP`) som `{ ...clip }`-kopiorna i
+    `shiftTime()` och `clearClipRange()` bär med sig.
+  Ett spår med ett enda fönster över allt döljer inget och kopierar som förut.
+  `coverWithWindow()` blev därmed död kod (den gjorde bara något på delade
+  spår) och är borttagen.
+  Verify: ett nytt steg delar och trimmar rytmspåret, flyttar takt 1 till
+  slutet (fönstren, hålet och det dolda följer med) och, efter undo, resten
+  till början (det ett fönster utanför döljer överlever). Rött mot `main`,
+  och varje del av rättningen felinjicerad för sig mot sitt eget påstående.
 - [x] **Granskningen av omgången (code review).** Fjorton fynd, alla
   åtgärdade, och alla felinjicerade mot sina steg efteråt:
   - *Undo glömde markörerna.* Arrange flyttar markörer, men undo-bilden bar
