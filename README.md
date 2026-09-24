@@ -372,10 +372,12 @@ shots.js                    regenerates the screenshots in docs/img/
 icons.js                    regenerates the app icon in icons/
 cdp.js                      shared browser-driving plumbing for the three above
 docs/img/                   the screenshots this README (and help.html) link to
+CHANGELOG.md                what changed in each version
 TODO.md / DONE.md           what's left, and the journal behind what's built
 docs/                       design notes and implementation plans
 ```
 
+`CHANGELOG.md` lists what changed in each version, for the people using the app.
 For a deeper tour, `DESIGN.md` specifies the GUI and the internal architecture,
 `CLAUDE.md` is a shorter orientation for editing the code, `TODO.md` tracks what
 isn't built yet, and `DONE.md` is the working journal behind what is — the
