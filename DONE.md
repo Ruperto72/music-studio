@@ -900,6 +900,21 @@ Där satt tröskeln, och alla fyra punkterna nedan angriper den.
   slutet (fönstren, hålet och det dolda följer med) och, efter undo, resten
   till början (det ett fönster utanför döljer överlever). Rött mot `main`,
   och varje del av rättningen felinjicerad för sig mot sitt eget påstående.
+  **Granskningen av ändringen** hittade tre fel till, alla riktiga:
+  - *Dolda slag staplades.* Bara det ett yttre fönster dolde *inne i*
+    sektionen lyftes ut. Snittet stängde samtidigt upp klippets dolda
+    material bortom sektionen, och när det lyfta lades tillbaka hamnade det
+    på samma kolumner — två slag per kolumn. Nu lyfts allt dolt material i
+    ett sådant klipp och läggs tillbaka mot klippets kant, så materialets
+    egen layout består exakt.
+  - *Heal slutade fungera efter en flytt.* Kopiorna fick nya `source`-id var
+    för sig, så två halvor av en delning kunde inte läkas ihop längre. Nu får
+    kopiorna ett nytt id per ursprungligt id, delat mellan dem.
+  - *Ett hål kopierades som en utsträckning.* Ett delat spår utan klipp i
+    sektionen fick ingen kopiapost, så fönstret som klingade över `dest`
+    skars aldrig — kopian visade ett fönster där sektionen inte hade något.
+  Ett steg till återskapar alla tre via UI:t; varje fel injicerat för sig
+  fälls av sitt eget påstående, och steget är rött mot föregående version.
 - [x] **Granskningen av omgången (code review).** Fjorton fynd, alla
   åtgärdade, och alla felinjicerade mot sina steg efteråt:
   - *Undo glömde markörerna.* Arrange flyttar markörer, men undo-bilden bar
