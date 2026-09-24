@@ -148,13 +148,13 @@
           starter tracks or a blank project (just a Rhythm track). Your own songs are saved in this browser,
           nothing is uploaded anywhere.</p>
           <figure>
-            <img class="shot" src="docs/img/help/menu-open.png" alt="The file menu open, listing Songs…, Save as .json, Load .json, Export code, Export MIDI, Import MIDI and Export WAV">
+            <img class="shot" src="docs/img/help/menu-open.png" alt="The menu open, grouped under Song (Songs…, Save), Files (Save as .json, Load .json, Export code, Export MIDI, Import MIDI, Export WAV), Notes, Arrangement and Tracks">
             <figcaption>The menu — Songs…, Save/Load, and every export in one place.</figcaption>
           </figure>
         </li>
         <li>
           <h3>Add and shape a track</h3>
-          <p><b>Add track</b> / <b>Add rhythm track</b> in the menu add a new lane. Pick a waveform (or a kit,
+          <p><b>Add track</b> / <b>Add rhythm track</b>, under the last track (or in the menu), add a new lane. Pick a waveform (or a kit,
           for rhythm) from the <b>Osc</b> picker, then open <b>Env</b> to shape its ADSR envelope and filter —
           this is where a plain saw becomes a pad or a lead.</p>
           <figure>
@@ -185,8 +185,8 @@
         </li>
         <li>
           <h3>Save, export and share</h3>
-          <p><b>Save as .json</b> keeps a working copy you can reload later; <b>Songs…</b> also saves to this
-          browser. When a song is finished, <b>Export WAV</b> gives you an audio file and <b>Export MIDI</b>
+          <p><b>Save</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) keeps the song in <b>My songs</b> in this browser, under its
+          name; <b>Save as .json</b> writes it to a file you can keep or send. When a song is finished, <b>Export WAV</b> gives you an audio file and <b>Export MIDI</b>
           takes the notes to another program; <b>Export code</b> writes the notes as JavaScript for a game
           (see <a href="#saving">Saving &amp; exporting</a>). This page and the editor both install as a PWA and work
           offline — including a phone-sized player for just listening back.</p>
@@ -250,7 +250,7 @@
             <figcaption>The Lead's melody over the Harmony chords, drawn as dashed ghost notes.</figcaption>
           </figure>
           <p>The simplest melody that always works: on each chord change, land on a note that is <i>in</i> the ghost
-          chord under it, and move by step in between. Turn on <b>Keep to scale</b> (beside the Key) and the notes
+          chord under it, and move by step in between. Turn on <b>In scale</b> (beside the Key) and the notes
           you place with the mouse snap into the key for you.</p>
           <p class="listen"><b class="lbl">Listen for</b> the difference between a note that sits in the chord (settled) and one beside it (tension that wants to move). Both are useful; the ghosts show you which is which.</p>
         </li>
@@ -330,7 +330,7 @@
       <ul>
         <li>Starts with a lane for each track in the loaded song (e.g. <b>Lead</b>, <b>Harmony</b>, <b>Bass</b>, …) plus at least one <b>Rhythm</b> lane with ten hit types: Kick, Snare, Rim, Hi-hat, Open hat, Shaker, Tom, Clap, Crash and Ride. Rhythm lanes always stay grouped after every tonal track.</li>
         <li>Each track's <b>channel strip</b> (left) starts with its name and <b>M</b>ute / <b>S</b>olo / record-arm, then three labelled sections: <b>Osc</b> (the waveform — or "Kit" for rhythm — plus the Auto/Env/Preset buttons), <b>Inserts</b> (the effect chips, see below) and <b>Output</b> (volume, pan and a level meter).</li>
-        <li><b>Add track</b> / <b>Add rhythm track</b> (in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; <b>Duplicate track</b> and <b>Remove track</b> are in the <b>Track</b> box at the bottom of the inspector column, for whichever track is active (the last remaining Rhythm lane has no Remove). Added tracks export into the game too.</li>
+        <li><b>Add track</b> / <b>Add rhythm track</b> (under the last track, and under <b>Tracks</b> in the menu) add a tonal or rhythm track; <b>double-click a track's name</b> to rename it; <b>Duplicate track</b> and <b>Remove track</b> are in the <b>Track</b> box at the bottom of the inspector column, for whichever track is active (the last remaining Rhythm lane has no Remove). Added tracks export into the game too.</li>
         <li>The <b>▾/▸</b> button on a track collapses it to a slim strip — name, Mute/Solo and the level meter stay visible, everything else (waveform, automation/envelope, volume/pan, the effect chips) hides along with the grid. Handy for an overview with many tracks. Remembered per browser.</li>
         <li>A tonal track's left edge is a <b>piano keyboard</b> rather than a column of note names — white and black keys, with only C labelled, by its octave. <b>Press a key to hear it</b>, and drag down the keys to glissando; it sounds through the track's own instrument, so what you hear is what writing a note there would give you. A rhythm track keeps its ten piece names, since a drum has no pitch to show.</li>
         <li>A tonal lane shows only the octaves around the notes it holds, so a new track starts at about one octave. To reach higher or lower, <b>scroll the mouse wheel over the active track's keyboard or lane</b> — it moves the view up or down by semitones. A sideways swipe (or Shift+wheel) still scrolls the timeline.</li>
@@ -358,8 +358,8 @@
     <section id="chords">
       <h2>Writing with chords</h2>
       <ul>
-        <li>The <b>Key</b> (bottom bar) is what the rest of this section reads. With a key set, the lane shades the rows outside the scale, <b>Keep to scale</b> moves notes you place with the mouse into it, and the chord tools below build their chords from it. <b>Chromatic</b> turns all of that off.</li>
-        <li>The <b>Chords</b> button on a tonal track opens <b>Chords &amp; parts</b>. Its first half writes a built-in <b>chord progression</b> — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp or a 12-bar blues — one chord per bar, from the playhead's bar to the end, replacing what was there. A progression is stored as <i>scale degrees</i>, so the same one is major or minor depending on the key. <b>▶</b> plays it in the current key on the track's own sound.</li>
+        <li>The <b>Key</b> (bottom bar) is what the rest of this section reads. With a key set, the lane shades the rows outside the scale, <b>In scale</b> moves notes you place with the mouse into it, and the chord tools below build their chords from it. <b>Chromatic</b> turns all of that off.</li>
+        <li>The <b>Chords</b> button on a tonal track opens <b>Chords &amp; parts</b>. Its first half writes a built-in <b>chord progression</b> — I–V–vi–IV, Pachelbel's descent, the doo-wop turnaround, ii–V–I, the Andalusian cadence, the minor vamp or a 12-bar blues — one chord per bar, from the playhead's bar to the end, replacing what was there. A progression is stored as <i>scale degrees</i>, so the same one is major or minor depending on the key. <b>▶</b> plays it in the current key on the track's own sound. The dialog has its own <b>Key</b> and scale pickers at the top — the same setting as the bottom bar's — so a song still on Chromatic can get a key without leaving it.</li>
         <li>Its second half, <b>Follow another track's chords</b>, writes a <b>bass line</b> (Roots, Root–fifth, Eighth pulse, Octaves, Chord walk) or an <b>arpeggio</b> (up, down, up-down, broken chord, fast 7ths) built from the chords another track plays. The track to follow is pre-picked as the one holding the most chords; pick another in <b>Follow</b>. The figure restarts on every chord change, stays on the song's beat under a chord that arrives off it, and sits in a register of its own — around the notes the track already had, or low for a bass and middle for an arpeggio. ▶ plays the first two bars.</li>
         <li>How a chord is read: <b>the notes that are sounding decide</b>. An inversion (E-G-C) is still a C chord, and a chord from outside the key (G-B-D in C minor) is played as what it is. The key only fills in what the notes don't say — a lone root, or a root and fifth without a third.</li>
         <li>Both halves are <b>written once, not linked</b>. Change the chords and insert the part again; nothing you edited by hand is ever rewritten behind your back. If the track you follow has no chords from the playhead on, Insert says so rather than doing nothing.</li>
@@ -397,7 +397,7 @@
       <p>Four menu dialogs that change notes you have already written, one axis each. All four work the same way: they act on the <b>selection</b> — or, with nothing selected, on the <b>whole active track</b> — and say which before you press anything. They open as panels beside the roll rather than over it, so you can keep one open while you select other notes, press again and listen; the line that says what it acts on follows the selection as you change it. Drag a panel by its title bar to move it, and close it with <b>Close</b> or <b>Esc</b>. <b>Arrange</b> opens the same way. Every one of them is a single <b>Undo</b>.</p>
       <ul>
         <li><b>Timing</b> (time) <b>quantizes</b> or <b>humanizes</b> the selection — or the whole active track when nothing is selected. The point is the <b>Strength</b> slider: 100% lands every note dead on the grid, while 50% moves it halfway, which tightens a take without flattening the feel out of it. <b>Humanize</b> is the same operation in reverse. Recording no longer snaps as you play — a take keeps the timing you gave it, and correcting it is a separate decision you make with a strength.</li>
-        <li><b>Transpose</b> (pitch) is the same idea on the <i>pitch</i> axis. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i>. <b>Fit to the scale</b> pulls everything onto the nearest scale tone. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put. The arrow keys use the same walk: with <b>Keep to scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
+        <li><b>Transpose</b> (pitch) is the same idea on the <i>pitch</i> axis. <b>Semitone</b> and <b>Octave</b> always work; with a <b>Key</b> set you also get <b>Scale step</b>, which moves each note to the next pitch <i>in the key</i>. <b>Fit to the scale</b> pulls everything onto the nearest scale tone. Two notes that would land on the same pitch in the same column never merge — the lower one moves and the other stays put. The arrow keys use the same walk: with <b>In scale</b> on, <b>↑/↓</b> move by a scale step and <b>Alt+↑/↓</b> stay chromatic.</li>
         <li><b>Dynamics</b> (velocity) is the third axis. <b>Vary</b> is a random walk around each note's <i>current</i> level. <b>Accent the beat</b> plays the notes that land on a beat harder, read off the meter. Only velocity is touched.</li>
         <li><b>Variation</b> is the odd one out: the other three <i>correct</i> a part, this one departs from it on purpose, to make a repeat different. <b>Amount</b> is the share of notes each press changes; the rest stay as you wrote them. <b>Neighbour tones</b> moves a note one step up or down (a scale step when the song has a key, a semitone without), <b>Octave jumps</b> moves one an octave, and <b>Thin out</b> leaves notes out — never one on a bar's downbeat, so the part still lands where it did. Thin out works on drums too. Every press is a new random answer; Undo takes it back.</li>
       </ul>
@@ -511,7 +511,7 @@
       <p>The strip under the tracks holds the song-wide settings. The <b>▾</b> button collapses it to a slim bar to free up space (remembered between sessions).</p>
       <ul>
         <li><b>Song</b> — the project's name; click it to rename.</li>
-        <li><b>Monitor</b> — how loud you hear the editor (not saved with the song and not part of an export), the <b>Master FX</b> button (see <a href="#mixing">Mixing</a>) and the master level meter.</li>
+        <li><b>Master</b> — the level of the whole mix (saved with the song, and what Export WAV renders at), the <b>Master FX</b> button (see <a href="#mixing">Mixing</a>) and the master level meter.</li>
         <li><b>Tempo</b> in BPM, and <b>Tap</b> to set it by tapping (see <a href="#transport">Transport</a>).</li>
         <li><b>Meter</b> — the time signature: 4/4, 3/4, 6/8 and more.</li>
         <li><b>Length</b> — <b>+</b> adds a bar at the end, <b>−</b> removes the last one (and whatever starts in it). To add or remove bars in the <i>middle</i> of a song, use <b>Arrange…</b> (see <a href="#arranging">Arranging</a>).</li>
@@ -526,7 +526,7 @@
       <ul>
         <li>Each track's <b>volume</b> slider sets its relative level (its <code>mix</code>) — drag while playing to rebalance live. The <b>pan</b> slider places it left or right; double-click it to re-centre.</li>
         <li><b>Mute</b> silences a track; <b>Solo</b> silences every track except the soloed one(s).</li>
-        <li><b>Monitor</b> in the bottom bar sets how loud you hear the editor — it is not saved with the song and not part of an export.</li>
+        <li><b>Master</b> in the bottom bar sets the level of the whole mix. It is saved with the song and applies to Export WAV as well as to playback.</li>
         <li>The <b>level meters</b> (per track, and the master's Output meter) show live output while previewing or playing.</li>
         <li>The <b>Master FX</b> button in the bottom bar (or a click on the Master or Output cell) puts the <b>master bus</b> in the inspector column on the right, the same way clicking a track shows that track's effects there: a 3-band <b>EQ</b>, a <b>compressor</b> with an optional <b>parallel-comp</b> blend, <b>sidechain</b> ducking on every kick/snare hit and a lo-fi <b>downsampler</b>, plus a live spectrum and an approximate <b>LUFS</b> meter. The button also shows a row of five chips in the bottom bar, one per effect, each dimmed while its effect is doing nothing. Clicking a track takes the column back.</li>
       </ul>
@@ -544,7 +544,7 @@
         <li>The green band is the loop range — drag its ends, or "Full range" to reset it. <b>Repeat</b> duplicates that range's notes/hits into the region right after it (growing the song if needed) and advances the range onto the copy, so clicking again keeps stamping it forward.</li>
         <li><b>Tap</b> (beside the tempo) sets the tempo from your own taps: tap four or more times in time and the tempo follows the average of your recent taps. Stop for two seconds and the next tap starts a new count. It works while the song plays, too — the playback carries on from where it was, at the new tempo.</li>
         <li>The <b>Meter</b> menu (bottom bar) sets the time signature (4/4, 3/4, 6/8, …), which regroups the bar lines, numbers and Length. Note times don't move.</li>
-        <li>The <b>Key</b> cell (bottom bar) sets the song's tonic and scale. Every row outside the scale is <b>shaded</b> in the piano roll and its key dimmed on the keyboard, and the tonic is marked. <b>Keep to scale</b> goes further and moves a note you place or drag with the mouse to the nearest pitch in the scale — it only affects the <i>mouse</i>, what you <b>play</b> is never corrected. <b>Chromatic</b> turns the whole thing off.</li>
+        <li>The <b>Key</b> cell (bottom bar) sets the song's tonic and scale. Every row outside the scale is <b>shaded</b> in the piano roll and its key dimmed on the keyboard, and the tonic is marked. <b>In scale</b> goes further and moves a note you place or drag with the mouse to the nearest pitch in the scale — it only affects the <i>mouse</i>, what you <b>play</b> is never corrected. <b>Chromatic</b> turns the whole thing off.</li>
         <li>The <b>flag</b> button adds a marker at the playhead; click a marker flag to rename it (or clear the name to delete). Markers are saved with your file but aren't part of the game.</li>
       </ul>
     </section>
@@ -552,8 +552,10 @@
     <section id="saving">
       <h2>Saving &amp; exporting</h2>
       <ul>
-        <li><b>Songs…</b> opens the Song library: load an <b>example</b>, one of <b>your saved songs</b>, or start a <b>new song</b> — named up front, either with the empty starter tracks or an empty project (just Rhythm). The project name lives in the <b>Master</b> strip at the bottom.</li>
-        <li><b>Save as .json</b> / <b>Load .json</b> keep a work-in-progress <code>.json</code> — the whole song: name, tempo, meter, length, key, swing, every track with its clips, sound and effects, the mix and automation, the master bus and the markers. Work also autosaves to this browser as a crash-recovery safety net — reloading the page always starts a fresh project with the starter tracks though, never auto-restoring that draft.</li>
+        <li><b>Save</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>, or the top of the menu) keeps the song in <b>My songs</b>, in this browser, under the song's name — it asks for a name only if the song has none, and asks before overwriting a <i>different</i> saved song of the same name.</li>
+        <li><b>Songs…</b> opens the Song library: <b>your saved songs</b> first, then the <b>examples</b>, and <b>New song</b> — named up front, either with the empty starter tracks or an empty project (just Rhythm). <b>Save as</b> there keeps the current song under another name. The song's name lives in the <b>Song</b> cell of the bottom bar.</li>
+        <li><b>Unsaved work is never dropped silently.</b> Loading a song, opening a file or starting a new one asks first when the editor has changes you haven't saved, and so does closing or reloading the tab. Work also autosaves to this browser as you go; if a session ends with changes unsaved, the next visit shows them at the top of <b>My songs</b> as <b>Unsaved: <i>name</i></b> — load it to carry on, or discard it. The page itself still always opens on the starter tracks.</li>
+        <li><b>Save as .json</b> / <b>Load .json</b> (under <b>Files</b>) write and open the song as a <code>.json</code> file — the whole song: name, tempo, meter, length, key, swing, every track with its clips, sound and effects, the mix and automation, the master bus and the markers.</li>
         <li><b>Export code</b> writes the notes as <code>TRACKS</code> and <code>RHYTHM_TRACKS</code> JavaScript declarations, for playing the song inside a game. Only notes and hits are included — automation, envelopes, effects and markers have no place in that format. <b>Note:</b> the drum part is written as a <i>list</i> of rhythm tracks (<code>RHYTHM_TRACKS</code>); code written for the older single <code>RHYTHM_TRACK</code> needs updating before it can take the output as it is.</li>
         <li><b>Export MIDI</b> / <b>Import MIDI</b> round-trip a Standard MIDI File. Per-note effects, automation, ADSR/filter/FM and markers have no MIDI equivalent and aren't preserved.</li>
         <li><b>Export WAV</b> renders the whole song offline at 48kHz and downloads it as a <code>.wav</code> file.</li>
@@ -569,11 +571,12 @@
       <h2>Keyboard shortcuts</h2>
       <div class="kbd-grid">
         <span><kbd>Space</kbd></span><span>Play / stop</span>
+        <span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>Save the song in My songs</span>
         <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span>Pen / Eraser / Grab (not while a tonal track is armed — <kbd>2</kbd> and <kbd>3</kbd> are note keys then)</span>
         <span><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>Delete the selection</span>
         <span><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></span><span>Nudge the selection (on a rhythm track, ↑/↓ move a hit between kit pieces)</span>
-        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>With <b>Keep to scale</b> on: move the selection a scale step</span>
-        <span><kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></span><span>Move a semitone even with Keep to scale on</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>With <b>In scale</b> on: move the selection a scale step</span>
+        <span><kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></span><span>Move a semitone even with In scale on</span>
         <span><kbd>Shift</kbd>+click</span><span>Add a note or hit to the selection, or take it out</span>
         <span><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd></span><span>Select the previous / next note in this track</span>
         <span><kbd>Home</kbd> <kbd>End</kbd></span><span>Select the first / last note in this track</span>

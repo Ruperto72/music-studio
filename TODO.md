@@ -7,44 +7,6 @@ uteslutna hypoteser och varför lösningarna ser ut som de gör.
 Ordnat efter hur troligt det är att någon faktiskt saknar det, inte efter
 hur roligt det vore att bygga.
 
-## Från UI-granskningen (2026-09-23)
-
-En genomgång av menyer, spårhuvud, inspektor, bottenrad, dialoger och
-verktygspaneler (skärmbilder i 1440×900 av startlayouten och en laddad låt,
-plus koden). Notinspektorn gjordes om i samma omgång, se `DONE.md`. Inte
-granskat: redigeraren i mobilläge, MIDI-import och exportflödena. Ordnat
-efter allvar. Felet, ikon- och färgpunkterna, raderna under spårhuvudet,
-bottenraden, småsakerna och menybilden är gjorda (se `DONE.md`); kvar är de som ändrar
-flöden — spara, osparat arbete, menyns uppdelning, dialogerna — och som
-därför hänger ihop med varandra.
-
-- [ ] **Osparat arbete kan försvinna utan varning.** Att ladda en låt, starta
-  en ny eller stänga/ladda om fliken sker utan fråga. `autosave()` skriver ett
-  utkast, men ingenting i appen läser tillbaka det — skyddsnätet går bara att
-  nå via devtools. Förslag: en rad "Senast osparade" överst under *My songs*
-  i Songs, byggd från utkastet (i linje med att låtval alltid går via Songs),
-  plus `beforeunload` och en fråga vid laddning/ny låt när något är osparat.
-- [ ] **Spara är utspritt.** Menyn har *Save as .json* (fil); att spara i
-  webbläsaren heter *Save current* och ligger längst ned i Songs, under alla
-  exempel. Inget Ctrl+S. Förslag: **Save** (Ctrl+S) i menyn som sparar i
-  *My songs* under låtens namn, fil-export/-import under en egen rubrik, och
-  *My songs* före *Examples* i dialogen.
-- [ ] **Chords-dialogen är en återvändsgränd i standardläget.** Startlayouten
-  är Chromatic, så alla progressioner är avstängda, och texten hänvisar till
-  bottenraden — som ligger bakom den modala dialogen. Förslag: tonart och
-  skala direkt i dialogen, samma kontroller som i bottenraden.
-- [ ] **Menyns mittsektion blandar tre sorter.** Split/Heal clip, de fem
-  redigeringsverktygen och Add track ligger i en lista utan rubriker, och Add
-  track (en grundhandling) finns bara där. Förslag: underrubriker *Noter*
-  (Timing, Transpose, Dynamics, Variation), *Låt* (Arrange, Split, Heal),
-  *Spår* — och en synlig "+ Add track" under sista spåret.
-- [ ] **Verktygspanelerna är textfyllda och följer olika mönster.** I Timing
-  står båda reglagen först och båda knapparna sist, så vilket reglage som hör
-  till vilken knapp måste gissas; Transpose och Dynamics börjar med en
-  designmotivering ("this is the third axis…"). Förslag: samma mönster i alla
-  fyra — räckviddsraden, sedan per handling reglage + knapp + en kort rad —
-  och motiveringarna till hjälpen.
-
 ## Arrangering, uppföljning
 
 - [ ] **Move och Duplicate flyttar material, inte klippstruktur.**

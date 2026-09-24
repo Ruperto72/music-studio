@@ -577,6 +577,16 @@ async function main() {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: SAVED_NOTES_INSTALL });
 
     async function goto(url) {
+      // The app asks before unloading a song with unsaved changes. Every step
+      // leaves the editor in whatever state it made, so without this a
+      // navigation after any edit can open that prompt, and one such
+      // navigation never completed (the Waveforms step, then the PWM step's
+      // fresh()) even with the dialog handler above accepting dialogs — the
+      // whole suite hung there. Not traced further. A capture
+      // listener on window runs before the app's own, and stopping it there
+      // is a test-side decision that leaves the app's prompt untouched. The
+      // Unsaved-work step tests the prompt's condition (isDirty) directly.
+      await cdp.evaluate(`window.addEventListener('beforeunload', (e) => e.stopImmediatePropagation(), true)`).catch(() => {});
       const loaded = new Promise((resolve) => cdp.on('Page.loadEventFired', resolve));
       await cdp.send('Page.navigate', { url });
       await loaded;
@@ -2391,6 +2401,142 @@ async function main() {
       await waitFor(`document.querySelector('#song-name-display').textContent === ${JSON.stringify(name)}`);
       await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
     };
+
+    step('Save: Ctrl+S keeps the song in My songs, and unsaved changes are never replaced without asking', async () => {
+      // From the UI review: loading a song, starting a new one or closing the
+      // tab used to throw away whatever was in the editor without a word, and
+      // saving in the browser was "Save current" at the bottom of the Songs
+      // dialog, under every example. withSelectedNote() places a note, so the
+      // song now has changes nobody saved.
+      await withSelectedNote();
+      await cdp.evaluate(`window.__asked = []; window.confirm = (m) => { window.__asked.push(m); return false; };`);
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        document.getElementById('songs-btn').click();
+      })()`);
+      await waitFor(`[...document.querySelectorAll('.song-item .song-title')].some(t => t.textContent === 'Techno')`);
+      // My songs comes before the examples now.
+      const order = await cdp.evaluate(`[...document.querySelectorAll('#songs-dialog h3')].map(h => h.firstChild.textContent.trim())`);
+      if (order.indexOf('My songs') < 0 || order.indexOf('My songs') > order.indexOf('Examples')) {
+        throw new Error(`My songs should come before Examples: ${JSON.stringify(order)}`);
+      }
+      await cdp.evaluate(`[...[...document.querySelectorAll('.song-item')].find(r => r.querySelector('.song-title').textContent === 'Techno').querySelectorAll('button')].find(b => b.textContent === 'Load').click()`);
+      await new Promise((r) => setTimeout(r, 300));
+      const declined = await cdp.evaluate(`({ asked: window.__asked.length, name: document.getElementById('song-name-display').textContent,
+        notes: document.querySelectorAll('.track.active .note').length })`);
+      if (declined.asked !== 1) throw new Error(`loading over unsaved changes should ask once, asked ${declined.asked} time(s)`);
+      if (declined.name !== 'Untitled Song' || declined.notes !== 1) {
+        throw new Error(`declining must leave the song as it was: ${JSON.stringify(declined)}`);
+      }
+      await cdp.evaluate(`document.getElementById('songs-close').click()`);
+
+      // Ctrl+S on a song with no name asks for one, then keeps it in My songs.
+      await cdp.evaluate(`window.prompt = () => 'Ctrl S tune';
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS', key: 's', ctrlKey: true, bubbles: true, cancelable: true }));`);
+      await waitFor(`!!(JSON.parse(localStorage.getItem('music-studio-songs') || '{}')['Ctrl S tune'])`);
+      const saved = await cdp.evaluate(`({ name: document.getElementById('song-name-display').textContent,
+        toast: document.getElementById('save-toast').getClientRects().length > 0 })`);
+      if (saved.name !== 'Ctrl S tune') throw new Error(`Save should name the song, it reads ${JSON.stringify(saved.name)}`);
+      if (!saved.toast) throw new Error('Save should say that it saved');
+
+      // Saved, so a load now asks nothing.
+      await cdp.evaluate(`window.__asked = [];`);
+      await loadExample('Techno');
+      const asked = await cdp.evaluate(`window.__asked.length`);
+      if (asked !== 0) throw new Error(`a saved song should load over without a question, asked ${asked} time(s)`);
+      // And the menu's Save is the same thing, under the Song heading.
+      const menu = await cdp.evaluate(`(() => {
+        const b = document.getElementById('save-song-btn');
+        return { heading: b.closest('.file-menu-section').querySelector('.file-menu-head').textContent,
+                 kbd: b.getAttribute('aria-keyshortcuts') };
+      })()`);
+      if (menu.heading !== 'Song' || menu.kbd !== 'Control+S') throw new Error(`the menu's Save belongs under Song with its shortcut: ${JSON.stringify(menu)}`);
+    });
+
+    step('Unsaved work: a session that ended unsaved comes back at the top of My songs', async () => {
+      // The autosave draft used to be written and never read — a safety net
+      // only devtools could reach. A reload still opens on the starter tracks,
+      // but the draft is moved aside and offered in the Songs dialog.
+      await withSelectedNote();
+      await waitFor(`JSON.parse(localStorage.getItem('music-studio-autosave-meta') || '{}').dirty === true`);
+      await goto(APP_URL);
+      await waitFor(`document.querySelectorAll('.track').length >= 5`);
+      const boot = await cdp.evaluate(`document.querySelectorAll('.note').length`);
+      if (boot !== 0) throw new Error(`a reload should still open on the empty starter tracks, found ${boot} note(s)`);
+      await cdp.evaluate(`(() => {
+        document.querySelector('#file-menu-toggle').click();
+        document.getElementById('songs-btn').click();
+      })()`);
+      await waitFor(`document.getElementById('songs-recovered').getClientRects().length > 0`);
+      const row = await cdp.evaluate(`document.querySelector('#songs-recovered .song-title').textContent`);
+      if (row !== 'Unsaved: Untitled Song') throw new Error(`the recovered row should name the song: ${JSON.stringify(row)}`);
+      await cdp.evaluate(`[...document.querySelectorAll('#songs-recovered button')].find(b => b.textContent === 'Load').click()`);
+      await waitFor(`document.querySelectorAll('.note').length === 1`);
+      // Loaded, it is still unsaved — because it is — and the offer is gone.
+      await cdp.evaluate(`window.__asked = []; window.confirm = (m) => { window.__asked.push(m); return false; };
+        document.querySelector('#file-menu-toggle').click(); document.getElementById('songs-btn').click();`);
+      await waitFor(`document.getElementById('songs-dialog').open`);
+      if (await cdp.evaluate(`document.getElementById('songs-recovered').getClientRects().length > 0`)) {
+        throw new Error('a recovered draft that was loaded should not be offered again');
+      }
+      await cdp.evaluate(`document.getElementById('new-song-starter').click()`);
+      if (await cdp.evaluate(`window.__asked.length`) !== 1) throw new Error('a recovered song is unsaved, so New song should ask first');
+    });
+
+    step('Chords dialog: the key can be set inside it', async () => {
+      // The starter layout is Chromatic, where every progression is disabled,
+      // and the key used to be set only in the bottom bar — behind this modal.
+      await fresh();
+      await cdp.evaluate(`[...document.querySelector('#tracks > .track[data-kind="pitch"]').querySelectorAll('.th-tool-btn')].find(b => /progression/i.test(b.title)).click()`);
+      await waitFor(`document.getElementById('progression-dialog').open`);
+      const inserts = () => cdp.evaluate(`[...document.querySelectorAll('#progression-list button')].filter(b => b.textContent === 'Insert').map(b => b.disabled)`);
+      const before = await inserts();
+      if (!before.length || !before.every(Boolean)) throw new Error(`on Chromatic every Insert should be disabled: ${JSON.stringify(before)}`);
+      await cdp.evaluate(`(() => {
+        const sc = document.getElementById('progression-key-scale'); sc.value = 'minor'; sc.dispatchEvent(new Event('change'));
+        const r = document.getElementById('progression-key-root'); r.value = '9'; r.dispatchEvent(new Event('change'));
+      })()`);
+      const after = await inserts();
+      if (!after.length || after.some(Boolean)) throw new Error(`with a key set in the dialog, Insert should be enabled: ${JSON.stringify(after)}`);
+      const bar = await cdp.evaluate(`[document.getElementById('key-root').value, document.getElementById('key-scale').value]`);
+      if (JSON.stringify(bar) !== JSON.stringify(['9', 'minor'])) throw new Error(`the dialog must set the song's key, the bottom bar reads ${JSON.stringify(bar)}`);
+    });
+
+    step('Menu and tool panels: grouped under headings, one control beside its button', async () => {
+      await fresh();
+      const menu = await cdp.evaluate(`[...document.querySelectorAll('#file-menu .file-menu-section')].map(sec => ({
+        head: sec.querySelector('.file-menu-head')?.textContent || null,
+        items: [...sec.querySelectorAll('.file-menu-item')].map(b => b.id),
+      }))`);
+      const want = { Song: ['songs-btn', 'save-song-btn'], Notes: ['timing-btn', 'transpose-btn', 'dynamics-btn', 'vary-btn'],
+                     Arrangement: ['arrange-btn', 'split-clip-btn', 'heal-clip-btn'], Tracks: ['add-track-btn', 'add-rhythm-track-btn'] };
+      for (const [head, ids] of Object.entries(want)) {
+        const sec = menu.find(m => m.head === head);
+        if (!sec || JSON.stringify(sec.items) !== JSON.stringify(ids)) throw new Error(`menu section ${head} should hold ${ids.join(', ')}: ${JSON.stringify(menu)}`);
+      }
+      // Add track is also where the next track would go.
+      const before = await cdp.evaluate(`document.querySelectorAll('#tracks > .track').length`);
+      const inline = await cdp.evaluate(`(() => { const b = document.getElementById('add-track-inline'); const r = b.getBoundingClientRect();
+        const last = [...document.querySelectorAll('#tracks > .track')].at(-1).getBoundingClientRect();
+        return { shown: r.width > 0, below: r.top >= last.bottom - 1 }; })()`);
+      if (!inline.shown || !inline.below) throw new Error(`"Add track" should show under the last track: ${JSON.stringify(inline)}`);
+      await cdp.evaluate(`document.getElementById('add-track-inline').click()`);
+      await waitFor(`document.querySelectorAll('#tracks > .track').length === ${before + 1}`);
+      // Timing: each slider sits in the same block as the button it drives.
+      const pairs = await cdp.evaluate(`[['timing-quantize', 'timing-strength'], ['timing-humanize', 'timing-amount']].map(([b, c]) =>
+        document.getElementById(b).closest('.tool-action') === document.getElementById(c).closest('.tool-action')
+        && !!document.getElementById(b).closest('.tool-action'))`);
+      if (JSON.stringify(pairs) !== '[true,true]') throw new Error(`each Timing slider belongs beside its own button: ${JSON.stringify(pairs)}`);
+      // Every panel follows the same shape: scope line, then action blocks.
+      const shapes = await cdp.evaluate(`['timing', 'transpose', 'dynamics', 'vary'].map(k => {
+        const body = document.querySelector('#' + k + '-dialog .songs-body');
+        return [k, body.firstElementChild.id === k + '-scope', body.querySelectorAll('.tool-action').length,
+                [...body.querySelectorAll('.tool-action')].every(a => a.querySelector('.tool-action-row button') && a.querySelector('.tool-note'))];
+      })`);
+      for (const [k, scopeFirst, n, ok] of shapes) {
+        if (!scopeFirst || n < 2 || !ok) throw new Error(`the ${k} panel should be scope + action blocks with a note each: ${JSON.stringify(shapes)}`);
+      }
+    });
 
     step('Song I/O: loading a song does not inherit the previous song\'s track settings', async () => {
       // applySavedMix() only *sets* what the file contains, so anything the
