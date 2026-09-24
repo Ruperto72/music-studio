@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3267,33 +3267,64 @@ const AUTOSAVE_KEY = 'frogger-music-editor-autosave';
 // Beside the draft: whether it held changes nobody saved, and when. The draft
 // itself is overwritten by the next session's first edit (and by any load), so
 // a page that boots after an unsaved session moves that draft aside into
-// RECOVER_KEY first — that copy is what the Songs dialog offers back as
-// "Unsaved", and it survives until it is loaded or discarded. A session that
-// ended saved leaves an earlier recovery alone rather than replacing it with
-// something already kept in My songs.
+// RECOVER_KEY first — the list the Songs dialog offers back as "Unsaved". It
+// is a *list*, newest first: a single slot meant a second unsaved session
+// replaced the first one's work before anyone had looked at it. Each entry
+// stays until it is loaded or discarded; only the oldest beyond
+// RECOVER_LIMIT falls off, and a draft identical to one already there is not
+// added twice. A session that ended saved adds nothing.
 const AUTOSAVE_META_KEY = 'music-studio-autosave-meta';
 const RECOVER_KEY = 'music-studio-recovered';
+const RECOVER_LIMIT = 5;
+function readRecoveredList() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECOVER_KEY) || 'null');
+    // The first version kept one { at, data } object rather than a list.
+    const list = Array.isArray(raw) ? raw : (raw && raw.data ? [{ id: 'r' + (raw.at || 0), ...raw }] : []);
+    return list.filter((r) => r && r.id && hasTrackData(r.data));
+  } catch { return []; }
+}
+function writeRecoveredList(list) {
+  try {
+    if (list.length) localStorage.setItem(RECOVER_KEY, JSON.stringify(list));
+    else localStorage.removeItem(RECOVER_KEY);
+  } catch { /* best-effort */ }
+}
 try {
   const meta = JSON.parse(localStorage.getItem(AUTOSAVE_META_KEY) || 'null');
   const draft = localStorage.getItem(AUTOSAVE_KEY);
   if (meta && meta.dirty && draft) {
-    localStorage.setItem(RECOVER_KEY, JSON.stringify({ at: meta.at || 0, data: JSON.parse(draft) }));
+    const data = JSON.parse(draft);
+    const list = readRecoveredList();
+    if (!list.some((r) => JSON.stringify(r.data) === draft)) {
+      const at = meta.at || Date.now();
+      list.unshift({ id: 'r' + at + '-' + Math.random().toString(36).slice(2, 7), at, data });
+      writeRecoveredList(list.slice(0, RECOVER_LIMIT));
+    }
     localStorage.removeItem(AUTOSAVE_META_KEY);
   }
 } catch { /* best-effort, like the draft itself */ }
 let autosaveTimer = null;
+// Writes the draft and its meta now. autosave() is this on a 400ms debounce;
+// the moments that change what "unsaved" means — a load, a new song, a save —
+// call it directly, because until the meta is rewritten it still describes
+// the document before them: a tab closed in that gap left edits the person had
+// just chosen to discard marked unsaved, and the next page offered them back.
+function writeDraftNow() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  try {
+    // The draft is currentSongData()'s own payload rather than a second copy
+    // of that field list — the crash-recovery net is worth nothing if it
+    // quietly saves less than a save does.
+    const json = JSON.stringify(currentSongData());
+    localStorage.setItem(AUTOSAVE_KEY, json);
+    localStorage.setItem(AUTOSAVE_META_KEY, JSON.stringify({ dirty: json !== savedState, at: Date.now() }));
+  } catch { /* best-effort */ }
+}
 function autosave() {
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    try {
-      // The draft is currentSongData()'s own payload rather than a second copy
-      // of that field list — the crash-recovery net is worth nothing if it
-      // quietly saves less than a save does.
-      const json = JSON.stringify(currentSongData());
-      localStorage.setItem(AUTOSAVE_KEY, json);
-      localStorage.setItem(AUTOSAVE_META_KEY, JSON.stringify({ dirty: json !== savedState, at: Date.now() }));
-    } catch { /* best-effort */ }
-  }, 400);
+  autosaveTimer = setTimeout(writeDraftNow, 400);
 }
 // ---------- Unsaved changes ----------
 // "Saved" means the editor holds exactly what was last loaded, started, saved
@@ -4083,6 +4114,7 @@ function resetHistory() {
   lastCommitted = snapshotSong();
   updateHistoryButtons();
   markClean();
+  writeDraftNow(); // a new document: the draft must stop describing the old one
 }
 // An armed track that no longer exists keeps the keyboard in note mode and
 // files what is played into state.tracks under an id nothing draws. Removing
@@ -9899,7 +9931,7 @@ document.getElementById('save-file').addEventListener('click', async () => {
   const slug = state.songName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
   // A song written to a file is saved; what was written is `data`, not
   // whatever the editor holds by the time a native picker returns.
-  if (await saveBlobAs(blob, slug + '.json', 'Song file', ['.json'])) { savedState = JSON.stringify(data); autosave(); }
+  if (await saveBlobAs(blob, slug + '.json', 'Song file', ['.json'])) { savedState = JSON.stringify(data); writeDraftNow(); }
 });
 const loadInput = document.getElementById('load-file-input');
 document.getElementById('load-file').addEventListener('click', async () => {
@@ -10427,7 +10459,7 @@ function saveSong(asName) {
   if (!writeLocalSongs(songs)) return false;
   savedSlot = name;
   savedState = JSON.stringify(data);
-  autosave(); // so the draft's meta stops calling this unsaved
+  writeDraftNow(); // so the draft's meta stops calling this unsaved
   showSaveToast(`Saved “${name}” in My songs`);
   if (songsDialog.open) renderLocalSongs();
   return true;
@@ -10447,39 +10479,41 @@ function loadLocalSong(name, data) {
   savedSlot = name;
   return true;
 }
-function readRecovered() {
-  try { const r = JSON.parse(localStorage.getItem(RECOVER_KEY)); return r && hasTrackData(r.data) ? r : null; } catch { return null; }
-}
-// The one place the autosave draft is read back: a row at the top of My songs.
-// Loading it leaves the song unsaved (savedState null), because it is.
+const dropRecovered = (id) => writeRecoveredList(readRecoveredList().filter((r) => r.id !== id));
+// The one place the autosave draft is read back: rows at the top of My songs,
+// one per session that ended unsaved. Loading one leaves the song unsaved
+// (savedState null), because it is.
 function renderRecovered() {
   const box = document.getElementById('songs-recovered');
-  const rec = readRecovered();
+  const list = readRecoveredList();
   box.innerHTML = '';
-  box.hidden = !rec;
-  if (!rec) return;
-  const name = (typeof rec.data.songName === 'string' && rec.data.songName) || UNTITLED;
-  const row = songRow({
-    title: `Unsaved: ${name}`,
-    desc: 'Changes that were never saved' + (rec.at ? ', last edited ' + new Date(rec.at).toLocaleString() : '') + '. Load it to carry on, then Save.',
-    onLoad: () => {
-      if (!confirmDiscard(`Load the unsaved “${name}”`)) return;
-      if (!applySongData(rec.data, name)) return;
-      savedSlot = null;
-      savedState = null;
-      try { localStorage.removeItem(RECOVER_KEY); } catch { /* best-effort */ }
-      autosave();
-      songsDialog.close();
-    },
-    onDelete: () => {
-      if (!confirm(`Discard the unsaved “${name}” for good?`)) return;
-      try { localStorage.removeItem(RECOVER_KEY); } catch { /* best-effort */ }
-      renderRecovered();
-    },
-  });
-  row.classList.add('song-recovered');
-  row.querySelector('.song-del').textContent = 'Discard';
-  box.appendChild(row);
+  box.hidden = !list.length;
+  for (const rec of list) {
+    const name = (typeof rec.data.songName === 'string' && rec.data.songName) || UNTITLED;
+    const row = songRow({
+      title: `Unsaved: ${name}`,
+      desc: 'Changes that were never saved' + (rec.at ? ', last edited ' + new Date(rec.at).toLocaleString() : '') + '. Load it to carry on, then Save.',
+      onLoad: () => {
+        if (!confirmDiscard(`Load the unsaved “${name}”`)) return;
+        if (!applySongData(rec.data, name)) return;
+        savedSlot = null;
+        savedState = null;
+        dropRecovered(rec.id);
+        // Now, not debounced: the row is gone, so until this lands the only
+        // copy of the recovered work is in memory.
+        writeDraftNow();
+        songsDialog.close();
+      },
+      onDelete: () => {
+        if (!confirm(`Discard the unsaved “${name}” for good?`)) return;
+        dropRecovered(rec.id);
+        renderRecovered();
+      },
+    });
+    row.classList.add('song-recovered');
+    row.querySelector('.song-del').textContent = 'Discard';
+    box.appendChild(row);
+  }
 }
 function songRow({ title, desc, onLoad, onDelete }) {
   const row = el('div', 'song-item');
@@ -10495,7 +10529,7 @@ function renderLocalSongs() {
   const songs = readLocalSongs();
   const names = Object.keys(songs).sort((a, b) => (songs[b].savedAt || 0) - (songs[a].savedAt || 0));
   localSongsEl.innerHTML = '';
-  if (!names.length) { localSongsEl.innerHTML = '<div class="song-empty">No saved songs yet — name one above and click “Save current”.</div>'; return; }
+  if (!names.length) { localSongsEl.innerHTML = '<div class="song-empty">No saved songs yet — Save in the menu (Ctrl+S) keeps the current one here.</div>'; return; }
   for (const name of names) {
     localSongsEl.appendChild(songRow({
       title: name,

@@ -118,6 +118,30 @@ tillsammans eftersom spara, osparat arbete och menyn rör samma knappar.
   axis…") är borta ur panelerna; hjälpen hade dem redan.
 - [x] **Master-reglaget återställt** — se Bottenraden ovan.
 
+### Kodgranskningen av båda omgångarna
+
+Tre fynd, alla riktiga, två av dem sätt att förlora arbete i återställningen
+som byggdes i omgången ovan.
+
+- [x] **En andra osparad session ersatte den första.** Återställningsplatsen
+  rymde ett utkast, och uppstarten skrev över det. Nu en lista, nyast först,
+  högst `RECOVER_LIMIT` (5); ett utkast som redan finns läggs inte till igen,
+  och varje rad laddas eller kastas för sig. Den gamla formen (ett objekt)
+  läses fortfarande.
+- [x] **Kastade ändringar kom tillbaka.** En laddning skrev aldrig om utkastet,
+  så metaposten sa "osparat" tills nästa fördröjda autosave — och en flik som
+  stängdes i det fönstret fick de kastade ändringarna erbjudna som *Unsaved*.
+  Samma fönster fanns efter Save. `writeDraftNow()` är den ofördröjda
+  skrivningen under `autosave()`, och `resetHistory()` (laddning, ny låt),
+  Save, filsparning och laddning av ett återställt utkast anropar den direkt.
+  Steget läser metaposten i samma avläsning som ser laddningen landa: med en
+  väntan emellan hann den gamla kodens fördröjda autosave rätta den, och
+  steget gick grönt mot trasig kod första gången det skrevs.
+- [x] **Inaktuell text** i en tom My songs ("click Save current") pekar nu på
+  Save i menyn.
+
+Verify: två nya steg, båda röda mot föregående version.
+
 Verify: fyra nya steg — Ctrl+S och frågan före laddning (att avböja lämnar
 låten orörd, att spara gör att nästa laddning inte frågar), att ett osparat
 utkast kommer tillbaka efter omladdning och inte erbjuds igen när det har
