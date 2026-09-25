@@ -1,10 +1,5 @@
 # 🎵 Web Audio Studio
 
-Try it: https://ruperto72.github.io/music-studio/ — guide:
-https://ruperto72.github.io/music-studio/help.html (also reachable from the
-app's own ☰ menu; opens in its own tab so it can sit next to the editor while
-you work, and works offline once loaded)
-
 A browser-based **synth-based music studio**. Compose looping tracks the way you
 would in a small studio (Pro Tools–style stacked lanes) — everything is
 synthesised live with the Web Audio API, so there are **no audio files and no
