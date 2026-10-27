@@ -99,6 +99,28 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
   en utdragen kant fortfarande når den.
 - [x] **Felmeddelandet vid laddning** sa "missing a rhythm track", fast en låt
   utan trumspår är giltig sedan länge.
+- [x] **Pan-reglagets dubbelklick hördes inte av raden.** Det skickade
+  `new Event('input')` utan `bubbles`, så `buildTrackRows()`s lyssnare på
+  raden, som släpper radens cache, missade det. En senare undo tillbaka till
+  den byggda panoreringen återanvände då en rad vars reglage stod på mitten.
+  Nu `{ bubbles: true }`. Resten av gränssnittskoden (automation, rattar,
+  notinspektören, rutnätet, spårhuvudet) gav inget mer; `help.html`s 28
+  ankare och 14 bilder har alla mål, alt-text och plats i precachen, och CSS:en
+  har inga odefinierade eller oanvända variabler.
+- [x] **Fem verify-steg var röda bara i en full körning.** Inte tillstånd som
+  läckte mellan steg, som det först såg ut: en bisektion gav ingen enskild
+  skyldig (steg 7–17 fällde steg 18, men varken 7+9–12 eller 7+13–17 gjorde
+  det), och en fördröjning före steget fick det att passera. Två orsaker:
+  - Tre steg läste autosave-utkastet efter fasta 700 ms mot en debounce på
+    400 ms. De väntar nu på villkoret.
+  - Långt in i en full körning slutade headless Chrome producera frames efter
+    en omladdning: en `requestAnimationFrame` som väntades på efter `fresh()`
+    löstes inte inom två minuter. Hjul-scrollen panorerade aldrig och
+    spelhuvudet stod still. Väntan på villkor hjälpte inte, och flaggor mot
+    bakgrundsstrypning (`--disable-renderer-backgrounding` m.fl.) fick sviten
+    att hänga på steg 12. `Page.bringToFront` efter varje laddning i `goto()`
+    löste det: steg 7–18 röda två gånger utan, gröna två gånger med. Därefter
+    173/173 i en full körning.
 
 ## Från UI-granskningen (2026-09-23)
 

@@ -590,6 +590,14 @@ async function main() {
       const loaded = new Promise((resolve) => cdp.on('Page.loadEventFired', resolve));
       await cdp.send('Page.navigate', { url });
       await loaded;
+      // Deep into a full run, headless Chrome stopped producing animation
+      // frames after a reload: a requestAnimationFrame did not fire in two
+      // minutes, so a wheel scroll never panned and the playhead never moved,
+      // and steps that passed alone failed in the suite. Bringing the page to
+      // the front after each load restores them — measured on steps 7-18, red
+      // twice without it and green twice with it. Waits instead of the fixed
+      // sleeps did not help; flags against background throttling hung the run.
+      await cdp.send('Page.bringToFront').catch(() => {});
     }
     // Every browser step starts from here. The suite used to let steps inherit
     // whatever the previous one left: only 16 of 67 reset themselves and the
@@ -1268,7 +1276,12 @@ async function main() {
         const rect = lane.getBoundingClientRect();
         lane.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100000, clientX: rect.left + 10, clientY: rect.top + 10 }));
       }`);
-      await new Promise((r) => setTimeout(r, 100));
+      // The wheel pans the window on the next animation frame. A fixed 100ms
+      // was enough on its own but not deep into a full run, where the first
+      // frames after a reload come late: the click landed on the window
+      // before the pan (D#5) and the step read as a leak between steps.
+      await waitFor(`(document.querySelector('.track.active [data-midi]') || {}).dataset?.midi === '96'`)
+        .catch(() => { throw new Error('the wheel scroll never panned the active lane up to C7'); });
       await cdp.evaluate(`{
         const lane = document.querySelector('.track.active .lane');
         const rect = lane.getBoundingClientRect();
@@ -2644,7 +2657,9 @@ async function main() {
         s.value = [...s.options].map(o => o.value).find(v => parseFloat(v) === 0.25);
         s.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
-      await new Promise((r) => setTimeout(r, 700));
+      // Until the debounced autosave has the value, not a fixed 700ms: late in
+      // a full run the write came after it. The assertion below names the gap.
+      await waitFor(`((JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {}).duty || {}).lead === 0.25`).catch(() => {});
       const saved = await draft();
       // Two entries now, and both matter: `lead` is the one just set by hand,
       // `harmony` is STARTER_TRACKS' own 25% — so this also proves the starter
@@ -2703,7 +2718,13 @@ async function main() {
       // Saw quick-start: a recognizable, non-default shape (1/n falloff,
       // even harmonics phase-flipped) to round-trip.
       await cdp.evaluate(`[...document.querySelectorAll('.harmonics-quickstart button')].find(b => b.textContent === 'Saw').click()`);
-      await new Promise((r) => setTimeout(r, 700)); // autosave is debounced
+      // Autosave is debounced: wait for it to carry the shape rather than a
+      // fixed 700ms, which late in a full run came before the write.
+      await waitFor(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave')) || {};
+        const t = (d.trackList || []).find(t => t.name === 'Lead');
+        return !!t && ((d.harmonics || {})[t.id] || {}).phases?.[1] === 180;
+      })()`).catch(() => {});
       const saved = await draft();
       const leadId = (saved.trackList.find(t => t.name === 'Lead') || {}).id;
       const before = (saved.harmonics || {})[leadId];
@@ -4072,7 +4093,13 @@ async function main() {
       await waitFor(`document.querySelectorAll('.track').length === 5`);
       await addFxEffect('Delay');
       await drawAutomationPoint('delay');
-      await new Promise((r) => setTimeout(r, 700)); // autosave debounce
+      const curveSaved = `(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave') || '{}');
+        const id = (d.trackList || [])[0] && d.trackList[0].id;
+        return !!((((d.automation || {})[id]) || {}).delay || []).length;
+      })()`;
+      // The autosave, not a fixed 700ms — late in a full run it came after.
+      await waitFor(curveSaved).catch(() => {});
       const draft = () => cdp.evaluate(`(() => {
         const k = Object.keys(localStorage).find((k) => k.includes('autosave'));
         const d = JSON.parse(localStorage.getItem(k) || '{}');
@@ -4085,7 +4112,7 @@ async function main() {
       }
 
       await cdp.evaluate(`document.querySelector('.th-strip-section[data-key="sendDelay"] .th-fx-chip-remove').click()`);
-      await new Promise((r) => setTimeout(r, 700));
+      await waitFor(`!${curveSaved}`).catch(() => {});
       const gone = await draft();
       if (gone.curve) {
         throw new Error(`removing the Delay chip should take its curve with it, still saved: ${JSON.stringify(gone)}`);

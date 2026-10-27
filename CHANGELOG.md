@@ -7,6 +7,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 reasoning, measurements and dead ends behind each change are in
 [`DONE.md`](DONE.md).
 
+## [1.6.7] – 2026-10-27
+
+### Fixed
+- After double-clicking a track's pan slider to re-centre it, an undo no
+  longer leaves the slider showing centre while the track is panned.
+
 ## [1.6.6] – 2026-10-27
 
 ### Fixed
@@ -300,6 +306,7 @@ back to 2026-07-19, is unversioned; `DONE.md` is the record of it.
 - Example songs "Canone", "Dodici" and "Sinfonia Quarta", Bach for three SID
   voices.
 
+[1.6.7]: https://github.com/Ruperto72/music-studio/compare/v1.6.6...v1.6.7
 [1.6.6]: https://github.com/Ruperto72/music-studio/compare/v1.6.5...v1.6.6
 [1.6.5]: https://github.com/Ruperto72/music-studio/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/Ruperto72/music-studio/compare/v1.6.3...v1.6.4

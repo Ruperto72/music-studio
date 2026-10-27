@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.6';
+const APP_VERSION = '1.6.7';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -6699,7 +6699,10 @@ function buildHeader(track) {
   panSlider.type = 'range'; panSlider.min = -1; panSlider.max = 1; panSlider.step = 0.1; panSlider.value = state.pan[track];
   panSlider.title = 'Stereo pan'; panSlider.style.accentColor = trackColor(track);
   const panVal = el('span', 'pan-val'); panVal.textContent = panLabel(state.pan[track]);
-  panSlider.addEventListener('dblclick', (e) => { e.stopPropagation(); panSlider.value = 0; panSlider.dispatchEvent(new Event('input')); });
+  // Bubbling, so the row hears it: buildTrackRows() drops the row's cache entry
+  // on any input inside it, and a re-centre the row never heard left a later
+  // undo back to the built pan reusing a row whose slider still read centre.
+  panSlider.addEventListener('dblclick', (e) => { e.stopPropagation(); panSlider.value = 0; panSlider.dispatchEvent(new Event('input', { bubbles: true })); });
   panSlider.addEventListener('input', () => {
     state.pan[track] = parseFloat(panSlider.value);
     panVal.textContent = panLabel(state.pan[track]);
