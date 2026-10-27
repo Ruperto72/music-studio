@@ -11207,6 +11207,88 @@ async function main() {
       }
     });
 
+    step('Clips: a note nudged into the next clip lives in that clip only', async () => {
+      await fresh();
+      await loadSong('ClipCross', songData({
+        tracks: {
+          lead: [
+            { start: 0, len: 8, source: 'c1', notes: [note(2, 1, 440)] },
+            { start: 8, len: 8, source: 'c2', notes: [note(12, 1, 523.25)] },
+          ],
+          bass: [], rhythm: [],
+        },
+      }));
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await cdp.evaluate(`[...${trackRow('Lead')}.querySelectorAll('.lane .note')]
+        .sort((a, b) => parseFloat(a.style.left) - parseFloat(b.style.left))[0].click()`);
+      await waitFor(`!!${trackRow('Lead')}.querySelector('.lane .note.selected')`);
+      // Column 2 to column 8: out of the first window and into the second.
+      for (let i = 0; i < 6; i++) { await pressKey('ArrowRight'); await new Promise((r) => setTimeout(r, 60)); }
+      await new Promise((r) => setTimeout(r, 700));
+      const clips = await cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        return d.tracks.lead.map(c => ({ start: c.start, len: c.len, notes: c.notes.filter(n => n.freq === 440).map(n => n.start) }));
+      })()`);
+      const copies = clips.flatMap(c => c.notes);
+      if (copies.length !== 1 || copies[0] !== 8) {
+        // One object filed in both: the first clip kept it as hidden material,
+        // so moving that clip later moved the note in the second one too.
+        throw new Error(`the nudged A4 should be stored once, at column 8, got ${JSON.stringify(clips)}`);
+      }
+      const owner = clips.find(c => c.notes.length);
+      if (owner.start !== 8) throw new Error(`the A4 should belong to the clip at 8, got ${JSON.stringify(clips)}`);
+    });
+
+    step('Export WAV: the live context is closed first, Play waits, and a failed render leaves playback working', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      // Placing a note auditions it, which leaves a live context open while
+      // nothing is playing — the case the export used to overwrite unclosed.
+      await penAt('Lead', 60, 40);
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 1`);
+      await cdp.evaluate(`(() => {
+        window.__closed = 0;
+        const close = AudioContext.prototype.close;
+        AudioContext.prototype.close = function (...a) { window.__closed++; return close.apply(this, a); };
+        window.__starts = { live: 0, offline: 0 };
+        const start = AudioScheduledSourceNode.prototype.start;
+        AudioScheduledSourceNode.prototype.start = function (...a) {
+          window.__starts[this.context instanceof OfflineAudioContext ? 'offline' : 'live']++;
+          return start.apply(this, a);
+        };
+        // Hold the render open, then fail it on demand.
+        window.__failRender = null;
+        OfflineAudioContext.prototype.startRendering = function () {
+          return new Promise((_, reject) => { window.__failRender = () => reject(new Error('injected render failure')); });
+        };
+      })()`);
+      await cdp.evaluate(`document.getElementById('file-menu-toggle').click()`);
+      await cdp.evaluate(`document.getElementById('export-wav').click()`);
+      await waitFor(`typeof window.__failRender === 'function'`, 30000);
+      const closed = await cdp.evaluate(`window.__closed`);
+      if (closed < 1) throw new Error('the audition\'s live AudioContext was left running when the export replaced it');
+
+      await cdp.evaluate(`window.__starts = { live: 0, offline: 0 }`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const during = await cdp.evaluate(`({ playing: document.body.classList.contains('playing'), starts: window.__starts })`);
+      if (during.playing || during.starts.offline) {
+        throw new Error(`Play during "Rendering…" should do nothing, got ${JSON.stringify(during)} — the song was being scheduled into the file`);
+      }
+
+      await cdp.evaluate(`window.__failRender()`);
+      await waitFor(`!document.getElementById('export-wav').disabled`, 10000);
+      await cdp.evaluate(`window.__starts = { live: 0, offline: 0 }`);
+      await cdp.evaluate(`document.getElementById('play').click()`);
+      await waitFor(`document.body.classList.contains('playing')`, 8000);
+      await new Promise((r) => setTimeout(r, 300));
+      const after = await cdp.evaluate(`window.__starts`);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      if (after.offline || !after.live) {
+        throw new Error(`after a failed render Play should use a live context again, got ${JSON.stringify(after)}`);
+      }
+    });
+
     for (const s of steps) await s();
     if (ONLY && !ran) errors.push(`--only ${JSON.stringify(ONLY)} matched no step, so nothing was checked`);
   } finally {

@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.3';
+const APP_VERSION = '1.6.4';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3493,7 +3493,13 @@ function setTrackNotes(track, items) {
   // Clearing wholesale was safe only while there could be one window and
   // nothing was hidden; the first split plus the first edit would have
   // destroyed the model's whole point.
-  for (const clip of clips) clip.notes = clip.notes.filter(n => !clipHolds(clip, n));
+  // An item in `items` is coming back in regardless, so it leaves every clip
+  // first — including one that now merely *hides* it. A note dragged from one
+  // window into the next stopped being shown by the first, stayed in its list
+  // as hidden material and was filed into the second as well: one object in
+  // two clips, so moving the first clip moved the note in the second.
+  const incoming = new Set(items);
+  for (const clip of clips) clip.notes = clip.notes.filter(n => !clipHolds(clip, n) && !incoming.has(n));
   const orphans = [];
   for (const item of items) {
     const home = clips.find(c => clipHolds(c, item));
@@ -8128,12 +8134,15 @@ function nudgeSelection(dCol, dRow) {
       // nudge.
       const dc = Math.max(-minStart, Math.min(Math.max(0, COLS - state.grid - maxStart), dCol));
       const dr = Math.max(Math.max(...rows) - (RHYTHM_ROWS.length - 1), Math.min(Math.min(...rows), dRow));
-      sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
       const selSet = state.multiSelected;
+      // Read before the move: a hit moved out of its clip's window is no longer
+      // in trackNotes(), and the write-back then left it hidden in the old clip.
+      const rest = trackNotes(state.activeTrack).filter(h => !selSet.has(h));
+      sel.forEach((h, i) => { h.start = quant(h.start + dc); if (dr) h.type = RHYTHM_ROWS[rows[i] - dr]; });
       // Keyed on the column alone this also removed unselected hits on *other*
       // rows of the landing column — hitsConflict is the one place that
       // comparison belongs.
-      setTrackNotes(state.activeTrack, trackNotes(state.activeTrack).filter(h => selSet.has(h) || !sel.some(s => hitsConflict(s, h))));
+      setTrackNotes(state.activeTrack, [...rest.filter(h => !sel.some(s => hitsConflict(s, h))), ...sel]);
     } else {
       const notes = trackNotes(state.activeTrack);
       const minStart = Math.min(...sel.map(n => n.start));
@@ -8156,19 +8165,21 @@ function nudgeSelection(dCol, dRow) {
     // A hit has no length and no pitch: it moves by column, and by row through
     // the fixed 10-piece kit.
     const row = RHYTHM_ROWS.indexOf(item.type);
+    const rest = trackNotes(track).filter(h => h !== item); // before the move — see the multi-select branch
     item.start = quant(Math.max(0, Math.min(Math.max(COLS - state.grid, item.start), item.start + dCol)));
     if (dRow) item.type = RHYTHM_ROWS[Math.max(0, Math.min(RHYTHM_ROWS.length - 1, row - dRow))];
-    setTrackNotes(track, trackNotes(track).filter(h => h === item || !hitsConflict(h, item)));
+    setTrackNotes(track, [...rest.filter(h => !hitsConflict(h, item)), item]);
     render();
     return;
   }
   const note = item;
+  const rest = trackNotes(track).filter(n => n !== note); // before the move — see the multi-select branch
   note.start = quant(Math.max(0, Math.min(COLS - note.len, note.start + dCol)));
   if (dRow) {
     const midi = Math.max(MIDI_MIN, Math.min(MIDI_MAX, freqToMidi(note.freq) + dRow));
     note.freq = round2(midiToFreq(midi));
   }
-  setTrackNotes(track, clearOverlaps(trackNotes(track), note, note));
+  setTrackNotes(track, [...clearOverlaps(rest, note), note]);
   render();
 }
 // The scale-step counterpart of nudgeSelection()'s pitch half. It goes through
@@ -8355,7 +8366,11 @@ function startMoveHit(e, track, hit) {
     window.removeEventListener('pointercancel', onUp);
     interacting = false;
     const groupSet = new Set(group);
-    setTrackNotes(track, trackNotes(track).filter(h => groupSet.has(h) || !group.some(g => hitsConflict(g, h))));
+    // The group is added back explicitly: a hit dragged out of its clip's
+    // window is no longer in trackNotes(), and filtering that list alone left
+    // it hidden in the old clip — gone from the lane the moment it was dropped.
+    const rest = trackNotes(track).filter(h => !groupSet.has(h) && !group.some(g => hitsConflict(g, h)));
+    setTrackNotes(track, [...rest, ...group]);
     if (group.length === 1) { selectItem(track, hit); return; } // a click-without-drag selects, like a note
     render();
   }
@@ -10423,7 +10438,10 @@ function audioBufferToWav(buffer) {
 // OfflineAudioContext instead of a live one. Requires playback to be
 // stopped first (stopPlayback() already tears these globals down to null).
 async function renderSongToWav() {
-  if (playing) stopPlayback();
+  // Also when nothing is playing: a click-to-hear preview leaves a live
+  // context open, and overwriting `ctx` below without closing it left that
+  // context running for the rest of the session — one more per export.
+  if (playing || ctx) stopPlayback();
   // Some of these caches (PeriodicWave objects, and ConvolverNode's impulse
   // response in particular — its buffer's sample rate must exactly match the
   // context's, unlike AudioBufferSourceNode which resamples automatically)
@@ -10440,38 +10458,43 @@ async function renderSongToWav() {
   const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
 
   ctx = offline;
-  // Same buildMasterBus()/buildChannelChain() every live context uses (see
-  // ensureCtx()) — the only difference offline is that we can afford to
-  // await the bitcrush worklets' upgrade promises before rendering, instead
-  // of the fire-and-forget bypass-then-upgrade live playback relies on:
-  // OfflineAudioContext.startRendering() runs once, deterministically, so
-  // "still bypassed when rendering starts" would silently skip the crush
-  // effect for the whole render rather than just a few inaudible/glitch-free
-  // milliseconds like it does live.
-  const crushReady = [buildMasterBus(ctx)];
-  for (const ch of ALL_TRACKS) crushReady.push(buildChannelChain(ctx, ch, false));
-  applyGains();
-  applyPan();
-  await Promise.all(crushReady);
+  renderingWav = true;
+  // The teardown is in `finally`: a render that throws used to leave `ctx`
+  // pointing at the spent offline context, and ensureCtx() then handed that
+  // back to every later Play — no sound until the page was reloaded.
+  try {
+    // Same buildMasterBus()/buildChannelChain() every live context uses (see
+    // ensureCtx()) — the only difference offline is that we can afford to
+    // await the bitcrush worklets' upgrade promises before rendering, instead
+    // of the fire-and-forget bypass-then-upgrade live playback relies on:
+    // OfflineAudioContext.startRendering() runs once, deterministically, so
+    // "still bypassed when rendering starts" would silently skip the crush
+    // effect for the whole render rather than just a few inaudible/glitch-free
+    // milliseconds like it does live.
+    const crushReady = [buildMasterBus(ctx)];
+    for (const ch of ALL_TRACKS) crushReady.push(buildChannelChain(ctx, ch, false));
+    applyGains();
+    applyPan();
+    await Promise.all(crushReady);
 
-  scheduleAutomationForChunk(0, eighthSec, 0, COLS);
-  scheduleDucking(0, eighthSec, 0, COLS);
-  playOnce(0, eighthSec, 0, COLS);
+    scheduleAutomationForChunk(0, eighthSec, 0, COLS);
+    scheduleDucking(0, eighthSec, 0, COLS);
+    playOnce(0, eighthSec, 0, COLS);
 
-  const rendered = await offline.startRendering();
-
-  ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
-  spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
-  crushBus = null; crusherNode = null;
-  chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
+    return await offline.startRendering();
+  } finally {
+    renderingWav = false;
+    ctx = null; masterGain = null; duckGain = null; chanGain = {}; chanPan = {}; chanAnalyser = {}; chanEq = {}; chanComp = {}; masterAnalyser = null; masterFXNodes = null;
+    spectrumAnalyser = null; lufsShelf = null; lufsHighpass = null; lufsAnalyser = null;
+    crushBus = null; crusherNode = null;
+    chanCrush = {}; chanTremolo = {}; chanTremoloLfo = {}; chanTremoloLfoGain = {}; chanPwmLfo = {}; metroGain = null;
     chanVoiceIn = {}; voiceInChannel.clear();
-  trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
-  fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
-  fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
-  fxReverbBus = fxReverb = fxReverbWet = null;
-  resetAudioCaches();
-
-  return rendered;
+    trackDelaySend = {}; trackChorusSend = {}; trackReverbSend = {};
+    fxDelayBus = fxDelay = fxDelayFeedback = fxDelayWet = null;
+    fxChorusBus = fxChorusDelay = fxChorusLfo = fxChorusLfoGain = fxChorusWet = null;
+    fxReverbBus = fxReverb = fxReverbWet = null;
+    resetAudioCaches();
+  }
 }
 document.getElementById('export-wav').addEventListener('click', async () => {
   const btn = document.getElementById('export-wav');
@@ -11528,6 +11551,10 @@ document.getElementById('arrange-delete').addEventListener('click', () => {
 
 // ---------- Playback ----------
 let ctx = null, loopTimer = null, playing = false;
+// True while renderSongToWav() has `ctx` pointing at its OfflineAudioContext.
+// Anything that reaches for a live context in that window would schedule into
+// the render instead — a note clicked during "Rendering…" ended up in the file.
+let renderingWav = false;
 let masterGain = null;
 let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
@@ -11899,6 +11926,7 @@ function buildChannelChain(c, id, withAnalyser) {
 }
 
 function ensureCtx() {
+  if (renderingWav) throw new Error('A WAV export is rendering');
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (!masterGain) {
     buildMasterBus(ctx);
@@ -13897,8 +13925,10 @@ function monitorNote(track, midi, vel) {
 function recDrumDown(id, type, vel) {
   const track = state.recTrack;
   if (!track || heldKeys.has(id)) return false;
-  try { ensureCtx(); if (ctx.state === 'suspended') ctx.resume(); } catch { /* ignore */ }
-  scheduleDrum(type, (ctx ? ctx.currentTime : 0) + 0.005, chanGain[track] || previewGain, vel, 0, getTrackKitId(track));
+  try {
+    ensureCtx(); if (ctx.state === 'suspended') ctx.resume();
+    scheduleDrum(type, ctx.currentTime + 0.005, chanGain[track] || previewGain, vel, 0, getTrackKitId(track));
+  } catch { /* audio unavailable */ }
   // A hit has no length, so it is committed the moment it is struck.
   if (recording) commitHit(track, type, quant(ctxTimeToCol(ctx.currentTime)), vel);
   else if (stepEntryActive()) {
@@ -14485,6 +14515,7 @@ function syncRecordUI() {
 }
 document.getElementById('record-btn').addEventListener('click', () => {
   if (recording || countingIn) { document.getElementById('stop').click(); return; }
+  if (renderingWav) return;
   startRecording();
 });
 const metronomeBtn = document.getElementById('metronome-btn');
@@ -14501,7 +14532,7 @@ syncMetronomeUI();
 document.getElementById('play').addEventListener('click', async () => {
   // Already rolling: starting again would schedule a second copy on top of the
   // chunk already queued (a double tap on the phone player's button did it).
-  if (playing) return;
+  if (playing || renderingWav) return;
   ensureCtx();
   if (ctx.state === 'suspended') ctx.resume();
   if (hardSyncPending && usesHardSync()) await hardSyncPending;

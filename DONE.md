@@ -19,6 +19,36 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
 
 ---
 
+## Från kodgranskningen av hela kodbasen (2026-10-27)
+
+- [x] **En not som flyttades in i nästa klipp hamnade i båda, eller i inget
+  synligt.** Två varianter av samma fel. `setTrackNotes()` tömde varje klipp
+  på det *fönstret visar* och lät resten ligga kvar som dolt material — men en
+  not som just dragits ut ur fönstret visas inte längre, så den låg kvar dold
+  i det gamla klippet och lades dessutom in i det nya. Samma objekt i två
+  `notes`-listor: att flytta det första klippet flyttade noten i det andra,
+  och en sparad fil fick två kopior som efter omladdning var två noter. Nu
+  lämnar allt i `items` varje klipp först. Den andra varianten låg i
+  anroparna: pil-nudge (båda spårtyperna) och drag av trumslag läste
+  `trackNotes()` *efter* att ha flyttat objektet, så det som lämnat fönstret
+  saknades i listan som skrevs tillbaka — noten blev dold i det gamla klippet
+  och försvann från lanen. De läser nu listan före flytten och lägger tillbaka
+  det flyttade explicit, som `startMoveNote()` och `applyItemEdit()` redan
+  gjorde. Steget *Clips: a note nudged into the next clip* hittade den andra
+  varianten först efter att den första var lagad; mot gammal kod faller det på
+  att noten ligger kvar i klippet vid 0.
+- [x] **Export WAV kunde blanda in live-ljud och lämna uppspelningen död.**
+  Under renderingen pekar den globala `ctx` på `OfflineAudioContext`, så Play,
+  Record eller en förhandslyssning hamnade i filen. Kastade renderingen blev
+  `ctx` kvar som den förbrukade offline-kontexten och varje senare Play gick
+  dit — tyst tills sidan laddades om. Och en levande kontext från en
+  förhandslyssning skrevs över utan `close()`, en till per export. Nu
+  `renderingWav`-flaggan (som `ensureCtx()` vägrar under, och Play/Record
+  läser), `try/finally` runt rivningen, och `stopPlayback()` även när inget
+  spelar. Stegets tre delar är var för sig verifierade mot sin injektion:
+  oavslutad kontext, Play utan spärr (`offline: 1` startade källor) och
+  rivning bortkopplad (`offline: 12` efter misslyckad rendering).
+
 ## Från UI-granskningen (2026-09-23)
 
 De punkter ur granskningen som inte ändrar något flöde, gjorda i ett svep

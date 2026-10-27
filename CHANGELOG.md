@@ -7,6 +7,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 reasoning, measurements and dead ends behind each change are in
 [`DONE.md`](DONE.md).
 
+## [1.6.4] – 2026-10-27
+
+### Fixed
+- A note or drum hit moved from one clip into the next, by dragging or with
+  the arrow keys, stays in the clip it landed in. With the arrow keys it used
+  to vanish from the lane. A dragged note sat in both clips, so moving the
+  first clip moved it too.
+- Export WAV no longer picks up sound you trigger while it renders: Play and
+  Record wait until the export is done.
+- A WAV export that fails no longer leaves playback silent until the page is
+  reloaded.
+- Clicking a note to hear it and then exporting a WAV no longer leaves an
+  audio engine running in the background.
+
 ## [1.6.3] – 2026-09-24
 
 ### Fixed
@@ -252,6 +266,7 @@ back to 2026-07-19, is unversioned; `DONE.md` is the record of it.
 - Example songs "Canone", "Dodici" and "Sinfonia Quarta", Bach for three SID
   voices.
 
+[1.6.4]: https://github.com/Ruperto72/music-studio/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/Ruperto72/music-studio/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/Ruperto72/music-studio/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/Ruperto72/music-studio/compare/v1.6.0...v1.6.1
