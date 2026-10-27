@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.5';
+const APP_VERSION = '1.6.6';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -5058,7 +5058,15 @@ function duplicateTrack(track) {
   // Clip by clip, hidden material included: copying trackNotes() — what the
   // windows show — gave the copy one whole-track clip, losing its splits and
   // everything a trimmed edge was keeping.
-  setClips(id, clipsOf(track).map((c) => makeClip(cloneItems(c.notes), { start: c.start, len: c.len })));
+  // A fresh `source` per original one, shared among the copies, so two halves
+  // of a split can still be healed in the copy but never with the original.
+  const sources = new Map();
+  const sourceFor = (c) => {
+    const key = c.source || c;
+    if (!sources.has(key)) sources.set(key, newClipSource());
+    return sources.get(key);
+  };
+  setClips(id, clipsOf(track).map((c) => makeClip(cloneItems(c.notes), { start: c.start, len: c.len, source: sourceFor(c) })));
   state.gains[id] = state.gains[track];
   state.waveform[id] = state.waveform[track];
   state.pan[id] = state.pan[track];
@@ -9826,9 +9834,13 @@ function duplicateSpan(start, end, dest, maxCols = MAX_COLS) {
       const s = Math.max(clip.start, start), e = Math.min(clipEnd(clip), end);
       if (e <= s) continue;
       const whole = clip.start >= start && clipEnd(clip) <= end;
-      if (!sources.has(clip.source)) sources.set(clip.source, newClipSource());
+      // Keyed on the clip itself when it has no source (a hand-edited or
+      // older file): every sourceless clip shared the `undefined` key, so
+      // copies of unrelated clips came out healable into one.
+      const key = clip.source || clip;
+      if (!sources.has(key)) sources.set(key, newClipSource());
       windows.push(makeClip((whole ? clip.notes : clip.notes.filter(it => inSrc(it.start))).map(placed),
-        { start: place(s), len: e - s, source: sources.get(clip.source) }));
+        { start: place(s), len: e - s, source: sources.get(key) }));
     }
     // Recorded even with no windows: a section this track has no clip in is a
     // hole, and the copy has to be a hole too, not the stretch of whatever
@@ -9937,7 +9949,13 @@ function restoreLifted(lifted) {
     // A tail rides the right-most piece's end, a head the left-most's start —
     // the clip may have been split by the gap opened inside it.
     const home = l.tail ? homes[homes.length - 1] : homes[0];
-    l.n.start = quant((l.tail ? clipEnd(home) : home.start) + l.off);
+    const at = quant((l.tail ? clipEnd(home) : home.start) + l.off);
+    // Pinned to an edge that moved left, a head can land before the song
+    // starts, which saved it at a negative column. It stays where it was
+    // instead — still hidden, still the clip's — rather than being lost. A
+    // tail past the end is kept as pinned: lengthening the song and pulling
+    // the edge out still reaches it.
+    if (at >= 0) l.n.start = at;
     home.notes.push(l.n);
   }
   for (const t of state.trackList) {
@@ -10115,7 +10133,7 @@ async function loadSongFile(file) {
   catch (err) { alert('Could not read the file: ' + err.message); return; }
   // Fall back to the filename (minus extension) if the file predates songName.
   const fallbackName = file.name.replace(/\.json$/i, '');
-  if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format (missing a rhythm track).');
+  if (!applySongData(data, data.songName ? undefined : fallbackName)) alert('The file has the wrong format: it holds no track with notes or hits.');
   else savedSlot = null;
 }
 loadInput.addEventListener('change', async () => {
@@ -10163,7 +10181,10 @@ function midiTrackChunk(events) {
 }
 function midiTrackNameEvent(name) {
   const bytes = Array.from(name).map(c => c.charCodeAt(0) & 0x7F);
-  return { tick: 0, prio: -1, data: [0xFF, 0x03, bytes.length, ...bytes] };
+  // A meta event's length is a variable-length quantity like a delta: one
+  // plain byte stopped being valid at 128, and a longer name made the rest of
+  // the track unreadable.
+  return { tick: 0, prio: -1, data: [0xFF, 0x03, ...writeVarLen(bytes.length), ...bytes] };
 }
 const GM_DRUM_NOTE = { kick: 36, snare: 38, rim: 37, hihat: 42, openhat: 46, shaker: 82, tom: 45, clap: 39, crash: 49, ride: 51 };
 function exportMidiBytes() {
@@ -10175,12 +10196,15 @@ function exportMidiBytes() {
     { tick: 0, prio: -1, data: [0xFF, 0x58, 0x04, state.timeSig.num, denExp, 24, 8] },
   ]);
   const trackChunks = [tempoTrack];
-  let channel = 0;
+  // Channel 9 is the drums'. Skipped once by a counter, it came round again
+  // after the sixteenth tonal track, which then played as percussion — so
+  // tonal tracks share the fifteen others in turn.
+  const TONAL_CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15];
+  let tonalIndex = 0;
   for (const t of state.trackList) {
     const events = [midiTrackNameEvent(t.name)];
     if (t.kind === 'tone') {
-      if (channel === 9) channel++; // channel 9 is reserved for drums
-      const ch = channel++ % 16;
+      const ch = TONAL_CHANNELS[tonalIndex++ % TONAL_CHANNELS.length];
       for (const n of trackNotes(t.id) || []) {
         if (!n.freq) continue;
         const midiNum = Math.max(0, Math.min(127, freqToMidi(n.freq)));
@@ -11582,6 +11606,8 @@ let ctx = null, loopTimer = null, playing = false;
 // Anything that reaches for a live context in that window would schedule into
 // the render instead — a note clicked during "Rendering…" ended up in the file.
 let renderingWav = false;
+// A Play waiting on the hard-sync worklet before it starts — see its handler.
+let playStarting = false, playStartToken = 0;
 let masterGain = null;
 let previewGain = null; // always-audible bus for click-to-hear note previews
 let chanGain = {};   // id -> GainNode (rebuilt per audio context from ALL_TRACKS)
@@ -14558,15 +14584,24 @@ syncMetronomeUI();
 document.getElementById('play').addEventListener('click', async () => {
   // Already rolling: starting again would schedule a second copy on top of the
   // chunk already queued (a double tap on the phone player's button did it).
-  if (playing || renderingWav) return;
+  if (playing || playStarting || renderingWav) return;
   ensureCtx();
   if (ctx.state === 'suspended') ctx.resume();
-  if (hardSyncPending && usesHardSync()) await hardSyncPending;
+  if (hardSyncPending && usesHardSync()) {
+    // `playing` is only set once this wait is over, so a second press during
+    // it used to start a second transport, and a Stop during it left `ctx`
+    // null for startPlaybackFrom() to throw on.
+    playStarting = true;
+    const token = ++playStartToken;
+    try { await hardSyncPending; } finally { if (token === playStartToken) playStarting = false; }
+    if (token !== playStartToken || !ctx) return; // stopped while waiting
+  }
   document.body.classList.add('playing');
   startPlaybackFrom(state.playhead);
 });
 function stopPlayback() {
   playing = false;
+  playStarting = false; playStartToken++; // a Play still waiting on the hard-sync module gives up
   // Before the context goes away: any key still down is committed against the
   // clock that is about to be torn down.
   stopRecording();

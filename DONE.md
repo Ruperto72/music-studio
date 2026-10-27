@@ -76,6 +76,29 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
   längden uttrycker. Följden är medveten: Froggy Hop, Derelict Watch, Rust
   Foundry och Space Miner Shop har spåret, och deras stämma klingar nu sin
   fulla notlängd.
+- [x] **Play under väntan på hard sync-modulen.** `playing` sattes först
+  efter `await hardSyncPending`, så ett andra tryck startade en andra
+  transport, och Stop under väntan lämnade `ctx` null för
+  `startPlaybackFrom()`. Nu `playStarting` plus en token som `stopPlayback()`
+  räknar upp. Steget räknar hard sync-röster (`AudioWorkletNode`), inte
+  `start()`-anrop: en sync-not är ingen källnod, och den första versionen av
+  steget såg bara kanalernas LFO:er och passerade mot gammal kod.
+- [x] **MIDI-export.** Spårnamnets längd skrevs som en byte; över 127 läses
+  den som fortsättning och resten av spåret går ur takt. Nu `writeVarLen()`.
+  Kanal 9 hoppades över en gång av en räknare och kom tillbaka efter sexton
+  tonala spår; nu delar de tonala spåren de femton andra kanalerna i tur.
+- [x] **Duplicera spår gav klippen nya, olika `source`.** Kopians två halvor
+  av en delning gick inte att läka. Nu en ny source per original, delad
+  mellan kopiorna — samma regel `duplicateSpan()` redan följde.
+- [x] **Arrange: klipp utan `source`** delade nyckeln `undefined` i
+  `duplicateSpan()`s karta och kom ut läkbara i hop. Nu är klippet självt
+  nyckeln när source saknas. **Dolda huvuden under kolumn 0:** fäst vid en
+  kant som flyttats vänster kunde ett dolt huvud hamna på en negativ kolumn.
+  Det ligger nu kvar där det låg, fortfarande dolt, i stället för att kastas.
+  En svans bortom låtens slut behålls som fäst, eftersom en förlängd låt och
+  en utdragen kant fortfarande når den.
+- [x] **Felmeddelandet vid laddning** sa "missing a rhythm track", fast en låt
+  utan trumspår är giltig sedan länge.
 
 ## Från UI-granskningen (2026-09-23)
 

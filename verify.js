@@ -11358,6 +11358,203 @@ async function main() {
       }
     });
 
+    step('Transport: a second Play, or a Stop, while Play waits on the hard-sync module', async () => {
+      await fresh();
+      // Hold the hard-sync module's load open, so Play has to wait for it, and
+      // count the hard-sync voices built: a sync note is an AudioWorkletNode,
+      // not a source node, so counting start() calls would see only the LFOs.
+      await cdp.evaluate(`(() => {
+        window.__syncLoaded = null;
+        window.__holdSync = (load) => {
+          const add = AudioWorklet.prototype.addModule;
+          AudioWorklet.prototype.addModule = function (url, ...a) {
+            if (!String(url).includes('hardsync')) return add.call(this, url, ...a);
+            return new Promise((res) => { window.__syncLoaded = () => (load ? add.call(this, url, ...a) : Promise.resolve()).then(res, res); });
+          };
+        };
+        window.__holdSync(true);
+        window.__voices = 0;
+        const W = AudioWorkletNode;
+        window.AudioWorkletNode = class extends W {
+          constructor(c, name, o) { super(c, name, o); if (name === 'hardsync-processor') window.__voices++; }
+        };
+      })()`);
+      await loadSong('SyncWait', songData({
+        tracks: { lead: [note(0, 2, 440), note(4, 2, 440)], bass: [], rhythm: [] },
+        waveform: { lead: 'sync', bass: 'triangle', rhythm: 'kit' },
+      }));
+      const play = () => cdp.evaluate(`document.getElementById('play').click()`);
+      const runOnce = async (presses) => {
+        await cdp.evaluate(`window.__voices = 0; window.__syncLoaded = null`);
+        for (let i = 0; i < presses; i++) {
+          await play();
+          await waitFor(`typeof window.__syncLoaded === 'function'`);
+        }
+        await cdp.evaluate(`window.__syncLoaded()`);
+        await waitFor(`document.body.classList.contains('playing')`, 8000);
+        await new Promise((r) => setTimeout(r, 300));
+        const n = await cdp.evaluate(`window.__voices`);
+        await cdp.evaluate(`document.getElementById('stop').click()`);
+        return n;
+      };
+      // 1. Two presses during the wait start one transport.
+      const twice = await runOnce(2);
+      const once = await runOnce(1);
+      if (once !== 2 || twice !== once) {
+        throw new Error(`two Play presses while waiting built ${twice} hard-sync voices, one Play builds ${once} (2 notes) — the song was scheduled twice`);
+      }
+      // 2. Stop during the wait: nothing plays afterwards, and nothing throws
+      // (a page exception fails the step on its own).
+      await cdp.evaluate(`window.__holdSync(false); window.__voices = 0; window.__syncLoaded = null`);
+      await play();
+      await waitFor(`typeof window.__syncLoaded === 'function'`);
+      await cdp.evaluate(`document.getElementById('stop').click()`);
+      await cdp.evaluate(`window.__syncLoaded()`);
+      await new Promise((r) => setTimeout(r, 400));
+      const after = await cdp.evaluate(`({ playing: document.body.classList.contains('playing'), voices: window.__voices })`);
+      if (after.playing) throw new Error(`a Stop while Play waited should leave nothing playing, got ${JSON.stringify(after)}`);
+    });
+
+    step('Export MIDI: a long track name and a seventeenth tonal track still make a valid file', async () => {
+      await fresh();
+      const longName = 'L'.repeat(200);
+      const ids = Array.from({ length: 17 }, (_, i) => 't' + i);
+      await loadSong('ManyTracks', songData({
+        trackList: [
+          ...ids.map((id, i) => ({ id, name: i === 0 ? longName : 'T' + i, color: '#33ccff', kind: 'tone' })),
+          { id: 'rhythm', name: 'Rhythm', color: '#888888', kind: 'rhythm' },
+        ],
+        tracks: { ...Object.fromEntries(ids.map(id => [id, [note(0, 1, 440)]])), rhythm: [{ start: 0, type: 'kick' }] },
+        gains: {}, waveform: {}, pan: {},
+      }));
+      await cdp.evaluate(`(() => {
+        window.__blobs = [];
+        const make = URL.createObjectURL;
+        URL.createObjectURL = (b) => { window.__blobs.push(b); return make.call(URL, b); };
+      })()`);
+      await cdp.evaluate(`document.getElementById('export-midi').click()`);
+      await waitFor(`window.__blobs.length === 1`, 10000);
+      // Walk every event of every track, the way any MIDI reader does: a meta
+      // length written as one byte past 127 reads as a continuation and
+      // throws the rest of the track out of step.
+      const report = await cdp.evaluate(`(async () => {
+        const b = new Uint8Array(await window.__blobs[0].arrayBuffer());
+        const u32 = (p) => (b[p] << 24 | b[p + 1] << 16 | b[p + 2] << 8 | b[p + 3]) >>> 0;
+        const vlq = (p) => { let v = 0, c; do { c = b[p++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80); return [v, p]; };
+        let p = 8 + u32(4);
+        const names = [], noteChannels = [], problems = [];
+        let track = 0;
+        while (p < b.length) {
+          const len = u32(p + 4), end = p + 8 + len;
+          let q = p + 8, last = null, running = 0;
+          while (q < end) {
+            let d; [d, q] = vlq(q);
+            let st = b[q];
+            if (st < 0x80) st = running; else { q++; if (st < 0xF0) running = st; }
+            if (st === 0xFF) {
+              const type = b[q++]; let l; [l, q] = vlq(q);
+              if (type === 0x03) names.push(String.fromCharCode(...b.slice(q, q + l)));
+              last = type; q += l;
+            } else if ((st & 0xF0) === 0x90 || (st & 0xF0) === 0x80) {
+              if ((st & 0xF0) === 0x90) noteChannels.push([track, st & 0x0F]);
+              last = st; q += 2;
+            } else { problems.push('track ' + track + ': unexpected status ' + st + ' at ' + q); break; }
+          }
+          if (q !== end || last !== 0x2F) problems.push('track ' + track + ' does not end on End of Track');
+          p = end; track++;
+        }
+        return { names, noteChannels, problems };
+      })()`);
+      if (report.problems.length) throw new Error(`the exported MIDI file does not parse: ${report.problems.join('; ')}`);
+      // The tempo track carries no name, so the first name is the first track's.
+      if (report.names[0] !== longName) throw new Error(`the 200-character track name should come back whole, got ${report.names[0] && report.names[0].length} characters`);
+      // Track chunk 0 is the tempo track; chunks 1..17 are the tonal tracks.
+      const tonalOnDrums = report.noteChannels.filter(([t, ch]) => t >= 1 && t <= 17 && ch === 9);
+      if (tonalOnDrums.length) throw new Error(`a tonal track was written on the drum channel: chunks ${JSON.stringify(tonalOnDrums.map(x => x[0]))}`);
+    });
+
+    step('Duplicate track: the copy of a split track can still be healed, and not with the original', async () => {
+      await fresh();
+      await loadSong('DupSplit', songData({
+        tracks: {
+          lead: [
+            { start: 0, len: 8, source: 'c1', notes: [note(2, 1, 440)] },
+            { start: 8, len: null, source: 'c1', notes: [note(12, 1, 440)] },
+          ],
+          bass: [], rhythm: [],
+        },
+      }));
+      // Lead is the active track after a load, so the inspector is its strip.
+      await waitFor(`[...document.querySelectorAll('#inspector button')].some(b => /Duplicate track/.test(b.textContent))`);
+      await cdp.evaluate(`[...document.querySelectorAll('#inspector button')].find(b => /Duplicate track/.test(b.textContent)).click()`);
+      await waitFor(`document.querySelectorAll('#tracks > .track[data-kind="pitch"]').length === 3`);
+      await new Promise((r) => setTimeout(r, 700));
+      const clips = await cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        const copy = d.trackList.find(t => t.name === 'Lead copy').id;
+        return { copy: d.tracks[copy].map(c => c.source), lead: d.tracks.lead.map(c => c.source) };
+      })()`);
+      if (clips.copy.length !== 2 || !clips.copy[0] || clips.copy[0] !== clips.copy[1]) {
+        throw new Error(`the copy's two halves should share one source so they can be healed: ${JSON.stringify(clips)}`);
+      }
+      if (clips.lead.includes(clips.copy[0])) throw new Error(`the copy must not share a source with the original: ${JSON.stringify(clips)}`);
+    });
+
+    step('Arrange: sourceless clips stay separate in a copy, and a moved clip\'s hidden head never goes below column 0', async () => {
+      const KEY = 'frogger-music-editor-autosave';
+      const markers = [0, 8, 16, 24, 32].map((col, i) => ({ col, name: 'S' + (i + 1) }));
+      const moveSection = async (what, to) => {
+        const miss = await cdp.evaluate(`(() => {
+          const w = document.getElementById('arrange-move-what');
+          const o = [...w.options].find(o => o.textContent === ${JSON.stringify(what)});
+          if (!o) return 'what: ' + [...w.options].map(o => o.textContent).join(' / ');
+          w.value = o.value; w.dispatchEvent(new Event('change', { bubbles: true }));
+          const t = document.getElementById('arrange-move-to');
+          const d = [...t.options].find(o => o.textContent === ${JSON.stringify(to)});
+          if (!d) return 'to: ' + [...t.options].map(o => o.textContent).join(' / ');
+          t.value = d.value; t.dispatchEvent(new Event('change', { bubbles: true }));
+          document.getElementById('arrange-move').click();
+          return null;
+        })()`);
+        if (miss) throw new Error(`no such option — ${miss}`);
+      };
+      const lead = async () => {
+        await new Promise((r) => setTimeout(r, 700));
+        return cdp.evaluate(`JSON.parse(localStorage.getItem('${KEY}')).tracks.lead.map(c => ({ s: c.start, l: c.len, src: c.source, n: c.notes.map(n => n.start) }))`);
+      };
+
+      // 1. Two adjacent clips with no source (an older or hand-edited file),
+      // inside S2, moved after S4: the copies must not come out as one
+      // clip's two halves.
+      await fresh();
+      await loadSong('NoSource', songData({
+        cols: 40, markers,
+        tracks: { lead: [{ start: 8, len: 4, notes: [note(8, 1, 440)] }, { start: 12, len: 4, notes: [note(12, 1, 440)] }], bass: [], rhythm: [] },
+      }));
+      await openArrange();
+      await moveSection('S2', 'after S4');
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.name === 'S2' && m.col === 24)`);
+      const moved = (await lead()).filter(c => c.s >= 24 && c.s < 32);
+      if (moved.length !== 2 || moved[0].src === moved[1].src) {
+        throw new Error(`two unrelated clips should keep separate sources after a move: ${JSON.stringify(moved)}`);
+      }
+
+      // 2. A clip at 20 hiding a head at column 2. Moving S2 after S4 slides
+      // the clip left by a bar, and pinning the head to its edge put it at -6.
+      await fresh();
+      await loadSong('HiddenHead', songData({
+        cols: 40, markers,
+        tracks: { lead: [{ start: 20, len: 4, source: 'c1', notes: [note(2, 1, 440), note(21, 1, 440)] }], bass: [], rhythm: [] },
+      }));
+      await openArrange();
+      await moveSection('S2', 'after S4');
+      await waitFor(`(JSON.parse(localStorage.getItem('${KEY}')) || { markers: [] }).markers.some(m => m.name === 'S2' && m.col === 24)`);
+      const clips = await lead();
+      const all = clips.flatMap(c => c.n);
+      if (all.some(s => s < 0)) throw new Error(`no note may be saved before column 0: ${JSON.stringify(clips)}`);
+      if (all.length !== 2) throw new Error(`the hidden head should be kept, not dropped: ${JSON.stringify(clips)}`);
+    });
+
     for (const s of steps) await s();
     if (ONLY && !ran) errors.push(`--only ${JSON.stringify(ONLY)} matched no step, so nothing was checked`);
   } finally {

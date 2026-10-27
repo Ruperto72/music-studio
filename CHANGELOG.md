@@ -7,6 +7,22 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 reasoning, measurements and dead ends behind each change are in
 [`DONE.md`](DONE.md).
 
+## [1.6.6] – 2026-10-27
+
+### Fixed
+- Pressing Play twice, or Play then Stop, on a song with a Hard sync track
+  before the hard-sync voice has loaded no longer plays the song twice over
+  or leaves the transport stuck.
+- Export MIDI writes a valid file for a track name longer than 127
+  characters, and no longer puts the seventeenth tonal track on the drum
+  channel.
+- A duplicated track whose part was split into clips can have those clips
+  healed again.
+- Arrange → Move and Duplicate keep unrelated clips from an older song file
+  separate, and never put a clip's hidden notes before the start of the song.
+- Opening a file that is not a song says what is wrong with it, rather than
+  claiming it lacks a rhythm track.
+
 ## [1.6.5] – 2026-10-27
 
 ### Fixed
@@ -284,6 +300,7 @@ back to 2026-07-19, is unversioned; `DONE.md` is the record of it.
 - Example songs "Canone", "Dodici" and "Sinfonia Quarta", Bach for three SID
   voices.
 
+[1.6.6]: https://github.com/Ruperto72/music-studio/compare/v1.6.5...v1.6.6
 [1.6.5]: https://github.com/Ruperto72/music-studio/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/Ruperto72/music-studio/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/Ruperto72/music-studio/compare/v1.6.2...v1.6.3
