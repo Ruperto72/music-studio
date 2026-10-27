@@ -48,6 +48,34 @@ Ordningen är den `TODO.md` hade, inte kronologisk.
   spelar. Stegets tre delar är var för sig verifierade mot sin injektion:
   oavslutad kontext, Play utan spärr (`offline: 1` startade källor) och
   rivning bortkopplad (`offline: 12` efter misslyckad rendering).
+- [x] **Kortkommandon nådde editorn bakom modala dialoger.** Spärren tittade
+  bara på om fokus stod i ett fält; med fokus på en knapp i Songs-dialogen
+  raderade Backspace den markerade noten bakom den. Nu ignoreras tangenterna
+  medan en `dialog[open]` som inte är `.tool-panel` finns — verktygspanelerna
+  är icke-modala med avsikt och behåller genvägarna. Inte `:modal`: en
+  pseudoklass webbläsaren inte känner får `querySelector()` att kasta.
+- [x] **MIDI-import utanför E1–C7.** Noterna togs in som de var och ritades på
+  kantraden (renderingen klampar raden) medan de lät på sin riktiga höjd. De
+  viks nu in med hela oktaver, inte klampas: en klampad C1 blir E1 och byter
+  tonklass mitt i ackordet. Levande MIDI-in släpper redan sådana noter.
+- [x] **Nivåer i en laddad fil var otyglade.** `applySavedMix()` krävde bara
+  att värdet var ett tal, så `gains: 50` eller `masterVol: 20` spelades rakt
+  av. Nu till reglagens intervall: spårvolym 0–2, mastervolym 0–1, filter,
+  FM, och masterbussen ur `MASTER_FX_REGISTRY`s egna fältgränser i stället
+  för en andra kopia. Envelope-tider klampas bara till 0–10 s, eftersom
+  Env-reglagen med avsikt sträcks för längre tider än de erbjuder (flera
+  medföljande pads). De medföljande låtarna ligger alla inom gränserna
+  (uppmätt: spårvolym ≤ 1,4, mastervolym ≤ 0,86).
+- [x] **Spåret med id `harmony` spelade noterna 10 % kortare.**
+  `playOnce()` gav just det id:t `durScale = 0.9`, en kvarleva från spelets
+  mix. Regeln syntes ingenstans, följde id:t snarare än stämman (en
+  duplicerad eller importerad kopia lät annorlunda) och gällde varje nytt
+  projekt, eftersom startlayouten har ett `harmony`. Borttagen, och
+  `durScale` med den, eftersom den då alltid var 1. Valt framför att göra den
+  till en synlig inställning: kortare noter är redan något envelope och
+  längden uttrycker. Följden är medveten: Froggy Hop, Derelict Watch, Rust
+  Foundry och Space Miner Shop har spåret, och deras stämma klingar nu sin
+  fulla notlängd.
 
 ## Från UI-granskningen (2026-09-23)
 

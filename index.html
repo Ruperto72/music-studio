@@ -1866,7 +1866,7 @@ import { TEMPO_BPM } from './js/song-data.js';
 // Web App Manifest spec has no such member and inventing one would be a field
 // nothing reads. Wiring any of them to this string would tie a release number
 // to a schedule that is not a release schedule.
-const APP_VERSION = '1.6.4';
+const APP_VERSION = '1.6.5';
 
 // ---- Song length in columns (eighth-notes), derived from the loaded song. ----
 let COLS = 64;
@@ -3705,9 +3705,21 @@ const clearSparseTrackMaps = () => { for (const k of SPARSE_TRACK_MAPS) state[k]
 // Decode the persisted mix (gains/masterVol/mute/solo) from a saved draft or
 // loaded file into state. Absent per-channel gains keep their current value;
 // absent mute/solo default to off. UI/audio sync is left to the caller.
+// Levels and synth settings are clamped to what their controls offer, the way
+// tempo and pan already were: "is a number" let a hand-edited `gains: 50` or
+// `masterVol: 20` through, which plays at a level that is a hazard to ears and
+// speakers rather than a mistake to fix. Envelope times are the exception —
+// the Env sliders stretch to show a longer attack than they offer (several
+// bundled pads have one) — so they are only kept non-negative and finite.
+const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const ENV_TIME_MAX = 10;
+function masterFieldRange(groupKey, param) {
+  const f = MASTER_FX_REGISTRY.find(g => g.key === groupKey).fields.find(x => x.param === param);
+  return [f.min, f.max];
+}
 function applySavedMix(data) {
   if (data.gains && typeof data.gains === 'object') {
-    for (const ch of ALL_TRACKS) if (typeof data.gains[ch] === 'number') state.gains[ch] = data.gains[ch];
+    for (const ch of ALL_TRACKS) if (typeof data.gains[ch] === 'number') state.gains[ch] = clampNum(data.gains[ch], 0, 2);
   }
   // Absent, unknown or a kit on a tonal track are all "use the default" —
   // same shape as every other sparse per-track map, so a song from before
@@ -3721,7 +3733,7 @@ function applySavedMix(data) {
   if (data.pan && typeof data.pan === 'object') {
     for (const ch of ALL_TRACKS) if (typeof data.pan[ch] === 'number') state.pan[ch] = Math.max(-1, Math.min(1, data.pan[ch]));
   }
-  if (typeof data.masterVol === 'number') state.masterVol = data.masterVol;
+  if (typeof data.masterVol === 'number') state.masterVol = clampNum(data.masterVol, 0, 1);
   // Only a value the grid picker offers. "> 0" let 0.05 through, which quant()
   // turns into 0 — snapToGrid() then divides by zero and every pen click
   // placed a note at NaN.
@@ -3756,7 +3768,8 @@ function applySavedMix(data) {
       if (!a || typeof a !== 'object') continue;
       const keys = ['attack', 'decay', 'sustain', 'release'];
       if (keys.every(k => typeof a[k] === 'number')) {
-        state.adsr[ch] = { attack: a.attack, decay: a.decay, sustain: a.sustain, release: a.release };
+        const t = (v) => clampNum(v, 0, ENV_TIME_MAX);
+        state.adsr[ch] = { attack: t(a.attack), decay: t(a.decay), sustain: clampNum(a.sustain, 0, 1), release: t(a.release) };
       }
     }
   }
@@ -3765,7 +3778,7 @@ function applySavedMix(data) {
       const f = data.filter[ch];
       if (!f || typeof f !== 'object') continue;
       if (['cutoff', 'q', 'envAmount'].every(k => typeof f[k] === 'number')) {
-        state.filter[ch] = { cutoff: f.cutoff, q: f.q, envAmount: f.envAmount };
+        state.filter[ch] = { cutoff: clampNum(f.cutoff, FILTER_MIN_HZ, FILTER_MAX_HZ), q: clampNum(f.q, 0.1, 20), envAmount: clampNum(f.envAmount, -1, 1) };
       }
     }
   }
@@ -3774,7 +3787,7 @@ function applySavedMix(data) {
       const f = data.fm[ch];
       if (!f || typeof f !== 'object') continue;
       if (['ratio', 'depth'].every(k => typeof f[k] === 'number')) {
-        state.fm[ch] = { ratio: f.ratio, depth: f.depth };
+        state.fm[ch] = { ratio: clampNum(f.ratio, 0.5, 12), depth: clampNum(f.depth, 0, 1) };
       }
     }
   }
@@ -3869,26 +3882,29 @@ function applySavedMix(data) {
       if (Object.keys(clean).length) state.activeFx[ch] = clean;
     }
   }
+  // Each field to its knob's own range, read from MASTER_FX_REGISTRY rather
+  // than written out again here.
+  const master = (groupKey, src, params) => {
+    const out = {};
+    for (const p of params) out[p] = clampNum(src[p], ...masterFieldRange(groupKey, p));
+    return out;
+  };
   if (data.masterEQ && typeof data.masterEQ === 'object') {
     const eqKeys = ['low', 'mid', 'high'];
-    if (eqKeys.every(k => typeof data.masterEQ[k] === 'number')) {
-      state.masterEQ = { low: data.masterEQ.low, mid: data.masterEQ.mid, high: data.masterEQ.high };
-    }
+    if (eqKeys.every(k => typeof data.masterEQ[k] === 'number')) state.masterEQ = master('eq', data.masterEQ, eqKeys);
   }
   if (data.masterComp && typeof data.masterComp === 'object') {
     const compKeys = ['threshold', 'ratio', 'attack', 'release'];
-    if (compKeys.every(k => typeof data.masterComp[k] === 'number')) {
-      state.masterComp = { threshold: data.masterComp.threshold, ratio: data.masterComp.ratio, attack: data.masterComp.attack, release: data.masterComp.release };
-    }
+    if (compKeys.every(k => typeof data.masterComp[k] === 'number')) state.masterComp = master('comp', data.masterComp, compKeys);
   }
   if (data.masterParallel && typeof data.masterParallel === 'object' && typeof data.masterParallel.blend === 'number') {
-    state.masterParallel = { blend: data.masterParallel.blend };
+    state.masterParallel = master('parcomp', data.masterParallel, ['blend']);
   }
   if (data.sidechain && typeof data.sidechain === 'object' && typeof data.sidechain.depth === 'number') {
-    state.sidechain = { enabled: !!data.sidechain.enabled, depth: data.sidechain.depth };
+    state.sidechain = { enabled: !!data.sidechain.enabled, ...master('sidechain', data.sidechain, ['depth']) };
   }
   if (data.masterCrush && typeof data.masterCrush === 'object' && typeof data.masterCrush.amount === 'number') {
-    state.masterCrush = { amount: data.masterCrush.amount };
+    state.masterCrush = master('crush', data.masterCrush, ['amount']);
   }
   for (const key of ['mute', 'solo']) {
     const src = (data[key] && typeof data[key] === 'object') ? data[key] : {};
@@ -9144,6 +9160,11 @@ window.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
   if (document.activeElement && document.activeElement.closest('.th-knob-dial')) return;
+  // A modal dialog (Songs, Presets, Patterns, Chords) owns the keyboard: with
+  // focus on one of its buttons, Backspace used to delete the selected note
+  // behind it and Ctrl+Z to undo there. The tool panels are non-modal on
+  // purpose and keep the shortcuts — that loop is what they are for.
+  if (document.querySelector('dialog[open]:not(.tool-panel)')) return;
   // Note keys, only while a track is armed — so the letter shortcuts below
   // keep working exactly as before until you explicitly arm something, and
   // arming is a visible, deliberate act. Modifier combinations are left alone
@@ -10323,8 +10344,14 @@ function importMidiIntoSong(buffer) {
         if (e.channel === 9) {
           hits.push({ start: startCol, type: GM_DRUM_REVERSE[e.note] || 'hihat', ...(vel < 1 ? { vel } : {}) });
         } else {
+          // Folded by octaves into the lane's range rather than clamped: a
+          // note outside it was drawn on the edge row while sounding at its
+          // real pitch, and an octave keeps it the same note in the chord.
+          let midi = e.note;
+          while (midi < MIDI_MIN) midi += 12;
+          while (midi > MIDI_MAX) midi -= 12;
           notes.push({
-            start: startCol, len: lenCol, freq: round2(midiToFreq(e.note)), vel,
+            start: startCol, len: lenCol, freq: round2(midiToFreq(midi)), vel,
             bend: null, vib: false, trem: false, duty: null, arp: null,
             porta: false, crush: false, echo: false, chorus: false, reverb: false
           });
@@ -13193,8 +13220,8 @@ function scheduleTone(note, startAt, dur, oscType, destGain, voice = DEFAULT_VOI
   src.stop(startAt + dur);
   if (chorus) { chorus.out.connect(filter); chorus.start(startAt); chorus.stop(startAt + dur); }
 }
-function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, durScale = 1, voice = DEFAULT_VOICE) {
-  const totalDur = (dur + nextDur) * durScale;
+function schedulePortamentoTone(note, nextNote, startAt, dur, nextDur, oscType, destGain, voice = DEFAULT_VOICE) {
+  const totalDur = dur + nextDur;
   // This used to hand-write the wave selection a fourth time — and read
   // note.duty directly, so the track's Duty default never reached a portamento
   // note. Everything goes through createVoiceSource()/effectiveDuty() now.
@@ -13554,7 +13581,7 @@ function swingOffsetCols(col) {
   if (Math.abs(withinPair - 1) > EPS) return 0;
   return (amt / 100) * (1 / 3);
 }
-function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, durScale, destGain, voice) {
+function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, destGain, voice) {
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   // A portamento note glides into the note starting exactly where it ends, and
   // that note is *not* retriggered — the two share one continuous oscillator.
@@ -13586,11 +13613,11 @@ function scheduleTrackNotes(notes, startAt, eighthSec, fromCol, toCol, oscType, 
       const next = glideTarget(n);
       if (next && next.start < toCol) {
         consumed.add(next);
-        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, durScale, voice);
+        schedulePortamentoTone(n, next, at, n.len * eighthSec, next.len * eighthSec, oscType, destGain, voice);
         continue;
       }
     }
-    scheduleTone(n, at, n.len * eighthSec * durScale, oscType, destGain, voice);
+    scheduleTone(n, at, n.len * eighthSec, oscType, destGain, voice);
   }
 }
 // ---------- Metronome ----------
@@ -13641,8 +13668,7 @@ function scheduleMetronomeForChunk(startAt, eighthSec, fromCol, toCol) {
 function playOnce(startAt, eighthSec, fromCol, toCol) {
   for (const id of PITCH_TRACKS) {
     if (!audible(id) || !chanGain[id]) continue;
-    const durScale = id === 'harmony' ? 0.9 : 1; // harmony sits back a touch (default song)
-    scheduleTrackNotes(trackNotes(id), startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', durScale, chanVoiceIn[id] || chanGain[id], getTrackVoice(id));
+    scheduleTrackNotes(trackNotes(id), startAt, eighthSec, fromCol, toCol, state.waveform[id] || 'square', chanVoiceIn[id] || chanGain[id], getTrackVoice(id));
   }
   for (const id of RHYTHM_TRACK_IDS) {
     if (!audible(id) || !chanGain[id]) continue;

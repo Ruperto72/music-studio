@@ -11289,6 +11289,75 @@ async function main() {
       }
     });
 
+    step('Keyboard: shortcuts do not reach the editor behind a modal dialog', async () => {
+      await fresh();
+      await cdp.evaluate(`document.querySelector('[data-tool="pen"]').click()`);
+      await penAt('Lead', 60, 40);
+      await waitFor(`!!${trackRow('Lead')}.querySelector('.lane .note.selected')`);
+      await cdp.evaluate(`document.getElementById('songs-btn').click()`);
+      await waitFor(`document.getElementById('songs-dialog').open`);
+      await cdp.evaluate(`document.querySelector('#songs-dialog button').focus()`);
+      await pressKey('Backspace');
+      await new Promise((r) => setTimeout(r, 200));
+      const behind = await cdp.evaluate(`${trackRow('Lead')}.querySelectorAll('.lane .note').length`);
+      if (behind !== 1) throw new Error(`Backspace with the Songs dialog open deleted the note behind it (${behind} left)`);
+      // And the shortcut still works once the dialog is gone.
+      await cdp.evaluate(`document.getElementById('songs-dialog').close()`);
+      await cdp.evaluate(`document.activeElement && document.activeElement.blur()`);
+      await pressKey('Backspace');
+      await waitFor(`${trackRow('Lead')}.querySelectorAll('.lane .note').length === 0`)
+        .catch(() => { throw new Error('Backspace should delete the selected note once the dialog is closed'); });
+    });
+
+    step('MIDI import: a note outside the lane\'s range comes in an octave inside it', async () => {
+      await fresh();
+      // Format 0, one track, 480 ppq: C1 (24) and E7 (100), a quarter each —
+      // both outside E1..C7 (28..96).
+      await cdp.evaluate(`(() => {
+        const bytes = new Uint8Array([
+          0x4D, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0,
+          0x4D, 0x54, 0x72, 0x6B, 0, 0, 0, 22,
+          0x00, 0x90, 24, 100, 0x83, 0x60, 0x80, 24, 0,
+          0x00, 0x90, 100, 100, 0x83, 0x60, 0x80, 100, 0,
+          0x00, 0xFF, 0x2F, 0x00,
+        ]);
+        const input = document.getElementById('import-midi-input');
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], 'range.mid', { type: 'audio/midi' }));
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await waitFor(`document.querySelectorAll('#tracks > .track[data-kind="pitch"]').length === 5`);
+      await new Promise((r) => setTimeout(r, 700));
+      const freqs = await cdp.evaluate(`(() => {
+        const d = JSON.parse(localStorage.getItem('frogger-music-editor-autosave'));
+        const id = d.trackList.filter(t => t.kind === 'tone').pop().id;
+        return window.__savedNotes(d, id).map(n => n.freq).sort((a, b) => a - b);
+      })()`);
+      // C2 (36) and E6 (88).
+      if (JSON.stringify(freqs) !== JSON.stringify([65.41, 1318.51])) {
+        throw new Error(`C1 and E7 should land on C2 and E6, got ${JSON.stringify(freqs)}`);
+      }
+    });
+
+    step('Song I/O: levels in a loaded file are held to what their controls offer', async () => {
+      await fresh();
+      await loadSong('TooLoud', songData({
+        gains: { lead: 50, bass: -3, rhythm: 1.2 },
+        masterVol: 20,
+        masterEQ: { low: 40, mid: -40, high: 0 },
+        masterComp: { threshold: -24, ratio: 500, attack: 0.01, release: 0.25 },
+        fm: { lead: { ratio: 2, depth: 30 } },
+      }));
+      await new Promise((r) => setTimeout(r, 700));
+      const d = await cdp.evaluate(`JSON.parse(localStorage.getItem('frogger-music-editor-autosave'))`);
+      const got = { lead: d.gains.lead, bass: d.gains.bass, masterVol: d.masterVol, eq: d.masterEQ, ratio: d.masterComp.ratio, fm: d.fm.lead };
+      const want = { lead: 2, bass: 0, masterVol: 1, eq: { low: 12, mid: -12, high: 0 }, ratio: 20, fm: { ratio: 2, depth: 1 } };
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        throw new Error(`out-of-range levels should be held to the controls' range: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+      }
+    });
+
     for (const s of steps) await s();
     if (ONLY && !ran) errors.push(`--only ${JSON.stringify(ONLY)} matched no step, so nothing was checked`);
   } finally {

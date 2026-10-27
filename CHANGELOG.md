@@ -7,6 +7,24 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 reasoning, measurements and dead ends behind each change are in
 [`DONE.md`](DONE.md).
 
+## [1.6.5] – 2026-10-27
+
+### Fixed
+- Keyboard shortcuts no longer act on the editor behind the Songs, Presets,
+  Patterns and Chords dialogs. Backspace with one of them open used to delete
+  the selected note.
+- Notes in an imported MIDI file that lie outside the editor's range come in
+  an octave inside it, instead of being drawn on the edge row while sounding
+  somewhere else.
+- A song file with out-of-range levels (track volume, master volume, master
+  EQ and compressor, FM depth and the like) is held to what the controls
+  offer, rather than playing dangerously loud.
+
+### Changed
+- The Harmony track, in the starter layout and in Froggy Hop, Derelict
+  Watch, Rust Foundry and Space Miner Shop, no longer plays its notes 10%
+  shorter than written. Every track now plays notes at the length you draw.
+
 ## [1.6.4] – 2026-10-27
 
 ### Fixed
@@ -266,6 +284,7 @@ back to 2026-07-19, is unversioned; `DONE.md` is the record of it.
 - Example songs "Canone", "Dodici" and "Sinfonia Quarta", Bach for three SID
   voices.
 
+[1.6.5]: https://github.com/Ruperto72/music-studio/compare/v1.6.4...v1.6.5
 [1.6.4]: https://github.com/Ruperto72/music-studio/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/Ruperto72/music-studio/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/Ruperto72/music-studio/compare/v1.6.1...v1.6.2
